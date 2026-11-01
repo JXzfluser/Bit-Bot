@@ -1905,6 +1905,26 @@
     body[data-sidebar="collapsed"],
     body.grok-ui[data-sidebar="collapsed"] { grid-template-columns: minmax(0, 1fr); }
     #agents { max-height: 140px; border-right: 0; border-bottom: 1px solid var(--line); }
+    /* 账户弹层在横带里必须换个开法（G-67 MC-11 修复前红，480×693 实测）：
+       平时 #account-popup 用 bottom: calc(100% + 2px) 向上开 —— 宽桌面下账户条
+       贴在侧栏底部，向上开正好浮在正文上，没问题。但 ≤900 的 140px 横带把账户条
+       抬到 y≈143，向上开 309px 的菜单整片跑出屏外：
+         ap-usage y=-161 / ap-mobile y=-129 / ap-remote y=-97 / ap-settings y=-33 /
+         ap-connect y=1，elementFromPoint 命中 null —— 用户看得见「账户」，
+         点不到里面的任何一项（不只是新加的移动端远程控制，设置/连接应用同样死）。
+       往下方开也不行：#agents 是 overflow 容器，绝对定位的子元素会被 140px 裁掉。
+       所以这里让弹层脱离侧栏滚动面改 fixed，贴着横带下缘开，水平跟着账户条左缘，
+       高度受视口约束自己滚。层号 59 = 抽屉 57 < composer 58 < 菜单 59 < modal 60，
+       菜单浮在正文与已开抽屉之上，但压不过任何弹层。 */
+    #account-popup {
+      position: fixed;
+      top: calc(var(--header-h) + 140px + 2px);
+      left: 16px;
+      bottom: auto;
+      max-height: calc(100vh - var(--header-h) - 148px);
+      overflow-y: auto;
+      z-index: 59;
+    }
     /* Rails stop being a grid column and become overlay drawers under the
        header. A 340px third column at 480px would leave a 140px chat column;
        as an overlay the open panel never squeezes or displaces the composer,
@@ -2100,6 +2120,7 @@
                一处入口，弹层里这一行已经去掉。 -->
           <button type="button" class="ap-item" id="ap-usage"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7.1 2.5a5.6 5.6 0 1 1-4.6 4.4"/><path d="M8 8.4 5.3 5.2"/></svg></span><span class="ap-tx" data-i18n="apUsage">每周用量</span><span class="ap-sub" id="ap-usage-sub" hidden></span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
           <button type="button" class="ap-item" id="ap-mobile"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="4" y="1.5" width="8" height="13" rx="2"/><path d="M7 12.5h2"/></svg></span><span class="ap-tx" data-i18n="apMobile">获取移动版 Bit Bot</span></button>
+          <button type="button" class="ap-item" id="ap-remote"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="1.5" width="6" height="10.5" rx="1.6"/><path d="M6 10.6h1"/><path d="M11.5 6.2a3 3 0 0 1 0 5.1"/><path d="M13 4.2a5.4 5.4 0 0 1 0 9"/></svg></span><span class="ap-tx" data-i18n="apRemote">移动端远程控制</span></button>
           <button type="button" class="ap-item" id="ap-support"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.6"/><path d="M6.2 2v12"/><path d="M3.6 10.9h9.4"/></svg></span><span class="ap-tx" data-i18n="apSupport">支持</span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
           <button type="button" class="ap-item" id="ap-settings"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg></span><span class="ap-tx" data-i18n="settings">设置</span></button>
           <button type="button" class="ap-item" id="ap-connect"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.6 9.4a2.8 2.8 0 0 0 4 0l2-2a2.8 2.8 0 1 0-4-4l-1 1"/><path d="M9.4 6.6a2.8 2.8 0 0 0-4 0l-2 2a2.8 2.8 0 1 0 4 4l1-1"/></svg></span><span class="ap-tx" data-i18n="connectApps">连接应用</span></button>
@@ -2404,6 +2425,9 @@
         </div>
         <div class="st-card" id="sec-zone-devices">
           <div class="st-card-title"><span data-i18n="credZoneDevices">手机与入站</span></div>
+          <!-- 主路已经挪到独立弹窗；这张卡留作手动兜底。不写这一行的话，
+               两处入口会变成两处真相 —— 用户不知道哪个才是正门。 -->
+          <div class="pairing-modal-hint" id="sec-pairing-modal-hint" data-i18n="pairingModalHint">主路在「账户 → 移动端远程控制」；这里保留手动填写与配对令牌，读的是同一份配对状态。</div>
           <!-- 安卓 / iOS 端连的就是这台大脑。地址与令牌以前只在 README 里，
                用户点不开这一屏就走不到「手机说话 → 桌面记得」。 -->
           <div id="sec-pairing-line" class="st-readout">配对状态：读取中…</div>
@@ -2731,6 +2755,61 @@
         <div class="bb-sheet-note" data-i18n="mkHint">选择一个模板即可快速创建 Bot。</div>
         <div id="mk-meta" class="bb-meta" style="margin-top:8px"></div>
         <div id="mk-grid" class="ca-grid" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <!-- 移动端远程控制：配对这件事的主路。
+         能力早就在（pairing-v1：局域网发现 + 6 位短码 + 换令牌，协议层 19/0、
+         安卓 20/0、APK 16/0 都真跑过），缺的是入口和「现在能不能连」的实话。
+         这一屏只做 IA / 状态 / 几何：二维码是下一波，真·远程工作区另立设计，
+         所以渠道列只摆钉钉/飞书/企业微信这三条真有的路，不给微信个人号、
+         Telegram、Lark 国际版做假入口。 -->
+    <div id="mobile-control-modal" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="mc-title">
+      <div class="bb-sheet bb-sheet-lg">
+        <div class="bb-sheet-head">
+          <div class="bb-sheet-title" id="mc-title" data-i18n="mcTitle">移动端远程控制</div>
+          <button type="button" id="mc-close" class="bb-btn bb-close" data-i18n="settingsClose">关闭</button>
+        </div>
+        <div class="bb-sheet-note" id="mc-hint" data-i18n="mcHint">手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。</div>
+        <div class="mc-grid">
+          <section class="mc-card" id="mc-pair-card">
+            <div class="mc-card-head">
+              <span id="mc-dot" class="mc-dot" data-state="off" aria-hidden="true"></span>
+              <span class="mc-card-title" data-i18n="mcPairTitle">手机连接这台桌面</span>
+            </div>
+            <div id="mc-status" class="mc-status" data-i18n="mcReading">配对状态：读取中…</div>
+            <div id="mc-scope-note" class="mc-note" hidden></div>
+            <div class="mc-actions">
+              <button type="button" id="mc-enable-btn" class="bb-btn bb-btn-sm" data-i18n="pairingBtnEnable">允许手机连接</button>
+              <button type="button" id="mc-copy-url-btn" class="bb-btn bb-btn-sm" disabled data-i18n="mcCopyUrl">复制配对链接</button>
+            </div>
+            <div id="mc-pair-note" class="mc-note" hidden></div>
+            <div class="pc-block" id="mc-code-block">
+              <div class="pc-head">
+                <span class="pc-head-title" id="mc-code-title" data-i18n="mcCodeTitle">让手机自己找</span>
+                <button type="button" id="mc-gen-btn" class="bb-btn bb-btn-sm" data-i18n="mcCodeGen">生成配对码</button>
+              </div>
+              <div class="pc-display" id="mc-code-display" hidden>
+                <span class="pc-digits" id="mc-code"></span>
+                <span class="pc-countdown" id="mc-countdown"></span>
+              </div>
+              <div class="pc-actions" id="mc-code-actions" hidden>
+                <button type="button" id="mc-revoke-btn" class="bb-btn bb-btn-sm" data-i18n="mcCodeRevoke">立即作废</button>
+              </div>
+              <p class="pc-hint" data-i18n="mcCodeHint">手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。</p>
+            </div>
+            <p class="mc-note" data-i18n="mcManualNote">同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 手机与入站。</p>
+          </section>
+          <section class="mc-card" id="mc-channel-card">
+            <div class="mc-card-title" data-i18n="mcChannelTitle">使用 Bot Channel</div>
+            <p class="mc-note" data-i18n="mcChannelNote">下面三条是真跑通过的入站渠道。没列出的渠道目前没有适配器，这里不给点了没反应的入口。</p>
+            <ul class="mc-channels">
+              <li class="mc-ch" id="mc-ch-ding"><span data-i18n="mcChDing">钉钉 · 群机器人 Webhook</span></li>
+              <li class="mc-ch" id="mc-ch-feishu"><span data-i18n="mcChFeishu">飞书 · 自建应用事件回调</span></li>
+              <li class="mc-ch" id="mc-ch-wecom"><span data-i18n="mcChWecom">企业微信 · 应用消息回调</span></li>
+            </ul>
+            <button type="button" id="mc-goto-channels" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mcGotoChannels">去配置</button>
+          </section>
+        </div>
       </div>
     </div>
     <div id="agent-info-panel" class="bb-card bb-inset" style="display:none">
@@ -11691,6 +11770,222 @@
       });
     }
 
+    /* ---------- 移动端远程控制弹窗（pairing-v1 的产品正门）--------------
+     * 这一屏不重算协议，只把同一份 pairing.state() 讲成人能读懂的三句话：
+     * 现在手机能不能连、连的地址是哪个、下一步做什么。状态与设置里那张卡
+     * 同源，所以两边永远不会各说各话（MC-03/MC-04 钉住这一点）。 */
+    let mcSnapshot = null;
+    let mcCodeTimer = null;
+    const mcEls = {
+      dot: document.getElementById("mc-dot"),
+      status: document.getElementById("mc-status"),
+      scope: document.getElementById("mc-scope-note"),
+      enable: document.getElementById("mc-enable-btn"),
+      copyUrl: document.getElementById("mc-copy-url-btn"),
+      note: document.getElementById("mc-pair-note"),
+      block: document.getElementById("mc-code-block"),
+      display: document.getElementById("mc-code-display"),
+      digits: document.getElementById("mc-code"),
+      countdown: document.getElementById("mc-countdown"),
+      codeActions: document.getElementById("mc-code-actions"),
+      gen: document.getElementById("mc-gen-btn"),
+      revoke: document.getElementById("mc-revoke-btn"),
+    };
+
+    function mcNote(text) {
+      if (!mcEls.note) return;
+      if (!text) {
+        mcEls.note.hidden = true;
+        mcEls.note.textContent = "";
+        return;
+      }
+      mcEls.note.textContent = text;
+      mcEls.note.hidden = false;
+    }
+
+    function mcStopCountdown() {
+      if (mcCodeTimer) { clearInterval(mcCodeTimer); mcCodeTimer = null; }
+    }
+
+    function mcStartCountdown(ms) {
+      mcStopCountdown();
+      let remaining = Math.max(0, Math.round(ms / 1000));
+      const tick = () => {
+        if (mcEls.countdown) {
+          const m = Math.floor(remaining / 60);
+          const s = remaining % 60;
+          mcEls.countdown.textContent = m + ":" + String(s).padStart(2, "0");
+        }
+        if (remaining <= 0) {
+          mcStopCountdown();
+          refreshMobileControl();
+        }
+        remaining--;
+      };
+      tick();
+      mcCodeTimer = setInterval(tick, 1000);
+    }
+
+    function mcPaintCode(st) {
+      if (!mcEls.display || !mcEls.codeActions || !mcEls.gen) return;
+      if (st && st.pair_code) {
+        mcEls.digits.textContent = st.pair_code;
+        mcEls.display.hidden = false;
+        mcEls.codeActions.hidden = false;
+        // 已有码时按钮说「刷新」：留着「生成」会让人以为要点出第二个码。
+        mcEls.gen.textContent = wavegT("mcCodeRefresh");
+        mcStartCountdown(st.pair_code_expires_in_ms || 0);
+      } else {
+        mcEls.digits.textContent = "";
+        if (mcEls.countdown) mcEls.countdown.textContent = "";
+        mcEls.display.hidden = true;
+        mcEls.codeActions.hidden = true;
+        mcEls.gen.textContent = wavegT("mcCodeGen");
+        mcStopCountdown();
+      }
+    }
+
+    async function refreshMobileControl() {
+      if (!mcEls.status || !window.bitbot || !window.bitbot.pairing) return;
+      try {
+        const st = await window.bitbot.pairing.state();
+        mcSnapshot = st && st.ok ? st : null;
+        if (!mcSnapshot) {
+          mcEls.dot.dataset.state = "off";
+          mcEls.status.textContent = wavegT("pairingReadFail");
+          if (mcEls.enable) mcEls.enable.disabled = true;
+          if (mcEls.copyUrl) mcEls.copyUrl.disabled = true;
+          if (mcEls.scope) { mcEls.scope.hidden = true; mcEls.scope.textContent = ""; }
+          mcPaintCode(null);
+          return;
+        }
+        // 状态点只在「真放开了、且拿得到一个地址」时亮 —— 读取失败或没放开都是 off。
+        const ready = Boolean(st.listening && st.lan_open && (st.turn_urls || []).length);
+        mcEls.dot.dataset.state = ready ? "on" : "off";
+        if (!st.listening) mcEls.status.textContent = wavegT("pairingNotListening");
+        else if (ready) mcEls.status.textContent = t("pairingLanOn", { url: st.pair_base || st.turn_urls[0] });
+        else if (st.lan_open) mcEls.status.textContent = wavegT("pairingLanOnNoIp");
+        else mcEls.status.textContent = t("pairingLocalOnly", { url: st.loopback_base || st.loopback_url || "" });
+        const scopeNote = pairingScopeNote(st);
+        if (mcEls.scope) {
+          mcEls.scope.textContent = scopeNote;
+          mcEls.scope.hidden = !scopeNote;
+        }
+        if (mcEls.enable) {
+          mcEls.enable.textContent = st.lan_enabled ? wavegT("pairingBtnDisable") : wavegT("pairingBtnEnable");
+          mcEls.enable.disabled = false;
+        }
+        if (mcEls.copyUrl) mcEls.copyUrl.disabled = !(st.pair_base || st.loopback_base || (st.turn_urls || []).length || st.loopback_url);
+        mcPaintCode(st);
+      } catch (e) {
+        mcEls.dot.dataset.state = "off";
+        mcEls.status.textContent = wavegT("pairingReadFail");
+        if (mcEls.enable) mcEls.enable.disabled = true;
+        if (mcEls.copyUrl) mcEls.copyUrl.disabled = true;
+      }
+    }
+
+    if (mcEls.enable) {
+      mcEls.enable.addEventListener("click", async () => {
+        const next = !(mcSnapshot && mcSnapshot.lan_enabled);
+        mcEls.enable.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.setLan(next);
+          if (r && r.ok) mcSnapshot = r;
+          await refreshMobileControl();
+          mcNote(
+            r && r.ok
+              ? next ? wavegT("mcNowOpen") : wavegT("mcNowClosed")
+              : t("pairingToggleFail", { err: (r && r.error) || "unknown" }),
+          );
+        } catch (e) {
+          mcNote(t("pairingToggleFail", { err: String((e && e.message) || e) }));
+          await refreshMobileControl();
+        } finally {
+          mcEls.enable.disabled = false;
+        }
+      });
+    }
+    if (mcEls.copyUrl) {
+      mcEls.copyUrl.addEventListener("click", async () => {
+        mcEls.copyUrl.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.copy("url");
+          mcNote(r && r.ok ? wavegT("pairingCopied") : t("pairingCopyFail", { err: (r && r.error) || "unknown" }));
+        } catch (e) {
+          mcNote(t("pairingCopyFail", { err: String((e && e.message) || e) }));
+        } finally {
+          mcEls.copyUrl.disabled = false;
+        }
+      });
+    }
+    if (mcEls.gen) {
+      mcEls.gen.addEventListener("click", async () => {
+        mcEls.gen.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.code({ action: "issue" });
+          if (r && r.ok) {
+            mcNote("");
+            await refreshMobileControl();
+          } else {
+            mcNote(t("pairingCodeFail", { err: (r && r.error) || "host_failed" }));
+          }
+        } catch (e) {
+          mcNote(t("pairingCodeFail", { err: String((e && e.message) || e) }));
+        } finally {
+          mcEls.gen.disabled = false;
+        }
+      });
+    }
+    if (mcEls.revoke) {
+      mcEls.revoke.addEventListener("click", async () => {
+        mcEls.revoke.disabled = true;
+        try {
+          await window.bitbot.pairing.code({ action: "revoke" });
+          mcNote("");
+          await refreshMobileControl();
+        } catch (e) {
+          mcNote(t("pairingCodeFail", { err: String((e && e.message) || e) }));
+        } finally {
+          mcEls.revoke.disabled = false;
+        }
+      });
+    }
+
+    function openMobileControl(triggerEl) {
+      const m = document.getElementById("mobile-control-modal");
+      if (!m) return;
+      m.style.display = "flex";
+      bbSheetOpened("mobile-control-modal", triggerEl || document.getElementById("account-avatar-btn"));
+      mcNote("");
+      refreshMobileControl().catch(() => {});
+    }
+    function closeMobileControl() {
+      const m = document.getElementById("mobile-control-modal");
+      if (m) m.style.display = "none";
+      mcStopCountdown();
+      bbSheetClosed("mobile-control-modal");
+    }
+    const mcCloseBtn = document.getElementById("mc-close");
+    if (mcCloseBtn) mcCloseBtn.addEventListener("click", () => closeMobileControl());
+    const mcGotoChannels = document.getElementById("mc-goto-channels");
+    if (mcGotoChannels) {
+      mcGotoChannels.addEventListener("click", () => {
+        // 跳走就先关自己：两层弹窗叠着，用户不知道该关哪一个。
+        closeMobileControl();
+        openConnectApps(document.getElementById("account-avatar-btn"));
+        const cn = document.getElementById("ca-cn-channels");
+        if (cn && cn.scrollIntoView) cn.scrollIntoView({ block: "start" });
+      });
+    }
+    const apRemote = document.getElementById("ap-remote");
+    if (apRemote) {
+      apRemote.addEventListener("click", () => {
+        setAccountPopup(false);
+        openMobileControl(document.getElementById("account-avatar-btn"));
+      });
+    }
+
     const secProbe = document.getElementById("sec-probe");
     if (secProbe) {
       secProbe.addEventListener("click", async () => {
@@ -13256,6 +13551,7 @@
       "marketplace-modal": () => closeMarketplace(),
       "connect-apps-modal": () => closeConnectApps(),
       "settings-panel": () => closeSettingsPanel(),
+      "mobile-control-modal": () => closeMobileControl(),
     };
     window.__bbSheetStack = window.__bbSheetStack || [];
     function bbSheetOpened(id, triggerEl) {
@@ -13348,6 +13644,7 @@
     if (modelCloseBtn) modelCloseBtn.addEventListener("click", closeModelSheet);
     bbBindSheetMask("model-modal");
     bbBindSheetMask("settings-panel");
+    bbBindSheetMask("mobile-control-modal");
     const caTemplateBtn = document.getElementById("ca-template-btn");
     if (caTemplateBtn) {
       caTemplateBtn.addEventListener("click", (ev) => {
@@ -14314,6 +14611,28 @@
         pairingToggleFail: "开关失败 · {err}（没放开，也没假装放开）",
         pairingCopied: "已复制到剪贴板",
         pairingCopyFail: "复制失败 · {err}",
+        pairingCodeFail: "配对码没生成 · {err}（没有码，手机就只能走手动那一栏）",
+        pairingModalHint: "主路在「账户 → 移动端远程控制」；这里保留手动填写与配对令牌，读的是同一份配对状态。",
+        apRemote: "移动端远程控制",
+        mcTitle: "移动端远程控制",
+        mcPairTitle: "手机连接这台桌面",
+        mcReading: "配对状态：读取中…",
+        mcHint: "手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。",
+        mcCopyUrl: "复制配对链接",
+        mcCodeTitle: "让手机自己找",
+        mcCodeGen: "生成配对码",
+        mcCodeRefresh: "刷新配对码",
+        mcCodeRevoke: "立即作废",
+        mcCodeHint: "手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。",
+        mcManualNote: "同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 手机与入站。",
+        mcChannelTitle: "使用 Bot Channel",
+        mcChannelNote: "下面三条是真跑通过的入站渠道。没列出的渠道目前没有适配器，这里不给点了没反应的入口。",
+        mcChDing: "钉钉 · 群机器人 Webhook",
+        mcChFeishu: "飞书 · 自建应用事件回调",
+        mcChWecom: "企业微信 · 应用消息回调",
+        mcGotoChannels: "去配置",
+        mcNowOpen: "已放开局域网：同一 Wi-Fi 下的手机现在能连进来 — 手机点「连接 Desktop」输 6 位配对码，令牌由手机端自己拿到",
+        mcNowClosed: "已收回局域网：现在只有桌面自己能连",
         gpPanel: "对齐面板",
         gpComputer: "电脑",
         gpGroup: "群组",
@@ -15028,6 +15347,28 @@
         pairingToggleFail: "開關失敗 · {err}（沒放開，也沒假裝放開）",
         pairingCopied: "已複製到剪貼簿",
         pairingCopyFail: "複製失敗 · {err}",
+        pairingCodeFail: "配對碼未產生 · {err}（沒有碼，手機就只能走手動那一欄）",
+        pairingModalHint: "主路在「帳戶 → 移動端遠端控制」；這裡保留手動填寫與配對權杖，讀的是同一份配對狀態。",
+        apRemote: "移動端遠端控制",
+        mcTitle: "移動端遠端控制",
+        mcPairTitle: "手機連接這台桌面",
+        mcReading: "配對狀態：讀取中…",
+        mcHint: "手機和桌面在同一個 Wi-Fi 下，輸入 6 位配對碼就能連上這台大腦，不需要手填長權杖。",
+        mcCopyUrl: "複製配對連結",
+        mcCodeTitle: "讓手機自己找",
+        mcCodeGen: "產生配對碼",
+        mcCodeRefresh: "重新產生配對碼",
+        mcCodeRevoke: "立即作廢",
+        mcCodeHint: "手機只需點「連接 Desktop」並輸入這 6 位數字：5 分鐘內有效，用過一次即作廢。",
+        mcManualNote: "同一 Wi-Fi 也連不上時才走手動：設定 → 憑證 → 手機與入站。",
+        mcChannelTitle: "使用 Bot Channel",
+        mcChannelNote: "下面三條是真跑通的入站渠道。沒列出的渠道目前沒有配接器，這裡不給點了沒反應的入口。",
+        mcChDing: "釘釘 · 群組機器人 Webhook",
+        mcChFeishu: "飛書 · 自建應用事件回調",
+        mcChWecom: "企業微信 · 應用消息回調",
+        mcGotoChannels: "去設定",
+        mcNowOpen: "已放開區域網路：同一 Wi-Fi 下的手機現在能連進來 — 手機點「連接 Desktop」輸 6 位配對碼，權杖由手機端自己拿到",
+        mcNowClosed: "已收回區域網路：現在只有桌面本身能連",
         gpPanel: "Grok Parity 面板",
         gpComputer: "電腦",
         gpGroup: "群組",
@@ -15742,6 +16083,28 @@
         pairingToggleFail: "Toggle failed · {err} (not opened, and not pretended open)",
         pairingCopied: "Copied to clipboard",
         pairingCopyFail: "Copy failed · {err}",
+        pairingCodeFail: "No pairing code issued · {err} (without one the phone has to fall back to manual entry)",
+        pairingModalHint: "The main path now lives under Account → Mobile remote control; this card keeps the manual fields and the pairing token, reading the same pairing state.",
+        apRemote: "Mobile remote control",
+        mcTitle: "Mobile remote control",
+        mcPairTitle: "Connect your phone to this desktop",
+        mcReading: "Pairing state: loading…",
+        mcHint: "On the same Wi-Fi, the phone just types a 6-digit pairing code to reach this brain — no long token to paste.",
+        mcCopyUrl: "Copy pairing link",
+        mcCodeTitle: "Let the phone find it",
+        mcCodeGen: "Generate pairing code",
+        mcCodeRefresh: "Refresh pairing code",
+        mcCodeRevoke: "Revoke now",
+        mcCodeHint: "On the phone tap “Connect Desktop” and enter these 6 digits: valid for 5 minutes, single use.",
+        mcManualNote: "Only when the same Wi-Fi still fails: Settings → Credentials → Phone & inbound.",
+        mcChannelTitle: "Use a Bot Channel",
+        mcChannelNote: "The three below are the inbound channels actually working today. Anything not listed has no adapter yet, so there is no dead entry for it here.",
+        mcChDing: "DingTalk · group robot Webhook",
+        mcChFeishu: "Feishu · custom app event callback",
+        mcChWecom: "WeCom · app message callback",
+        mcGotoChannels: "Configure",
+        mcNowOpen: "LAN opened: phones on the same Wi-Fi can connect now — tap “Connect Desktop” and enter the 6-digit code, the phone receives the token itself",
+        mcNowClosed: "LAN closed: only this desktop can connect now",
         gpPanel: "Grok Parity Panel",
         gpComputer: "Computer",
         gpGroup: "Groups",

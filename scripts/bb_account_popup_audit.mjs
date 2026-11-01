@@ -59,6 +59,7 @@ const { _electron } = require("playwright-core");
 const ITEMS = [
   { key: "ap-usage", label: "每周用量", inPopup: true },
   { key: "ap-mobile", label: "获取移动版 Bit Bot", inPopup: true },
+  { key: "ap-remote", label: "移动端远程控制", inPopup: true },
   { key: "ap-support", label: "支持", inPopup: true },
   { key: "ap-settings", label: "设置", inPopup: true },
   { key: "ap-connect", label: "连接应用", inPopup: true },
@@ -73,6 +74,7 @@ const SURFACES = [
   "connect-apps-modal",
   "marketplace-modal",
   "model-modal",
+  "mobile-control-modal",
   "account-popup",
   "sessions-popup",
   "sb-bots-rooms",
@@ -172,6 +174,7 @@ function probeFn() {
           "connect-apps-modal",
           "marketplace-modal",
           "model-modal",
+          "mobile-control-modal",
           "account-popup",
           "sessions-popup",
           "sb-bots-rooms",
@@ -269,7 +272,7 @@ async function runMode(mode) {
         document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         document.getElementById("account-popup")?.setAttribute("hidden", "");
         document.getElementById("sessions-popup")?.setAttribute("hidden", "");
-        for (const id of ["settings-panel", "connect-apps-modal", "marketplace-modal", "model-modal"]) {
+        for (const id of ["settings-panel", "connect-apps-modal", "marketplace-modal", "model-modal", "mobile-control-modal"]) {
           const m = document.getElementById(id);
           if (m) m.style.display = "none";
         }
@@ -283,7 +286,7 @@ async function runMode(mode) {
       });
       await win.waitForTimeout(350);
       const open = await win.evaluate(() =>
-        ["settings-panel", "connect-apps-modal", "marketplace-modal", "model-modal", "account-popup", "sessions-popup"]
+        ["settings-panel", "connect-apps-modal", "marketplace-modal", "model-modal", "mobile-control-modal", "account-popup", "sessions-popup"]
           .filter((id) => {
             const e = document.getElementById(id);
             if (!e) return false;

@@ -2934,6 +2934,46 @@ else
   echo "  · skip：本机 node 没有 node:sqlite，G-66 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-67 移动端远程控制弹窗（配对的主路：状态点 + 6 位码 + 复制链接）=="
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g67_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g67_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 ${g67_xvfb[@]+"${g67_xvfb[@]}"} node scripts/e2e_desktop_mobile_control.mjs > /tmp/g67-mobctl.log 2>&1; then
+    ok "G-67 e2e_desktop_mobile_control 全绿（$(grep -c '✓' /tmp/g67-mobctl.log) 项，$(tail -1 /tmp/g67-mobctl.log)）"
+  else
+    bad "G-67 e2e_desktop_mobile_control（见 /tmp/g67-mobctl.log；$(tail -1 /tmp/g67-mobctl.log)）"
+    grep -n "✗" /tmp/g67-mobctl.log 2>/dev/null | head -10 | while IFS= read -r line; do echo "    ${line}"; done
+    tail -6 /tmp/g67-mobctl.log 2>/dev/null | while IFS= read -r line; do echo "    | ${line}"; done
+  fi
+  grep -q "MC-03 状态点 off→on 如实" /tmp/g67-mobctl.log \
+    && grep -q "MC-04 生成" /tmp/g67-mobctl.log \
+    && grep -q "MC-05 复制配对链接当场回显" /tmp/g67-mobctl.log \
+    && ok "G-67 主路三条在：状态点如实（没放开不亮绿）、配对码生成/刷新/作废与 Host 同步、复制链接当场回显" \
+    || bad "G-67 主路锚点缺失（状态点 / 配对码 / 复制链接没被断言到）"
+  grep -q "MC-06 Esc 与遮罩都能关" /tmp/g67-mobctl.log \
+    && grep -q "MC-07 只列钉钉" /tmp/g67-mobctl.log \
+    && grep -q "MC-09 480×720" /tmp/g67-mobctl.log \
+    && grep -q "MC-11 480×" /tmp/g67-mobctl.log \
+    && ok "G-67 边界三条在：Esc 与遮罩都关得掉且焦点归还、渠道列只有真支持的三条且不叠弹窗、480 宽不破版且账户菜单点得到" \
+    || bad "G-67 边界锚点缺失（关闭 / 渠道列 / 窄屏没被断言到）"
+  echo "  · G-67 修复前红（HEAD 8ca2c5e 产品代码真实输出）：PASS=0 FAIL=10 —— 入口、弹窗、"
+  echo "    状态点、渠道列全都不存在；能力（pairing-v1）早就在，缺的是这一屏的入口与实话"
+  echo "  · G-67 第二道红（弹窗做完之后，480×693 实测）：PASS=9 FAIL=2 —— 账户弹层向上开，"
+  echo "    ap-usage y=-161 / ap-remote y=-97 / ap-connect y=1，整片在屏外："
+  echo "    窄窗口里点不到任何一项（不只新入口，设置/连接应用同样死）。横带内改 fixed 向下开才绿"
+  echo "  · G-67 残留（诚实）：没有二维码 —— 现在仍靠「复制配对链接 / 手敲 6 位码」，"
+  echo "    手机摄像头那条路是下一波（M 档）；这一屏也不做「远程操作当前工作区」，"
+  echo "    那是新协议面（L 档），需要设计评审；国内渠道仍只到「去配置」，配置本身在 G-51/G-52"
+  echo "  · G-67 已知边界：480 宽 ≤ 折叠断点(768) 时侧栏自动收起，账户入口要先 Ctrl/Cmd+B"
+  echo "    展开才点得到 —— 横带本身要不要改成抽屉，仍是 §8.51 那条残留，不在本波范围内"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-67 未跑（SKIP ≠ PASS）"
+fi
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

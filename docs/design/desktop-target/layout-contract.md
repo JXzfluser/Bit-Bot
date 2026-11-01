@@ -63,6 +63,8 @@ grid-template-areas:
 | sidebar | 展开时占满整行；折叠时 0 宽（`#agents` display:none） | 两态都断言 |
 | rail | 不再占列：`position:fixed`，`top:56`、`right:0`、宽 `min(340px,100vw)` 的覆盖抽屉 | 打开面板时 main 宽度不变；抽屉右缘贴 viewport |
 | composer | 抽屉打开时仍要发得出：composer 在 rail 之上、modal 之下（57 < composer 58 < modal 60），发送键命中的是按钮本身 | `elementFromPoint(发送键中心)` 属于发送键 |
+| 账户弹层 | ≤900 的 140px 横带把账户条抬到 y≈143，平时「向上开」的 `#account-popup` 会整片跑出屏外；横带里改 `position:fixed` + 贴横带下缘**向下开**，层号 59（57 < 58 < 59 < modal 60），高度受视口约束自己滚 | `MC-11`：弹层每一项都在视口内，且中心命中自己（`e2e_desktop_mobile_control.mjs`） |
+| 移动端远程控制弹窗 | sheet 不超视口、两列降为单列、关闭与生成键都在视口内 | `MC-09` |
 | 滚动 | 无横向滚动 | `scrollWidth ≤ clientWidth` |
 | 重叠 | header / agents / main / composer 两两不重叠（rail 是覆盖层，允许压在 main 上） | 矩形交集 |
 

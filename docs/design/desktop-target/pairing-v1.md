@@ -107,6 +107,7 @@ POST /v1/pair/redeem
 | **换到的令牌真能打通 `/v1/turn`** | 同上 PC-13 | 全绿 |
 | base_url 走网卡排序，不给 docker0（PC-18）、LAN 未放开如实 409（PC-19） | 同上 | 全绿 |
 | 桌面面板：生成配对码出 6 位数字 + 倒计时、可作废 | `scripts/e2e_android_roster.mjs` AR-16/17（真 Electron） | 20/0 |
+| 桌面「移动端远程控制」弹窗：入口、状态点 off→on 如实、码生成/刷新/作废与 Host 每步一致、复制链接回显、弹窗内零令牌控件、Esc/遮罩关闭且焦点归还、渠道列只有钉钉/飞书/企业微信且「去配置」真跳转、480 宽不破版 | `scripts/e2e_desktop_mobile_control.mjs` MC-01..11（真 Electron，G-67） | 11/0 |
 | 手机端纯逻辑（/24 枚举、discover 解析、码校验、四种失败映射、scope 提醒） | `PairingDiscoveryTest`（23 条） | 全绿 |
 | 手机端**真 HTTP 集成**（进程内 ServerSocket 起服务，走真 socket 校字段与映射） | `PairingIntegrationTest`（17 条，ephemeral 端口，无 skip 路径） | 全绿 |
 | 门禁把上面几条钉成「真在跑」 | `prove_android_build.mjs` AB-09、AB-10（含负向对照） | 10/0 |
@@ -124,3 +125,7 @@ JVM 单测合计 66 用例 0 失败；内核回归 `moon test ./cmd/desktop_turn
 - 公网 / 跨网段机器仍配不上（没有内网穿透产品路径），此时 discover 也扫不到。
 - 未做二维码方案：桌面渲染 QR + 手机 CameraX 解码是 M 档改造，v1 先用 6 位码把
   「零抄写」这一步做到；QR 落地后短码仍应保留作为无摄像头兜底。
+  桌面侧现在给的是独立弹窗 + 状态点 + 「复制配对链接」（G-67 MC-01..11），
+  仍然不是扫码；QR 内容只允许放 `base_url` + 一次性短码，不许放 64 位令牌。
+- 「在手机上继续指挥当前工作区」不在 v1 范围内：桌面只暴露 `/v1/turn` 与配对两条路，
+  没有工作区镜像 / 远程 UI 控制协议，那是 L 档，需要单独设计评审。

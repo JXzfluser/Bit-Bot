@@ -2968,6 +2968,93 @@ body.grok-ui .ca-meta:empty { display: none; }
   line-height: 1.5;
 }
 
+/* 「移动端远程控制」弹窗（pairing-v1 的产品正门）。
+   为什么单独一张卡而不是一排按钮：用户要回答的问题是「手机现在能不能连进来」，
+   这一屏用状态点 + 一句话 + 一个主行动答它，手动兜底留在 设置→凭证。
+   状态点不用绿色：视觉 token 契约里没有成功色字面值，颜色一律走现有 token，
+   真信息在 data-state（门禁 MC-03 读的是它，不是截图上好不好看）。
+   配套断言：scripts/e2e_desktop_mobile_control.mjs MC-01..MC-10。 */
+.mc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.mc-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.mc-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.mc-card-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.mc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line);
+  border: 1px solid var(--muted);
+  flex: none;
+}
+.mc-dot[data-state="on"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.mc-status {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+  word-break: break-all;
+}
+.mc-note {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
+}
+.mc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.mc-channels {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.mc-ch {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+/* 旧卡只加一句「主路去哪」，不删任何既有控件（别的门禁在依赖它）。 */
+body.grok-ui .pairing-modal-hint {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+@media (max-width: 900px) {
+  .mc-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* 国内渠道凭证卡：字段级红字 + 状态/下一步说明。
    为什么不写行内：视觉契约门（e2e_desktop_token_parity TP-04）按 el.style 的
    **属性名**计数，行内 font 简写哪怕值是 var() 也算一处字面字号 —— 只有 class 真的收敛。
