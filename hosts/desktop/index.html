@@ -2444,12 +2444,14 @@
           <div id="session-list" aria-label="会话列表"></div>
         </div>
         <div id="account-popup" hidden role="menu">
-          <!-- 行序与真源基本一致：每周用量 → 获取移动版 → 支持 → 设置 ── 0.5px 分隔 ──
+          <!-- 行序与真源基本一致：每周用量 → 移动端远程控制 → 支持 → 设置 ── 0.5px 分隔 ──
                添加账户 → 退出登录。连接应用 / 模板市场是我方增量功能，放在段一末尾。
-               原来首行是「发现新版本（安装）」，但版本更新只保留「设置 → 更新」
-               一处入口，弹层里这一行已经去掉。 -->
+               两处有意偏离真源，都是为了「一件事只留一个入口」：
+                 · 首行不再是「发现新版本（安装）」—— 版本更新只在「设置 → 更新」；
+                 · 「获取移动版 Bit Bot」并进了「移动端远程控制」。手机这件事本来就是
+                   一句话：装哪份、怎么连。分成两行时，前一行只能打印一段说明再去打开
+                   后一行，中间还隔着一个并不存在的「设置 → 手机」页签。 -->
           <button type="button" class="ap-item" id="ap-usage"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7.1 2.5a5.6 5.6 0 1 1-4.6 4.4"/><path d="M8 8.4 5.3 5.2"/></svg></span><span class="ap-tx" data-i18n="apUsage">每周用量</span><span class="ap-sub" id="ap-usage-sub" hidden></span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
-          <button type="button" class="ap-item" id="ap-mobile"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="4" y="1.5" width="8" height="13" rx="2"/><path d="M7 12.5h2"/></svg></span><span class="ap-tx" data-i18n="apMobile">获取移动版 Bit Bot</span></button>
           <button type="button" class="ap-item" id="ap-remote"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="1.5" width="6" height="10.5" rx="1.6"/><path d="M6 10.6h1"/><path d="M11.5 6.2a3 3 0 0 1 0 5.1"/><path d="M13 4.2a5.4 5.4 0 0 1 0 9"/></svg></span><span class="ap-tx" data-i18n="apRemote">移动端远程控制</span></button>
           <button type="button" class="ap-item" id="ap-support"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.6"/><path d="M6.2 2v12"/><path d="M3.6 10.9h9.4"/></svg></span><span class="ap-tx" data-i18n="apSupport">支持</span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
           <button type="button" class="ap-item" id="ap-settings"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg></span><span class="ap-tx" data-i18n="settings">设置</span></button>
@@ -3198,7 +3200,15 @@
               </div>
               <p class="pc-hint" data-i18n="mcCodeHint">手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。</p>
             </div>
-            <p class="mc-note" data-i18n="mcManualNote">同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 手机与入站。</p>
+            <!-- 「获取移动版」原来是账户弹层里的独立一行：点下去先往对话里打一段说明，
+                 再跳「设置 → 手机」——而那个页签早就不存在了，等于点了没反应。
+                 手机这件事本来就是一句话（装哪份、怎么连），搬到这里和配对码放在一起，
+                 用户不需要在两个入口之间被踢来踢去。 -->
+            <div class="mc-app" id="mc-app-block">
+              <div class="mc-card-title" data-i18n="mcAppTitle">手机端从哪来</div>
+              <p class="mc-note" data-i18n="mcAppNote">安卓版目前是自己构建的安装包，还没上应用商店 —— 所以这里不给一个点了没反应的下载按钮。装好后打开 App，点「连接 Desktop」，输入上面这 6 位码就能连上。</p>
+            </div>
+            <p class="mc-note" data-i18n="mcManualNote">同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 可选接线 → 入站地址。</p>
           </section>
           <section class="mc-card" id="mc-channel-card">
             <div class="mc-card-title" data-i18n="mcChannelTitle">使用 Bot Channel</div>
@@ -3866,7 +3876,10 @@
         "reset-computer",
       ],
       Vault: [],
-      Phone: ["pairing"],
+      /* Phone 段（pairing）已经不渲染了：配对在「账户 → 移动端远程控制」。
+         这里保留空数组而不是删键，是因为这份表按内核的 section 清单对齐，
+         少一个键会让「哪一段没落地」变得看不出来。 */
+      Phone: [],
       "Usage & Billing": ["usage", "plan", "billing"],
       Updates: ["update-status", "update-channel", "automatic-updates"],
     };
@@ -3880,7 +3893,8 @@
       "local-execution": "computer", "computers": "computer",
       "update-computer": "computer", "reset-computer": "computer",
       "route-traffic": "computer", "security-keys": "credentials",
-      "pairing": "phone",
+      /* "pairing" 不再映射到某个页签：那个页签已经不存在。深链由
+         renderSettingsPanel 直接接到「移动端远程控制」弹窗（见那里的注释）。 */
       "usage": "usage", "plan": "usage", "billing": "usage",
       "update-status": "updates", "update-channel": "updates", "automatic-updates": "updates",
     };
@@ -4388,6 +4402,20 @@
       }
       const anchor = (payload && payload.anchor) || "";
       const tabName = (payload && payload.tab) || "";
+      /* 「设置 → 手机」这个页签已经不存在：配对这件事在 GP-189 就搬进了
+         「账户 → 移动端远程控制」。可深链入口不止一处（CLI、内核锚点表都还写着
+         anchor=pairing / tab=Phone），所以这里必须接住它们 —— 否则点下去会落到
+         「常规」，用户看到的是「什么都没打开」。落点改成那个弹窗，而不是静默降级。 */
+      if (anchor === "pairing" || String(tabName).toLowerCase() === "phone") {
+        /* 走 closeSettingsPanel 而不是只把 display 设成 none：万一设置页本来就在
+           sheet 栈里（先开设置、再来一条 pairing 深链），只藏 DOM 会留下一个
+           看不见的栈条目 —— 用户按第一次 Esc 关掉的是那个隐形面板，弹窗纹丝不动。
+           closeSettingsPanel 是幂等的（不在栈里也安全）。 */
+        closeSettingsPanel();
+        openMobileControl(window.__bbPendingSettingsTrigger || document.getElementById("account-avatar-btn"));
+        window.__bbPendingSettingsTrigger = null;
+        return;
+      }
       let key = SETTINGS_ANCHOR_TAB[anchor] || null;
       if (!key && tabName) {
         const low = String(tabName).toLowerCase();
@@ -4395,7 +4423,6 @@
         else if (low === "updates") key = "updates";
         else if (low === "computer") key = "computer";
         else if (low === "vault" || low === "credentials") key = "credentials";
-        else if (low === "phone") key = "phone";
         else key = "general";
       }
       showSettingsTab(key || settingsActiveTab || "general");
@@ -12405,26 +12432,9 @@
       addMsg("assistant", msg, { debugOnly: false });
       setAccountPopup(false);
     };
-    /* 移动版不再是占位：APK 已经能构建（hosts/android/BitBotHost），用户点这一项
-       就该落到能真办事的地方。GP-189 起配对有自己的页签，这一跳走内核深链
-       anchor=pairing → tab=Phone，不再是「落到凭证页里翻手机卡」。
-       商店安装包链接仍是后续波次，这句话也照样如实说。 */
-    const apMobile = document.getElementById("ap-mobile");
-    if (apMobile) {
-      apMobile.addEventListener("click", () => {
-        addMsg(
-          "assistant",
-          "Bit Bot 安卓版已经可用：装好 APK 后在手机端点「连接 Desktop」，输入这里生成的 6 位配对码 —— 已为你打开「设置 → 手机」（不在同一 Wi-Fi 就先点「允许手机连接」）。应用商店安装包链接仍是后续波次。",
-          { debugOnly: false },
-        );
-        setAccountPopup(false);
-        window.__bbPendingSettingsTrigger = apMobile;
-        runUserTurn("open settings entry=account anchor=pairing", {
-          skipSession: true,
-          silentUser: true,
-        });
-      });
-    }
+    /* 移动版那一项已经并进「账户 → 移动端远程控制」：手机这件事只有一个入口
+       （装哪份、怎么连，都在那个弹窗里）。这里不再有 ap-mobile 的处理函数 ——
+       留一个「已废弃」的监听，就又是第二条路径了。 */
     const apSupport = document.getElementById("ap-support");
     if (apSupport) apSupport.addEventListener("click", () =>
       accountPlaceholder("支持：在 GitHub 仓库 JXzfluser/Bit-Bot 提交 Issue，或在对话里直接说「诊断」。"));
@@ -15853,7 +15863,9 @@
         mcCodeRefresh: "刷新配对码",
         mcCodeRevoke: "立即作废",
         mcCodeHint: "手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。",
-        mcManualNote: "同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 手机与入站。",
+        mcManualNote: "同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 可选接线 → 入站地址。",
+        mcAppTitle: "手机端从哪来",
+        mcAppNote: "安卓版目前是自己构建的安装包，还没上应用商店 —— 所以这里不给一个点了没反应的下载按钮。装好后打开 App，点「连接 Desktop」，输入上面这 6 位码就能连上。",
         mcChannelTitle: "使用 Bot Channel",
         mcChannelNote: "下面三条是真跑通过的入站渠道。没列出的渠道目前没有适配器，这里不给点了没反应的入口。",
         mcChDing: "钉钉 · 群机器人 Webhook",
@@ -16025,7 +16037,6 @@
         abUpdate: "更新",
         abUpdateAvail: "更新：有新版本可用",
         apUsage: "每周用量",
-        apMobile: "获取移动版 Bit Bot",
         apSupport: "支持",
         apAddAccount: "添加账户",
         apSignOut: "退出登录",
@@ -16650,7 +16661,9 @@
         mcCodeRefresh: "重新產生配對碼",
         mcCodeRevoke: "立即作廢",
         mcCodeHint: "手機只需點「連接 Desktop」並輸入這 6 位數字：5 分鐘內有效，用過一次即作廢。",
-        mcManualNote: "同一 Wi-Fi 也連不上時才走手動：設定 → 憑證 → 手機與入站。",
+        mcManualNote: "同一 Wi-Fi 也連不上時才走手動：設定 → 憑證 → 可選接線 → 入站位址。",
+        mcAppTitle: "手機端從哪來",
+        mcAppNote: "安卓版目前是自己建置的安裝包，還沒上應用商店 —— 所以這裡不給一個點了沒反應的下載按鈕。裝好後打開 App，點「連接 Desktop」，輸入上面這 6 位碼就能連上。",
         mcChannelTitle: "使用 Bot Channel",
         mcChannelNote: "下面三條是真跑通的入站渠道。沒列出的渠道目前沒有配接器，這裡不給點了沒反應的入口。",
         mcChDing: "釘釘 · 群組機器人 Webhook",
@@ -16822,7 +16835,6 @@
         abUpdate: "更新",
         abUpdateAvail: "更新：有新版本可用",
         apUsage: "每週用量",
-        apMobile: "取得行動版 Bit Bot",
         apSupport: "支援",
         apAddAccount: "新增帳戶",
         apSignOut: "登出",
@@ -17447,7 +17459,9 @@
         mcCodeRefresh: "Refresh pairing code",
         mcCodeRevoke: "Revoke now",
         mcCodeHint: "On the phone tap “Connect Desktop” and enter these 6 digits: valid for 5 minutes, single use.",
-        mcManualNote: "Only when the same Wi-Fi still fails: Settings → Credentials → Phone & inbound.",
+        mcManualNote: "Only when the same Wi-Fi still fails: Settings → Credentials → Optional wiring → Inbound address.",
+        mcAppTitle: "Where the phone app comes from",
+        mcAppNote: "The Android build is currently a self-built package — it is not on any app store yet, so there is no download button here that would do nothing. Install it, open the app, tap “Connect Desktop”, and enter the 6-digit code above.",
         mcChannelTitle: "Use a Bot Channel",
         mcChannelNote: "The three below are the inbound channels actually working today. Anything not listed has no adapter yet, so there is no dead entry for it here.",
         mcChDing: "DingTalk · group robot Webhook",
@@ -17619,7 +17633,6 @@
         abUpdate: "Update",
         abUpdateAvail: "Update: new version available",
         apUsage: "Weekly usage",
-        apMobile: "Get the mobile app",
         apSupport: "Support",
         apAddAccount: "Add account",
         apSignOut: "Sign out",
@@ -19873,34 +19886,12 @@
             menuEl.appendChild(b);
           }
         }
-      } else if (at) {
-        let bots = [];
-        try {
-          if (window.bitbot && window.bitbot.bots) {
-            const view = await window.bitbot.bots.list();
-            bots = (view && view.bots) || [];
-          }
-        } catch (_) {
-          bots = [];
-        }
-        menuEl.innerHTML = "";
-        menuEl.hidden = false;
-        const q = at[2].toLowerCase();
-        const hits = bots
-          .filter((b) => !q || String(b.name || "").toLowerCase().includes(q))
-          .slice(0, 12);
-        for (const b of hits) {
-          const el = document.createElement("button");
-          el.type = "button";
-          el.textContent = "@" + b.name;
-          el.addEventListener("click", () => {
-            input.value = input.value.replace(/@([^\s@]*)$/, "@" + b.name + " ");
-            menuEl.hidden = true;
-            input.focus();
-          });
-          menuEl.appendChild(el);
-        }
       } else {
+        /* @ 提及早就搬到 #mention-pop（群聊/单聊共用一条路径），这个函数现在只
+           负责 `/` 技能菜单。原来这里还留着一整段旧的 @Bot 名单分支，但它依赖的
+           变量已经没人定义了 —— 于是每敲一次键（包括 Enter）都在这里抛
+           ReferenceError，输入框看着能用，控制台每次都在报错。整段删掉，
+           不留「等以后再接」的死分支。 */
         menuEl.hidden = true;
       }
     }

@@ -55,7 +55,10 @@ if (/<div id="account-bar">/.test(html)
   && /id="account-name-label"/.test(html)
   && /id="account-popup"/.test(html)
   && /id="ap-usage"/.test(html)
-  && /id="ap-mobile"/.test(html)
+  /* ap-mobile（获取移动版）并入了 ap-remote 打开的「移动端远程控制」弹窗：
+     手机这件事只有一个入口，弹层里不再单列一行。 */
+  && /id="ap-remote"/.test(html)
+  && !/id="ap-mobile"/.test(html)
   && /id="ap-support"/.test(html)
   && /id="sidebar-settings-btn"/.test(html)
   && /id="ap-add-account"/.test(html)
@@ -63,7 +66,7 @@ if (/<div id="account-bar">/.test(html)
   && !/id="ap-update"/.test(html)
   && /#account-bar \{/.test(html)
   && /#account-popup \{/.test(html)) {
-  ok("账户条包含 7 项弹层（用量 / 移动版 / 支持 / 设置 / 加账户 / 登出 + 分割线），版本更新只在设置里");
+  ok("账户条包含 8 项弹层（用量 / 移动端远程控制 / 支持 / 设置 / 连接应用 / 模板市场 / 加账户 / 登出 + 分割线），版本更新只在设置里、移动版并进远程控制");
 } else {
   bad("account-bar", "Grok-style footer popup missing");
 }

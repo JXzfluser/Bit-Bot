@@ -80,10 +80,27 @@ if (/#composer #send:active \{[^}]*scale\(0\.94\)/.test(html)) {
 } else {
   bad("send press", "no :active scale on send");
 }
-if (/#composer #attach-btn:active, #composer #voice-btn:active \{[^}]*scale\(0\.94\)/.test(html)) {
-  ok("attach / voice 按钮 :active 同款 scale(0.94)，Composer 三个键反馈节奏一致");
+/* 侧键从两个变三个：截图键（#shot-btn）是 M34 那轮加进 composer 的，press
+   反馈必须同款 —— 上一版断言把选择器串写死成「attach, voice {」，多一个键就
+   翻红，红的是断言的字面量，不是节奏真的不一致。改成逐个键都要在某个
+   :active 规则里拿到 scale(0.94)。 */
+const sidePress = ["#attach-btn", "#voice-btn", "#shot-btn"].every((id) =>
+  new RegExp("#composer " + id + ":active[^{]*\\{[^}]*scale\\(0\\.94\\)").test(html));
+if (sidePress) {
+  ok("attach / voice / shot 三个侧键 :active 同款 scale(0.94)，Composer 侧键反馈节奏一致");
 } else {
-  bad("composer side buttons press", "attach / voice :active drift");
+  bad("composer side buttons press", "attach / voice / shot :active drift");
+}
+
+/* ---------- 4b) 输入路径不许带「死引用」 ---------- */
+/* 反面教材（真实发生过）：@Bot 菜单搬去 #mention-pop 之后，updateComposerMenu
+   里还留着 `else if (at) { ... at[2] ... }` 一整段，而 `at` 已经没人定义 ——
+   用户每敲一次键（连 Enter 都算）都会抛 ReferenceError: at is not defined。
+   界面看起来正常，控制台每次都红，门禁一条都没抓到。这里把这类死引用钉住。 */
+if (!/else if \(at\)/.test(html) && !/\bat\[2\]/.test(html)) {
+  ok("composer 菜单不再引用未定义的 at（删掉的 @Bot 分支没留下死引用）");
+} else {
+  bad("composer dead reference", "updateComposerMenu 仍在用未定义的 at");
 }
 
 /* ---------- 5) M38 契约保持 ---------- */

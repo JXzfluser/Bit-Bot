@@ -26,9 +26,14 @@
  *   MC-09 480×720（产品 minWidth）：弹窗不破版 —— sheet 不超视口、无横向滚动、
  *        两列降为单列、关闭与生成两个键都在视口内点得到
  *   MC-10 设置里那张旧卡不再假装是主路：有一句指向新弹窗的说明（一处真相，两处入口不打架）
- *   MC-11 480 宽下账户弹层 itself 点得到：菜单项不许开到视口外（这一条是顺带挖出来的
+ *   MC-11 480 宽下账户弹层 itself 点得到：菜单里**每一行**（按 .ap-item 动态取，
+ *        不写死清单）都不许开到视口外，且各自命中自己。（这条是顺带挖出来的
  *        真缺陷 —— 横带把账户条抬到 y≈143，平时向上开的弹层整片跑到屏外，
  *        「移动端远程控制」以及其他每一项在窄窗口里都点不动）
+ *        顺带守住「手机只留一个入口」：ap-mobile 不许回来、ap-remote 不许消失。
+ *   MC-12 旧深链 anchor=pairing（内核/CLI 还在发，指向已删除的「设置 → 手机」）
+ *        落到弹窗而不是空页签；且不许在 sheet 栈里留下已藏起来的设置页 ——
+ *        否则用户按第一次 Esc 关掉的是那个隐形面板，弹窗纹丝不动。
  *
  * 跑法：ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_desktop_mobile_control.mjs
  * 缺 electron / 缺显示环境时诚实 SKIP。
@@ -55,6 +60,13 @@
  *   e2e_desktop_mobile_control: PASS=11 FAIL=0 SKIP=0
  *   （MC-11 的绿来自横带里 #account-popup 改向下开；同一份现场在 480×720 量到
  *     sheet 442px ≤ 视口、两卡竖排、关闭与生成键各自命中自己）
+ *
+ * ── 门禁自己的一次假红（第 M34 轮，与产品无关）─────────────────────────
+ *   ✗ unexpected error — page.click: Timeout 10000ms exceeded (#account-avatar-btn)
+ *   病根不在产品：侧栏「按宽度自适应收起」早已改成手动控制，480 宽下侧栏默认
+ *   是**展开**的；而这里原来无脑按 Ctrl+B「展开侧栏」，那一下在今天的代码里
+ *   是把侧栏**收起**，账户条随 #agents display:none 变 0×0，于是点不到、超时。
+ *   现在改为先读 body[data-sidebar]，只有真收起时才用 #sidebar-reopen-tab 展开。
  */
 import path from "path";
 import fs from "fs";
@@ -543,6 +555,60 @@ let app2 = null;
       else if (!h["pairing-gen-btn"] || !h["pairing-gen-btn"].shown)
         bad("MC-10 旧卡的一键配对被藏了（这是别处依赖的兜底路，只能加不能删）", JSON.stringify(h["pairing-gen-btn"]));
       else ok("MC-10 旧卡保留手动兜底，并写明主路在「移动端远程控制」");
+
+      /* ---------- MC-12 旧深链 anchor=pairing：落到弹窗，且不留隐形栈条目 ---------- */
+      /* 内核与 CLI 都还会发 anchor=pairing（"设置 → 手机" 那个页签已经不存在）。
+         这里直接喂 renderSettingsPanel —— 内核 settings_open 的 host_result 走的
+         就是这一个入口，所以不是绕开产品代码。
+         现场正好是「设置页开着」的状态（上一条 MC-10 刚打开它），先测这条最容易
+         出错的路径：只藏 DOM 不出栈，用户按第一次 Esc 关掉的是隐形面板，
+         弹窗纹丝不动。 */
+      {
+        const deep = (withTrigger) =>
+          win.evaluate((w) => {
+            if (w) {
+              window.__bbPendingSettingsTrigger = document.getElementById("account-avatar-btn");
+            }
+            renderSettingsPanel({ entry: "cli", anchor: "pairing" });
+            const panel = document.getElementById("settings-panel");
+            const m = document.getElementById("mobile-control-modal");
+            return {
+              settingsShown: panel ? getComputedStyle(panel).display !== "none" : false,
+              modalShown: m ? getComputedStyle(m).display !== "none" : false,
+              stack: (window.__bbSheetStack || []).map((x) => x.id),
+            };
+          }, withTrigger);
+        const stackHas = (s, id) => s.stack.indexOf(id) >= 0;
+
+        const a = await deep(true);
+        await win.waitForTimeout(300);
+        if (!a.modalShown) bad("MC-12 anchor=pairing 没落到「移动端远程控制」弹窗（点了等于什么都没开）", JSON.stringify(a));
+        else if (a.settingsShown) bad("MC-12 深链之后设置页还开着（两层弹窗叠在一起）", JSON.stringify(a));
+        else if (stackHas(a, "settings-panel")) bad("MC-12 设置页已藏但还留在 sheet 栈里（第一次 Esc 关的是隐形面板）", JSON.stringify(a.stack));
+        else if (a.stack[a.stack.length - 1] !== "mobile-control-modal") bad("MC-12 栈顶不是弹窗（Esc 会关错东西）", JSON.stringify(a.stack));
+        else ok("MC-12 设置页开着时来一条 anchor=pairing：设置收起、弹窗接管、栈里只剩弹窗（无隐形条目）");
+
+        await win.keyboard.press("Escape");
+        await win.waitForTimeout(400);
+        const afterEsc = await win.evaluate(() => {
+          const m = document.getElementById("mobile-control-modal");
+          return {
+            modalShown: m ? getComputedStyle(m).display !== "none" : false,
+            stack: (window.__bbSheetStack || []).map((x) => x.id).join(","),
+            active: document.activeElement ? document.activeElement.id : "",
+          };
+        });
+        if (afterEsc.modalShown) bad("MC-12 深链打开后第一次 Esc 没关掉弹窗（栈里还有别的东西）", JSON.stringify(afterEsc));
+        else ok("MC-12 深链打开的弹窗，第一次 Esc 就关得掉（焦点回 " + (afterEsc.active || "body") + "）");
+
+        /* 冷路径：设置页没开时来同一条深链，落点也必须成立。 */
+        const b = await deep(false);
+        if (!b.modalShown || b.settingsShown) bad("MC-12 设置页没开时 anchor=pairing 落点不对", JSON.stringify(b));
+        else if (b.stack.filter((x) => x === "settings-panel").length) bad("MC-12 冷路径也往栈里塞了 settings-panel", JSON.stringify(b.stack));
+        else ok("MC-12 冷路径（设置页没开）anchor=pairing 同样只开弹窗、不塞设置栈条目");
+        await win.evaluate(() => closeMobileControl());
+      }
+
       await win.evaluate(() => closeSettingsPanel());
     }
     await shutdown(app);
@@ -554,26 +620,34 @@ let app2 = null;
     const win2 = second.win;
 
     {
-      /* 480 宽 ≤ SIDEBAR_ADAPT_BP(768)：侧栏自动收起，真人靠 Ctrl/Cmd+B 展开
-         （快捷键面板里就写着这一条），门禁走同一条路。 */
-      await win2.keyboard.press("Control+b");
-      await win2.waitForTimeout(500);
+      /* 侧栏「按宽度自适应收起」早就删了（改回手动控制，见 index.html
+         `setSidebarHidden` 上方的注释），所以 480 宽下侧栏默认就是展开的。
+         这里原来无脑按 Ctrl+B「展开侧栏」—— 在今天的代码里那一下反而是**收起**，
+         #account-avatar-btn 变成 0×0，点不到、10s 超时，红的是门禁自己过期的
+         假设，不是产品。只在真的收起时才展开，其余情况尊重现场。 */
+      const collapsed = await win2.evaluate(() => document.body.dataset.sidebar === "collapsed");
+      if (collapsed) {
+        await win2.click("#sidebar-reopen-tab", { timeout: 5000 }).catch(() => {});
+        await win2.waitForTimeout(400);
+      }
 
       /* ---------- MC-11 窄屏下账户菜单本身点得到 ---------- */
       {
         await win2.click("#account-avatar-btn", { timeout: 10000 });
         await win2.waitForTimeout(350);
         const reach = await win2.evaluate(() => {
-          const rows = ["ap-usage", "ap-mobile", "ap-remote", "ap-settings", "ap-connect"];
-          const out = { innerH: window.innerHeight, innerW: window.innerWidth, rows: [] };
-          for (const id of rows) {
-            const el = document.getElementById(id);
-            if (!el) { out.rows.push({ id, exists: false }); continue; }
+          /* 行不写死：弹层里「有几个 .ap-item」就是几行，加行/删行都要被这条覆盖到。
+             （ap-mobile 这一轮并进了「移动端远程控制」，写死的清单会漏掉这类变化。） */
+          const pop = document.getElementById("account-popup");
+          const items = pop ? Array.from(pop.querySelectorAll(".ap-item")) : [];
+          const out = { innerH: window.innerHeight, innerW: window.innerWidth, rows: [], hasMobileRow: false, hasRemote: false };
+          for (const el of items) {
+            if (el.id === "ap-mobile") out.hasMobileRow = true;
+            if (el.id === "ap-remote") out.hasRemote = true;
             const b = el.getBoundingClientRect();
             const hit = b.width > 0 ? document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2) : null;
             out.rows.push({
-              id,
-              exists: true,
+              id: el.id,
               y: Math.round(b.y),
               bottom: Math.round(b.bottom),
               inView: b.y >= 0 && b.bottom <= window.innerHeight && b.right <= window.innerWidth,
@@ -583,15 +657,14 @@ let app2 = null;
           }
           return out;
         });
-        const missing = reach.rows.filter((r) => !r.exists).map((r) => r.id);
-        const off = reach.rows.filter((r) => r.exists && !r.inView).map((r) => r.id + "@y" + r.y);
-        const blocked = reach.rows.filter((r) => r.exists && r.inView && !r.self).map((r) => r.id + "→" + r.hit);
-        const remote = reach.rows.find((r) => r.id === "ap-remote");
-        if (missing.length) bad("MC-11 窄屏弹层里这些项不存在", missing.join(","));
+        const off = reach.rows.filter((r) => !r.inView).map((r) => r.id + "@y" + r.y);
+        const blocked = reach.rows.filter((r) => r.inView && !r.self).map((r) => r.id + "→" + r.hit);
+        if (reach.rows.length < 7) bad("MC-11 窄屏弹层里的行数不对（漏行 = 用户少一个入口）", "rows=" + reach.rows.length + " " + reach.rows.map((r) => r.id).join(","));
+        else if (reach.hasMobileRow) bad("MC-11 「获取移动版」还单列在弹层里（和「移动端远程控制」抢同一件事）");
+        else if (!reach.hasRemote) bad("MC-11 「移动端远程控制」不见了（手机这件事的唯一入口被删了）");
         else if (off.length) bad("MC-11 480 宽下账户菜单项开到视口外（看得见按钮、点不到任何一项）", off.join(" "));
         else if (blocked.length) bad("MC-11 账户菜单项被别的东西挡住", blocked.join(" "));
-        else if (!remote || !remote.self) bad("MC-11 「移动端远程控制」在窄屏点不到", JSON.stringify(remote));
-        else ok("MC-11 480×" + reach.innerH + " 展开侧栏后，账户菜单 5 项全在视口内且各自命中自己（弹层没开到屏外）");
+        else ok("MC-11 480×" + reach.innerH + "：账户菜单 " + reach.rows.length + " 行全在视口内且各自命中自己（弹层没开到屏外），手机只留「移动端远程控制」一行");
       }
 
       /* ---------- MC-09 弹窗几何 ---------- */

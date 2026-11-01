@@ -28,6 +28,27 @@ console.log("M38 copy / hover-bar / welcome proof");
 
 const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
 
+/* 从 start 附近的大括号开始配平，取出整个对象字面量。
+   跳过字符串里的 { }（字典里全是 "{n}" 这类占位符，不跳就会提前收尾）。 */
+function sliceObject(src, start) {
+  const open = src.indexOf("{", start);
+  if (open < 0) return "";
+  let depth = 0;
+  let quote = "";
+  for (let i = open; i < src.length; i++) {
+    const ch = src[i];
+    if (quote) {
+      if (ch === "\\") { i++; continue; }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { quote = ch; continue; }
+    if (ch === "{") depth++;
+    else if (ch === "}") { depth--; if (depth === 0) return src.slice(open, i + 1); }
+  }
+  return src.slice(open);
+}
+
 /* ---------- 1) attachMessageActions 加 Copy 按钮 ---------- */
 const fn = html.match(/function\s+attachMessageActions[\s\S]{0,8000}?\n\s{4}\}/);
 if (fn
@@ -56,7 +77,11 @@ for (const sec of ["zh-CN", "zh-TW"]) {
 {
   const ztStart = html.indexOf('"zh-TW": {');
   const enStart = html.indexOf("\n      en: {", ztStart);
-  const enSeg = html.slice(enStart, enStart + 30000);
+  /* 原来这里是 `slice(enStart, enStart + 30000)` —— 一个写死的窗口。字典每加几
+     个键就往后推，窗口一旦够不着 copyAction，断言就变成假红（实测：加完
+     mcAppTitle / mcAppNote 之后 en 段涨到 30947 字符，正好越过 30k）。
+     改成按大括号配平取出整个 en 对象：窗口不再随内容增长而失效。 */
+  const enSeg = sliceObject(html, enStart);
   if (/copyAction:\s*"Copy"/.test(enSeg)
     && /copyDone:\s*"Copied"/.test(enSeg)
     && /copyFailed:\s*"Copy failed"/.test(enSeg)) {

@@ -205,7 +205,7 @@ node -e "require('fs').writeFileSync('$DATA/approval-rules.json',JSON.stringify(
 echo "== G-4 Computer / Take over =="
 j=$(turn_json "take over reason=password"); echo "$j" | field hostKinds | grep -q take_over:ok && node -e "process.exit(require('./$DATA/computer.json').takeover.active===true?0:1)" && ok "take_over → computer.json active=true" || bad "takeover begin"
 j=$(turn_json "i'm done"); echo "$j" | field hostKinds | grep -q takeover_done:ok && node -e "process.exit(require('./$DATA/computer.json').takeover.active===false?0:1)" && ok "takeover_done → active=false + handback" || bad "takeover end"
-j=$(turn_json "recover computer"); echo "$j" | grep -q "recover only from error state\|host_recover_computer" && ok "recover：非错误态被正确拒绝/或恢复（不假装）" || bad "recover guard"
+j=$(turn_json "recover computer"); echo "$j" | grep -qE "recover only from error state|host_recover_computer" && ok "recover：非错误态被正确拒绝/或恢复（不假装）" || bad "recover guard"
 # GP-31: Computer 预览（右侧面板）——只读、不暂停后台、screens 状态落盘
 node -e "
 const fs=require('fs');const f='$DATA/computer.json';
@@ -239,7 +239,7 @@ const rs=require('./$DATA/rooms.json').rooms.filter(x=>x.title==='Smoke room');
 const mine=rs.filter(r=>((r.bot_ids||r.members||[]).includes('$smid')));
 console.log((mine[mine.length-1]||rs[rs.length-1]||{}).id||'')")
 j=$(turn_json "room $roomid :: @SmokeRenamed ping"); echo "$j" | grep -q mentioned_only && ok "@BotName → mentioned_only 路由" || bad "mention routing"
-j=$(turn_json "room $roomid :: @everyone ping"); echo "$j" | grep -q '"responder_policy": "all"\|all' >/dev/null && echo "$j" | grep -q everyone && ok "@everyone 路由输出存在" || bad "everyone"
+j=$(turn_json "room $roomid :: @everyone ping"); echo "$j" | grep -qE '"responder_policy": "all"|all' >/dev/null && echo "$j" | grep -q everyone && ok "@everyone 路由输出存在" || bad "everyone"
 j=$(turn_json "room $roomid :: 无人点名"); echo "$j" | grep -q bot_discretion && ok "无 @ → bot_discretion" || bad "discretion"
 # GP-53「审批不进群」：原来靠回包里一个 escalations:"dm-only" 字面量取证，但群路径被
 # 重写进 hosts/shared/room_* 之后这个字段整条链路都不产生了（也没人消费它）。
@@ -277,7 +277,7 @@ printf '%s\n' '{"host_results":[{"kind":"approval_card"}]}' | host_result_has_ap
 printf '%s\n' '{"host_results":[{"kind":"delivery"}]}' | host_result_has_approval 2>/dev/null && d_ha=$((d_ha+2))
 printf '%s\n' 'not a json' | host_result_has_approval 2>/dev/null || d_ha=$((d_ha+3))
 [ "$d_ha" = "6" ] && ok "GP-53 尺子自证：有审批卡被抓、纯 delivery 被放、坏 JSON 不 fail-open" \
-  || bad "GP-53 尺子失效：三向对照结果码 $d_ha（期望 6=1+2+3）"
+  || bad "GP-53 尺子失效：三向对照结果码 ${d_ha}（期望 6=1+2+3）"
 tmpa=$(mktemp -d); mkdir -p "$tmpa/desktop"
 node -e '
 const fs=require("fs");const root=process.argv[1];
@@ -325,7 +325,7 @@ process.exit(s.phase==='awaiting_confirm_1' ? 0:1)" && ok "CM-1903 update comput
 j=$(turn_json "update computer confirm"); echo "$j" | field hostKinds | grep -q update_computer:ok && node -e "
 const s=require('./data/box/update-computer.json');
 process.exit(s.phase==='awaiting_confirm_2'||s.phase==='updated'||Number(s.confirms)>=2 ? 0:1)" && ok "CM-1903 update computer 第二步推进" || bad "update computer step2"
-j=$(turn_json "reset computer"); echo "$j" | grep -q "CM-1904\|reset" && ok "CM-1904 reset computer 短语可达（非首选提示）" || bad "reset computer"
+j=$(turn_json "reset computer"); echo "$j" | grep -qE "CM-1904|reset" && ok "CM-1904 reset computer 短语可达（非首选提示）" || bad "reset computer"
 node -e "require('fs').writeFileSync('data/box/update-computer.json',JSON.stringify({confirms:0,guide_preferred:true,session_jar:true},null,2))"
 
 echo "== G-9 Connect apps / Marketplace（GP-A2/A3 · 规格 §2.5）=="
@@ -744,7 +744,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if timeout 1500 ${e2e_xvfb[@]+"${e2e_xvfb[@]}"} node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
     ok "G-16 E2E 冷启动+像素断言全绿（$(grep -c '✓' "$e2e_log") 项，$(tail -1 "$e2e_log"))"
   else
-    bad "G-16 E2E 冷启动+像素断言（见 $e2e_log）"
+    bad "G-16 E2E 冷启动+像素断言（见 ${e2e_log}）"
     tail -8 "$e2e_log"
   fi
   grep -q "E2E 像素断言 dark" "$e2e_log" && grep -q "E2E 像素断言 light" "$e2e_log" && ok "G-16 GP-70：dark/light 两态 viewport 亮度断言真实执行（非 CSS 字符串检查）" || bad "G-16 GP-70 pixel assertions missing"
@@ -1368,10 +1368,18 @@ grep -q "@only：to=\[b2\] 只运行 b2" /tmp/g29-orch.log 2>/dev/null \
   && grep -q "上下文隔离：每个 responder 收到自己的 bot_id/name/job" /tmp/g29-orch.log 2>/dev/null \
   && ok "G-29 GP-143/144：@only/@everyone/预算/超时/递归/幂等/非成员/上下文隔离全绿" \
   || bad "G-29 GP-143 guards missing"
-grep -q "失败回执如实带原因\|缺 key 的 responder → 1/2 partial" /tmp/g29-orch.log 2>/dev/null \
-  && grep -q "收齐时如实 2/2 partial=false" /tmp/g29-orch.log 2>/dev/null \
-  && ok "G-29 诚实性：失败算 partial、收齐才算完成（不伪造 final_report）" \
-  || bad "G-29 honesty missing"
+# 注意：这里原来是 `grep -q "A\|B"` —— BRE 里的 `\|` 只有 GNU grep 认，
+# macOS 自带的是 BSD grep，会把 `\|` 当字面量，于是这条永远不匹配（假红）。
+if grep -q "失败回执如实带原因" /tmp/g29-orch.log 2>/dev/null \
+  || grep -q "缺 key 的 responder → 1/2 partial" /tmp/g29-orch.log 2>/dev/null; then
+  if grep -q "收齐时如实 2/2 partial=false" /tmp/g29-orch.log 2>/dev/null; then
+    ok "G-29 诚实性：失败算 partial、收齐才算完成（不伪造 final_report）"
+  else
+    bad "G-29 honesty missing"
+  fi
+else
+  bad "G-29 honesty missing"
+fi
 grep -q "rooms.json 坏掉时写侧 fail closed" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "渲染层区分「空群」与「读不到」" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "rooms:list 与 rooms-changed 都带 ok 标志" /tmp/g29-probe.log 2>/dev/null \
@@ -1441,8 +1449,8 @@ fi
 grep -q "侧栏顶部图标工具栏" /tmp/g33-probe.log 2>/dev/null \
   && ok "G-33 GP-M33：侧栏顶部图标工具栏（search + new-chat）" \
   || bad "G-33 sidebar toolbar missing"
-grep -q "账户条包含 7 项弹层" /tmp/g33-probe.log 2>/dev/null \
-  && ok "G-33 GP-M33：底部账户条 → 7 项 popup（版本更新收进「设置 → 更新」，不重复两处）" \
+grep -q "账户条包含 8 项弹层" /tmp/g33-probe.log 2>/dev/null \
+  && ok "G-33 GP-M33：底部账户条 → 8 项 popup（版本更新收进「设置 → 更新」；移动版并进「移动端远程控制」，手机只有一个入口）" \
   || bad "G-33 account popup missing"
 grep -q "送达状态：存储 → ✓、回合收尾 → ✓✓ 绿色" /tmp/g33-probe.log 2>/dev/null \
   && ok "G-33 GP-M33：用户气泡送达状态 ✓ → ✓✓ 绿色" \
@@ -1475,9 +1483,12 @@ grep -q "两项（用量 / 添加账户）通过 open settings anchor" /tmp/g34-
 grep -q "update-status / usage / profile 三个锚点在 SETTINGS_ANCHOR_TAB 已注册" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 GP-M34：锚点在 SETTINGS_ANCHOR_TAB 已注册" \
   || bad "G-34 anchor registry missing"
-grep -q "移动版：不再只报「内测」" /tmp/g34-probe.log 2>/dev/null \
-  && ok "G-34 GP-M34：移动版入口落到「设置 → 手机」页签（GP-189，不是占位）" \
+grep -q "手机：账户弹层只留「移动端远程控制」一个入口" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：手机只留一个入口（装哪份 / 怎么连写在弹窗里，旧 pairing 深链落到弹窗）" \
   || bad "G-34 mobile landing missing"
+grep -q "SETTINGS_ANCHOR_TAB 不再把 pairing 指到不存在的「手机」页签" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 GP-M34：锚点表不再指向已删除的「设置 → 手机」页签" \
+  || bad "G-34 stale phone anchor missing"
 grep -q "支持 / 退出登录 两项：中文占位文案" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 GP-M34：两项走本地化 callout（非静默 no-op）" \
   || bad "G-34 placeholder missing"
@@ -1487,9 +1498,12 @@ grep -q "handler 都收口：先关 popup 再走短语" /tmp/g34-probe.log 2>/de
 grep -q "负向对照：抹掉 anchor=usage 短语" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 负向对照：抹掉 anchor 短语 → 断言翻假（非恒真）" \
   || bad "G-34 negative control missing"
-grep -q "负向对照：抹掉移动版 anchor=pairing" /tmp/g34-probe.log 2>/dev/null \
-  && ok "G-34 负向对照：抹掉移动版锚点 → 落地断言翻假（非恒真）" \
+grep -q "负向对照：抹掉 pairing 深链的接住逻辑" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 负向对照：抹掉 pairing 深链的接住逻辑 → 落地断言翻假（非恒真）" \
   || bad "G-34 mobile negative control missing"
+grep -q "负向对照：抹掉「怎么连」文案" /tmp/g34-probe.log 2>/dev/null \
+  && ok "G-34 负向对照：抹掉弹窗里「怎么连」文案 → 文案断言翻假（非恒真）" \
+  || bad "G-34 mc copy negative control missing"
 
 echo "== G-35 键盘快捷键面板（M35：Cmd/Ctrl+K 搜索 + Cmd/Ctrl+/ 快捷键表）=="
 if timeout 900 node scripts/prove_m35_hotkeys.js > /tmp/g35-probe.log 2>&1; then
@@ -1500,8 +1514,8 @@ fi
 grep -q "wireAccelerators：新增 Cmd/Ctrl+K（搜索）与 Cmd/Ctrl+/（快捷键表）" /tmp/g35-probe.log 2>/dev/null \
   && ok "G-35 GP-M35：wireAccelerators 接入 K / 两条新绑定" \
   || bad "G-35 accelerators missing"
-grep -q "走既有 #session-search 输入" /tmp/g35-probe.log 2>/dev/null \
-  && ok "G-35 GP-M35：Cmd/Ctrl+K 复用既有搜索输入，不造第二份状态" \
+grep -q "会话搜索仍由 setSessionSearchOpen 单一入口揭出" /tmp/g35-probe.log 2>/dev/null \
+  && ok "G-35 GP-M35：Cmd/Ctrl+K 复用既有搜索入口（setSessionSearchOpen），不造第二份状态" \
   || bad "G-35 shared search missing"
 grep -q "bb-modal + bb-sheet 复用；DOM 建" /tmp/g35-probe.log 2>/dev/null \
   && ok "G-35 GP-M35：快捷键面板走 bb-modal / bb-sheet，DOM 建（GP-93 纪律）" \
@@ -1553,8 +1567,9 @@ grep -q 'Escape 键 → setAccountPopup(false)' /tmp/g37-probe.log 2>/dev/null \
 grep -q "gpQueueNote.*已本地化" /tmp/g37-probe.log 2>/dev/null \
   && ok "G-37 GP-M37：gpQueueNote 已本地化（后台审批队列）" \
   || bad "G-37 gpQueueNote CN leak"
-grep -q "autoReview.*已本地化" /tmp/g37-probe.log 2>/dev/null \
-  && ok "G-37 GP-M37：autoReview 已本地化（自动复核规则）" \
+grep -q 'approvalRulesTitle" → 已本地化' /tmp/g37-probe.log 2>/dev/null \
+  && grep -q 'accountSection" → 已本地化' /tmp/g37-probe.log 2>/dev/null \
+  && ok "G-37 GP-M37：approvalRulesTitle / accountSection 已本地化（原 autoReview 项已被这两条取代）" \
   || bad "G-37 autoReview CN leak"
 grep -q "accountSection.*已本地化" /tmp/g37-probe.log 2>/dev/null \
   && ok "G-37 GP-M37：accountSection 已本地化（账户 · 本地 profile）" \
@@ -1799,7 +1814,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     if timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node "scripts/e2e_desktop_$g.mjs" >"$log" 2>&1; then
       ok "G-46 e2e_desktop_$g 全绿（$(grep -c '✓' "$log") 项，$(tail -1 "$log")）"
     else
-      bad "G-46 e2e_desktop_$g（见 $log；$(tail -1 "$log")）"
+      bad "G-46 e2e_desktop_${g}（见 ${log}；$(tail -1 "$log")）"
     fi
   done
   grep -q "S-02 同 UD 只活着一个主进程" /tmp/g46-single_instance.log 2>/dev/null \
@@ -1829,7 +1844,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   else
     grep -q "S-02 同 UD 出现多个主进程" "$log" \
       && ok "G-46 负向对照：BITBOT_DISABLE_SINGLE_INSTANCE=1 → 门禁真的翻红（非恒真）" \
-      || bad "G-46 负向对照跑红了，但红的不是 S-02（见 $log）"
+      || bad "G-46 负向对照跑红了，但红的不是 S-02（见 ${log}）"
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
 else
@@ -2599,7 +2614,7 @@ if [ -x "$KR_BIN" ] || [ -x "${KR_BIN%.exe}" ]; then
   if timeout 480 node scripts/prove_kernel_resident.mjs >"$KR_LOG" 2>&1; then
     ok "G-58 常驻内核契约全绿（$(grep -c '^ok KR' "$KR_LOG") 项，$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' "$KR_LOG" || tail -2 "$KR_LOG" | head -1)）"
   else
-    bad "G-58 常驻内核契约（见 $KR_LOG；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' "$KR_LOG" || tail -2 "$KR_LOG" | head -1)）"
+    bad "G-58 常驻内核契约（见 ${KR_LOG}；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' "$KR_LOG" || tail -2 "$KR_LOG" | head -1)）"
   fi
   # 摘数用 grep -o 抓「key=数字」，不用 cut -c：CJK 按字节切会切成半个字。
   grep -q '^ok KR-04' "$KR_LOG" \
@@ -2628,7 +2643,7 @@ if [ -x "$KR_BIN" ] || [ -x "${KR_BIN%.exe}" ]; then
   echo "    另外回话内容不在本门断言范围内：本机没配供应商密钥时 responder 回合会如实失败，"
   echo "    门量的是「三条回合都落在同一批常驻进程上」这一件可数的事。"
 else
-  echo "  · skip：没有 release 内核二进制（$KR_BIN），G-58 未跑（SKIP ≠ PASS）"
+  echo "  · skip：没有 release 内核二进制（${KR_BIN}），G-58 未跑（SKIP ≠ PASS）"
   echo "    先跑：moon build --target native --release"
 fi
 

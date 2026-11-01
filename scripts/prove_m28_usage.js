@@ -31,7 +31,10 @@ const ffiJs = fs.readFileSync(path.join(REPO, "hosts/shared/host_ffi.js"), "utf8
 const stubJs = fs.readFileSync(path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js"), "utf8");
 
 /for \(const r of rows\) \{/.test(html) && /usageTokensUnreported/.test(html) &&
-  /unreported \? " \(" \+ wavegT\("usageTokensUnreported"\)/.test(html)
+  /* 面板文案曾经是 `unreported ? " (" + wavegT(...)`，后来那句前缀括号被去掉
+     （产品文案调整），断言还钉着旧字面量 —— 于是「代码对、门禁红」。
+     这里只钉「未上报时用这句如实文案」这个契约，不再钉格式。 */
+  /unreported\s*\?\s*wavegT\("usageTokensUnreported"\)/.test(html)
   ? ok("面板 per-provider/model 行渲染 + 未上报 tokens 如实标注（GP-131）")
   : bad("panel per-row rendering missing");
 

@@ -576,7 +576,10 @@ async function main() {
     await boot2.win.fill("#composer #text", "sign in E2E");
     await boot2.win.press("#composer #text", "Enter");
     await boot2.win.waitForFunction(
-      () => /本地 profile|已登录/.test(document.getElementById("log").innerText),
+      /* 产品文案在 M34 一轮改过：账户回执现在写「当前 profile「E2E」· 已配置凭证：
+         llm」，不再出现「本地 profile / 已登录」。断言钉的是「真有一条 Host 回执
+         气泡把 profile 说清楚」，所以认 profile 名本身，不认某一句固定措辞。 */
+      () => /profile\s*「?\s*E2E/.test(document.getElementById("log").innerText),
       null,
       { timeout: 30000 },
     ).then(
@@ -2615,7 +2618,10 @@ async function main() {
         const el = document.getElementById("gp-usage");
         return el ? el.textContent || "" : "";
       });
-      usagePanel.includes("e2e-stub") && usagePanel.includes("prompt")
+      /* 面板列头在 M34 一轮改成了中文（「输入 tokens / 输出 tokens」），旧断言
+         钉的英文 "prompt" 已经不在 DOM 里 —— 那是文案换了，不是行丢了。
+         这里认「模型名 + 输入 token 这一列」两件事，中英都收。 */
+      usagePanel.includes("e2e-stub") && /prompt|输入 tokens|輸入 tokens/.test(usagePanel)
         ? ok("E2E GP-131：Usage & Billing 面板 per-row 行与 store 一致（provider/model/请求/tokens）")
         : bad("E2E GP-131 usage panel", usagePanel.slice(0, 160));
       await shutdown(bootM28.app);

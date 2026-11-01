@@ -7,16 +7,19 @@
  * 静态层：
  *   1) ap-usage / ap-add-account 通过 open settings anchor=... 短语进入对应的
  *      设置 tab（usage / profile 锚点在 SETTINGS_ANCHOR_TAB 里已注册）；
- *   1b) ap-mobile 不再是占位：文案 + 真的落到「手机」页签（anchor=pairing），
- *       GP-189 起配对从「凭证」搬出来单独成页，地址与令牌只有那一屏给得出来；
+ *   1b) 手机这件事只有一个入口：账户弹层里没有 ap-mobile（获取移动版），
+ *       移动版的现状与下一步写在 ap-remote 打开的「移动端远程控制」弹窗里，
+ *       和配对码放在一起；anchor=pairing / tab=Phone 这类旧深链必须被那个弹窗
+ *       接住 —— 它们指向的「设置 → 手机」页签已经不存在，静默落到「常规」
+ *       等于点了没反应；
  *   2) ap-support / ap-signout 走 accountPlaceholder → addMsg，
  *      不再是空 click handler；文案中文化。
  *   3) 每个 handler 都会关闭 popup（.hidden = true），不会让菜单挡在设置页上。
  *
  * 负向对照：把 ap-usage 的 anchor=usage 短语替换成 "no-op" 后，第 1 项断言
  *          应变红（说明该断言不是恒真，是锚定在真实短语上的）。
- *          把 ap-mobile 的 anchor=pairing 抹掉、或把锚点表里的 pairing 指回
- *          凭证页，第 1b 项的落地 / 注册断言同样应变红。
+ *          把 pairing 深链的接住逻辑抹掉、或把弹窗里的「装好怎么连」文案删掉，
+ *          第 1b 项的落地 / 文案断言同样应变红。
  */
 
 const fs = require("fs");
@@ -53,21 +56,43 @@ if (/SETTINGS_ANCHOR_TAB = \{[\s\S]*?"update-status":\s*"updates"/.test(html)
   bad("anchor registry", "one of the anchors is missing");
 }
 
-/* ---------- 1b) 移动版：文案 + 真的落到「手机」页签 ---------- */
-/* 一次跳转要钉住三件事：短语里是 anchor=pairing、这个锚点在 SETTINGS_ANCHOR_TAB
-   确实映射到 phone（不是寄在凭证下的死锚点）、文案说清 6 位配对码与「不在同一
-   Wi-Fi 就先点允许手机连接」。锚点表用有界 [\s\S]{0,900} —— 不封顶的话正则能
-   越过对象末尾撞上别处的同名短语，断言就恒真了。 */
-const mobileRe = /getElementById\("ap-mobile"\)[\s\S]{0,900}anchor=pairing[\s\S]{0,200}skipSession/;
-const mobileCopy = /getElementById\("ap-mobile"\)[\s\S]{0,900}6 位配对码[\s\S]{0,220}允许手机连接/;
-const mobileRegistry = /SETTINGS_ANCHOR_TAB = \{[\s\S]{0,900}?"pairing":\s*"phone"/.test(html);
-if (mobileRe.test(html) && mobileCopy.test(html) && mobileRegistry) {
-  ok("移动版：不再只报「内测」—— 说清 6 位配对码 / 允许手机连接，并落到「设置 → 手机」");
+/* ---------- 1b) 手机：一个入口，落点接得住 ---------- */
+/* 三件事必须同时成立，缺一条用户就会撞上「点了没反应」：
+   a) 账户弹层里不再单列「获取移动版」—— 它和「移动端远程控制」说的是同一件事；
+   b) 被并过去的内容真的写进了那个弹窗（装哪份 + 怎么连），不是删完就没了；
+   c) anchor=pairing / tab=Phone 这些旧深链被弹窗接住，而不是落到「常规」。
+   有界窗口 [\s\S]{0,400} 是必须的：不封顶的正则会越过对象末尾撞上别处同名短语，
+   断言就恒真了。 */
+const noMobileRow = !/id="ap-mobile"/.test(html) && /id="ap-remote"/.test(html);
+
+/* 文案断言必须锚定「元素内文」，不能锚定 mcAppNote 这个键名：
+   键名在三语字典里各出现一次（zh / zh-TW / en），裸键名 + 有界窗口会撞到
+   相邻语言版本里的同一句话 —— 断言于是恒真，抹掉中文文案也照样绿。
+   这正是第一版负向对照假红的原因。 */
+const mcAppBody = (src) => {
+  const m = /data-i18n="mcAppNote">([\s\S]*?)<\/p>/.exec(src);
+  return m ? m[1] : "";
+};
+const mcAppCopyOk = (src) => {
+  const body = mcAppBody(src);
+  return /安装包/.test(body) && /应用商店/.test(body) && /连接 Desktop/.test(body);
+};
+
+const appBlock = /id="mc-app-block"[\s\S]{0,400}?data-i18n="mcAppTitle"[\s\S]{0,700}?data-i18n="mcAppNote"/.test(html);
+const appCopy = mcAppCopyOk(html);
+const deepLinkCaught = /if \(anchor === "pairing"[\s\S]{0,400}openMobileControl\(/.test(html);
+if (noMobileRow && appBlock && appCopy && deepLinkCaught) {
+  ok("手机：账户弹层只留「移动端远程控制」一个入口；装哪份 / 怎么连写在弹窗里；anchor=pairing 落到弹窗而不是空页签");
 } else {
   bad("mobile landing", JSON.stringify({
-    anchor: mobileRe.test(html), copy: mobileCopy.test(html), registry: mobileRegistry,
+    noMobileRow, appBlock, appCopy, deepLinkCaught,
   }));
 }
+
+/* 锚点表里不该再有指向页签的 pairing：那个页签不存在，留着就是一张通往空地的地图。 */
+!/SETTINGS_ANCHOR_TAB = \{[\s\S]{0,900}?"pairing":\s*"phone"/.test(html)
+  ? ok("SETTINGS_ANCHOR_TAB 不再把 pairing 指到不存在的「手机」页签")
+  : bad("anchor registry", "pairing 仍映射到 phone");
 
 /* ---------- 2) 两项 → 中文占位 callout（非静默 no-op） ---------- */
 const placeholderIds = ["ap-support", "ap-signout"];
@@ -93,29 +118,30 @@ const survived = /\["ap-usage",\s*"open settings[^"]*anchor=usage/.test(broken);
 if (!survived) ok("负向对照：抹掉 anchor=usage 短语 → 断言翻假（非恒真）");
 else bad("negative control", "anchor=usage assertion survives strip");
 
-// 把 ap-mobile 的 anchor=pairing 换成 "no-op"，第 1b 项的落地断言同样应变红。
-// 先确认这次 replace 真的动到了文件：短语一旦被改名而 replace 落空，
+// 把 pairing 深链的接住逻辑改坏（anchor 比较写错一个字符），第 1b 项的落地断言应变红。
+// 先确认这次 replace 真的动到了文件：短语一旦改名而 replace 落空，
 // 「断言翻假」会变成恒真——那就不叫负向对照了。
-const brokenMobile = html.replace(
-  '"open settings entry=account anchor=pairing"',
-  '"no-op"',
-);
-if (brokenMobile === html) {
-  bad("negative control mobile", "anchor=pairing 短语找不到，对照失效");
-} else if (!/getElementById\("ap-mobile"\)[\s\S]{0,900}anchor=pairing/.test(brokenMobile)) {
-  ok("负向对照：抹掉移动版 anchor=pairing → 落地断言翻假（非恒真）");
+const brokenDeepLink = html.replace('if (anchor === "pairing"', 'if (anchor === "pairing-x"');
+if (brokenDeepLink === html) {
+  bad("negative control mobile", "pairing 深链的接住逻辑找不到，对照失效");
+} else if (!/if \(anchor === "pairing"[\s\S]{0,400}openMobileControl\(/.test(brokenDeepLink)) {
+  ok("负向对照：抹掉 pairing 深链的接住逻辑 → 落地断言翻假（非恒真）");
 } else {
-  bad("negative control mobile", "mobile anchor assertion survives strip");
+  bad("negative control mobile", "deep-link assertion survives strip");
 }
 
-// 把锚点表里的 pairing 指回凭证页（回到搬页签之前的形状），注册断言应变红。
-const brokenRegistry = html.replace('"pairing": "phone"', '"pairing": "credentials"');
-if (brokenRegistry === html) {
-  bad("negative control mobile registry", "锚点表里没有 pairing 键，对照失效");
-} else if (!/SETTINGS_ANCHOR_TAB = \{[\s\S]{0,900}?"pairing":\s*"phone"/.test(brokenRegistry)) {
-  ok("负向对照：锚点表把 pairing 指回凭证 → 注册断言翻假（非恒真）");
+// 把「装好怎么连」那段正文字抹空（只剩一个空的 <p>），文案断言应变红。
+// replace 的目标与 mcAppCopyOk 读的是同一个元素内文，两边口径必须一致。
+const brokenCopy = html.replace(
+  /(data-i18n="mcAppNote">)[\s\S]*?(<\/p>)/,
+  "$1$2"
+);
+if (brokenCopy === html) {
+  bad("negative control mc copy", "找不到 mcAppNote 元素，对照失效");
+} else if (!mcAppCopyOk(brokenCopy)) {
+  ok("负向对照：抹掉「怎么连」文案 → 文案断言翻假（非恒真）");
 } else {
-  bad("negative control mobile registry", "registry assertion survives retarget");
+  bad("negative control mc copy", "copy assertion survives strip");
 }
 
 console.log("\nprove_m34_account_actions: PASS=" + pass + " FAIL=" + fail);

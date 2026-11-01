@@ -55,10 +55,10 @@ const require = createRequire(path.join(DESKTOP, "package.json"));
 const { _electron } = require("playwright-core");
 
 /* 弹层项按 DOM 顺序；ab-sessions-btn 在账户弹层之外，单独测。
-   ap-update 已下线（版本更新只在「设置 → 更新」），所以不在清单里。 */
+   ap-update 已下线（版本更新只在「设置 → 更新」）；ap-mobile 并进了
+   ap-remote 打开的「移动端远程控制」弹窗 —— 两者都不在清单里。 */
 const ITEMS = [
   { key: "ap-usage", label: "每周用量", inPopup: true },
-  { key: "ap-mobile", label: "获取移动版 Bit Bot", inPopup: true },
   { key: "ap-remote", label: "移动端远程控制", inPopup: true },
   { key: "ap-support", label: "支持", inPopup: true },
   { key: "ap-settings", label: "设置", inPopup: true },
