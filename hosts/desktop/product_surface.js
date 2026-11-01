@@ -10,6 +10,8 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const roomOrchestrator = require("./room_orchestrator");
+const eventMirror = require("./event_mirror_ref").loadEventMirror();
+const eventReadModel = require("./event_mirror_ref").loadEventReadModel();
 
 function createProductSurface(repoRoot, opts = {}) {
   const REPO_ROOT = path.resolve(repoRoot);
@@ -40,11 +42,85 @@ function createProductSurface(repoRoot, opts = {}) {
   const roomBoard = roomOrchestrator.createRoomBoard(REPO_ROOT, { dataRoot: DATA_ROOT });
 
   // Atomic write helper: tmp + rename
+  /* T1-03 双写旁路：只有 sessions.json / rooms.json / pending-approvals.jsonl
+     这三个面会派事件，其它路径在 capture() 里就被过滤掉。默认关；开着时镜像
+     失败也只是少几条事件，rename 的结果一个字节都不变。 */
+  const mirror = () => eventMirror.getSharedMirror(DATA_ROOT);
+
+  /* ===== T1-05 EVENT_ONLY（BITBOT_EVENT_ONLY=1）=====
+     三张面（sessions/rooms/approvals）的 JSON 不再被写：diff 的左半边从
+     「盘上文件」换成「内存里最后一次读到的状态文本」（lastTextBySurface，
+     读点负责刷新）。非三张面的文件（bots/settings/rules/approvals.log）
+     照常落盘——它们不在事件日志的范围里（docs/events.md §7）。
+     写失败不吞：EVENT_ONLY 下事件库是唯一真源，吞掉就是静默丢数据。 */
+  const eventOnlyMode = () => process.env.BITBOT_EVENT_ONLY === "1";
+  const lastTextBySurface = new Map();
+  const setLastTextFor = (p, t) => lastTextBySurface.set(path.resolve(p), t);
+  const eventOnlySaid = new Set();
+  function sayOnce(key, line) {
+    if (eventOnlySaid.has(key)) return;
+    eventOnlySaid.add(key);
+    process.stderr.write(line);
+  }
+
+  /** 面状态的规范文本（读模型 / 文件两个来源都要落到同一种形状）。 */
+  function canonicalTextFor(surface, hit) {
+    if (surface === "approvals") {
+      const lines = (hit.approvals || []).map((e) => JSON.stringify(e));
+      return lines.length ? lines.join("\n") + "\n" : "";
+    }
+    const obj = surface === "rooms" ? hit.rooms : hit.sessions;
+    return JSON.stringify(obj, null, 2);
+  }
+
+  /** 内存缓存没有时的兜底：从读模型现算规范文本（防「没读先写」）；库没账则 null。 */
+  function prevTextFor(filePath, def) {
+    const hit = eventReadModel.readSurfaces(DATA_ROOT);
+    if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+      const canonical = canonicalTextFor(def.surface, hit);
+      setLastTextFor(filePath, canonical);
+      return canonical;
+    }
+    return null;
+  }
+
+  /** 这张面在事件库里是不是还没有账（fold == BASELINE）。
+      delta diff 只记增量——基底从没进过库时直接落 delta 会让顺序事件指向
+      幽灵实体，所以「面空 + 手上有遗留文本」的首次写必须先导基底。 */
+  function surfaceEmptyInDb(hit, surface) {
+    if (!hit.ok || hit.anomalies.length) return true; // 库不可用/折不动：按没账处理
+    if (surface === "approvals") return (hit.approvals || []).length === 0;
+    const baseline = surface === "rooms"
+      ? { version: 1, rooms: [] }
+      : { version: 1, active_id: "", sessions: [] };
+    return JSON.stringify(hit[surface]) === JSON.stringify(baseline);
+  }
+
+  /** EVENT_ONLY 的统一落库口：基底（需要时从 BASELINE 导入）+ delta，全程不碰文件。 */
+  function eventOnlyWrite(filePath, def, nextText) {
+    const m = mirror();
+    let prev = lastTextBySurface.get(path.resolve(filePath));
+    if (prev == null) prev = prevTextFor(filePath, def);
+    if (prev != null && surfaceEmptyInDb(eventReadModel.readSurfaces(DATA_ROOT), def.surface)) {
+      m.commitText(def, null, prev); // 基底导入（与导入脚本同一语义）
+    }
+    m.commitText(def, prev, nextText);
+    setLastTextFor(filePath, nextText);
+  }
+
   function atomicWrite(filePath, data) {
+    const def = eventOnlyMode() ? eventMirror.surfaceOf(filePath) : null;
+    if (def) {
+      eventOnlyWrite(filePath, def, data);
+      return;
+    }
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const tmp = filePath + ".tmp." + Date.now();
+    const m = mirror();
+    const token = m.capture(filePath);
     fs.writeFileSync(tmp, data);
     fs.renameSync(tmp, filePath);
+    m.commit(filePath, token, data);
   }
 
   function readJson(filePath, fallback) {
@@ -57,8 +133,23 @@ function createProductSurface(repoRoot, opts = {}) {
   }
 
   function appendJsonl(filePath, entry) {
+    const def = eventOnlyMode() ? eventMirror.surfaceOf(filePath) : null;
+    if (def) {
+      // approvals 面：追加 = 旧文本 + 一行。prev 与落库语义同 atomicWrite。
+      let prev = lastTextBySurface.get(path.resolve(filePath));
+      if (prev == null) {
+        const hit = eventReadModel.readSurfaces(DATA_ROOT);
+        prev = hit.ok && !hit.anomalies.length && hit.count > 0 ? canonicalTextFor("approvals", hit) : "";
+      }
+      const next = (prev || "") + JSON.stringify(entry) + "\n";
+      eventOnlyWrite(filePath, def, next);
+      return;
+    }
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const m = mirror();
+    const token = m.capture(filePath);
     fs.appendFileSync(filePath, JSON.stringify(entry) + "\n");
+    m.commit(filePath, token, null);
   }
 
   function generateBotId() {
@@ -483,7 +574,10 @@ function createProductSurface(repoRoot, opts = {}) {
     }
 
     // GP-07: remove the bot from rooms; drop rooms that fall below 2 members.
+    // 被解散的群要**点名**带回去：群一没，用户回头发消息只会得到「群不存在」，
+    // 根本不知道是自己刚才删人把群解散了。只回一个数字是不够的。
     let rooms_removed = 0;
+    let rooms_dropped = [];
     try {
       const rooms = requireWritableRooms();
       if (Array.isArray(rooms.rooms)) {
@@ -492,12 +586,16 @@ function createProductSurface(repoRoot, opts = {}) {
           if (Array.isArray(r.members)) r.members = r.members.filter((x) => x !== bot_id);
           if (Array.isArray(r.bots)) r.bots = r.bots.filter((x) => x !== bot_id);
         }
-        const before = rooms.rooms.length;
+        const before = rooms.rooms.slice();
         rooms.rooms = rooms.rooms.filter((r) => {
           const n = (r.bot_ids && r.bot_ids.length) || (r.members && r.members.length) || (r.bots && r.bots.length) || 0;
           return n >= 2;
         });
-        rooms_removed = before - rooms.rooms.length;
+        const kept = new Set(rooms.rooms.map((r) => r.id));
+        rooms_dropped = before
+          .filter((r) => r && !kept.has(r.id))
+          .map((r) => ({ id: r.id, title: r.title || r.id }));
+        rooms_removed = rooms_dropped.length;
         saveRooms(rooms);
       }
     } catch {
@@ -541,6 +639,7 @@ function createProductSurface(repoRoot, opts = {}) {
       memory_dropped,
       routines_deleted,
       rooms_removed,
+      rooms_dropped,
       primary_reassigned: primaryReassigned,
       workspace_files_kept
     };
@@ -775,7 +874,10 @@ function createProductSurface(repoRoot, opts = {}) {
   // ===== PENDING APPROVALS =====
   function appendPendingApproval({ source, kind, command, expires_at }) {
     const entry = {
-      id: "approval-" + Date.now().toString(36),
+      // 同毫秒两条审批会撞 id（CI 上真撞过：EO-03 折叠报「审批被创建了两次」，
+      // fold 的 find/drop 全按 id 认，撞了就是把两条当一条）。加随机后缀，
+      // 与 roomLibraryAdd 的 lib- id 同一款生成法。
+      id: "approval-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
       source: source || "chat",
       kind,
       command,
@@ -787,7 +889,77 @@ function createProductSurface(repoRoot, opts = {}) {
     return { ok: true, id: entry.id, mode: "host_pending_approval" };
   }
 
+  // 与 sessions.js 同一条「只说一次」闸（rooms / approvals 各自一份）。
+  const roomsDegradedSaid = new Set();
+  const approvalsDegradedSaid = new Set();
+
+  /** jsonl 原始行的读取（不做过期标注）：EVENT_ONLY 的遗留路与 approvalDecide 共用。 */
+  function readApprovalsFileRaw() {
+    try {
+      if (!fs.existsSync(PENDING_APPROVALS_PATH)) return [];
+      return fs
+        .readFileSync(PENDING_APPROVALS_PATH, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          try { return JSON.parse(line); } catch { return null; }
+        })
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
   function pendingApprovals(nowIsoParam) {
+    // T1-05 EVENT_ONLY：读模型为主，遗留文件走自导入路径（同 loadRooms 的分层）。
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      let raw;
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        raw = hit.approvals || [];
+      } else {
+        raw = readApprovalsFileRaw();
+        if (raw.length) {
+          sayOnce(
+            "legacy-approvals",
+            "[approvals] BITBOT_EVENT_ONLY：事件库为空但存在遗留 pending-approvals.jsonl（未导入）——暂以 JSON 为读真源，" +
+              "首次写入会把它增量带进事件库；建议先跑 scripts/import_json_to_events.mjs。\n",
+          );
+        }
+      }
+      setLastTextFor(PENDING_APPROVALS_PATH, canonicalTextFor("approvals", { approvals: raw }));
+      const now = nowIsoParam ? new Date(nowIsoParam).getTime() : Date.now();
+      return raw.map((entry) => {
+        const e = JSON.parse(JSON.stringify(entry));
+        if (e.status === "pending" && new Date(e.expires_at).getTime() < now) {
+          e.status = "expired";
+        }
+        return e;
+      });
+    }
+    // T1-04 读切换：事件读模型里的 approvals 面保存的是 jsonl 的原始行
+    // （status 落库时是什么就是什么），「过期」是读时语义，两条路都要现算。
+    if (eventReadModel.eventReadEnabled()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length) {
+        const now = nowIsoParam ? new Date(nowIsoParam).getTime() : Date.now();
+        return (hit.approvals || []).map(entry => {
+          const e = JSON.parse(JSON.stringify(entry));
+          if (e.status === "pending" && new Date(e.expires_at).getTime() < now) {
+            e.status = "expired";
+          }
+          return e;
+        });
+      }
+      const src = hit.ok ? "events_anomalies" : hit.reason;
+      if (!approvalsDegradedSaid.has(src)) {
+        approvalsDegradedSaid.add(src);
+        process.stderr.write(
+          `[approvals] BITBOT_EVENT_READ 已开但事件读模型不可用（${src}` +
+            (hit.ok ? "" : hit.error ? `: ${hit.error}` : "") + "），本次回退 JSON 读。\n",
+        );
+      }
+    }
     try {
       if (!fs.existsSync(PENDING_APPROVALS_PATH)) {
         return [];
@@ -817,16 +989,28 @@ function createProductSurface(repoRoot, opts = {}) {
     }
 
     // Load all pending approvals
+    // EVENT_ONLY：读模型为主（fold 保存的是原始行），库空时遗留文件即真源。
     let entries = [];
-    try {
-      if (fs.existsSync(PENDING_APPROVALS_PATH)) {
-        const lines = fs.readFileSync(PENDING_APPROVALS_PATH, "utf8").split("\n").filter(Boolean);
-        entries = lines.map(line => {
-          try { return JSON.parse(line); } catch { return null; }
-        }).filter(Boolean);
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        entries = JSON.parse(JSON.stringify(hit.approvals || []));
+      } else {
+        entries = readApprovalsFileRaw();
       }
-    } catch {
-      return { ok: false, error: "read_failed", mode: "host_approval_decide" };
+      // prev 缓存以这次读到的为准（随后的 atomicWrite diff 左半边必须精确）
+      setLastTextFor(PENDING_APPROVALS_PATH, canonicalTextFor("approvals", { approvals: entries }));
+    } else {
+      try {
+        if (fs.existsSync(PENDING_APPROVALS_PATH)) {
+          const lines = fs.readFileSync(PENDING_APPROVALS_PATH, "utf8").split("\n").filter(Boolean);
+          entries = lines.map(line => {
+            try { return JSON.parse(line); } catch { return null; }
+          }).filter(Boolean);
+        }
+      } catch {
+        return { ok: false, error: "read_failed", mode: "host_approval_decide" };
+      }
     }
 
     const entry = entries.find(e => e.id === id);
@@ -893,7 +1077,7 @@ function createProductSurface(repoRoot, opts = {}) {
   // GP-21: chat-sourced Deny receipt — append-only audit line, nothing executed.
   function logApprovalDeny({ source, kind, command }) {
     const entry = {
-      id: "deny-" + Date.now().toString(36),
+      id: "deny-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
       source: source || "chat",
       decision: "deny",
       kind,
@@ -1387,7 +1571,62 @@ function createProductSurface(repoRoot, opts = {}) {
     return { ok: true, added: added.length, items: roomLibraryItems(room) };
   }
 
+  // T1-04 读切换：与 sessions.load() 同一条路——BITBOT_EVENT_READ=1 时优先
+  // 从事件日志折叠 rooms 面，读模型不可用就回退 JSON 读并打一行说明。
+  // 注意：这只换「读」，parseRoomsRaw 的诚实报错语义保持原样（它诊断的是
+  // JSON 文件本身的健康度，在双写还开着的阶段仍是有效信号）。
+  function readRoomsFromEvents() {
+    const hit = eventReadModel.readSurfaces(DATA_ROOT);
+    if (hit.ok && !hit.anomalies.length) {
+      const rooms = hit.rooms;
+      if (rooms && typeof rooms === "object" && Array.isArray(rooms.rooms)) {
+        return { data: rooms, source: "events" };
+      }
+      return { data: null, source: "events_shape_invalid" };
+    }
+    if (hit.ok) return { data: null, source: "events_anomalies" };
+    return { data: null, source: hit.reason, detail: hit.error || "" };
+  }
+
   function loadRooms() {
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        const text = canonicalTextFor("rooms", hit);
+        setLastTextFor(ROOMS_PATH, text);
+        return JSON.parse(text);
+      }
+      // 库空或不可用：遗留文件即真源（自导入路径），否则空目录
+      if (fs.existsSync(ROOMS_PATH)) {
+        sayOnce(
+          "legacy-rooms",
+          "[rooms] BITBOT_EVENT_ONLY：事件库为空但存在遗留 rooms.json（未导入）——暂以 JSON 为读真源，" +
+            "首次写入会把它增量带进事件库；建议先跑 scripts/import_json_to_events.mjs。\n",
+        );
+        const text = fs.readFileSync(ROOMS_PATH, "utf8");
+        setLastTextFor(ROOMS_PATH, text);
+        const parsed = JSON.parse(text);
+        return parsed && Array.isArray(parsed.rooms) ? parsed : { version: 1, rooms: [] };
+      }
+      if (hit.ok && hit.anomalies.length) {
+        sayOnce("ano-rooms", `[rooms] BITBOT_EVENT_ONLY：事件折叠有异常（${hit.anomalies[0]}）——按空目录处理，写入继续\n`);
+      } else if (!hit.ok && hit.reason !== "no_db" && hit.reason !== "read_disabled") {
+        sayOnce(`rm-rooms-${hit.reason}`, `[rooms] BITBOT_EVENT_ONLY：事件读模型不可用（${hit.reason}${hit.error ? ": " + hit.error : ""}）——按空目录处理，写入继续\n`);
+      }
+      setLastTextFor(ROOMS_PATH, JSON.stringify({ version: 1, rooms: [] }, null, 2));
+      return { version: 1, rooms: [] };
+    }
+    if (eventReadModel.eventReadEnabled()) {
+      const hit = readRoomsFromEvents();
+      if (hit.data) return hit.data;
+      if (!roomsDegradedSaid.has(hit.source)) {
+        roomsDegradedSaid.add(hit.source);
+        process.stderr.write(
+          `[rooms] BITBOT_EVENT_READ 已开但事件读模型不可用（${hit.source}` +
+            (hit.detail ? `: ${hit.detail}` : "") + "），本次回退 JSON 读。\n",
+        );
+      }
+    }
     return readJson(ROOMS_PATH, { version: 1, rooms: [] });
   }
 
@@ -1408,16 +1647,32 @@ function createProductSurface(repoRoot, opts = {}) {
     return { data, unreadable: false, reason: "" };
   }
   function roomsStoreStatus() {
+    // EVENT_ONLY：JSON 文件不再是真源（可能是遗留物），健康度以事件折叠为准。
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length) return { ok: true, rooms: hit.rooms };
+      return { ok: false, error: ROOMS_UNREADABLE + ":events_" + (hit.ok ? "anomalies" : hit.reason) };
+    }
     if (!fs.existsSync(ROOMS_PATH)) return { ok: true, rooms: { version: 1, rooms: [] } };
     const hit = parseRoomsRaw();
     if (hit.unreadable) return { ok: false, error: ROOMS_UNREADABLE + ":" + hit.reason };
     return { ok: true, rooms: hit.data };
   }
   // 只给「要落盘」的路径用：文件不存在可以当空目录开（还没有群），坏文件不行。
+  // EVENT_ONLY 下写侧的基底必须是事件折叠（遗留文件走自导入路径）。
   function requireWritableRooms() {
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        const text = canonicalTextFor("rooms", hit);
+        setLastTextFor(ROOMS_PATH, text);
+        return JSON.parse(text);
+      }
+    }
     if (!fs.existsSync(ROOMS_PATH)) return { version: 1, rooms: [] };
     const hit = parseRoomsRaw();
     if (hit.unreadable) { const err = new Error(ROOMS_UNREADABLE + ":" + hit.reason); err.code = ROOMS_UNREADABLE; throw err; }
+    if (eventOnlyMode()) setLastTextFor(ROOMS_PATH, JSON.stringify(hit.data, null, 2));
     return hit.data;
   }
 
@@ -1598,7 +1853,7 @@ function createProductSurface(repoRoot, opts = {}) {
 
     const at = nowIso();
     const names = resolved.map(nameOf);
-    const roomId = "room-" + Date.now().toString(36);
+    const roomId = "room-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
     const room = {
       id: roomId,
       title: finalTitle,
@@ -2484,12 +2739,22 @@ function createProductSurface(repoRoot, opts = {}) {
     if (body.truncated && ok) row.text_truncated = true;
     appendRoomTranscript(prep.room, row);
     return {
-      ok,
+      // 「这笔转交成立」与「承接方当场答上了」是两件事：
+      // 成员校验过了、交接行写进群转录了 = 所有权真的转移了 → ok=true，
+      // Host 侧据此把凭据（inbox 行 + 存根）落盘；承接方这轮没答上只是**还没跑完**，
+      // 用 pending / transferred=false / reply_error 如实说出来。
+      // 旧写法在这里回 ok=false，于是 transcript 已经写着「↪ task handed off」，
+      // 收件箱与存根却整笔跳过 —— 用户看到「已转交」，实际上没有任何东西被交出去。
+      ok: true,
+      accepted: true,
+      replied: ok,
       executed: true,
       // pretend_transferred 只有在目标 Bot 真产出了之后才为 true。
       pretend_transferred: ok,
       transferred: ok,
-      error: ok ? "" : (reason || "handoff_target_failed"),
+      pending: !ok,
+      error: "",
+      reply_error: ok ? "" : (reason || "handoff_target_failed"),
       target_reply: ok ? body.text : "",
       target_artifacts: ok ? ((out && out.artifacts) || []) : [],
       transcript_row: row,
@@ -2503,18 +2768,28 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const runner = deps || roomRuntimeDeps || {};
     if (typeof runner.runResponderTurn !== "function") {
+      // 没有运行时依赖 ≠ 转交失败。这一支和同步入口同义：**受理并排队**——
+      // 转录已落、任务进承接 Bot 的 inbox（host_ffi 靠 accepted 决定投递），
+      // 只是「目标 Bot 立刻跑一轮」这件事没人执行。把它报成 ok:false 会让
+      // 宿主连 inbox 都不写，任务就此消失（2026-10-29 GP-52 三项红的真因）。
+      // 同时按 §8.30 的口径把「受理」与「答没答上」分开：accepted/ok 只说受理，
+      // replied/transferred/pending/reply_error 说这一轮执行的结果。
       return {
-        ok: false, error: "handoff_runner_required", mode: "host_handoff_task",
-        pretend_transferred: false, executed: false, pending: true,
+        ok: true, accepted: true, error: "", reply_error: "handoff_runner_required",
+        mode: "host_handoff_task",
+        pretend_transferred: false, transferred: false, replied: false,
+        executed: false, pending: true, execution: "queued",
+        queue_reason: "handoff_runner_required",
         room: prep.room, title: prep.title, from_bot: prep.from_bot, to_bot: prep.to_bot,
         task: prep.task, transcript_entry: prep.entry, at: prep.at,
       };
     }
     const out = await executeHandoff(prep, runner);
     return Object.assign({
+      accepted: true,
       mode: "host_handoff_task", room: prep.room, title: prep.title,
       from_bot: prep.from_bot, to_bot: prep.to_bot, task: prep.task,
-      transcript_entry: prep.entry, at: prep.at, pending: false,
+      transcript_entry: prep.entry, at: prep.at,
     }, out);
   }
 
@@ -2526,6 +2801,9 @@ function createProductSurface(repoRoot, opts = {}) {
     pushHandoffRow(prep);
     const result = {
       ok: true,
+      // 与异步入口同一把尺子：accepted 只说「受理 + 投递」，执行与否看 executed。
+      accepted: true,
+      replied: false,
       mode: "host_handoff_task",
       // 目标 Bot 还没跑 —— 不能写成「已交接」。
       pretend_transferred: false,
@@ -2549,6 +2827,231 @@ function createProductSurface(repoRoot, opts = {}) {
       });
     }
     return result;
+  }
+
+  // ===== pending 转交凭据的下游（GP-166）=====
+  // host_ffi 把「受理成立、但这轮没答上」的转交落成两份东西：目标 Bot 的 inbox 行
+  // （data/agents/inbox/<bot>.jsonl）+ 一笔凭据存根（data/agents/handoffs/handoff-*.json）。
+  // 只有写入、没有消费者 = 这笔任务永远挂着，群里那句「已转交」就成了假话。
+  // 这里补上消费侧：下一次群回合（dispatchRoomTurn，桌面 IPC / CLI / 移动端共用那个入口）
+  // 自动把它捡起重跑；GP-168 起，定时唤醒（routine_tick / routine_wake）那一班车也以
+  // all_rooms 模式来捡一次 —— 群里一整天没人说话时，挂账仍然会被叫醒。并且
+  //   · 幂等 —— 幂等键 = 存根文件名（host_ffi 写入时就是唯一的一次转交），终态不再跑第二遍，
+  //     因为「定时发文 / 推邮箱」这类动作跑两遍就是事故；
+  //   · 有界重试 —— 跑一次算一次 attempts，到上限如实标 stuck 并在群里点名，不自激循环；
+  //   · 不删用户数据 —— 读不懂的存根原样留在原地，只跳过、只计数。
+  // 存根回写只加新字段（state/attempts/last_error/…），原有凭据内容一个字都不丢。
+  const HANDOFF_DIR = path.join(DATA_ROOT, "agents", "handoffs");
+  // 上限与每轮捡取件数写死在这里：多到 3 次还答不上，就是该让人来看的情况，
+  // 不是继续后台烧 token 的情况；一轮最多捡 5 笔，避免用户发一句话换来五次模型调用。
+  const HANDOFF_MAX_ATTEMPTS = 3;
+  const HANDOFF_SCAN_LIMIT = 5;
+  // claim 超过 10 分钟没更新 = 上一轮宿主中途没了，允许下一个回合接手。
+  const HANDOFF_CLAIM_STALE_MS = 10 * 60 * 1000;
+
+  function readHandoffStub(p) {
+    let raw = "";
+    try {
+      raw = fs.readFileSync(p, "utf8");
+    } catch (e) {
+      return { missing: true, error: String((e && e.code) || (e && e.message) || "unreadable") };
+    }
+    let stub = null;
+    try {
+      stub = JSON.parse(raw);
+    } catch (_) {
+      return { malformed: true, raw };
+    }
+    if (!stub || typeof stub !== "object" || Array.isArray(stub)) return { malformed: true, raw };
+    return { stub, raw };
+  }
+
+  // 读出当前字节再合并写回，避免与 host_ffi 的写入互相吃掉。
+  function patchHandoffStub(p, patch) {
+    const cur = readHandoffStub(p);
+    const base = cur.stub && typeof cur.stub === "object" ? cur.stub : {};
+    const next = Object.assign({}, base, patch, {
+      path: p,
+      updated_at: nowIso(),
+    });
+    atomicWrite(p, JSON.stringify(next, null, 2));
+    return next;
+  }
+
+  // stuck 必须在群里看得见：复用既有的 bot_reply_error 行，不新增转录 kind（契约不变）。
+  function noteHandoffStuck(roomId, stub, reason, p) {
+    const toBot = String((stub && stub.to_bot) || "");
+    const row = {
+      kind: "bot_reply_error",
+      room_id: roomId,
+      speaker: toBot,
+      bot_id: toBot,
+      name: String((stub && stub.to_name) || toBot || ""),
+      text: "",
+      error: clipRoomText(`handoff_stuck:${reason}`, ROOM_REASON_MAX).text,
+      responder_policy: "handoff_target",
+      handoff_file: path.basename(String(p || "")),
+      at: nowIso(),
+    };
+    try {
+      const app = appendRoomTranscript(roomId, row);
+      return !(app && app.ok === false);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function retryPendingHandoffs(opts) {
+    const o = opts || {};
+    const roomId = String(o.room || "").trim();
+    // GP-168：定时唤醒（routine_tick / routine_wake）那一班车没有「某间群」这个语境，
+    // 但它每天必然发生，是唯一能把睡着的挂账叫醒的人。所以再开一种模式：
+    // all_rooms = 按凭据自己记的 room 逐间捡，仍然受同一套幂等键 / 上限 / claim 约束。
+    // 单群语义一个字都没改：给了 room 就只处理那间。
+    const allRooms = roomId ? false : o.all_rooms === true;
+    const runner = o.deps && typeof o.deps === "object" ? o.deps : (roomRuntimeDeps || {});
+    const out = {
+      ok: true,
+      mode: "host_handoff_retry",
+      room: roomId,
+      scope: roomId ? "single_room" : allRooms ? "all_rooms" : "",
+      scanned: 0,
+      attempted: 0,
+      answered: 0,
+      failed: 0,
+      stuck: 0,
+      skipped_terminal: 0,
+      skipped_malformed: 0,
+      skipped_running: 0,
+      skipped_other_room: 0,
+      skipped_no_room: 0,
+      pending: 0,
+      notified: 0,
+      notice_failed: false,
+      max_attempts: HANDOFF_MAX_ATTEMPTS,
+      ids: [],
+      errors: [],
+    };
+    const noteErr = (p, e) => {
+      if (out.errors.length < 3) out.errors.push(`${path.basename(String(p))}: ${String((e && e.message) || e)}`);
+    };
+    if (!roomId && !allRooms) return Object.assign({}, out, { ok: false, error: "handoff_retry_needs_room" });
+    if (typeof runner.runResponderTurn !== "function") {
+      return Object.assign({}, out, { ok: false, error: "handoff_retry_runner_required" });
+    }
+    let files = [];
+    try {
+      files = fs.readdirSync(HANDOFF_DIR).filter((f) => /^handoff-.+\.json$/.test(f)).sort();
+    } catch (_) {
+      return out; // 目录都还没有 = 没有待办，零成本返回
+    }
+    // 转录面读不动时不能把凭据演成「都卡住了」—— 那是 store 的故障，不是这笔任务的终态。
+    try {
+      requireWritableRooms();
+    } catch (e) {
+      return Object.assign({}, out, { ok: false, error: "rooms_store_unreadable", detail: String((e && e.message) || e) });
+    }
+    for (const f of files) {
+      const p = path.join(HANDOFF_DIR, f);
+      out.scanned++;
+      const r = readHandoffStub(p);
+      if (r.malformed) {
+        out.skipped_malformed++; // 不覆盖、不删除，只如实计数
+        continue;
+      }
+      if (r.missing) continue;
+      const stub = r.stub;
+      const stubRoom = String(stub.room || "").trim();
+      if (roomId && stubRoom !== roomId) {
+        out.skipped_other_room++; // 群之间不串：这轮的捡起只处理这间的凭据
+        continue;
+      }
+      if (!stubRoom) {
+        // all_rooms 模式下没有 room 的老凭据：不知道交回哪间群，就不许自己编一间。
+        out.skipped_no_room++;
+        continue;
+      }
+      // 单群模式 = 那间群；all_rooms = 以凭据自己记的那间为准。
+      const target = roomId || stubRoom;
+      const state = String(stub.state || "pending");
+      const attempts = Math.max(0, Number(stub.attempts) || 0);
+      if (state === "answered" || state === "stuck") {
+        out.skipped_terminal++;
+        continue;
+      }
+      if (state === "running") {
+        const claimedAt = Date.parse(String(stub.claimed_at || ""));
+        const fresh = Number.isFinite(claimedAt) && (Date.now() - claimedAt) < HANDOFF_CLAIM_STALE_MS;
+        if (fresh) {
+          out.skipped_running++; // 另一个回合正在跑它，再来一次就是两条答案
+          continue;
+        }
+      }
+      if (out.attempted >= HANDOFF_SCAN_LIMIT) {
+        out.pending++; // 这一轮先捡这么多，剩下的下一轮再来
+        continue;
+      }
+      const why0 = String(stub.task || "").trim() ? "" : "handoff_task_missing";
+      if (why0) {
+        patchHandoffStub(p, { state: "stuck", last_error: why0, stuck_at: nowIso() });
+        if (!noteHandoffStuck(target, stub, why0, p)) out.notice_failed = true;
+        else out.notified++;
+        out.stuck++;
+        continue;
+      }
+      let prep = null;
+      try {
+        prep = prepareHandoff({
+          room: target,
+          from_bot: stub.from_bot,
+          to_bot: stub.to_bot,
+          task: stub.task,
+        });
+      } catch (e) {
+        noteErr(p, e); // store 读不动：不标终态，下一轮再试
+        continue;
+      }
+      if (!prep || prep.ok !== true) {
+        const why = String((prep && prep.error) || "handoff_retry_prep_failed");
+        patchHandoffStub(p, { state: "stuck", last_error: why, stuck_at: nowIso() });
+        if (!noteHandoffStuck(target, stub, why, p)) out.notice_failed = true;
+        else out.notified++;
+        out.stuck++;
+        continue;
+      }
+      // 先 claim 再跑：并发进来的另一个回合会看到新鲜 claim 而跳过它。
+      patchHandoffStub(p, { state: "running", claimed_at: nowIso(), picked_up_at: nowIso(), retry_of: f });
+      out.attempted++;
+      let res = null;
+      try {
+        res = await executeHandoff(prep, runner);
+      } catch (e) {
+        noteErr(p, e);
+        patchHandoffStub(p, { state: "pending", last_error: `handoff_retry_threw:${String((e && e.message) || e)}` });
+        continue;
+      }
+      const na = attempts + 1;
+      const replied = res && res.replied === true;
+      if (replied) {
+        patchHandoffStub(p, { state: "answered", attempts: na, last_error: "", answered_at: nowIso() });
+        out.answered++;
+      } else {
+        const why = String((res && (res.reply_error || res.error)) || "handoff_target_failed");
+        const isStuck = na >= HANDOFF_MAX_ATTEMPTS;
+        patchHandoffStub(p, Object.assign(
+          { state: isStuck ? "stuck" : "pending", attempts: na, last_error: why },
+          isStuck ? { stuck_at: nowIso() } : {},
+        ));
+        out.failed++;
+        if (isStuck) {
+          out.stuck++;
+          if (!noteHandoffStuck(target, stub, `${why}（第 ${na}/${HANDOFF_MAX_ATTEMPTS} 次）`, p)) out.notice_failed = true;
+          else out.notified++;
+        }
+      }
+      out.ids.push(f);
+    }
+    return out;
   }
 
   // ===== ACCOUNT (GP-74) =====
@@ -3107,6 +3610,7 @@ function createProductSurface(repoRoot, opts = {}) {
     orchestrateRoom,
     handoffTask,
     handoffTaskAsync,
+    retryPendingHandoffs,
     setRoomRuntimeDeps,
     roomBoardSnapshot: (roomId) => roomBoard.snapshot(roomId),
     appendRoomTranscript,

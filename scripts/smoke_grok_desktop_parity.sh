@@ -14,8 +14,36 @@ DATA=data/desktop
 turn_json() { # $1 = user phrase, optional env BITBOT_APPROVED=1
   local extra=()
   [ "${BITBOT_APPROVED:-0}" = "1" ] && extra=(--approved)
-  node hosts/cli_host/run_turn.js "${extra[@]}" "$1" 2>/dev/null | tail -1
+  # ${extra[@]+"${extra[@]}"} — bash 3.2（macOS 自带 /bin/bash）在 `set -u`
+  # 下展开空数组会报 "extra[@]: unbound variable"，整条命令根本不执行。
+  # 后果不是难看：这条函数是全部 kind 断言的入口，它一失败，门禁在 macOS 上
+  # 永远是「✗ create bot chain」这样的连锁红（实测 296 项红），红的却不是产品。
+  node hosts/cli_host/run_turn.js ${extra[@]+"${extra[@]}"} "$1" 2>/dev/null | tail -1
 }
+
+# ---- 这两件「Linux 自带」的东西，macOS 上没有；缺一件就会把门禁整片判红 -----
+#
+# timeout(1) 属于 GNU coreutils，macOS 不自带。脚本里 44 处
+# `timeout <秒> node …` 于是全部变成 "timeout: command not found"，子门禁的
+# 日志里只剩这一行 shell 错误，上层再报「chain assertions missing」——
+# 2026-10-29 实测：这台机器上跑出来的 210 项红里，绝大多数是这只手，不是产品。
+# polyfill 已抽到 scripts/lib/timeout_polyfill.sh 共享（macOS 上没有 coreutils
+# timeout 的脚本不止这一个，其余 7 个调用方一并接上）。
+source "$(dirname "$0")/lib/timeout_polyfill.sh"
+
+# 另一处平台假设：`node_modules/electron/dist/electron` 是 Linux/Windows 的布局，
+# macOS 是 `dist/Electron.app/Contents/MacOS/Electron`。7 个真渲染门禁的入口判断
+# 写死了前者，于是在开发机上永远 SKIP（SKIP ≠ PASS，也永远拦不住回归）。
+# 跨平台的解析已经有单一真源（scripts/electron_bin.mjs），这里复用它，只判存在性。
+HAVE_ELECTRON_UI=0
+if [ -d hosts/desktop/node_modules/playwright-core ] && node -e "
+const fs=require('fs');
+import('./scripts/electron_bin.mjs')
+  .then((m) => process.exit(fs.existsSync(m.resolveElectronBinary('hosts/desktop')) ? 0 : 1))
+  .catch(() => process.exit(1));
+"; then
+  HAVE_ELECTRON_UI=1
+fi
 
 field() { node -e "
 const fs=require('fs');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
@@ -39,7 +67,39 @@ if(!rows.some(b=>b&&b.id==='agent-bit')){console.error('agent-bit missing after 
 "
 }
 
+# 夹具自清（矩阵开跑第一件事）。G-1/G-2 每跑一次就留下一批 Smoke 夹具：重名时
+# Host 给副本自动加序号（Smoke copy 2…8），改名落成 SmokeRenamed，群留 Smoke room。
+# 实测 8 次跑之后 data/desktop/bots.json 里 16/25 行是门禁造的 —— 而 dev 模式下
+# 应用的数据根就是仓库 data/（hosts/desktop/paths.js 非 packaged 分支），于是这些
+# 夹具直接长在用户自己的侧栏里。开机门早就改成临时副本（GATE_ROOT），这条链只剩
+# 本脚本。这里按**前缀**摘，与 journeys 门清 UJ 夹具同一把尺子：只认夹具名，
+# 用户 Bot（Bit Bot / Ivy / 情报侦察员…）一行不动。
+purge_gate_fixtures() {
+  node -e '
+const fs=require("fs");
+const [bp,rp]=process.argv.slice(1);
+const FIXTURE_BOT=/^(Smoke|Smoke copy[ 0-9]*|SmokeRenamed)$/;
+const FIXTURE_ROOM=/^Smoke room$/;
+const drop=(p,kind,pick)=>{
+  if(!fs.existsSync(p))return "无文件";
+  let j;try{j=JSON.parse(fs.readFileSync(p,"utf8"));}catch(e){return "解析失败("+e.code+")，本次不碰";}
+  const rows=Array.isArray(j[kind])?j[kind]:[];
+  const kept=rows.filter((x)=>!(x&&pick(String(x.name||x.title||""))));
+  const n=rows.length-kept.length;
+  j[kind]=kept;
+  if(kind==="bots"&&j.primary_id&&!kept.some((x)=>x&&x.id===j.primary_id))j.primary_id="";
+  if(n>0)fs.writeFileSync(p,JSON.stringify(j,null,2));
+  return n+" 条";
+};
+console.log("夹具 Bot "+drop(bp,"bots",(s)=>FIXTURE_BOT.test(s))+"、夹具群 "+drop(rp,"rooms",(s)=>FIXTURE_ROOM.test(s)));
+' "$DATA/bots.json" "$DATA/rooms.json"
+}
+# 不只靠末尾那一次调用：矩阵被 set -u 或 timeout 打断时（本轮整合前就死在 G-59 的
+# 空数组上）收尾根本不会执行，夹具照样留在用户侧栏里。挂 EXIT trap 兜住异常退出。
+trap 'purge_gate_fixtures >/dev/null 2>&1' EXIT
+
 echo "== G-1/G-2 Bot lifecycle =="
+echo "  · 前置自清：$(purge_gate_fixtures)（只认 Smoke 前缀，用户 Bot 不动）"
 ensure_agent_bit
 before=$(cat $DATA/bots.json 2>/dev/null | md5sum)
 j=$(turn_json "create bot Smoke job=verify description=Wave+G+smoke+bot")
@@ -181,7 +241,58 @@ console.log((mine[mine.length-1]||rs[rs.length-1]||{}).id||'')")
 j=$(turn_json "room $roomid :: @SmokeRenamed ping"); echo "$j" | grep -q mentioned_only && ok "@BotName → mentioned_only 路由" || bad "mention routing"
 j=$(turn_json "room $roomid :: @everyone ping"); echo "$j" | grep -q '"responder_policy": "all"\|all' >/dev/null && echo "$j" | grep -q everyone && ok "@everyone 路由输出存在" || bad "everyone"
 j=$(turn_json "room $roomid :: 无人点名"); echo "$j" | grep -q bot_discretion && ok "无 @ → bot_discretion" || bad "discretion"
-echo "$j" | grep -q "dm-only" && ok "GP-53 escalations=dm-only（审批不进群）" || bad "dm-only flag"
+# GP-53「审批不进群」：原来靠回包里一个 escalations:"dm-only" 字面量取证，但群路径被
+# 重写进 hosts/shared/room_* 之后这个字段整条链路都不产生了（也没人消费它）。
+# 尺子不能跟着字段一起失效，也不能只会 grep 一个漂亮字符串 —— 改成量行为：
+# 这条群回合的回包与这份群的持久转录里都不许出现审批卡。
+room_approval_leak() { # $1=data root, $2=room id —— 返回 0=没有审批行混进群转录
+  ROOT="$1" ROOM="$2" node -e '
+const fs=require("fs");
+const root=process.env.ROOT, id=process.env.ROOM;
+const hit=(JSON.parse(fs.readFileSync(root+"/desktop/rooms.json","utf8")).rooms||[]).find(r=>r.id===id)||{};
+const bad=(hit.transcript||[]).filter(x=>x&&/approval/i.test(String(x.kind||""))||x&&/approval/i.test(String(x.text||"")));
+if(bad.length)console.error("群转录里出现审批行 "+bad.length+" 条");
+process.exit(bad.length?1:0)'
+}
+host_result_has_approval() { # stdin = 回包 JSON —— 退出 1=Host 结果里有审批卡（或解析不出来，不 fail-open）
+  node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+let j=null;
+try{j=JSON.parse(d.trim().split("\n").filter(l=>l.startsWith("{")).pop())}catch(e){console.error("回包解析失败：尺子不 fail-open");process.exit(1)}
+const hit=!!(j&&Array.isArray(j.host_results)&&j.host_results.some((h)=>h&&/approval/i.test(String(h.kind||""))));
+if(hit)console.error("Host 结果里出现审批卡 kind");
+process.exit(hit?1:0)})'
+}
+if printf '%s\n' "$j" | host_result_has_approval; then
+  if room_approval_leak data "$roomid"; then
+    ok "GP-53 审批不进群（按行为取证）：这条无点名群回合的 Host 结果与群转录里都没有审批卡"
+  else
+    bad "GP-53 审批行出现在群转录里（dm-only 承诺破了）"
+  fi
+else
+  bad "GP-53 审批卡混进了群回合的 Host 结果（承诺是只走私聊）"
+fi
+# 这把尺子自己也要被验一遍：能抓住有的、放过没有的、解析失败不许当没事
+d_ha=0
+printf '%s\n' '{"host_results":[{"kind":"approval_card"}]}' | host_result_has_approval 2>/dev/null || d_ha=$((d_ha+1))
+printf '%s\n' '{"host_results":[{"kind":"delivery"}]}' | host_result_has_approval 2>/dev/null && d_ha=$((d_ha+2))
+printf '%s\n' 'not a json' | host_result_has_approval 2>/dev/null || d_ha=$((d_ha+3))
+[ "$d_ha" = "6" ] && ok "GP-53 尺子自证：有审批卡被抓、纯 delivery 被放、坏 JSON 不 fail-open" \
+  || bad "GP-53 尺子失效：三向对照结果码 $d_ha（期望 6=1+2+3）"
+tmpa=$(mktemp -d); mkdir -p "$tmpa/desktop"
+node -e '
+const fs=require("fs");const root=process.argv[1];
+fs.writeFileSync(root+"/desktop/rooms.json",JSON.stringify({rooms:[{id:"r9",title:"x",transcript:[{kind:"approval_card",text:"请批准这封外发"}]}]}));
+' "$tmpa"
+if room_approval_leak "$tmpa" r9 2>/dev/null; then
+  bad "GP-53 尺子失效：注入一条审批行也没抓住（恒真断言）"
+else
+  ok "GP-53 尺子的负向对照：注入 approval_card 行后立刻翻红（非恒真）"
+fi
+rm -rf "$tmpa"
+echo "  · G-53/GP-53 残留（诚实）：escalations:\"dm-only\" 这个字段在群路径重写后整条链都不再产生，"
+echo "    也没有任何消费者（grep 全仓只有 product_surface.js 一处产出）。本轮把尺子改成量行为，"
+echo "    但「群里触发的动作 → 审批走私聊」这条完整链路在 shared 新路径上还没有实现与用例，"
+echo "    只在旧 roomTurn 里留了一句漂亮话。记在 parity-gaps-next 继续追。"
 
 echo "== G-7 语音（GP-15/60/61）=="
 VOICE_MOCK="$PWD/scripts/host_espeak_mock.sh"
@@ -450,7 +561,14 @@ const mine=rs.filter(r=>(r.members||[]).includes('$hid_b')&&(r.members||[]).incl
 console.log((mine[mine.length-1]||{}).id||'')")
 [ -n "$hoid" ] && ok "G-14 前置：群建立（2 成员）" || bad "G-14 room create"
 j=$(turn_json "handoff room $hoid from=$hid_a to=$hid_b task=collect deploy logs")
-echo "$j" | field intent | grep -q handoff_task && echo "$j" | field hostKinds | grep -q handoff_task:ok && ok "GP-52 短语 → handoff_task 意图 + host ok" || bad "GP-52 chain"
+# 这一条断的是「话术被认成转交、宿主真的受理并投递」，不是「承接 Bot 立刻跑完了」：
+# 本门禁这一段没有 LLM 端点，承接者的回合必然产不出回复，把 ok（=真的答上了）
+# 写进断言只会得到与产品无关的红（2026-10-29 实测三条红就在这里）。
+# 受理=accepted，投递=inbox/存根（下面两条分别断）。
+echo "$j" | field intent | grep -q handoff_task \
+  && echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='handoff_task')||{};const p=JSON.parse(h.stdout||'{}');process.exit(h.accepted===true&&p.accepted===true&&p.pretend_transferred===false?0:1)})" <<<"$j" \
+  && ok "GP-52 短语 → handoff_task 意图 + 宿主受理并排队（不假装已交接）" \
+  || bad "GP-52 chain" "intent=[$(echo "$j" | field intent)] kinds=[$(echo "$j" | field hostKinds)]"
 node -e "
 const fs=require('fs');
 const hit=require('./$DATA/rooms.json').rooms.find(r=>r.id==='$hoid')||{};
@@ -476,6 +594,41 @@ const fs=require('fs');
 const d='data/agents/handoffs';
 const files=fs.existsSync(d)?fs.readdirSync(d).filter(f=>f.startsWith('handoff-$hid_b-')):[];
 process.exit(files.length>=1 ? 0:1)" && ok "GP-52 转交存根落盘 data/agents/handoffs/" || bad "GP-52 handoff artifact"
+# 因果一致（§8.30 新增）：交接行写进群转录 ⇒ 承接方 inbox 必有这一笔 ⇒ 存根必在。
+# 三条单独锚点各自能绿，却挡不住「只写行不排队」这种半态 —— 本轮翻车正是这个形状：
+# 承接方没答上时 Host 整笔跳过 inbox 与存根，屏幕上却写着「已转交」。
+ho_causal() {
+  HO_DATA_DIR="$1" node -e '
+const fs=require("fs");const root=process.env.HO_DATA_DIR||"data";
+const room=process.argv[1], to=process.argv[2];
+const hit=(JSON.parse(fs.readFileSync(root+"/desktop/rooms.json","utf8")).rooms||[]).find(r=>r.id===room)||{};
+const row=(hit.transcript||[]).filter(x=>x&&x.kind==="handoff"&&x.to_bot===to).pop()||{};
+const p=root+"/agents/inbox/"+to+".jsonl";
+const rows=fs.existsSync(p)?fs.readFileSync(p,"utf8").trim().split("\n").filter(Boolean).map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean):[];
+const q=rows.filter(r=>r&&r.is_handoff===true&&r.to_id===to&&r.room===room).pop()||{};
+const d=root+"/agents/handoffs";
+const stubs=fs.existsSync(d)?fs.readdirSync(d).filter(f=>f.startsWith("handoff-"+to+"-")):[];
+const ok=!!row.to_bot && q.to_id===to && q.room===room && q.is_room===true && q.forbids_private_assumptions===true && stubs.length>=1;
+console.error("交接行="+(row.to_bot?"有":"无")+" inbox="+(q.to_id||"无")+" 存根="+stubs.length+" 个");
+process.exit(ok?0:1)' "$2" "$3"
+}
+if ho_causal data "$hoid" "$hid_b"; then
+  ok "GP-52 因果一致：写了交接行就必然有收件箱那一笔与存根（三者同生，不许只剩转录那句漂亮话）"
+else
+  bad "GP-52 因果断裂：群转录写着已转交，收件箱/存根却没有（本轮修复前就是这个形状）"
+fi
+# 同一把尺子的负向对照：造一个「只有交接行、没有排队」的半态，必须翻红
+ho_neg=0
+tmpc=$(mktemp -d)
+mkdir -p "$tmpc/desktop" "$tmpc/agents/inbox" "$tmpc/agents/handoffs"
+node -e '
+const fs=require("fs");const root=process.argv[1];
+fs.writeFileSync(root+"/desktop/rooms.json",JSON.stringify({rooms:[{id:"r1",title="x",members:["a","b"],transcript:[{kind:"handoff",room_id:"r1",from_bot:"a",to_bot:"b",task:"t",responders:["b"],responder_policy:"handoff_target"}]}]}));
+' "$tmpc"
+if ho_causal "$tmpc" r1 b 2>/dev/null; then ho_neg=1; fi
+rm -rf "$tmpc"
+[ "$ho_neg" = "0" ] && ok "GP-52 因果尺子的负向对照：只有交接行、没有排队的半态被抓住（非恒真）" \
+  || bad "GP-52 因果尺子失效：半态也判绿（恒真断言）"
 # 非成员承接 → 诚实拒绝，transcript 不增行
 ho_lines=$(node -e "
 const hit=require('./$DATA/rooms.json').rooms.find(r=>r.id==='$hoid')||{};
@@ -494,7 +647,8 @@ const keys=(html.match(/rHandoff:/g)||[]).length;
 const map=html.includes("Task handoff planned") && html.includes("GP-52") && html.includes(String.raw`"rHandoff"`);
 const fill=html.includes(String.raw`key === "rHandoff"`) && html.includes("{from}") && html.includes("{to}") && html.includes("{room}");
 const failBubble=(html.match(/rHandoffFail:/g)||[]).length>=3 && html.includes(String.raw`h.kind === "handoff_task" && !h.ok`);
-process.exit(keys>=3 && map && fill && failBubble ? 0:1)' && ok "GP-52 renderer：三语 rHandoff + GP-52 回执映射与占位填充" || bad "GP-52 renderer wiring"
+const pendBubble=(html.match(/rHandoffPending:/g)||[]).length>=3 && html.includes(String.raw`hp.pending === true || hp.replied === false`);
+process.exit(keys>=3 && map && fill && failBubble && pendBubble ? 0:1)' && ok "GP-52 renderer：三语 rHandoff + 回执映射与占位填充 + 三语 rHandoffPending（受理但没答上如实说一句，不装作完成）" || bad "GP-52 renderer wiring"
 # 清理：确认删除三个探针 Bot（<2 成员的群行被级联移除）+ 探针 inbox/存根
 for id in "$hid_a" "$hid_b" "$hid_c"; do
   turn_json "confirm delete bot $id" >/dev/null
@@ -577,7 +731,7 @@ echo "== G-16 自动化冷启动 + GP-70 像素断言（Playwright-E2E · 规格
 # 本波把「手工启动 Electron + 肉眼看截图」换成 scripts/e2e_grok_desktop_boot.mjs：
 # Playwright _electron.launch 拉起真实 main/preload，settings.set 走真实用户链，
 # 截图用零依赖 PNG 解码（scripts/lib_png_pixel.mjs）算 viewport 亮度做可证伪断言。
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   e2e_log=/tmp/e2e-g16.log
   # M21 起 E2E 含六次真实 boot（GP-70 ×2 + GP-14 + GP-99 + GP-108/109 + GP-111/112
   # + GP-116..119 + GP-93/94/95），单个 boot 冷启一次约 20–40s，故给足 1500s。
@@ -587,7 +741,7 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     e2e_xvfb=(xvfb-run -a)
   fi
-  if timeout 1500 "${e2e_xvfb[@]}" node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
+  if timeout 1500 ${e2e_xvfb[@]+"${e2e_xvfb[@]}"} node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
     ok "G-16 E2E 冷启动+像素断言全绿（$(grep -c '✓' "$e2e_log") 项，$(tail -1 "$e2e_log"))"
   else
     bad "G-16 E2E 冷启动+像素断言（见 $e2e_log）"
@@ -1168,7 +1322,10 @@ fi
 grep -q "composer 群聊提交走 Host rooms.orchestrate IPC" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-119/143：群组行 → composer 对准群聊，提交走 Host rooms.orchestrate（roomTurn 单一写入点）" \
   || bad "G-29 GP-119 composer orchestrate missing"
-grep -q "Host IPC 真接线：roomTurn → appendRoomTranscript → orchestrateRoom" /tmp/g29-probe.log 2>/dev/null \
+# 这里的 grep 是对「子门.printed 断言名」的字符串合同——子门把这条改名了，聚合门
+# 就会假红（2026-10-29 实测：断言名已改成 dispatchRoomTurn(...) 形状，聚合一味
+# 找旧串导致 G-29 红）。用 -E 只锚定这条断言的实质三段，别再把函数签名写死。
+grep -E -q "Host IPC 真接线：.*roomTurn → appendRoomTranscript → orchestrateRoom" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "responder 回合用自己的 botId" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "preload 暴露 rooms.orchestrate" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-143：真回合接线落地（每 responder 自己的 botId/记忆/persona，独立 room session）" \
@@ -1630,16 +1787,16 @@ grep -q "旧 execSync(pgrep -f UD) 数到" /tmp/g46-ruler.log \
   && ok "G-46 尺子负向对照：旧写法确实多算（修复前红，证明断言非恒真）" \
   || bad "G-46 ruler negative control missing"
 
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g46_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g46_xvfb=(xvfb-run -a)
   fi
-  for g in single_instance sidebar_adapt quit command_channel bot_group_menu token_parity; do
+  for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity; do
     log=/tmp/g46-$g.log
     pkill -9 -f "dist/[e]lectron" 2>/dev/null
     sleep 1
-    if timeout 900 "${g46_xvfb[@]}" node "scripts/e2e_desktop_$g.mjs" >"$log" 2>&1; then
+    if timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node "scripts/e2e_desktop_$g.mjs" >"$log" 2>&1; then
       ok "G-46 e2e_desktop_$g 全绿（$(grep -c '✓' "$log") 项，$(tail -1 "$log")）"
     else
       bad "G-46 e2e_desktop_$g（见 $log；$(tail -1 "$log")）"
@@ -1667,7 +1824,7 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
   log=/tmp/g46-neg-single.log
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if NEG_CONTROL=1 timeout 900 "${g46_xvfb[@]}" node scripts/e2e_desktop_single_instance.mjs >"$log" 2>&1; then
+  if NEG_CONTROL=1 timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node scripts/e2e_desktop_single_instance.mjs >"$log" 2>&1; then
     bad "G-46 负向对照失效：关掉单实例锁后门禁仍全绿（恒真断言）"
   else
     grep -q "S-02 同 UD 出现多个主进程" "$log" \
@@ -1707,14 +1864,14 @@ else
   echo "  · skip：moon 不在 PATH，G-47 线路门禁未跑（SKIP ≠ PASS）"
 fi
 
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g47_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g47_xvfb=(xvfb-run -a)
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 "${g47_xvfb[@]}" node scripts/e2e_android_roster.mjs > /tmp/g47-roster.log 2>&1; then
+  if timeout 900 ${g47_xvfb[@]+"${g47_xvfb[@]}"} node scripts/e2e_android_roster.mjs > /tmp/g47-roster.log 2>&1; then
     ok "G-47 e2e_android_roster 全绿（$(grep -c '✓' /tmp/g47-roster.log) 项，$(tail -1 /tmp/g47-roster.log)）"
   else
     bad "G-47 e2e_android_roster（见 /tmp/g47-roster.log；$(tail -1 /tmp/g47-roster.log)）"
@@ -1748,6 +1905,9 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     echo "  · skip：$(grep -m1 'SKIP —' /tmp/g47-build.log)（SKIP ≠ PASS）"
   else
     ok "G-47 APK 真编译 + aapt 读回包里的事实（$(tail -1 /tmp/g47-build.log)）"
+    grep -q "AB-03b 扫描前置齐" /tmp/g47-build.log \
+      && ok "G-47 局域网扫描前置成立：清单声明了 ACCESS_NETWORK_STATE（aapt 从包里读回）+ 取本机地址那步兜住异常，摘任一条都翻红" \
+      || bad "G-47 AB-03b anchor missing（扫描前置没被断言：真机上点「扫描」可能是崩，不是「没找到桌面」）"
     grep -q "AB-07 配对地址归一化单测真跑" /tmp/g47-build.log \
       && grep -q "AB-08 失败原因翻译层单测真跑" /tmp/g47-build.log \
       && grep -q "AB-09 配对 v1 纯逻辑单测真跑" /tmp/g47-build.log \
@@ -1931,14 +2091,14 @@ echo "  · G-50 残留（诚实）：门只核标题/编号/围栏/行数下限�
 echo "    pairing-v1.md 与 parity-gaps-next.md 暂未纳入同一道门"
 
 echo "== G-51 国内渠道凭证不裸奔（掩码 + 字段级校验 + 同一屏下一步）=="
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g51_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g51_xvfb=(xvfb-run -a)
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 "${g51_xvfb[@]}" node scripts/e2e_desktop_cn_channel_guard.mjs > /tmp/g51-cnchan.log 2>&1; then
+  if timeout 900 ${g51_xvfb[@]+"${g51_xvfb[@]}"} node scripts/e2e_desktop_cn_channel_guard.mjs > /tmp/g51-cnchan.log 2>&1; then
     ok "G-51 e2e_desktop_cn_channel_guard 全绿（$(grep -c '✓' /tmp/g51-cnchan.log) 项，$(tail -1 /tmp/g51-cnchan.log)）"
   else
     bad "G-51 e2e_desktop_cn_channel_guard（见 /tmp/g51-cnchan.log；$(tail -1 /tmp/g51-cnchan.log)）"
@@ -1963,14 +2123,14 @@ else
 fi
 
 echo "== G-52 国内渠道加签 / 事件回调密钥能在界面上配（不再逼用户改 .env.local）=="
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g52_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g52_xvfb=(xvfb-run -a)
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 "${g52_xvfb[@]}" node scripts/e2e_desktop_cn_secret_inputs.mjs > /tmp/g52-cnsec.log 2>&1; then
+  if timeout 900 ${g52_xvfb[@]+"${g52_xvfb[@]}"} node scripts/e2e_desktop_cn_secret_inputs.mjs > /tmp/g52-cnsec.log 2>&1; then
     ok "G-52 e2e_desktop_cn_secret_inputs 全绿（$(grep -c '✓' /tmp/g52-cnsec.log) 项，$(tail -1 /tmp/g52-cnsec.log)）"
   else
     bad "G-52 e2e_desktop_cn_secret_inputs（见 /tmp/g52-cnsec.log；$(tail -1 /tmp/g52-cnsec.log)）"
@@ -2003,7 +2163,7 @@ echo "== G-53 用户旅程验收门真的被跑（J1–J4 多 Bot 各岗 / P1–
 # 这两道门写的是本项目的**验收标准本身**（「真实 Electron 里走不走得通」），可它们此前不在任何
 # 聚合门里：`grep -rn "e2e_desktop_user_journeys\|e2e_desktop_creator_pipeline" scripts/*.sh`
 # 在登记前是 0 命中 —— 门禁存在但没人跑，等于没有门禁；J/P 任何一条被改坏，矩阵照样全绿。
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g53_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g53_xvfb=(xvfb-run -a)
@@ -2012,7 +2172,7 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
     local name="$1" log="$2" tmo="$3"
     pkill -9 -f "dist/[e]lectron" 2>/dev/null
     sleep 1
-    if timeout "$tmo" "${g53_xvfb[@]}" node "scripts/${name}.mjs" >"$log" 2>&1; then
+    if timeout "$tmo" ${g53_xvfb[@]+"${g53_xvfb[@]}"} node "scripts/${name}.mjs" >"$log" 2>&1; then
       if grep -q "PASS=0 FAIL=0 SKIP=1" "$log"; then
         echo "  · skip：${name} 自报环境不足（$(grep -m1 'SKIP —' "$log" || echo '未给出原因')）— SKIP ≠ PASS"
         return 0
@@ -2020,6 +2180,14 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
       ok "G-53 ${name} 全绿（$(grep -c '✓' "$log") 项，$(grep -m1 'PASS=' "$log")）"
     else
       bad "G-53 ${name}（见 ${log}；$(grep -m1 'PASS=' "$log" || tail -1 "$log")）"
+      # 子日志不上传时，矩阵里只剩「PASS=29 FAIL=1」这种计数——等于知道红了却不知道红在哪。
+      # 把失败断言原文和尾部现场直接搬进矩阵日志；artifact 也一并收这个文件。
+      grep -n "✗" "$log" 2>/dev/null | head -10 | while IFS= read -r line; do
+        echo "    ${line}"
+      done
+      tail -8 "$log" 2>/dev/null | while IFS= read -r line; do
+        echo "    | ${line}"
+      done
     fi
   }
   g53_run e2e_desktop_user_journeys /tmp/g53-journeys.log 900
@@ -2041,8 +2209,26 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
       && ok "G-53 P 侧锚点在：三个岗真跑完 / 中文排程落成 09:00 墙钟 / 未批准不外发 / 批准后才真出信" \
       || bad "G-53 creator anchors missing（门跑了但日更链路的关键红线没出现在输出里）"
   fi
+  if [ -s /tmp/g53-journeys.log ]; then
+    grep -q "GP-52 受理未答：屏幕上真写了" /tmp/g53-journeys.log \
+      && grep -q "GP-52 答上了的那笔不再刷" /tmp/g53-journeys.log \
+      && grep -q "GP-52 被拒的那笔走「被拒」气泡" /tmp/g53-journeys.log \
+      && ok "G-53 GP-52 那句话真在 Electron 屏幕上说得出来：受理未答才说排队、答上了不刷、被拒不混（§8.30 从源码锚点升级为渲染取证）" \
+      || bad "G-53 GP-52 pending 渲染锚点缺失（门跑了但屏幕上那句话没出现）"
+  fi
+  if [ -s /tmp/g53-journeys.log ]; then
+    if grep -q "GP-168 定时唤醒真的把挂账捡起重跑了" /tmp/g53-journeys.log \
+       && grep -q "GP-168 到上限后群里看得见那句人话" /tmp/g53-journeys.log; then
+      ok "G-53 GP-168 真 Electron 取证在：生产入口的定时唤醒把挂账捡起重跑、到上限那句人话落在群里（捡起不再只等下一次有人说话）"
+    elif grep -q "GP-168 真唤醒取证" /tmp/g53-journeys.log; then
+      echo "  · skip：GP-168 真 Electron 探针按边界条件没跑（数据根里有别人的挂账 / 可见 Bot 不足），SKIP ≠ PASS"
+    else
+      bad "G-53 journeys 里根本没有 GP-168 这条取证（门跑了却没测它）"
+    fi
+  fi
   echo "  · G-53 修复前红（结构性，不是产品数字）：这两道门在登记前 0 处被引用——"
-  echo "    本轮把它们接进矩阵，并把 J 侧 63 项、P 侧 30 项的真实全绿第一次变成矩阵的一部分"
+  echo "    本轮把它们接进矩阵，并把 J 侧、P 侧的真实全绿第一次变成矩阵的一部分"
+  echo "    （J 侧登记时 63 项，§8.30 加了 GP-52 三条渲染取证后实测 $(grep -m1 -o 'PASS=[0-9]*' /tmp/g53-journeys.log 2>/dev/null | sed 's/PASS=//' || echo '未跑') 项）"
   echo "  · G-53 说明：这两道门跑在仓库真实的 data/ 上，靠自己的快照-还原只回收本轮 GP155/UJ 前缀的行；"
   echo "    历史行、用户数据不动（矩阵跑完 git status 里 data/ 不该多出内容）"
   echo "  · G-53 残留（诚实）：G-53 自己不带负向对照（P5 拒绝过密排程、P7 未批准 no_grant 那类"
@@ -2053,14 +2239,14 @@ else
 fi
 
 echo "== G-54 模型密钥粘错了当场说清楚（Bearer 头写法 / 界面自己的掩码 / 断行 / 没粘全）=="
-if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_modules/electron/dist/electron ]; then
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g54_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g54_xvfb=(xvfb-run -a)
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 "${g54_xvfb[@]}" node scripts/e2e_desktop_llm_key_paste_guard.mjs > /tmp/g54-lkkey.log 2>&1; then
+  if timeout 900 ${g54_xvfb[@]+"${g54_xvfb[@]}"} node scripts/e2e_desktop_llm_key_paste_guard.mjs > /tmp/g54-lkkey.log 2>&1; then
     ok "G-54 e2e_desktop_llm_key_paste_guard 全绿（$(grep -c '✓' /tmp/g54-lkkey.log) 项，$(tail -1 /tmp/g54-lkkey.log)）"
   else
     bad "G-54 e2e_desktop_llm_key_paste_guard（见 /tmp/g54-lkkey.log；$(tail -1 /tmp/g54-lkkey.log)）"
@@ -2086,6 +2272,751 @@ if [ -d hosts/desktop/node_modules/playwright-core ] && [ -x hosts/desktop/node_
 else
   echo "  · skip：缺 playwright-core 或 electron，G-54 未跑（SKIP ≠ PASS）"
 fi
+
+echo "== G-55 GP-166：pending 转交的下游真的有人接（捡起 / 幂等 / 有界重试）=="
+# 根因和 G-53 同一类：prove_room_orchestrator.js 里那条 handoff 合同链此前**不在任何聚合门里**
+# （登记前 grep -rn "prove_room_orchestrator" scripts/*.sh = 0 命中）——门禁存在但没人跑，
+# R-01…R-10 随便改坏，矩阵照样全绿。这里把它接进来，并把「捡起」的接线锚在产品入口上。
+node scripts/prove_room_orchestrator.js >/tmp/gp166-orch.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp166-orch.log; then
+  ok "G-55 群编排真团队合同全绿（$(grep -c '✓' /tmp/gp166-orch.log) 项，$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp166-orch.log)）"
+else
+  bad "G-55 prove_room_orchestrator 未通过（见 /tmp/gp166-orch.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp166-orch.log || tail -1 /tmp/gp166-orch.log)）"
+fi
+for gp166_a in "R-01 新一条群消息真的把 pending 的转交捡起重跑" \
+               "R-02 同一笔凭据不重跑" \
+               "R-03b 到上限就如实标 stuck" \
+               "R-03c stuck 这件事在群转录里看得见" \
+               "R-05 承接方已不在群里" \
+               "R-06 坏凭据被如实跳过并计数" \
+               "R-08 主群的回合不碰另一间的" \
+               "R-09 新鲜 claim" \
+               "R-10 claim 过期"; do
+  if grep -q "✓ $gp166_a" /tmp/gp166-orch.log; then ok "G-55 锚点：$gp166_a"; else bad "G-55 锚点没跑绿：$gp166_a"; fi
+done
+# 接线锚 + 注入对照（一条尺子跑两次：真文件必须过、把入口摘掉的副本必须翻红 —— 恒真尺子不算尺子）
+# 这里踩过一次坑：用 String.replace 只换得掉第一处引用，而入口在这个文件里有两处，
+# 副本仍被判成「接着的」→ 第一次跑矩阵就是 397/1。摘东西要用 split/join 全量摘。
+node -e '
+const fs=require("fs");
+const rd=fs.readFileSync("hosts/shared/room_dispatch.js","utf8");
+const ps=fs.readFileSync("hosts/desktop/product_surface.js","utf8");
+const html=fs.readFileSync("hosts/desktop/index.html","utf8");
+const wired=(s)=>s.includes("surface.retryPendingHandoffs") && /handoff_retry:/.test(s);
+const store=ps.includes("    retryPendingHandoffs,")
+  && /HANDOFF_MAX_ATTEMPTS = 3/.test(ps)
+  && ps.includes(String.raw`state === "answered" || state === "stuck"`)
+  && ps.includes("handoff_stuck:");
+const i18n=(html.match(/roomFailStuck:/g)||[]).length>=3 && html.includes(String.raw`key = "roomFailStuck"`);
+const cut=rd.split("surface.retryPendingHandoffs").join("surface.handoffRetryEntryDisabled");
+const real=wired(rd), mut=wired(cut);
+if(!real||mut)console.error("注入对照：真文件接线="+real+" 摘掉入口的副本="+mut);
+if(!store)console.error("store 侧终态/上限/卡住串锚点缺失");
+if(!i18n)console.error("卡住那句话的三语 i18n 不齐");
+process.exit(real&&!mut&&store&&i18n?0:1)' && ok "G-55 接线：唯一群回合入口挂着捡起（回包带 handoff_retry，摘掉就翻红）+ store 侧终态/上限/卡住串 + 那句话三语齐" || bad "G-55 wiring / 注入对照"
+
+echo "== G-56 GP-168：定时唤醒那一班车也来捡挂账的转交（捡起不再只等下一次群回合）=="
+# 和 G-55 同一个纪律：门写在 scripts/ 里但不接进聚合矩阵 = 没有门。
+node scripts/prove_gp168_handoff_wake.js >/tmp/gp168-wake.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp168-wake.log; then
+  ok "G-56 定时唤醒捡起合同全绿（$(grep -c '✓' /tmp/gp168-wake.log) 项，$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp168-wake.log)）"
+else
+  bad "G-56 prove_gp168_handoff_wake 未通过（见 /tmp/gp168-wake.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp168-wake.log || tail -1 /tmp/gp168-wake.log)）"
+fi
+for gp168_a in "W-01 routine_tick 之后效果行带得出 handoff_retry（定时唤醒真的扫了挂账）" \
+               "W-02 内核 nested_skipped 不算答上：挂账不得变 answered，群里不得出现「它答了」的行" \
+               "W-03b stuck 在群转录里看得见（复用 bot_reply_error，不新增转录 kind）" \
+               "W-04 stuck 是终态：再唤醒不再重跑、不再往群里刷行" \
+               "W-06 单次唤醒最多捡 5 笔，剩下的如实报 pending（不是一次唤醒换来十次模型调用）" \
+               "W-07b 交付的答案各归各群的转录（不写错房间）" \
+               "W-09 {room} 模式仍只处理那间群：B 间的调用捡不走 A 间的挂账（新增 all_rooms 没改老语义）" \
+               "W-10 没指定群也没开 all_rooms → 如实拒绝，不自作主张扫全部"; do
+  if grep -q "✓ $gp168_a" /tmp/gp168-wake.log; then ok "G-56 锚点：$gp168_a"; else bad "G-56 锚点没跑绿：$gp168_a"; fi
+done
+# 真生产入口取证：CLI「tick routines」（= scripts/host_routine_daemon.sh 每一轮真的跑的命令行）。
+# 只在这台机器的数据根里没有别人的挂账时才跑：捡起会写 attempts，绝不在用户真实任务上做取证。
+gp56probe=""
+rm -f /tmp/gp56-proof.json
+if [ "$(ls data/agents/handoffs/*.json 2>/dev/null | wc -l)" -eq 0 ]; then
+  node -e '
+const fs=require("fs"),path=require("path");
+const {createProductSurface}=require("./hosts/desktop/product_surface");
+const ROOT=path.resolve("."),DATA=path.join(ROOT,"data"),out=process.argv[1];
+const roomsP=path.join(DATA,"desktop","rooms.json");
+const rooms=JSON.parse(fs.readFileSync(roomsP,"utf8"));
+const ids=((JSON.parse(fs.readFileSync(path.join(DATA,"desktop","bots.json"),"utf8")).bots)||[]).filter((b)=>b&&b.hidden!==true&&b.id).map((b)=>b.id);
+if(ids.length<2){console.error("数据根里不足两个可见 Bot");process.exit(3);}
+const rid="gp56-probe-"+Date.now().toString(36);
+rooms.rooms=rooms.rooms||[];
+rooms.rooms.push({id:rid,title:"GP-168 探针群",members:[ids[0],ids[1]],transcript:[]});
+fs.writeFileSync(roomsP,JSON.stringify(rooms,null,2));
+const surface=createProductSurface(ROOT,{dataRoot:DATA});
+(async()=>{
+  const res=await surface.handoffTaskAsync({room:rid,from_bot:ids[0],to_bot:ids[1],task:"GP-168 探针：定时发文挂了的稿子"},{runResponderTurn:async()=>({ok:false,error:"provider down",text:"",artifacts:[]})});
+  if(!(res&&res.ok===true&&res.pending===true)){console.error("探针挂账造不出来 "+JSON.stringify({ok:res&&res.ok,pending:res&&res.pending,error:res&&res.error}));process.exit(4);}
+  const dir=path.join(DATA,"agents","handoffs");
+  fs.mkdirSync(dir,{recursive:true});
+  const file=path.join(dir,"handoff-"+ids[1]+"-"+Date.now().toString(36)+"-gp56.json");
+  fs.writeFileSync(file,JSON.stringify(Object.assign({},res,{inbox_path:"",path:file}),null,2));
+  fs.writeFileSync(out,JSON.stringify({room:rid,file:file,bot:ids[1]})+"\n");
+})().catch((e)=>{console.error("探针异常 "+String((e&&e.message)||e));process.exit(5);});
+' /tmp/gp56-proof.json >/tmp/gp56-setup.log 2>&1 && gp56probe=1
+  if [ "$gp56probe" = "1" ]; then
+    BITBOT_NEST_DEPTH=1 timeout 180 node hosts/cli_host/run_turn.js "tick routines" >/tmp/gp56-tick.json 2>/dev/null
+    node -e '
+const fs=require("fs");
+const info=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+const lines=fs.readFileSync(process.argv[2],"utf8").trim().split("\n").filter((l)=>l.startsWith("{"));
+const j=JSON.parse(lines[lines.length-1]);
+const hr=(j.host_results||[]).find((h)=>h&&h.kind==="routine_tick")||{};
+let payload={};try{payload=JSON.parse(hr.stdout||"{}");}catch(_){payload={};}
+const retry=payload.handoff_retry||hr.handoff_retry||null;
+const stub=JSON.parse(fs.readFileSync(info.file,"utf8"));
+const f=[];
+if(hr.ok!==true)f.push("routine_tick 这一轮没跑成");
+if(!retry||retry.scope!=="all_rooms")f.push("唤醒回包不带 handoff_retry(all_rooms)");
+if(!(Number(retry&&retry.scanned)>=1))f.push("scanned<1（没扫到探针挂账）");
+if(!(Number(retry&&retry.attempted)>=1))f.push("attempted<1（挂账没被捡）");
+if(stub.state==="answered")f.push("nested_skipped 被演成答上了");
+if(!(Number(stub.attempts)>=1))f.push("attempts 没递增");
+if(!/nested_skipped/.test(String(stub.last_error||"")))f.push("last_error 不是 nested_skipped："+stub.last_error);
+if(f.length){console.error(f.join(" | "));process.exit(1);}
+' /tmp/gp56-proof.json /tmp/gp56-tick.json >/tmp/gp56-assert.log 2>&1 \
+      && ok "G-56 真生产入口：CLI「tick routines」把探针挂账捡起重跑（attempts 递增、last_error=nested_skipped、没演成答上）" \
+      || bad "G-56 真生产入口取证未通过（见 /tmp/gp56-assert.log：$(tail -1 /tmp/gp56-assert.log)）"
+  else
+    echo "  · skip：探针挂账造不出来，G-56 真生产入口未跑（SKIP ≠ PASS，见 /tmp/gp56-setup.log）"
+  fi
+else
+  echo "  · skip：数据根里已有非探针的转交挂账，不在用户的真实任务上做取证（SKIP ≠ PASS）"
+fi
+# 探针只清自己造的那间群和那份凭据，别人的房间与转录一行都不动
+node -e '
+const fs=require("fs"),path=require("path");
+let info=null;try{info=JSON.parse(fs.readFileSync("/tmp/gp56-proof.json","utf8"));}catch(_){info=null;}
+if(!info)process.exit(0);
+const roomsP=path.resolve("data/desktop/rooms.json");
+try{
+  const rooms=JSON.parse(fs.readFileSync(roomsP,"utf8"));
+  const before=(rooms.rooms||[]).length;
+  rooms.rooms=(rooms.rooms||[]).filter((r)=>r&&r.id!==info.room);
+  fs.writeFileSync(roomsP,JSON.stringify(rooms,null,2));
+  if((rooms.rooms||[]).length!==before-1)console.error("探针房间删除数不为 1");
+}catch(e){console.error("探针房间清理失败 "+String((e&&e.message)||e));}
+try{fs.unlinkSync(info.file);}catch(_){}
+' >/tmp/gp56-clean.log 2>&1 || bad "G-56 探针清理失败（见 /tmp/gp56-clean.log）"
+# 接线锚 + 注入对照：真文件必须过、把班车挂载和 all_rooms 口径分别摘掉的副本必须翻红
+node -e '
+const fs=require("fs");
+const ffi=fs.readFileSync("hosts/shared/host_ffi.js","utf8");
+const cutBus=ffi.split("surface.retryPendingHandoffs").join("surface.handoffRetryEntryDisabled");
+const bus=(s)=>s.includes("surface.retryPendingHandoffs")&&s.includes("routineRes.handoff_retry = hr")&&/kind === "routine_tick" \|\| kind === "routine_wake"/.test(s);
+const cutDepth=ffi.split("ok: !!(out && out.ok !== false) && !out.nested_skipped,").join("ok: !!(out && out.ok !== false),");
+const depth=(s)=>(s.match(/&& !out\.nested_skipped/g)||[]).length>=2;
+const scope=fs.readFileSync("hosts/desktop/product_surface.js","utf8");
+const cutScope=scope.split(String.raw`scope: roomId ? "single_room" : allRooms ? "all_rooms" : ""`).join(String.raw`scope: ""`);
+const sc=(s)=>s.includes(String.raw`scope: roomId ? "single_room" : allRooms ? "all_rooms" : ""`)&&s.includes(String.raw`o.all_rooms === true`);
+const real=bus(ffi)&&depth(ffi)&&sc(scope), mut=!bus(cutBus)&&!depth(cutDepth)&&!sc(cutScope);
+if(!real)console.error("接线锚缺失：班车="+bus(ffi)+" 两处 nested_skipped 同口径="+depth(ffi)+" scope 口径="+sc(scope));
+if(!mut)console.error("注入对照没翻红：班车="+bus(cutBus)+" 深度口径="+depth(cutDepth)+" scope="+sc(cutScope));
+process.exit(real&&mut?0:1)' && ok "G-56 接线：唤醒班车挂着捡起 + 交接与群回合同一套 nested_skipped 口径 + scope 口径（三处各摘各的都翻红）" || bad "G-56 wiring / 注入对照"
+
+echo "== G-57 GP-169：Box 打包清单的传递闭包（手机连电脑那条链此前在真机上是断的）=="
+# HEAD 上的事实：prove_box_routine_sweep.js = pass=0 fail=2，Box 一起来就 MODULE_NOT_FOUND，
+# 而聚合矩阵里没有任何一行跑过它（grep -rn "prove_box_routine_sweep" scripts/*.sh 只命中它自己的 .sh 壳）。
+# 根因不是逻辑错，是 pack-box.sh 那份手写文件名清单没跟着 cn_inbound_server / host_ffi 的新 require 更新。
+node scripts/prove_box_pack_closure.js >/tmp/gp169-closure.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp169-closure.log; then
+  ok "G-57 打包清单闭包全绿（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-closure.log)，shared 清单 $(grep -m1 -o 'shared=[0-9]*' /tmp/gp169-closure.log)）"
+else
+  bad "G-57 prove_box_pack_closure 未通过（见 /tmp/gp169-closure.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-closure.log || tail -1 /tmp/gp169-closure.log)）"
+fi
+for gp169_a in "P-01 真入口的 require 闭包全在打包清单里" \
+               "P-02 闭包里的每个相对依赖在仓库里真的存在" \
+               "P-03 清单里没有仓库里不存在的幽灵条目" \
+               "P-04 这次补上的三个模块在清单里（回归锚）"; do
+  if grep -q "✓ $gp169_a" /tmp/gp169-closure.log; then ok "G-57 锚点：$gp169_a"; else bad "G-57 锚点没跑绿：$gp169_a"; fi
+done
+# GP-184 的两条新锚：尺子的视力（P-05）与这条链的三个名字（P-06）。
+# 文案里带本轮实测的边数，所以按前缀锚，不逐字比数字。
+if grep -q "✓ P-05 闭包真的走跨目录边" /tmp/gp169-closure.log; then
+  ok "G-57 锚点：P-05 尺子确实走通了 \`../…\` 的边（$(grep -m1 -o '`\.\./…` 拼法走通 [0-9]* 条' /tmp/gp169-closure.log)）——老视力只认 ./x，T1-03 那次漏拷就是从它眼皮底下过去的"
+else
+  bad "G-57 锚点没跑绿：P-05（闭包退回只看 ./x，../shared/… 的漏拷看不见）"
+fi
+if grep -q "✓ P-06 GP-184 回归锚" /tmp/gp169-closure.log; then
+  ok "G-57 锚点：P-06 event_mirror / event_mirror_ref 三个名字各在其位"
+else
+  bad "G-57 锚点没跑绿：P-06（event_mirror 这条链的名字缺位）"
+fi
+# 注入对照：把三个名字从清单里全量摘掉，在同一把尺子的副本上重跑 —— 必须翻红；
+# 同一副本不改时也必须是绿，否则红是尺子坏而不是清单坏。
+rm -rf /tmp/g57mut && mkdir -p /tmp/g57mut/scripts /tmp/g57mut/hosts
+ln -s "$(pwd)/hosts/shared" /tmp/g57mut/hosts/shared
+ln -s "$(pwd)/hosts/desktop" /tmp/g57mut/hosts/desktop
+# 用 cp 而不是 ln：node 会把主模块的 symlink 解析成 realpath，
+# 挂成软链时门里的 ROOT 会退回仓库本身 —— 第一次跑这条注入对照就是这么「假绿」的。
+cp -f scripts/prove_box_pack_closure.js /tmp/g57mut/scripts/prove_box_pack_closure.js
+node -e '
+const fs=require("fs");
+const src=fs.readFileSync("scripts/pack-box.sh","utf8");
+let cut=src;
+for(const n of ["desktop_pairing.js","lan_candidates.js","machine_presence.js"])cut=cut.split(" "+n).join("");
+if(cut===src){console.error("清单里摘不出这三个名字（尺子的输入不对）");process.exit(3);}
+fs.writeFileSync("/tmp/g57mut/scripts/pack-box.sh",cut);
+fs.writeFileSync("/tmp/g57mut/scripts/pack-box.clean.sh",src);
+' && node /tmp/g57mut/scripts/prove_box_pack_closure.js >/tmp/g57-mut.log 2>&1
+mut_red=1
+grep -q "fail=0" /tmp/g57-mut.log && mut_red=0
+cp -f /tmp/g57mut/scripts/pack-box.clean.sh /tmp/g57mut/scripts/pack-box.sh
+node /tmp/g57mut/scripts/prove_box_pack_closure.js >/tmp/g57-clean.log 2>&1 || mut_red=0
+if [ "$mut_red" = "1" ]; then ok "G-57 注入对照：摘掉三个名字的清单副本翻红、原样副本仍绿"; else bad "G-57 注入对照没成立（见 /tmp/g57-mut.log /tmp/g57-clean.log）"; fi
+# 真机取证：真的 pack 出一个 Box、真的把 Host 进程起来、真的用设备密钥走一遍手机审批链
+if timeout 900 node scripts/prove_box_routine_sweep.js >/tmp/gp169-sweep.log 2>&1 && grep -q "fail=0" /tmp/gp169-sweep.log; then
+  ok "G-57 真 Box 取证：打包→起进程→到点扫→手机拉待批→批准留痕→重复批准被拒（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log)）"
+else
+  bad "G-57 真 Box 取证未通过（见 /tmp/gp169-sweep.log；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log || tail -3 /tmp/gp169-sweep.log | tr '\n' ' ')）"
+fi
+# 打包那步的 require 自检要在取证日志里点名（pack-box.sh 收尾跑的
+# scripts/check_box_requires.js）：它判的是「打出来的包里，每个 require 簇至少
+# 一条候选指得到文件」——清单漏拷与「平铺包里写了 dev 专用的 ../shared/…」都在这
+# 里现形，而闭包尺子（P-01/P-05）看的是源。缺这一行 = 尺子没跑，不算绿。
+if grep -q "require 自检通过" /tmp/gp169-sweep.log; then
+  ok "G-57 打包 require 自检真跑了：$(grep -m1 -o '[0-9]* 个 .js、[0-9]* 个 require 簇' /tmp/gp169-sweep.log)，每簇至少一条指得到文件"
+else
+  bad "G-57 打包 require 自检没在取证日志里出现（pack-box.sh 里那步被摘掉了？SKIP ≠ PASS）"
+fi
+
+echo "== G-61 事件日志底座（T1-01/T1-02 · docs/events.md）=="
+# 状态从 JSON 快照迁到「可续订的日志」的前提是：seq 由存储层分配、幂等键去重、
+# 崩溃不丢、delta 永不落库。这些是纯 Node（node:sqlite）的断言，不需要显示环境。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 300 node scripts/prove_event_log.mjs > /tmp/g61-eventlog.log 2>&1; then
+    ok "G-61 事件日志契约全绿（$(grep -c '^ok EL' /tmp/g61-eventlog.log) 项，$(grep -m1 -o 'pass [0-9]* / fail [0-9]*' /tmp/g61-eventlog.log || tail -2 /tmp/g61-eventlog.log | head -1)）"
+  else
+    bad "G-61 事件日志契约（见 /tmp/g61-eventlog.log；$(grep -m1 -o 'pass [0-9]* / fail [0-9]*' /tmp/g61-eventlog.log || tail -2 /tmp/g61-eventlog.log | head -1)）"
+  fi
+  grep -q '^ok EL-04' /tmp/g61-eventlog.log \
+    && grep -q '^ok EL-07' /tmp/g61-eventlog.log \
+    && ok "G-61 幂等与崩溃两头的锚点在：重复投递读回原 seq、kill -9 之后已提交事件仍可读" \
+    || bad "G-61 idempotence / crash anchors missing"
+  grep -q '^ok EL-05' /tmp/g61-eventlog.log \
+    && grep -q '^ok EL-09' /tmp/g61-eventlog.log \
+    && ok "G-61 两条「拒绝」都在：delta 不进事件表、比读侧新的库拒绝打开" \
+    || bad "G-61 delta / version anchors missing"
+  echo "  · G-61 负向对照（本轮实测，断言非恒真）：把 NEVER_PERSISTED 清空后同一道门"
+  echo "    立刻 EL-05「本该抛错，却没有」翻红，汇总从 pass 10/fail 0 变 pass 7/fail 3；"
+  echo "    还原后回到 10/0 —— delta 能落库就意味着状态不再只由 fold(events) 得到"
+  echo "  · G-61 残留（诚实）：T1-04 读切换、T1-06 单写者还没接上（T1-03 双写由 G-62 盯）——"
+  echo "    本门只证明「日志本身立得住」，不证明 product_surface 已经改读它"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-61 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-62 双写旁路（T1-03 · fold(events) 与 JSON 快照逐字段相等，docs/events.md §5.4）=="
+# AC-T1-3 的原句是「逐字段相等」，所以这把尺子不比事件总数：20 个真实写入点每走一步
+# 就把日志从头折一次、和磁盘上的三张面比；库里出现的每一类事件都要被真删并重放全部
+# 步骤（缺一类就有一步跟不上），无法认领的变化当场红。开关关掉时必须一个文件都不多。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 600 node scripts/prove_event_dual_write.mjs > /tmp/g62-dualwrite.log 2>&1; then
+    ok "G-62 双写契约全绿（$(grep -c '^ok DW' /tmp/g62-dualwrite.log) 项，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g62-dualwrite.log)）"
+  else
+    bad "G-62 双写契约（见 /tmp/g62-dualwrite.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g62-dualwrite.log || tail -2 /tmp/g62-dualwrite.log | tr '\n' ' ')）"
+  fi
+  grep -q '^ok DW-02' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-03d' /tmp/g62-dualwrite.log \
+    && ok "G-62 逐步对拍与「零漏账」都在：$(grep -m1 -o '清单上 [0-9]* 步' /tmp/g62-dualwrite.log)每步都真改了快照，0 处变化没人认领" \
+    || bad "G-62 DW-02 / DW-03d 锚点缺失（逐步对拍或漏账断言没跑绿）"
+  grep -q '^ok DW-04z' /tmp/g62-dualwrite.log \
+    && ok "G-62 反向对照逐类真删在：$(grep -m1 -o '库里的 [0-9]* 类事件' /tmp/g62-dualwrite.log)删掉任何一类都有某一步 fold 跟不上（没有死词）" \
+    || bad "G-62 DW-04 锚点缺失（逐类反向对照没跑绿，DW-02 可能恒真）"
+  grep -q '^ok DW-05b' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-05c' /tmp/g62-dualwrite.log \
+    && ok "G-62 幂等的两条决定都在：同一处转换真发生两次库里就两行（不发 idem_key），内容没变的重复写一条不派" \
+    || bad "G-62 DW-05 锚点缺失（幂等口径没被断言）"
+  grep -q '^ok DW-06' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-01a' /tmp/g62-dualwrite.log \
+    && ok "G-62 两条「不改行为」都在：开关关掉一个 .sqlite 都不留；镜像开库失败时快照照常落盘且失败被说人话" \
+    || bad "G-62 DW-01a / DW-06 锚点缺失（旁路的隔离性没被断言）"
+  # DW-10：本门跑在有 node:sqlite 的 Node 上，看不见 Electron 里那颗 Node 20 的事实；
+  # 接线第一天正是这件事把主进程打死（G-16 往后所有 Electron 门一起红）。
+  grep -q '^ok DW-10a' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-10b' /tmp/g62-dualwrite.log \
+    && grep -q '^ok DW-10z' /tmp/g62-dualwrite.log \
+    && ok "G-62 老运行时三条都在：伪装成没有 node:sqlite 后，开关关着零加载零输出照常落盘、开着说一句「已降级为不写」，且对照证明伪装真生效" \
+    || bad "G-62 DW-10 锚点缺失（没有 node:sqlite 的运行时能不能启动没被断言）"
+  echo "  · G-62 与 Electron 的分工：DW-10 用 Module._load 伪装老运行时（机制），真开机由 G-16/G-46 的 Electron 门盯（产物）"
+  echo "  · G-62 实测（本轮日志，不是设计意图）：$(grep -m1 -o '[0-9]* 条事件、seq 严格递增[^（]*' /tmp/g62-dualwrite.log)；kind 账 $(grep -m1 -o 'approval_decided=[0-9]*.*session_created=[0-9]*' /tmp/g62-dualwrite.log)"
+  # 注入对照：把 diffStore 里那条 entity_order_changed 的派出摘掉（sessions.create 是
+  # unshift，顺序没人记 = fold 必然和快照分道），同一道门必须指名 DW 翻红。
+  rm -f /tmp/g62-mut.log /tmp/g62-clean.log
+  cp -f hosts/shared/event_mirror.js /tmp/g62-target.bak
+  node -e '
+const fs=require("fs");
+const p="hosts/shared/event_mirror.js";
+const src=fs.readFileSync(p,"utf8");
+const hit="events.push({ kind: \"entity_order_changed\", sessionId: \"system\", payload: { surface, ids: actualOrder } });";
+if(!src.includes(hit)){console.error("event_mirror.js 里找不到 entity_order_changed 那条派出（注入的输入不对）");process.exit(3);}
+fs.writeFileSync(p,src.split(hit).join("void actualOrder; /* G-62 注入：顺序没人认领 */"));
+' && timeout 600 node scripts/prove_event_dual_write.mjs >/tmp/g62-mut.log 2>&1
+  g62_caught=0
+  grep -q '^FAIL DW-' /tmp/g62-mut.log && g62_caught=1
+  cp -f /tmp/g62-target.bak hosts/shared/event_mirror.js
+  timeout 600 node scripts/prove_event_dual_write.mjs >/tmp/g62-clean.log 2>&1 && grep -q 'FAIL=0' /tmp/g62-clean.log || g62_caught=0
+  cmp -s /tmp/g62-target.bak hosts/shared/event_mirror.js || g62_caught=0
+  [ "$g62_caught" = "1" ] && ok "G-62 注入对照：摘掉 entity_order_changed 的派出就翻红（顺序没人认领），恢复后仍绿且文件逐字还原" \
+    || bad "G-62 注入对照没成立（见 /tmp/g62-mut.log /tmp/g62-clean.log）"
+  echo "  · G-62 残留（诚实）：双写证明的是「日志记得下今天的 JSON」，不证明产品已改读它"
+  echo "    （T1-04）、不再写 JSON（T1-05）、或同会话单写者（T1-06）；approvals.log.jsonl"
+  echo "    与 bots/settings/routines 都不在这三张面里（docs/events.md §7）。"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-62 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-63 设置 → 凭证按「必填 / 选填」分区（GP-185）=="
+# 这一屏以前的门只问「id 在不在」，从不管「在第几层、折叠没有」，所以烂布局能全绿。
+# 本门把形状钉成契约，同时钉住真机门依赖的可见性底线（折叠不能吃掉 Playwright 要点的控件）。
+if timeout 900 node scripts/prove_settings_credentials_zones.js > /tmp/g63-credzones.log 2>&1; then
+  ok "G-63 凭证分区契约全绿（$(grep -c '✓ CL' /tmp/g63-credzones.log) 项，$(tail -1 /tmp/g63-credzones.log)）"
+else
+  bad "G-63 凭证分区契约（见 /tmp/g63-credzones.log；$(tail -1 /tmp/g63-credzones.log)）"
+fi
+grep -q 'CL-04 真机门按 visible 点的' /tmp/g63-credzones.log \
+  && grep -q 'CL-10 负向对照' /tmp/g63-credzones.log \
+  && ok "G-63 两条命门都在：可见性底线（明面上的控件数 $(grep -o 'CL-04 真机门按 visible 点的 [0-9]*' /tmp/g63-credzones.log | grep -o '[0-9]*$')）+ 每条断言都能被真实改动打翻（$(grep -o 'CL-10 负向对照 [0-9]*/[0-9]*' /tmp/g63-credzones.log)）" \
+  || bad "G-63 CL-04 / CL-10 锚点缺失（可见性底线或反向对照没被断言）"
+echo "  · G-63 实测（本轮日志）：分区卡 $(grep -o 'CL-01 恰好 [0-9]* 张' /tmp/g63-credzones.log | grep -o '[0-9]*') 张、折叠外输入 $(grep -o 'CL-02 折叠外输入 = [0-9]*' /tmp/g63-credzones.log | grep -o '[0-9]*$') 栏、这一屏行内字面字号/色 $(grep -o 'CL-08 这一屏 [0-9]* 处' /tmp/g63-credzones.log | grep -o '[0-9]*') 处（原来 6 处）"
+echo "  · G-63 残留（诚实）：只断形状，不断观感；「保存并热加载」在真机上是否真把 Key 写进"
+  echo "    .env.local 并热加载，仍由 G-51/G-52 与 e2e_desktop_llm_key_paste_guard 盯。"
+
+echo "== G-58 常驻内核进程（T1-07 · 一行请求换一回合，替代每轮 spawn）=="
+# 需求的 AC 是可数的：「群聊 3 Bot 进程创建 = 0；崩溃自动重启并标记在途回合」。
+# 子门同时量常驻侧和「把常驻关掉」的对照侧，所以这里的锚点是两个方向都有数 ——
+# 只有常驻侧的数，无法区分「省掉了 spawn」和「没数到 spawn」。
+KR_LOG=/tmp/g58-kernel-resident.log
+KR_BIN=_build/native/release/build/cmd/desktop_turn/desktop_turn.exe
+if [ -x "$KR_BIN" ] || [ -x "${KR_BIN%.exe}" ]; then
+  if timeout 480 node scripts/prove_kernel_resident.mjs >"$KR_LOG" 2>&1; then
+    ok "G-58 常驻内核契约全绿（$(grep -c '^ok KR' "$KR_LOG") 项，$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' "$KR_LOG" || tail -2 "$KR_LOG" | head -1)）"
+  else
+    bad "G-58 常驻内核契约（见 $KR_LOG；$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' "$KR_LOG" || tail -2 "$KR_LOG" | head -1)）"
+  fi
+  # 摘数用 grep -o 抓「key=数字」，不用 cut -c：CJK 按字节切会切成半个字。
+  grep -q '^ok KR-04' "$KR_LOG" \
+    && ok "G-58 AC 原句在：群聊 3 Bot 稳态一轮 $(grep -o '进程创建=[0-9]*、Host spawn=[0-9]*、请求=[0-9]* 条' "$KR_LOG" | head -1)（$(grep -o 'returned=[0-9]*/[0-9]*' "$KR_LOG" | head -1)，回话内容另见下方残留说明）" \
+    || bad "G-58 KR-04 anchor missing（群聊 3 Bot 稳态零进程创建没被断言）"
+  grep -q '^ok KR-05' "$KR_LOG" \
+    && ok "G-58 崩溃侧锚点在：$(grep -o 'reason=[a-z_]*, turn=[A-Za-z0-9-]*' "$KR_LOG" | head -1)，$(grep -o '重启计数=[0-9]*' "$KR_LOG" | head -1)" \
+    || bad "G-58 KR-05 anchor missing（崩溃重启 + 在途回合点名没被断言）"
+  grep -q '^ok KR-03' "$KR_LOG" \
+    && grep -q '^ok KR-07' "$KR_LOG" \
+    && ok "G-58 反向对照 + 语义不变都在：关常驻 $(grep -o '[0-9]* 次 spawn' "$KR_LOG" | head -1)，常驻侧 $(grep -o 'Host 侧 spawn=[0-9]*' "$KR_LOG" | head -1)；同一批 argv 两条路结果逐条相同" \
+    || bad "G-58 对照锚点缺失（KR-03 反向对照 / KR-07 语义不变）"
+  grep -q '^ok KR-06' "$KR_LOG" \
+    && ok "G-58 旧内核兼容锚点在：不认 --serve 的二进制被如实判成 not_serving，不是 crashed，也不挂死" \
+    || bad "G-58 KR-06 anchor missing（旧内核识别没被断言）"
+  echo "  · G-58 实测（本轮日志，不是设计意图）：常驻 $(grep -o '池侧进程创建=[0-9]*' "$KR_LOG" | head -1)，同一个 pid 做完 $(grep -o '请求=[0-9]*' "$KR_LOG" | head -1) 条请求；对照关常驻 $(grep -o '[0-9]* 次 spawn' "$KR_LOG" | head -1)"
+  grep -q '^ok KR-10' "$KR_LOG" \
+    && ok "G-58 桌面默认锚点在：$(grep -o '默认值写在 createTurnRunner 之前' "$KR_LOG" | head -1)且退出钩子与回退口都在" \
+    || bad "G-58 KR-10 anchor missing（桌面宿主的默认值/关停钩子/回退口没被断言）"
+  echo "  · G-58 残留（诚实）：桌面宿主现在**默认**走常驻（BITBOT_KERNEL_RESIDENT=0 可退回每轮 spawn），"
+  echo "    但本门没有启动真 Electron 去数进程 —— KR-10 是结构锚点（默认值写在 runner 创建之前、"
+  echo "    before-quit/will-quit 钩子都在），不是开机实测。「打包出去的 app 已经不每轮 spawn」"
+  echo "    这一句改由真开机盖章：PA-08（node scripts/prove_pack_artifacts.mjs 起包里的 .app 跑完一轮，"
+  echo "    读包内证据的 loop_trace.resident，并确认宿主退出后包内内核 0 残留）。"
+  echo "    关掉常驻时旧路径一个字节都没变（旧客户端仍能连）。"
+  echo "    另外回话内容不在本门断言范围内：本机没配供应商密钥时 responder 回合会如实失败，"
+  echo "    门量的是「三条回合都落在同一批常驻进程上」这一件可数的事。"
+else
+  echo "  · skip：没有 release 内核二进制（$KR_BIN），G-58 未跑（SKIP ≠ PASS）"
+  echo "    先跑：moon build --target native --release"
+fi
+
+echo "== G-59 GP-170：装好的 App 自己就是唤醒源（不靠仓库里的 bash daemon）=="
+# 断点自证：唤醒此前 100% 外包给 scripts/host_routine_daemon.sh（bash），
+# 而 electron-builder 的 files 清单根本没有 scripts/ —— 装到用户机器上的 App
+# 找不到它；Windows 也没有 /bin/bash。既有 Electron 门禁又都设
+# BITBOT_ROUTINE_DAEMON_AUTOSTART=0，于是这条路径从来没被跑过。
+node -e '
+const fs=require("fs");
+const pkg=require("./hosts/desktop/package.json");
+const files=(pkg.build&&pkg.build.files)||[];
+const shipsScripts=files.some(f=>typeof f==="string"&&/^scripts\//.test(f));
+const main=fs.readFileSync("hosts/desktop/main.js","utf8");
+const wantsShellScript=main.includes("scripts\", \"host_routine_daemon.sh");
+process.exit(!shipsScripts&&wantsShellScript?0:1)' \
+  && ok "G-59 断点自证：装机包不含 scripts/，而 daemon 唤醒路径正需要它（所以必须有进程内定时器）" \
+  || bad "G-59 断点自证失败：package.json 已随包带 scripts/，或 main.js 不再依赖那份 shell 脚本 —— 先复核断点是否还存在"
+
+gp170_xvfb=()
+if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+  gp170_xvfb=(xvfb-run -a)
+fi
+# 空数组在 set -u 下 `"${arr[@]}"` 会直接 unbound 把整个矩阵带崩（macOS 没有
+# xvfb-run 时必踩）；和上面几道门一样用 ${arr[@]+"${arr[@]}"} 展开。
+gp170_run() { timeout 240 ${gp170_xvfb[@]+"${gp170_xvfb[@]}"} node scripts/e2e_desktop_sweep_timer.mjs >"$1" 2>&1; }
+
+if gp170_run /tmp/gp170-sweep.log && grep -q "FAIL=0" /tmp/gp170-sweep.log; then
+  ok "G-59 真 Electron：daemon 关闭时 App 自己扫 routine_tick（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log)）"
+else
+  bad "G-59 e2e_desktop_sweep_timer 未通过（见 /tmp/gp170-sweep.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/gp170-sweep.log || tail -3 /tmp/gp170-sweep.log | tr '\n' ' ')）"
+fi
+for gp170_a in "S-01 daemon 关闭时，App 自己会跑 routine_tick" \
+                "S-02 payload: desktop_sweep=true" \
+                "S-03 连续两轮 tick" \
+                "S-04 每轮都带 handoff_retry" \
+                "S-05 single-flight：每轮 started_at/ended_at 成对且不重叠" \
+                "S-06 退出后不再产生新 tick"; do
+  if grep -q "✓ $gp170_a" /tmp/gp170-sweep.log; then ok "G-59 锚点：$gp170_a"; else bad "G-59 锚点没跑绿：$gp170_a"; fi
+done
+
+# 注入对照（全量摘，不用 String.replace 的单次语义）：
+#   A 摘掉两个 syncWakeSource 启动点 → S-01..S-05 必须红
+#   B 摘掉 host_ffi 的 desktop_sweep 可选字段 → S-02 必须红
+#   C 摘掉 sweep 行的 ended_at → S-05 必须红
+#   D 把 handoff_retry 转述改成 null → S-04 必须红
+# 每次摘完都从备份恢复并用 cmp 核对，避免把仓库留在变异态。
+cp -f hosts/desktop/main.js /tmp/gp170-main.bak
+cp -f hosts/shared/host_ffi.js /tmp/gp170-ffi.bak
+gp170_restore() {
+  cp -f /tmp/gp170-main.bak hosts/desktop/main.js
+  cp -f /tmp/gp170-ffi.bak hosts/shared/host_ffi.js
+  cmp -s /tmp/gp170-main.bak hosts/desktop/main.js \
+    && cmp -s /tmp/gp170-ffi.bak hosts/shared/host_ffi.js
+}
+
+gp170_ok=1
+# A
+python3 - <<'PY' || gp170_ok=0
+p="hosts/desktop/main.js"; s=open(p).read()
+a=s.replace('  const wake = syncWakeSource();','  const wake = { wake_source: "mutated-off", interval_ms: 0 };')
+b=a.replace('  syncWakeSource();','  /* mutated off */')
+assert b!=s and "mutated-off" in b and b.count("/* mutated off */")>=2
+open(p,"w").write(b)
+PY
+gp170_run /tmp/gp170-mut-a.log || true
+grep -q "FAIL=5" /tmp/gp170-mut-a.log && ! grep -q "✓ S-01" /tmp/gp170-mut-a.log \
+  || { gp170_ok=0; cp -f /tmp/gp170-mut-a.log /tmp/gp170-mut-a.kept; }
+gp170_restore || gp170_ok=0
+# B
+python3 - <<'PY' || gp170_ok=0
+p="hosts/shared/host_ffi.js"; s=open(p).read()
+b=s.replace('      if (desktopSweep) wakeEntry.desktop_sweep = true;','      /* mutation: field removed */')
+assert b!=s
+open(p,"w").write(b)
+PY
+gp170_run /tmp/gp170-mut-b.log || true
+grep -q "FAIL=1" /tmp/gp170-mut-b.log && ! grep -q "✓ S-02" /tmp/gp170-mut-b.log && grep -q "✓ S-01" /tmp/gp170-mut-b.log \
+  || { gp170_ok=0; cp -f /tmp/gp170-mut-b.log /tmp/gp170-mut-b.kept; }
+gp170_restore || gp170_ok=0
+# C
+python3 - <<'PY' || gp170_ok=0
+p="hosts/desktop/main.js"; s=open(p).read()
+b=s.replace('    row.ended_at = new Date().toISOString();','    /* mutation: no ended_at */')
+assert b!=s
+open(p,"w").write(b)
+PY
+gp170_run /tmp/gp170-mut-c.log || true
+grep -q "FAIL=1" /tmp/gp170-mut-c.log && ! grep -q "✓ S-05" /tmp/gp170-mut-c.log && grep -q "✓ S-01" /tmp/gp170-mut-c.log \
+  || { gp170_ok=0; cp -f /tmp/gp170-mut-c.log /tmp/gp170-mut-c.kept; }
+gp170_restore || gp170_ok=0
+# D
+python3 - <<'PY' || gp170_ok=0
+p="hosts/desktop/main.js"; s=open(p).read()
+b=s.replace('    row.handoff_retry = (hit && hit.handoff_retry) || payload.handoff_retry || null;','    row.handoff_retry = null; /* mutation */')
+assert b!=s
+open(p,"w").write(b)
+PY
+gp170_run /tmp/gp170-mut-d.log || true
+grep -q "FAIL=1" /tmp/gp170-mut-d.log && ! grep -q "✓ S-04" /tmp/gp170-mut-d.log && grep -q "✓ S-01" /tmp/gp170-mut-d.log \
+  || { gp170_ok=0; cp -f /tmp/gp170-mut-d.log /tmp/gp170-mut-d.kept; }
+gp170_restore || gp170_ok=0
+
+[ "$gp170_ok" = "1" ] && ok "G-59 注入对照：摘启动点/S-01-05 红、摘字段/S-02 红、摘 ended_at/S-05 红、摘转述/S-04 红（四处各摘各的都翻红）" \
+  || bad "G-59 注入对照没成立（保留件见 /tmp/gp170-mut-*.kept）"
+
+echo "== G-60 GP-171：被提交的源码必须先是跑得动、能解析的源码（冲突标记事故 + bash 3.2 空数组的回归门）=="
+# 事实：远端 a0ec929 把未解完冲突的工作树提交了上去 ——
+#   hosts/desktop/product_surface.js 里 2 组 <<<<<<< / ======= / >>>>>>>
+#   scripts/prove_room_orchestrator.js 里 1 组，还有一份重复的 noRunner
+# 结果桌面 App 一 require 就 SyntaxError，编排门连启动都到不了；
+# 而当时的矩阵全在「解析之后」执行，没有任何一条会看源码本身。
+# 2026-10-30 又补了 I-04：同一类「门禁看不见」的破损是 shell 本身跑不动 ——
+#   矩阵 G-59 的 gp170_xvfb、pack-box.sh 的 BUILD_FLAGS、三个 prove_*.sh 的 FLAGS
+# 都在 `set -u` + bash 3.2 下炸空数组裸展开；`bash -n` 全绿，只有真走到那条分支才死。
+node scripts/prove_repo_integrity.mjs >/tmp/gp171-integrity.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp171-integrity.log; then
+  ok "G-60 仓库完整性门全绿（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp171-integrity.log)；$(grep -o '列出 [0-9]* 个被跟踪文件' /tmp/gp171-integrity.log | head -1)；$(grep -o '[0-9]* 个文件' /tmp/gp171-integrity.log | tail -1)）"
+else
+  bad "G-60 prove_repo_integrity 未通过（见 /tmp/gp171-integrity.log；$(tail -2 /tmp/gp171-integrity.log | tr '\n' ' ')）"
+fi
+for gp171_a in "I-00 git ls-files" "I-01 被跟踪文件里没有冲突标记" "I-02 被跟踪的 .js/.mjs 全部通过 node --check" "I-03 负向/正向对照" "I-04 被跟踪的 .sh 没有" "I-05 空数组尺子对照" "I-05 行为对照"; do
+  if grep -q "✓ $gp171_a" /tmp/gp171-integrity.log; then ok "G-60 锚点：$gp171_a"; else bad "G-60 锚点没跑绿：$gp171_a"; fi
+done
+# 注入对照：往一份真的被跟踪的源文件末尾塞一行冲突标记，同一把尺子必须翻红；
+# 恢复后必须绿。用 cmp 核对，工作树不留变异态。
+# 目标选一份被跟踪、但本门不执行的普通源码（别拿门禁脚本自己：塞标记会让它
+# 连解析都过不了，日志里根本没有 I-01 那行，会把「尺子真的红」误判成「尺子没动」）。
+cp -f hosts/desktop/paths.js /tmp/gp171-target.bak
+printf '\n<<<<<<< HEAD\n' >> hosts/desktop/paths.js
+node scripts/prove_repo_integrity.mjs >/tmp/gp171-mut.log 2>&1
+mut_caught=0
+grep -q "✗ I-01" /tmp/gp171-mut.log && mut_caught=1
+cp -f /tmp/gp171-target.bak hosts/desktop/paths.js
+node scripts/prove_repo_integrity.mjs >/tmp/gp171-clean.log 2>&1 && grep -q "fail=0" /tmp/gp171-clean.log || mut_caught=0
+cmp -s /tmp/gp171-target.bak hosts/desktop/paths.js || mut_caught=0
+[ "$mut_caught" = "1" ] && ok "G-60 注入对照：真塞一行冲突标记就翻红（I-01），恢复后仍绿" \
+  || bad "G-60 注入对照没成立（见 /tmp/gp171-mut.log /tmp/gp171-clean.log）"
+# I-04 的注入对照：把 pack-box.sh 里那条 `+` 惯用法还原成今天真实炸过的裸展开
+# （`"${BUILD_FLAGS[@]}"`，debug profile 下数组为空），尺子必须指名道姓翻红。
+rm -f /tmp/gp174-mut.log /tmp/gp174-clean.log
+cp -f scripts/pack-box.sh /tmp/gp174-target.bak
+node -e '
+const fs=require("fs");
+const p="scripts/pack-box.sh";
+const src=fs.readFileSync(p,"utf8");
+const cut=src.split("${BUILD_FLAGS[@]+\"${BUILD_FLAGS[@]}\"}").join("\"${BUILD_FLAGS[@]}\"");
+if(cut===src){console.error("pack-box.sh 里找不到那条惯用法（尺子的输入不对）");process.exit(3);}
+fs.writeFileSync(p,cut);
+' && node scripts/prove_repo_integrity.mjs >/tmp/gp174-mut.log 2>&1
+g174_caught=0
+grep -q "✗ I-04" /tmp/gp174-mut.log && grep -q "pack-box.sh.*BUILD_FLAGS" /tmp/gp174-mut.log && g174_caught=1
+cp -f /tmp/gp174-target.bak scripts/pack-box.sh
+node scripts/prove_repo_integrity.mjs >/tmp/gp174-clean.log 2>&1 && grep -q "fail=0" /tmp/gp174-clean.log || g174_caught=0
+cmp -s /tmp/gp174-target.bak scripts/pack-box.sh || g174_caught=0
+[ "$g174_caught" = "1" ] && ok "G-60 注入对照（I-04）：把 BUILD_FLAGS 那条 + 惯用法改回裸展开就翻红、且指到 pack-box.sh 行号，恢复后仍绿" \
+  || bad "G-60 I-04 注入对照没成立（见 /tmp/gp174-mut.log /tmp/gp174-clean.log）"
+
+echo "== G-63 GP-185：多端通用逻辑只有一份（环境解析 / 递送词表 / 机器 id）=="
+node scripts/prove_multihost_common.mjs >/tmp/gp185-mh.log 2>&1
+if [ $? -eq 0 ] && grep -q "fail=0" /tmp/gp185-mh.log; then
+  ok "G-63 多端通用逻辑门全绿（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp185-mh.log)）"
+else
+  bad "G-63 prove_multihost_common 未通过（见 /tmp/gp185-mh.log；$(tail -2 /tmp/gp185-mh.log | tr '\n' ' ')）"
+fi
+for gp185_a in "MC-00 三个回合入口都经由共享模块" "MC-01 .env.local 解析只有一份" "MC-02 残差词表只有一份" "MC-03 可递送 Host kind 清单" "MC-04 机器 id 默认值只有一份" "MC-05 桌面 / CLI / 手机端都走 run_moon_turn" "MC-06 进度分类只有 progress_protocol" "MC-07 尺子自检" "MC-08 行为等价" "MC-09 iOS/Android 残差键与 RESIDUAL_KEYS 同序"; do
+  if grep -q "✓ $gp185_a" /tmp/gp185-mh.log; then ok "G-63 锚点：$gp185_a"; else bad "G-63 锚点没跑绿：$gp185_a"; fi
+done
+# 注入对照 A：把一份重复的 .env 解析塞回 mobile_host —— MC-01 必须指名翻红。
+cp -f hosts/mobile_host/run.js /tmp/gp185-mobile.bak
+python3 - <<'PY'
+p = "hosts/mobile_host/run.js"
+s = open(p).read()
+s += '\n/* mutation: duplicate env parser */\n' + r'function legacyEnv(file) { for (const line of require("fs").readFileSync(file, "utf8").split(/\r?\n/)) { const t = line.trim(); if (!t || t.startsWith("#")) continue; const eq = t.indexOf("="); if (eq > 0) process.env[t.slice(0, eq)] = t.slice(eq + 1); } }' + '\n'
+open(p, "w").write(s)
+PY
+node scripts/prove_multihost_common.mjs >/tmp/gp185-mut-env.log 2>&1 || true
+g185a=0
+grep -q "✗ MC-01" /tmp/gp185-mut-env.log && grep -q "mobile_host/run.js" /tmp/gp185-mut-env.log && g185a=1
+cp -f /tmp/gp185-mobile.bak hosts/mobile_host/run.js
+node scripts/prove_multihost_common.mjs >/tmp/gp185-clean-a.log 2>&1 && grep -q "fail=0" /tmp/gp185-clean-a.log || g185a=0
+cmp -s /tmp/gp185-mobile.bak hosts/mobile_host/run.js || g185a=0
+[ "$g185a" = "1" ] && ok "G-63 注入对照（MC-01）：塞回一份 .env 解析就翻红、指到 mobile_host/run.js，恢复后仍绿" \
+  || bad "G-63 MC-01 注入对照没成立（见 /tmp/gp185-mut-env.log /tmp/gp185-clean-a.log）"
+# 注入对照 B：把 phone-android 写回 seedMachineId —— MC-04 必须翻红。
+cp -f hosts/shared/cn_inbound_product_on_turn.js /tmp/gp185-inbound.bak
+python3 - <<'PY'
+p = "hosts/shared/cn_inbound_product_on_turn.js"
+s = open(p).read()
+s = s.replace('function seedMachineId(machineKind) {', 'function seedMachineId(machineKind) {\n  if (machineKind === "android") return "phone-android"; /* mutation */')
+open(p, "w").write(s)
+PY
+node scripts/prove_multihost_common.mjs >/tmp/gp185-mut-id.log 2>&1 || true
+g185b=0
+grep -q "✗ MC-04" /tmp/gp185-mut-id.log && grep -q "cn_inbound_product_on_turn.js" /tmp/gp185-mut-id.log && g185b=1
+cp -f /tmp/gp185-inbound.bak hosts/shared/cn_inbound_product_on_turn.js
+node scripts/prove_multihost_common.mjs >/tmp/gp185-clean-b.log 2>&1 && grep -q "fail=0" /tmp/gp185-clean-b.log || g185b=0
+cmp -s /tmp/gp185-inbound.bak hosts/shared/cn_inbound_product_on_turn.js || g185b=0
+[ "$g185b" = "1" ] && ok "G-63 注入对照（MC-04）：把 phone-android 写回入站映射就翻红、指到 cn_inbound_product_on_turn.js，恢复后仍绿" \
+  || bad "G-63 MC-04 注入对照没成立（见 /tmp/gp185-mut-id.log /tmp/gp185-clean-b.log）"
+# 注入对照 C：从 iOS 壳删掉一个残差键 —— MC-09 必须翻红（chip 会少一枚、顺序也会漂）。
+cp -f hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift /tmp/gp185-ios.bak
+python3 - <<'PY'
+p = "hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift"
+s = open(p).read()
+s = s.replace('      "signin_fill_residual",\n    ]', '      \n    ]', 1)
+open(p, "w").write(s)
+PY
+node scripts/prove_multihost_common.mjs >/tmp/gp185-mut-native.log 2>&1 || true
+g185c=0
+grep -q "✗ MC-09" /tmp/gp185-mut-native.log && grep -q "iOS" /tmp/gp185-mut-native.log && g185c=1
+cp -f /tmp/gp185-ios.bak hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift
+node scripts/prove_multihost_common.mjs >/tmp/gp185-clean-c.log 2>&1 && grep -q "fail=0" /tmp/gp185-clean-c.log || g185c=0
+cmp -s /tmp/gp185-ios.bak hosts/ios/BitBotHost/Sources/BitBotHost/SendToUserSurface.swift || g185c=0
+[ "$g185c" = "1" ] && ok "G-63 注入对照（MC-09）：从 iOS 壳删掉一枚残差键就翻红、指到 iOS，恢复后仍绿" \
+  || bad "G-63 MC-09 注入对照没成立（见 /tmp/gp185-mut-native.log /tmp/gp185-clean-c.log）"
+
+# G-64 GP-186：旧 smoke_desktop_turn.sh 重新接进矩阵。
+# 它此前不在矩阵里，本机又因缺 ffmpeg / 文案过期 / 没有 provider 提前停 —— 停在哪
+# 就没人知道后面还剩多少没验。现在：本地 LLM stub 替模型应答（产品链仍是真的），
+# 环境没有的能力（ffmpeg/tesseract/真实窗口清单）逐行打 SKIP，绝不假绿。
+echo "== G-64 GP-186：旧 smoke_desktop_turn.sh 重新接入矩阵 =="
+g64_xvfb=()
+if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+  g64_xvfb=(xvfb-run -a)
+fi
+if timeout 2400 ${g64_xvfb[@]+"${g64_xvfb[@]}"} bash scripts/smoke_desktop_turn.sh >/tmp/g64-turn-smoke.log 2>&1; then
+  ok "G-64 旧 smoke_desktop_turn 跑完且零断言失败（$(grep -c '^SKIP:' /tmp/g64-turn-smoke.log) 行环境 SKIP，逐行可查）"
+  for g64_a in "webhook_wake inbound turn ok" "desktop electron smoke turn ok" "computer_use payment_wall fixture ok" "computer_use payment_wall live charge ok"; do
+    grep -q "$g64_a" /tmp/g64-turn-smoke.log && ok "G-64 锚点：$g64_a" || bad "G-64 锚点没出现：$g64_a"
+  done
+  grep '^SKIP:' /tmp/g64-turn-smoke.log | sed 's/^/    · /' || true
+else
+  bad "G-64 旧 smoke_desktop_turn 未通过（见 /tmp/g64-turn-smoke.log；$(tail -2 /tmp/g64-turn-smoke.log | tr '\n' ' ')）"
+  # Actions 的运行日志对匿名读者不可读；把子日志的「最近一节 + 尾部 8 行」写成
+  # 注解（::error），红在哪一步就能在 run 页面直接看到，不必再猜一次。
+  g64_sec="$(grep -n '^==> ' /tmp/g64-turn-smoke.log | tail -1 || true)"
+  [ -n "$g64_sec" ] && printf '::error title=g64-last-section::%s\n' "$g64_sec"
+  while IFS= read -r g64_l; do
+    printf '::error title=g64-turn-tail::%s\n' "$g64_l"
+  done < <(tail -8 /tmp/g64-turn-smoke.log 2>/dev/null)
+  # 矩阵日志本身在 Actions 里可下载；把子日志尾部 25 行贴进来，红在哪一步不用再猜。
+  echo "  · /tmp/g64-turn-smoke.log 尾部 25 行："
+  tail -25 /tmp/g64-turn-smoke.log 2>/dev/null | sed 's/^/    | /' || true
+fi
+
+echo "== G-65 读切换（T1-04 · BITBOT_EVENT_READ=1 时产品读事件日志，读不到诚实降级）=="
+# AC-T1-4 的原话是「产品读路径改读事件」：T1-03 只证明 fold(events) == JSON，
+# 这一门证明的是「产品读的时候读的就是 fold 结果」，且读模型坏了会说话、
+# 会回退 JSON，绝不把半折叠状态或空态当真。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 600 node scripts/prove_event_read_model.mjs > /tmp/g65-readmodel.log 2>&1; then
+    ok "G-65 读切换契约全绿（$(grep -c '^ok RM' /tmp/g65-readmodel.log) 项，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g65-readmodel.log)）"
+  else
+    bad "G-65 读切换契约（见 /tmp/g65-readmodel.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g65-readmodel.log || tail -2 /tmp/g65-readmodel.log | tr '\n' ' ')）"
+  fi
+  grep -q '^ok RM-03' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-04' /tmp/g65-readmodel.log \
+    && ok "G-65 读等价与棘轮都在：READ=1 时 list/get/loadRooms/pendingApprovals 与 JSON 逐字段相等，且在读世界里继续写不漂移" \
+    || bad "G-65 RM-03 / RM-04 锚点缺失（读等价或读写闭环没被断言）"
+  grep -q '^ok RM-02' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-06a' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-06b' /tmp/g65-readmodel.log \
+    && ok "G-65 三条降级路都在且都说话：没库（no_db）、库坏（垃圾字节）、fold 有 anomaly 都回退 JSON 并打一行说明" \
+    || bad "G-65 降级锚点缺失（no_db / 坏库 / anomaly 三条路没被断言）"
+  grep -q '^ok RM-05' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-08' /tmp/g65-readmodel.log \
+    && ok "G-65 缓存与老运行时都在：lastSeq 失效 + 深拷贝不污染；没有 node:sqlite 时 READ=1 也不炸" \
+    || bad "G-65 RM-05 / RM-08 锚点缺失（缓存语义或老运行时启动没被断言）"
+  echo "  · G-65 边界（诚实）：写侧照旧走 JSON+双写镜像，本门只换「读」；"
+  echo "    T1-05 停写 JSON 之后，approvalDecide 的整文件重写与「首播种」路径才是下一道门。"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-65 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-66 停写 JSON（T1-05 · BITBOT_EVENT_ONLY=1 时事件库是三张面唯一真源）=="
+# AC-T1-5 的原话是「停写 JSON」：EVENT_ONLY 下三张面 JSON 一个字节都不再被写，
+# 事件库是唯一写路径与读真源。写失败必须喊出来——JSON 不再是备份，吞错 = 丢数据。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 600 node scripts/prove_event_only.mjs > /tmp/g66-eventonly.log 2>&1; then
+    ok "G-66 停写契约全绿（$(grep -c '^ok EO' /tmp/g66-eventonly.log) 项，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g66-eventonly.log)）"
+  else
+    # 红的时候把 FAIL 行与尾部 25 行贴进矩阵输出——子日志在 runner 的 /tmp 里，
+    # 不贴出来红因就只能靠猜（上一轮就是吃的这个亏）。
+    bad "G-66 停写契约（FAIL 行：$(grep '^FAIL' /tmp/g66-eventonly.log | tr '\n' ' | ' | head -c 400)）"
+    echo "  · /tmp/g66-eventonly.log 尾部 25 行："
+    tail -25 /tmp/g66-eventonly.log 2>/dev/null | sed 's/^/    | /' || true
+    printf '::error title=g66-tail::%s\n' "$(tail -8 /tmp/g66-eventonly.log 2>/dev/null | tr '\n' ' ')"
+  fi
+  grep -q '^ok EO-01' /tmp/g66-eventonly.log \
+    && grep -q '^ok EO-02' /tmp/g66-eventonly.log \
+    && ok "G-66 停写与对照都在：三张面零落盘（bots.json/审计流水照常），同一串操作两个世界折叠同形" \
+    || bad "G-66 EO-01 / EO-02 锚点缺失（停写或行为对照没被断言）"
+  grep -q '^ok EO-03' /tmp/g66-eventonly.log \
+    && grep -q '^ok EO-04' /tmp/g66-eventonly.log \
+    && grep -q '^ok EO-05' /tmp/g66-eventonly.log \
+    && ok "G-66 数据迁移三条都在：导入幂等（第二遍 0 新增）、遗留纯读不建库、首次写入自导入（基底+delta，无幽灵实体）" \
+    || bad "G-66 EO-03/04/05 锚点缺失（导入幂等或遗留接管没被断言）"
+  grep -q '^ok EO-06' /tmp/g66-eventonly.log \
+    && grep -q '^ok EO-07' /tmp/g66-eventonly.log \
+    && ok "G-66 两条 fail-loud 都在：库坏写入当场抛（对照双写吞错），老运行时 EVENT_ONLY 无可静默降级" \
+    || bad "G-66 EO-06 / EO-07 锚点缺失（fail-loud 没被断言）"
+  echo "  · G-66 与导入脚本的分工：scripts/import_json_to_events.mjs 是登机梯"
+  echo "    （先导入再开 EVENT_ONLY）；EO-05 的自导入是没跑梯子的兜底，不是替代。"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-66 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-67 移动端远程控制弹窗（配对的主路：状态点 + 6 位码 + 复制链接）=="
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g67_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g67_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 ${g67_xvfb[@]+"${g67_xvfb[@]}"} node scripts/e2e_desktop_mobile_control.mjs > /tmp/g67-mobctl.log 2>&1; then
+    ok "G-67 e2e_desktop_mobile_control 全绿（$(grep -c '✓' /tmp/g67-mobctl.log) 项，$(tail -1 /tmp/g67-mobctl.log)）"
+  else
+    bad "G-67 e2e_desktop_mobile_control（见 /tmp/g67-mobctl.log；$(tail -1 /tmp/g67-mobctl.log)）"
+    grep -n "✗" /tmp/g67-mobctl.log 2>/dev/null | head -10 | while IFS= read -r line; do echo "    ${line}"; done
+    tail -6 /tmp/g67-mobctl.log 2>/dev/null | while IFS= read -r line; do echo "    | ${line}"; done
+  fi
+  grep -q "MC-03 状态点 off→on 如实" /tmp/g67-mobctl.log \
+    && grep -q "MC-04 生成" /tmp/g67-mobctl.log \
+    && grep -q "MC-05 复制配对链接当场回显" /tmp/g67-mobctl.log \
+    && ok "G-67 主路三条在：状态点如实（没放开不亮绿）、配对码生成/刷新/作废与 Host 同步、复制链接当场回显" \
+    || bad "G-67 主路锚点缺失（状态点 / 配对码 / 复制链接没被断言到）"
+  grep -q "MC-06 Esc 与遮罩都能关" /tmp/g67-mobctl.log \
+    && grep -q "MC-07 只列钉钉" /tmp/g67-mobctl.log \
+    && grep -q "MC-09 480×720" /tmp/g67-mobctl.log \
+    && grep -q "MC-11 480×" /tmp/g67-mobctl.log \
+    && ok "G-67 边界三条在：Esc 与遮罩都关得掉且焦点归还、渠道列只有真支持的三条且不叠弹窗、480 宽不破版且账户菜单点得到" \
+    || bad "G-67 边界锚点缺失（关闭 / 渠道列 / 窄屏没被断言到）"
+  echo "  · G-67 修复前红（HEAD 8ca2c5e 产品代码真实输出）：PASS=0 FAIL=10 —— 入口、弹窗、"
+  echo "    状态点、渠道列全都不存在；能力（pairing-v1）早就在，缺的是这一屏的入口与实话"
+  echo "  · G-67 第二道红（弹窗做完之后，480×693 实测）：PASS=9 FAIL=2 —— 账户弹层向上开，"
+  echo "    ap-usage y=-161 / ap-remote y=-97 / ap-connect y=1，整片在屏外："
+  echo "    窄窗口里点不到任何一项（不只新入口，设置/连接应用同样死）。横带内改 fixed 向下开才绿"
+  echo "  · G-67 残留（诚实）：没有二维码 —— 现在仍靠「复制配对链接 / 手敲 6 位码」，"
+  echo "    手机摄像头那条路是下一波（M 档）；这一屏也不做「远程操作当前工作区」，"
+  echo "    那是新协议面（L 档），需要设计评审；国内渠道仍只到「去配置」，配置本身在 G-51/G-52"
+  echo "  · G-67 已知边界：480 宽 ≤ 折叠断点(768) 时侧栏自动收起，账户入口要先 Ctrl/Cmd+B"
+  echo "    展开才点得到 —— 横带本身要不要改成抽屉，仍是 §8.51 那条残留，不在本波范围内"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-67 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-68 配对落地页 /pair（「复制配对链接」点开必须是一页纸）=="
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g68_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g68_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 ${g68_xvfb[@]+"${g68_xvfb[@]}"} node scripts/e2e_desktop_pair_page.mjs > /tmp/g68-pairpage.log 2>&1; then
+    ok "G-68 e2e_desktop_pair_page 全绿（$(grep -c '✓' /tmp/g68-pairpage.log) 项，$(tail -1 /tmp/g68-pairpage.log)）"
+  else
+    bad "G-68 e2e_desktop_pair_page（见 /tmp/g68-pairpage.log；$(tail -1 /tmp/g68-pairpage.log)）"
+    grep -n "✗" /tmp/g68-pairpage.log 2>/dev/null | head -10 | while IFS= read -r line; do echo "    ${line}"; done
+    tail -6 /tmp/g68-pairpage.log 2>/dev/null | while IFS= read -r line; do echo "    | ${line}"; done
+  fi
+  grep -q "PP-01 GET /pair → 200 text/html" /tmp/g68-pairpage.log \
+    && grep -q "PP-08 弹窗「复制配对链接」复制的是 /pair 页面" /tmp/g68-pairpage.log \
+    && ok "G-68 主路两条在：/pair 真回页面（不是 JSON 404）、弹窗复制的确实是这一页" \
+    || bad "G-68 主路锚点缺失（/pair 或复制链接没被断言到）"
+  grep -q "PP-03 页面不含 64 位令牌" /tmp/g68-pairpage.log \
+    && grep -q "PP-04 页面无表单、不碰 /v1/pair/redeem" /tmp/g68-pairpage.log \
+    && grep -q "PP-10 页面带 noindex" /tmp/g68-pairpage.log \
+    && ok "G-68 安全三条在：不含凭证、不是第二个 redeem 面、公网隧道下不缓存不索引" \
+    || bad "G-68 安全锚点缺失（凭证 / redeem / 安全头没被断言到）"
+  echo "  · G-68 修复前红（HEAD 0556e7a 产品代码真实输出）：PASS=1 FAIL=10 ——"
+  echo "    GET /pair 与 GET / 都回 unknown_cn_inbound_route 的 JSON 404，"
+  echo "    弹窗里那颗「复制配对链接」复制出来的是 http://25.4.80.50:41795（裸地址）"
+  echo "  · G-68 顺带修的：未知路由 404 的 routes 清单过期（连 /v1/pair/* 都没列）——"
+  echo "    现在列出 /pair、/v1/pair/discover、/v1/pair/redeem，不再教用户走错路"
+  echo "  · G-68 残留（诚实）：这一页只是说明页，不能在浏览器里完成配对（故意不做 —— "
+  echo "    谁在浏览器里输 6 位码，bearer 就落到那个浏览器里）；仍未做二维码（GP-192），"
+  echo "    二维码要等手机端能扫码：Android 现在没有摄像头/扫码依赖，也没有 deep-link "
+  echo "    intent-filter，系统相机扫出来的 URL 手机 App 接不住"
+  echo "  · G-68 已知边界：页面显示主机名与端口，泄露面与既有的 /v1/pair/discover 同级；"
+  echo "    走 cloudflared 公网隧道时全网可读（discover 今天已经是这样），故带 noindex/no-store"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-68 未跑（SKIP ≠ PASS）"
+fi
+
+echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

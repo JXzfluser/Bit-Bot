@@ -23,12 +23,12 @@ pub fn ChannelDelivery::is_external(self : ChannelDelivery) -> Bool {
 /// CM-1101: if inbound carried an external channel, reply MUST use the same
 /// channel for external delivery. Omitting channel must NOT deliver externally
 /// (stays InAppOnly). Mismatched channel → Err.
+/// 这里只决定"投到哪里"，不看正文——正文由调用方自己带进信封。早期版本带一个
+/// `body` 参数却从不使用，会让调用方误以为这里做过正文校验，已移除。
 pub fn plan_channel_reply(
   inbound_address~ : String?,
   outbound_channel~ : String?,
-  body~ : String,
 ) -> Result[ChannelDelivery, String] {
-  let _ = body
   match inbound_address {
     None =>
       // No inbound channel: outbound channel optional; None stays in-app.
@@ -39,8 +39,15 @@ pub fn plan_channel_reply(
     Some(inbound) => {
       let parsed = parse_channel_address(inbound)
       let inbound_is_external = match parsed.kind {
-        Slack | Email | Sms | Webhook | Voice | Teams | DingTalk | Feishu | WeCom =>
-          true
+        Slack
+        | Email
+        | Sms
+        | Webhook
+        | Voice
+        | Teams
+        | DingTalk
+        | Feishu
+        | WeCom => true
         Chat | Internal => false
       }
       if !inbound_is_external {

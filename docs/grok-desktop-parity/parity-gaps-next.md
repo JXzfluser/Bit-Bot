@@ -145,6 +145,183 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 | GP-146 | 群 transcript 按条目渲染（user 行 / `bot_reply` 带头像+名+正文+产物 / `final_report` 卡带 N/总、partial、分区、产物）；运行中每 responder 一张「工作中」卡；失败出 `bot_reply_error`；未收齐显式 `1/2 partial`，绝不显示「全部完成」；旧无 `kind` 行不崩 | renderer 逐行分派，不复用「拼一段纯文本」路径；全部文案 `t(key)` 三语 | 真渲染实测：`.room-user/.room-reply/.room-error/.room-report/.room-working` 五类计数与持久行一致，partial 卡含「未收齐」且不含「已全部收齐」，错误卡点名失败 Bot | 不新增调试面板；DM 面残留的既有协议码（`CM-0205`、boot banner）不属本包范围 |
 | GP-147（细节波，同轮二次审计） | 群聊产品面的**诚实性收口**：拒绝/幂等说明卡必须在整表重绘后仍可见；「工作中」态只在真扇出时出现；共享转录逐字段有界；失败原因说人话（协议码只进 dev-mode）；点名未命中不装成功；**`rooms.json` 故障不得演成「历史没了」，也不得被一次写入覆盖** | `sendRoomTurn` 说明卡延后落位；`orchestrateRoom` 的 `deps.onFanout` 拥有运行态；`clipRoomText` + `*_truncated`；`roomFailReason`/`roomOpFailReason`；`unknown_mentions`；`roomsStoreStatus()`（读侧）+ `requireWritableRooms()`（写侧 fail closed，6 个写入点）+ `rooms:list`/`rooms-changed` 带 `ok` + `rooms.onRoomsChanged` 自动退出 + `host_ffi` effect 层 try/catch | 真渲染 S10–S14（有界 / 幂等不闪态 / 未命中点名 / 坏 JSON 如实报「读不到」且恢复后按原文件重建 / 群被移出目录自动退出）+ `prove_gp143` Q 块（坏存储读写面）+ `prove_m29` 静态面 + smoke G-29 新增一条 | 不声称内核 `Orchestrate` 等价；坏存储时**拒绝写**而非重建空目录，用户历史优先于「功能可用」；说明卡用本地化文案，内部路径/协议码不进产品面 |
 
+### G-F 转交凭据的下游（§8.30 修完状态诚实性之后暴露的两条真缺口）
+
+| ID | 主线行为 | 现状（不是「已实现」） | 可证伪验收 | 风险护栏 |
+|----|----------|----------------------|------------|----------|
+| GP-166 | 承接方这轮没答上（没密钥 / provider 挂 / 超时 / 无 runner）时，转交凭据已在 `data/agents/inbox/<bot>.jsonl` 与 `data/agents/handoffs/handoff-<bot>-<ts>.json` 落盘（§8.30 已做到，因果锚点钉死「写行 ⇒ 排队 ⇒ 存根」）。**缺口：没有任何东西把它捡起来** —— 下一轮 / 定时唤醒时不读 inbox、不重跑、不提醒，博主会以为「已转交」等于「有人在做了」 | **残留（半闭环）**：`AGENT_INBOX_DIR` 全仓 3 处写、0 处读；回包形状已有 `pending:true` / `execution:"queued"` / `reply_error`，但没有消费者 | 建群转交给一个 provider 会失败的 Bot → 屏幕上出「受理并排队」（已绿）→ **再发一句无关群消息，该 pending 任务必须被自动捡起并产出 `bot_reply`**，或至少产出一条可见提醒（「还挂着 N 笔没跑」）；跑完 inbox 那笔要么被消费要么带 `attempts` 计数；`prove_room_orchestrator` + smoke G-14 各加一条「捡起后不重复执行」的断言 | **(a) 幂等键**：捡起必须带去重键（`handoff-<to>-<ts>` 即凭据 id），重跑不得让同一任务产出两条 `bot_reply` 或两次外发动作——对「发文 / 推邮箱」这类后果性动作，没幂等键就不许自动跑；**(b) 审批不因为重跑而绕过**：捡起的一轮仍走第 6 步门（`approved:false`）；**(c) 有界重试**：`attempts` 上限 + 到上限如实标 `handoff_stuck` 并点名原因，不许无限自激 |
+| GP-167 | 群里触发的敏感动作（外发 / 购买 / 删除）产生的审批请求只进归属 Bot 的私聊，不进群转录 | **残留（承诺悬空）**：旧 `roomTurn` 里那句 `escalations:"dm-only"` 字段在群路径重写进 `hosts/shared/room_*` 后整条链都不再产生、也不再被消费；smoke GP-53 已从「grep 那个字面量」改为**量行为**（Host 结果与群转录里都不许出现审批卡），但这条取证目前是靠「新路径压根不产生审批卡」成立的 | 群回合里让某 Bot 执行一个 consequential 动作 → 断言：① 群转录 / `host_results` 里 `kind` 无 approval；② 审批请求出现在该 Bot 的私聊 DM 且带 room 溯源；③ 批准后动作真执行并回写群 `bot_reply`；任一环节缺失都必须红，不许用「没有东西可漏」蒙过 | 不实现 ② 之前，验收只能证「没漏进群」，**不能声称 dm-only 已交付**；接通后立刻把这条从「残留」升级为硬门，并复用 §8.30 的 `room_approval_leak` 与注入对照（防恒真） |
+
+### G-F.1 GP-166 状态更新（本轮：从「残留（半闭环）」升级为「已实现（Host + 渲染双证）」）
+
+上表的现状列写的还是「没有任何东西把它捡起来」——那句在本轮之后不再成立，但**不删原行**，
+在这里改口径，历史可读。
+
+| 项 | 现在的实现 | 取证（实测数字，不是设计意图） |
+|----|------------|--------------------------------|
+| 捡起入口 | `hosts/shared/room_dispatch.js` 在群回合扇出之后调 `surface.retryPendingHandoffs({room, deps})`，结果带在回包的**可选字段** `handoff_retry` 上；桌面 IPC 与 CLI / 移动端共用这一个入口 | `prove_room_orchestrator` R-01 / R-01b / R-01c 绿（M5 把入口摘掉立刻红 90/3）；矩阵 G-55 接线锚 + 注入对照 |
+| 幂等键 | 存根文件名 `handoff-<to>-<ts>` 即凭据 id；`answered` / `stuck` 一律不再调模型 | R-02（答案不出现第二条、本轮只多新消息那一次调用）；R-03d（stuck 不自激）；M1（摘掉终态跳过）→ R-02 / R-03d / R-09 翻红 |
+| 审批不绕过 | 捡起的一轮复用 `executeHandoff`：`ctx.role="handoff_target"`、取消通道在、**不带 `approved`** | R-04 绿 |
+| 有界重试 | 上限 3（`HANDOFF_MAX_ATTEMPTS`），`attempts` 只在真跑一轮时 +1；到上限写 `state:"stuck"` + 一条 `bot_reply_error`（`handoff_stuck:<原因>（第 3/3 次）`），每轮最多捡 5 笔 | R-03a/b/c/d 绿；M3+M4 / M6 → R-03 链翻红；渲染层真 Electron 三语「这件事已停下（不再自动重试），需要有人来看」，且 `handoff_stuck` / `provider down` 不摊到产品面 |
+| 并发与崩溃回收 | 跑之前写 `state:"running" + claimed_at`；新鲜 claim 跳过，超 10 分钟才允许接手且次数累加 | R-09 / R-10 绿 |
+| 不删用户数据 | 坏 JSON 存根原样留在原地只计数；`rooms.json` 读不动时整轮返回 `rooms_store_unreadable` 而不把凭据演成终态 | R-06 / R-06b 绿（断言字节不变） |
+| 群之间不串 | 只处理 `stub.room === 本群` 的凭据 | R-08 绿；M2 → 立刻翻红 |
+
+**GP-166 的新残留（原「残留（半闭环）」里那条 0 处读已闭合，换这几条顶上）**：
+
+- 捡起只搭「下一次群回合」这班车；routines / 定时唤醒那条路不走 `dispatchRoomTurn`，因此还没接
+  `retryPendingHandoffs`——「定时发文失败了，等到有人再发一句话才醒」这件事仍然存在。
+- 端到端用注入 runner 取证；真 provider 挂掉 → 下一轮自动捡起 → 屏幕出现答案这一整链
+  要在装了真 key 的机器 / 真机上再验一次。
+- 上限 3 / 每轮 5 笔 / claim 10 分钟是写死的默认值，没有可配项，也没做设备侧验证。
+- inbox JSONL 仍只是账本：捡起终态只回写在存根上，没有「还挂着 N 笔」的统一查询面。
+- `e2e_desktop_room_orchestration.mjs` 仍未接进聚合门（本轮只把 `prove_room_orchestrator.js` 接进 G-55）。
+
+### G-F.2 GP-168 / GP-169（本轮：捡起搭上定时唤醒那班车；顺手发现 Box 打包清单缺一块）
+
+G-F.1 的新残留里第一条「捡起只搭『下一次群回合』这班车」在本轮闭合。**不删原行，历史可读**，
+口径改在这里。
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-168 | 定时发文内部转交给审核 Bot、provider 挂了 → 凭据落盘；一整天群里没人再发消息，第二天定时 sweep 必须把它叫醒并重跑 | **已实现（Host + CLI 生产入口 + 真 Electron 三证）**：`retryPendingHandoffs` 开可选入参 `all_rooms`，回包加可选字段 `scope`；`routine_tick` / `routine_wake` 在 `executeHostEffects` 收口处顺路捡一轮，效果行与 stdout 都带 `handoff_retry` | 新门 `prove_gp168_handoff_wake.js` 8/10 红 → **18/0**；矩阵 **G-56** 11 条（合同门 + 8 条 W 锚点 + 真生产入口探针 + 三处各摘各的都翻红的注入对照）；`e2e_desktop_user_journeys` 里两条真 Electron 取证（摘掉班车 69/2 → **71/0**）；七组变异 M1…M7 全部有归属 | 桌面 App 自己不起定时器（只有 daemon / Box 的 sweep 会捡）；单轮上限 5 笔、上限 3 次都写死且界面上没有「还剩几笔」 |
+| GP-169 | 手机连上我这台电脑：Box 打包出来要能起来，到点扫、待批清单、批准留痕、同一笔不能再批第二次 | **已实现（HEAD 上是断的）**：`pack-box.sh` 的 shared 清单漏了 `desktop_pairing.js` / `lan_candidates.js` / `machine_presence.js` 三个 require，Box 一启动就 `MODULE_NOT_FOUND`；补齐 20 → 23 | `prove_box_routine_sweep.js` 在 HEAD 树复跑 **0/2**（SW-1 stderr `MODULE_NOT_FOUND`，其余 16 条没机会执行）→ 修复后 **18/0**；新门 `prove_box_pack_closure.js` **3/2 → 5/0**；矩阵 **G-57** 7 条（闭包门 + 4 条 P 锚点 + 清单副本注入对照 + 真 Box 取证） | 只验到同一台机器的 loopback；真手机跨机器连接与配对码流程仍未验。闭包门只覆盖三个入口的相对 `require("./x")`，动态拼路径抓不到 |
+
+本轮另外记下的两条事实（不属于功能，但属于同一套纪律）：
+
+- `runHandoffTurn` 在 `nested_skipped` 时把「内核被跳过」演成「目标 Bot 答上了」，捡起路径正好走它。
+  已按 responder 闭包的同一口径改成失败。变异对照显示这一处宽松会连带把 W-02 / W-03 / W-03b / W-05 /
+  W-07b 五条一起演绿 —— 「一处假交付」不是本地问题。
+- 「门存在但没人跑」第二次撞上：`prove_box_routine_sweep.js` 从来没被任何聚合门引用，
+  所以 Box 断在启动第一步而矩阵照旧全绿。G-57 把它接进矩阵（同 G-55 对 `prove_room_orchestrator.js` 的做法）。
+
+### G-F.3 GP-170（本轮：装好的 App 自己就是唤醒源）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-170 | 自媒体博主装好桌面端、电脑一直开着、群里没人说话：08:00 定时发文 / 交稿转审核 / 晚上推邮箱必须照常发生 | **已实现**：`hosts/desktop/main.js` 在主进程里跑 `routine_tick`（默认 60s，`BITBOT_DESKTOP_SWEEP_MS` 可调），single-flight，`data/routines/desktop-sweep.jsonl` 记每轮与 `handoff_retry`；`syncWakeSource()` 保证 shell daemon 真在跑时让位；quit 停表 | 新门 `e2e_desktop_sweep_timer.mjs` 在 daemon 关闭（= 装机布局）下真 Electron **0/5 → 6/0**；矩阵 **G-59** 9 条（断点自证 + 门 + 6 锚点 + 四路注入对照）；tick payload 只加可选 `desktop_sweep` / `note` / `at` | 见下两条纪律事实与 `report.md` §8.34 ⑨ |
+
+本轮另外记下的三条事实：
+
+- 唤醒的断点不是「没有定时器」，而是「唯一会醒的进程不在包里」：`package.json` 的 `build.files`
+  不含 `scripts/`，`ensureRoutineDaemon()` 却依赖 `scripts/host_routine_daemon.sh`；Windows 也没有
+  `/bin/bash`。所有 Electron 门禁又统一关掉 daemon，所以这条路从来没被跑过。G-59 用「断点自证」+
+  「daemon 关闭下 App 自己扫」两段把它钉住。
+- 又一次「能被两处喂饱的尺子不算尺子」：只摘 `whenReady` 里的 `syncWakeSource()`，门仍 6/0 全绿
+  （`bitbot:daemon:ensure` 的 IPC 里还有一处）。必须两处全摘才 5 红。
+- S-06 是粗尺：进程退出本身就会让定时器消失，所以「退出后不再有新 tick」即使漏掉 `clearInterval`
+  也会绿。已在 §8.34 ⑨.1 如实记为残留，不把它当「停表已验」。
+
+### G-F.4 GP-171（本轮：远端提交里未解完的冲突标记）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-171 | 拉最新代码后，桌面端与门禁必须真的能跑：提交进分支的源码先得是能解析的源码 | **事故 + 修复**：远端 `a0ec929` 在 `hosts/desktop/product_surface.js`（2 组标记）与 `scripts/prove_room_orchestrator.js`（1 组标记 + 重复 `noRunner` 夹具）里提交了未解完的冲突；桌面 App 一 require 就 SyntaxError | `git show a0ec929:<file> \| node --check` 逐字报 `SyntaxError: Unexpected token '<<'`；新门 `prove_repo_integrity.mjs` **pass=4 fail=0**（174 个源文件全部可解析）；编排门 SyntaxError → **pass=97 fail=0**；矩阵 **G-60** 6 条（门 + 4 锚点 + 注入对照） | 完整性门只到语法层：同名 `function`/`var` 的语义重复抓不到；`index.html` 内联脚本/JSON/`.mbt` 不在 I-02 内；CI 仍不跑这份矩阵 |
+
+本轮记下的一条根因：
+
+- 以前的盲区写作「门存在但没人跑」；这次是**门跑在坏源码的下游** —— 所有门都要先解析源码，
+  源码坏了它们连第一行都到不了，于是矩阵照样全绿。G-60 把「先能解析」变成一条独立的门，
+  并放在矩阵末尾，任何一次提交把标记带上来都会被点名。
+- 这道门自己也翻车一次：全量矩阵里 I-01 把 §8.35 为留证而**逐字引用**在代码围栏里的
+  `<<<<<<< HEAD` 判成了未解冲突（`pass=3 fail=1`）。修法是收窄口径而不是删证据：
+  代码/配置必抓，`.md` 围栏内的引用放行，围栏外照抓；I-03 从两向扩成三向
+  （`markerCaught/quoteExempt/bareCaught`），两向变异分别把「证据误判」和「整份 .md 放行」
+  各打红一次。记一条：**会把证据判成事故的尺子，会训练人删证据**。
+
+---
+
+### G-F.5 GP-172（本轮：装出来的 App 第一次启动就崩）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-172 | 自媒体博主下载安装包、双击图标 → 窗口出现 → 开机就一直按点敲钟 | **事故 + 修复**：`dist/linux-unpacked` 真启动时主进程在 require 阶段抛 `ENOENT desktop/.env.local ... app.asar`，窗口根本没出现。两条缺陷叠加：① `.env.local` 写在 `__dirname`（装机后是只读 asar）；② App 自己的 `BITBOT_CONTENT_MODERATION=1` 默认值在同步密钥之前就填好，被当成「云端注入的密钥」触发落盘 | 新门 `scripts/e2e_desktop_packaged.mjs` 只认打包产物：修复前 **3/4**（P-01 未捕获异常、P-02 零轮、P-03 没写），修复后 **7/0**（19 轮 sweep、`.env.local` 0600 落在 userData、asar 字节不变）；假产物对照 2/5（P-00/P-02/P-03/P-04 翻红）；`pack-desktop.sh` 打完包自动跑本门 | 只验 Linux+xvfb；mac/win 真机安装未验；不验窗口与首启引导；自启 `Exec=` 的修复无门禁 |
+
+根因一句话：**门禁一直跑在源码树里，用户拿到的是只读的包** —— 所有绿灯都覆盖不到「双击图标」这条路径。
+
+顺带记一个**未修**的稳定性事实：三次全量矩阵里两次在 `e2e_grok_desktop_boot` 的
+「回合落盘」断言上偶发红（GP-112 recall 超时 / GP-128 探针会话未进 store，连带
+G-27 三条 grep 锚点），单跑与最终矩阵均 128/0 / 441/0。结论只到「墙钟等待与固定
+端口 stub 在长矩阵里偶发超时」，根因未定位前按未修对待。
+
+---
+
+### G-F.6 GP-173（本轮：填个 key 就静默关掉内容审核门）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-173 | 博主在凭证页填 LLM key 并「保存并热加载」后，默认开启的内容审核门必须还是开的 | **事故 + 修复**：`bitbot:secrets:status` 的 `value` 正则漏了 `_MODERATION$` → 渲染层不回填复选框 → 复选框从「未勾选」开始 → 保存无条件提交 `0`。一次普通保存静默关掉安全默认值；同 handler 的 `path` 还硬编码 dev 路径 | 装机包 P-06 走真实 UI（账户胶囊→设置→凭证→填 key→保存）：修复前 **7/1**（`实际 0`、`勾选前=false`、`status.path=hosts/desktop/.env.local`），修复后 **8/0**（审核门=1、复选框勾选、path=userData）；`pack-desktop.sh` 端到端 8/0 | 只验 Linux+xvfb；dev 树无对应锚点（保存会写用户真 `.env.local`）；CI 不跑打包门 |
+
+记下的一条尺子事故：`DISPLAY=:1` 设着但 Xvfb 早退，`pack-desktop.sh` 于是跳过
+`xvfb-run`，Chromium 报 `Missing X server or $DISPLAY` 后 SIGSEGV，门 4/4 红，
+看起来像「刚修好的产物又崩」。修法是先探活再决定是否自套 `xvfb-run`
+（`displayUsable()` + `BITBOT_XVFB_WRAPPED`），并且崩溃时把进程输出尾部带进断言。
+另一条环境教训：手工复现留下的 packaged app 占着 `127.0.0.1:18765`，让 `G-47`
+判了 5 红（AR-06/AR-11）；杀掉后单跑 20/0 —— 固定端口的门禁不会自己发现上个实例。
+
+---
+
+### G-F.7 GP-174 / GP-175（本轮：把两处偶发红变成可定位/可复现）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-174 | 同一份代码跑全量矩阵，不能因为机器忙就偶发红 | **尺子修复（已定位）**：`GP-128` 在发消息后死等 800ms、只读一次 `sessions.json`，落盘晚于该窗口就判「会话没进 store」并连带 G-27 三条锚点红。改成轮询到出现（20s 兜底）；stub 端口从固定 8796 改为空闲端口；失败时带现场（store 条数/最近标题/stub 尾部/主进程尾部） | 旧脚本 + `BITBOT_STUB_LATENCY_MS=3000`（确定性复现）→ **121/1**，报错原文与矩阵里一模一样；新脚本 + 3s → **128/0**；新脚本 + 40s（>20s 兜底，负向对照）→ **118/4** 且带现场；正常时序 ×2 → **128/0** | GP-112 的偶发红仍未定位，只补了现场（新出现的 recall 文件 + 主进程尾部）；boot 门里 4 个固定端口 stub 见 GP-177 |
+| GP-175 | 环境里残留一个旧实例时，手机配对门不能假红 | **尺子修复**：`AR-06` 拿到 `401 invalid_token`、`AR-11` 没有局域网地址，真因是手工复现留下的 packaged app 占着 `127.0.0.1:18765`（门里入站 `EADDRINUSE`）。门禁启动时挑一个空闲端口并用 `BITBOT_CN_INBOUND_PORT` 固定（不用 `0`：LAN 开关会重启服务，端口一变「旧地址不该还能用」的断言就被掏空） | 18765 被一个返回 401 的假实例占着：旧门 **13/5**（AR-06/07/08/09/11），新门 **20/0**；无占位时新门 **20/0** | 同类固定端口在本轮 GP-177 里清完（boot 门四处）；其它门的固定端口没有全量扫描；这是环境自愈问题，不是产品行为 |
+| GP-176 | 「退出后不再 tick」不能把退出过程中的最后一轮算成违规 | **尺子修复**：S-06 在发 quit **之前**拍快照，IPC 跨过一个 250ms 周期时，退出中正常开跑的一轮被算成「退出后还在 tick」 | 旧逻辑 + 400ms 人为延迟 → **5/1**（`rows 6→8`，与矩阵里 `6→7` 同一形态）；新逻辑 + 同样延迟 → **6/0**；正常时序 ×2 → **6/0**；修复后全量矩阵 **441/0** | 「先拍快照再触发异步动作」的模式未全量排查；目前只修有证据的这一处 |
+
+### G-F.8 GP-177（本轮：boot 门里四个写死的 stub 端口）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-177 | boot 门不能因为 8793/8794/8795/8799 被占就假红 | **尺子修复**：GP-14 / G19 / M28 / M29 四处 stub 端口写死，stub bind 不上 → 就绪超时 → 整段异常；GP-143 的回合甚至真打到陌生进程上 | 用 500 回包占住四口：旧代码 **99/6**（exit=1，六条红）；同一批占位不撤、新代码 **128/0**（exit=0，占位服务命中数停在 4 —— 绿跑一次没碰旧端口）；修复后全量矩阵 **441/0** | 四处改 `pickFreePort()` 后门里无写死端口；全仓库没做静态扫描，新写的门仍可能再犯 |
+
+### G-F.9 GP-179 / GP-180（本轮：GP-112 从「偶发」到按 id 判定；顺手修好头像条切换）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-179 | 切 Bot 没确认落地时，红不能伪装成「上下文串了」 | **诊断修复 → 顺藤抓到真因**：先只把 `switch_landed` / `pill` / 该 key 的 recall 行写进失败信息（放在 `bad()` 200 字截断之前）；下一次运行就拿到真红：胶囊说切到 B、回合却跑在 A 上。真因有两层：判定用「名字」（同名 Bot 有几十个），以及 Bot 列表每次重绘都把胶囊拉回主 Bot（点开 A、侧栏一刷标题变回 B）——两层都改成按 id，重绘时保留已选中的 Bot | 注入「永不匹配 + 强制失败分支」→ **127/1**，红行开头即 `switch_landed=false pill=«Bit Bot» rows=[…]`；随后一次真跑 **127/1**（`switch_landed=true` 但 recall 落在另一个 Bot）；改按 id 判定后单跑 **130/0**；两层都修后全量矩阵 **441/0**（修前 439/2：G-16 里那条 + G-20 静态签名） | 偶发红只在一轮里再现过一次，样本小；仍不写「已彻底消除」 |
+| GP-180 | 点头像条里的 Bot 要真的切过去 | **产品缺陷（已修）**：头像条 chip 的点击回调传的是 `b.id`（字符串），`selectBotForChat` 读 `b.id / b.name` → `activeBotId = undefined`、胶囊退回默认文案、会话多一条 `undefined · DM` | 旧代码 + 新断言 **129/1**（`stale pill=agent-bit/«Bit Bot»`）；改传对象后 **130/0** | 头像条仍无键盘可达性（无 aria-label / focus 样式），无障碍打磨未做 |
+
+六条里只有 GP-180 动到了产品（点头像条切不过去），其余都只动尺子；它们共同决定矩阵的红色还能不能信。
+本轮纪律照旧：GP-174 用「慢 3s 必红」证明根因，用「慢 40s 仍红」证明断言没被放空；
+GP-175 用同一个占位进程做 A/B，而不是杀掉残留后说一句「重跑就好了」；
+GP-176 用「放大到 400ms 必红」锁住同一形态，再把快照移到进程退出之后；
+GP-177 用「占住四个旧端口」做 A/B，绿跑时占位服务一次都没被点到；
+GP-179 先改现场、再等真红，不拿「看起来像」当结论；GP-180 的红是新断言打在旧 handler 上的 1/1。
+
+### G-F.10 GP-185（本轮：多端通用逻辑收口 —— .env 解析 / 残差词表 / 机器 id）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-185 | 同一件事只写一份：`.env.local` 解析、42 个 `*_residual` 词表、机器 id 默认值 | **已实现**：新增 `hosts/shared/host_env.js` 与 `hosts/shared/delivery_mirror.js`；桌面 / mobile_host / 入站 onTurn 共用解析器；SendToUser chip 与手机镜像共用词表；`seedMachineId` 与 agent context 改读 `machine_identity.DEFAULTS`；`pack-box.sh` 清单补 `host_env.js` | 改前 `prove_multihost_common` **pass=3 fail=5**（MC-00/01/02/03/04 逐条指名重复文件）；改后 **9/0**；注入对照两条（塞回 `.env` 解析 → MC-01 红；写回 `phone-android` → MC-04 红，恢复后 `cmp` 仍绿）；MC-08 用 fixture 钉住 .env 语义、镜像 58 字段顺序、chip 同源；真链 CLI/mobile `ListMachines` 200/ok 并落 58 字段镜像；全量矩阵 **PASS=467 FAIL=0** | 展示层仍各写（chip/iOS/Android STU/HTML）；无 Android/iOS 真机样本；`pack-box.sh` 清单仍人工维护（`check_box_requires` 只能查「打进去的指不到」，查不出「该打忘打」） |
+
+这一条不是产品新功能，是把「改一端、另一端静默没改」变成门禁能抓住的事实。
+它和 GP-184 的教训互补：那次是「一条 require 打死整个桌面端」，这次是「三份相同逻辑
+各自演化」；前者靠打包自检，后者靠词表唯一来源 + 行为等价 fixture。
+
+
+### G-F.11 GP-186（本轮：把 GP-185 的四条残留处理掉 —— 原生壳 / 旧 smoke / 打包闭包）
+
+| ID | 主线行为 | 现状 | 取证（实测，不是设计意图） | 新残留 |
+|----|----------|------|--------------------------|---------|
+| GP-186 | GP-185 留的四条：展示层各写、原生壳薄、`pack-box.sh` 清单人工、旧 smoke 不在矩阵 | **已处理**：①两个原生壳的 42 个残差键按 `RESIDUAL_KEYS` 同序，新增 MC-09 钉住；②两个壳各补 154 条 `commandTemplates`（点击只填输入框，不直接发半句话），并把 gate 的 mobile kind 检查改到共享事实源；③`pack-box` P-01 实测能抓漏拷，文档更正；④旧 `smoke_desktop_turn.sh` 接入矩阵 G-64 | MC-09 改后 **10/0**；注入对照删 iOS 一枚键 → MC-09 翻红指到 iOS，恢复 `cmp` 仍绿；`verify_native_shells.sh` 从 HEAD 的 stale red 修到 **OK**（163 needle）；Android **126/0**（STU 7/0）；legacy smoke **0 断言失败 / 2 条显式 SKIP**（headless 无 WM、gh 未登录）；全量矩阵 **PASS=474 FAIL=0**（G-63 MC-09、G-64 在矩阵内） | iOS/Android 仍无真机样本（iOS 无编译器，模板 UI 未真机点过）；headless 下 native OS act 只能 SKIP；gh 未登录时 remote PR live view 不可达；`pack-box.sh` 清单仍人工维护 |
+
+这一轮的三个「假红」值得单独记住，因为它们都在 HEAD 上就红：
+
+1. `verify_native_shells.sh` 仍要求两个聊天壳逐字包含 163 条桌面快捷指令，但 `7789966`
+   重写壳时已把矩阵删掉；本轮用**可编辑模板**把词表补回产品面，而不是删 gate。
+2. GP-185 把 mobile Host kind 与 `receipt_path` / `skill_path` 收进
+   `hosts/shared/delivery_mirror.js`，gate 却继续去 `mobile_host/run.js` 找；
+   本轮改断言唯一事实源，并要求 mobile_host 仍 wire 共享模块。
+3. `list models` 的真实 Host 路径已是 `llm_list_models`，gate 只认 `settings_open`；
+   本轮两路都认且都不许 pretend。
+
+产品 bug 一条（非断言问题）：kernel 给 Host 的 `code_changes` 目标是 box 虚拟路径
+`/workspace/README.mbt.md`，Host 用 `path.isAbsolute` 当宿主绝对路径，导致
+`exists=false / applied=false`，`code_apply_residual` 永远关不上。改为把
+`/workspace/`、`/home/box/` 映射到 `REPO_ROOT` 后，apply / commit mock / push mock
+三段全绿，且 commit SHA 来自 mock，不伪造。
+
 ---
 
 ## 三、门禁与交付要求（沿用现有纪律）
@@ -166,3 +343,19 @@ Grok 桌面的内核不是"建一个 Bot"，而是**多个不同职责的 Bot �
 - **Wave M48**：C 类共享模型（GP-140 共享登录态、GP-141 reviewer 显式化、GP-142 不可读拒绝）+ B 类护栏（GP-138 最小间隔、GP-139 关窗不中断）。
 - **Wave M49**：GP-137 Teach a Task（体量最大：录制采集 + 草稿 Skill 生成 + 人工确认闭环，真录屏按残留）。
 - **不做（延期）**：§10.1 打包/架构、§10.2 移动端同步——发布工程与平台范围，另立计划。
+
+---
+
+## 五、移动端远程控制（用户拿截图问「有这种成熟度吗」之后的分档）
+
+口径先说清：**能力（pairing-v1）早就真跑过，缺的是那一屏**。用户看到的差距是入口与状态，
+不是协议；所以按 S / M / L 三档拆，S 档本轮做完，M、L 档各立一行，不许用文案假装完成。
+
+| ID | 档位 | 主线行为 | 现状 | 取证（实测，不是设计意图） | 残留 |
+|----|------|----------|------|--------------------------|------|
+| GP-191 | S（已交付） | 账户菜单有「移动端远程控制」独立弹窗：状态点如实（未放开=off）、配对码在本屏生成/刷新/作废并与 Host 每步一致、复制配对链接当场回显、弹窗内零令牌控件、Esc/遮罩可关且焦点归还、Bot Channel 一列只列钉钉/飞书/企业微信且「去配置」真跳转、480 宽不破版；旧设置卡保留手动兜底并写明主路 | `hosts/desktop/index.html` `#mobile-control-modal` + `#ap-remote` + `ui_chrome.css` `.mc-*`；状态源仍是 `window.bitbot.pairing.state()`，不新增协议面 | `scripts/e2e_desktop_mobile_control.mjs` MC-01..11：断言先写时 **0/10**，弹窗做完 **9/2**（窄屏挖出 GP-192 那条），修完 **11/0**；已接进 `smoke_grok_desktop_parity.sh` **G-67**（含红→绿与残留三行 echo） | 只有弹窗没有扫码；文案与状态点在 scope≠private 时给的是「这地址大概率连不通」的实话，不是「已就绪」的空头承诺 |
+| GP-192 | M（未做，**卡点在手机侧**） | 桌面渲染二维码（内容只允许 `base_url` + 一次性短码，禁 64 位令牌）+ 手机端解码；短码保留为无摄像头兜底；不得出现「扫开一个 404」的假链接 | **未做**：`/pair` 只读页本轮已交付（见 GP-195），剩下的不是桌面侧选型，而是手机端没有解码能力 —— `hosts/android/BitBotHost/app/build.gradle.kts` 只有 compose / ktx / coroutines，**没有 CameraX 或 ML Kit**；`AndroidManifest.xml` 只有 LAUNCHER 一个 intent-filter，系统相机扫出来的 URL 手机 App 接不住。此时桌面画 QR 只是装饰图 | 本轮**顺带修掉的不是 QR**：480×693 下 `#account-popup` 向上开，量到 `y=-167 h=309`、`ap-remote y=-97`、`elementFromPoint=null` —— 窄窗口里账户菜单每一项都点不到（不只新入口）。横带内改 `position:fixed` 向下开、层号 57 < composer 58 < 菜单 59 < modal 60；`MC-11` 钉住「每一项在视口内且命中自己」 | QR 那条仍未做：需要 ① 桌面 vendored 编码器 ② Android 扫码或 deep-link（含 APK 侧新依赖）③ 真机验收（本机无 KVM，起不了 emulator）三件一起，缺一件就是假入口 |
+| GP-193 | L（未做，需设计评审） | 手机上继续指挥桌面的当前工作区（会话/面板/审批的远程镜像与回写） | **未做**：桌面只暴露 `/v1/turn`、`/v1/pair/discover`、`/v1/pair/redeem`（+`/health`），没有工作区镜像或远程 UI 控制协议；`hosts/mobile_host` 只有 README+run.js，`hosts/ios` 是 stub | 无可证伪验收，因此不写「已完成」；docs/qa/product-readiness.md 的口径（不许把内核接线改写成用户可达）在这里同样适用 | 需要先出协议设计（含鉴权、快照粒度、断线恢复），再谈 UI |
+
+| GP-194 | 真缺陷（本轮顺带挖出并修掉） | 窄窗口（≤900 的 140px 横带）里账户菜单每一项都要点得到，不只新入口 | `#account-popup` 在横带内改 `position:fixed` 贴横带下缘向下开，层号 57 < composer 58 < 菜单 59 < modal 60 | 修前 `MC-11` 红：**9/2**，现场 `ap-usage y=-161 / ap-remote y=-97 / ap-connect y=1`、`elementFromPoint=null`；修后 **11/0**，并写进 layout-contract.md §3.1 窄视口表 | 横带本身要不要改成抽屉仍是 §8.51 残留；≤768 折叠时入口仍需先 Ctrl/Cmd+B 展开侧栏 |
+| GP-195 | S（已交付） | 「复制配对链接」复制出去的东西点开必须是一页纸：`GET /pair`（`GET /` 同页）只读说明页 —— 哪台桌面、手机下一步做什么、现在能不能连（未放开时如实写「只在桌面自己这台机器上开着」，放开时按 `lan_candidates` 排名逐条标 private/cgnat/public/link_local）；顺带修掉未知路由 404 里过期的 routes 清单 | `hosts/shared/cn_inbound_server.js` `pairPageHtml()` + `html()`；`pairingState()` 加可选 `pair_page_url`；`bitbot:pairing:copy` 加 `kind=page`（既有 `url`/`token` 语义不动）；弹窗那颗按钮改复制 page | `scripts/e2e_desktop_pair_page.mjs` PP-01..10：断言先写时 **1/10**（`/pair` 与 `/` 都回 JSON 404，弹窗复制的是裸 `http://25.4.80.50:41795`），实现后 **11/0**；已接进 `smoke_grok_desktop_parity.sh` **G-68** | 这一页故意**不能**在浏览器里完成配对（谁在浏览器输 6 位码，bearer 就落到那个浏览器里）；页面显示主机名与端口，泄露面与既有 `/v1/pair/discover` 同级，走公网隧道时全网可读，故带 noindex/no-store/nosniff/CSP |

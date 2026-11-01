@@ -32,6 +32,7 @@
  * 缺 electron / 缺显示环境时诚实 SKIP。
  */
 import http from "http";
+import net from "net";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -52,6 +53,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
+
+/** 取一个空闲端口给入站用（固定 18765 会撞上环境里残留的旧实例）。 */
+function pickFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const p = srv.address().port;
+      srv.close(() => resolve(p));
+    });
+  });
+}
+/* 端口必须**稳定**：AR-11 收回局域网时会重启入站服务；如果每轮都 port=0，
+   重启后会换一个新端口，"同一个地址不该还能用"就成了「端口换了当然连不上」，
+   断言被掏空。所以这里挑一次空闲端口，用环境变量固定给 app。 */
+const INBOUND_PORT = await pickFreePort();
 
 let PASS = 0,
   FAIL = 0,
@@ -127,6 +145,10 @@ function launch() {
         BITBOT_LLM_API_KEY: "gate-no-call",
         BITBOT_LLM_MODEL: "gate-no-call",
         BITBOT_LLM_STREAM: "0",
+        /* 固定 18765 会撞上环境里残留的旧实例（实测：手工复现留下的 packaged app
+           一直占着它 → 入站 EADDRINUSE → 请求打到旧令牌上，门假红 5 条）。
+           这里用启动时挑好的空闲端口，LAN 开关重启后仍是同一个。 */
+        BITBOT_CN_INBOUND_PORT: String(INBOUND_PORT),
       }),
     ),
   });

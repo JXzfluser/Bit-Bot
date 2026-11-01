@@ -34,16 +34,28 @@ agent-tools/
 /data/host/turn-token
 # K-1/K-3: the agent context is conversation state, not source.
 /data/agent-context/
+# The same context lands in ./agent-context/ whenever DATA_ROOT is unset
+# (dev mode from the repo root) — same rule, both locations.
+/agent-context/
 /data/traces/
 /data/desktop/frames/
 !/data/**/.gitkeep
 /data/journal/computer-use/
 /tmp/bitbot-sandbox/
 
+# Editor / tool scratch files: never source, never evidence.
+*.bak-*
+*.bak
+*.orig
+*.rej
+
 # Desktop (Electron)
 /hosts/desktop/node_modules/
 /hosts/desktop/dist/
 /hosts/desktop/out/
+# 内核二进制是 scripts/pack-desktop.sh 打包时 stage 出来的产物（~2MB Mach-O/PE），
+# 不是源码；进版本库会让每次改内核都变成一次大二进制提交。
+/hosts/desktop/resources/kernel/
 # Mobile pack staging (scripts/pack-mobile.sh)
 /hosts/dist/
 # Host MCP temp request/response files

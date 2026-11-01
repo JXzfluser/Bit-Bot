@@ -28,6 +28,16 @@ MATRIX = ROOT / "docs" / "capability-matrix.md"
 TODO_JSON = Path("/tmp/matrix_todo.json")
 TODO_INPUT_COMMITTED = ART_ROOT / "TODO_INPUT.json"
 HOST_SERVER = ROOT / "scripts" / "host_ui_surface" / "host_server.py"
+
+# Floor on the number of MoonBit tests the tree must still run.
+#
+# This is a tripwire against silent test deletion: without it, dropping ~100
+# tests (or a whole package's test files) still reported "moon test ok" because
+# the gate only checked that the count was >= 347. Raise it whenever tests are
+# ADDED; lower it only together with a stated reason.
+#
+# Current count: 452 (verified with `moon test`).
+MIN_MOON_TEST_PASSED = 452
 SWEEP_SH = ROOT / "scripts" / "host_matrix_i_sweep.sh"
 
 # Host-hard inventory already I-PASS via H0–H5 Live evidence. Sweep must refuse
@@ -182,7 +192,7 @@ def run_moon_test(skip: bool) -> dict:
     m = re.search(r"passed:\s*(\d+)", out) or re.search(r"(\d+)\s+passed", out)
     if m:
         passed = int(m.group(1))
-    ok = proc.returncode == 0 and (passed is None or passed >= 347)
+    ok = proc.returncode == 0 and (passed is None or passed >= MIN_MOON_TEST_PASSED)
     return {
         "ran": True,
         "ok": ok,
@@ -384,7 +394,10 @@ def main() -> int:
 
     moon = run_moon_test(skip_moon)
     if not moon["ok"]:
-        print("moon test failed or <347 passed", file=sys.stderr)
+        print(
+            f"moon test failed or <{MIN_MOON_TEST_PASSED} passed",
+            file=sys.stderr,
+        )
         print(moon.get("summary", ""), file=sys.stderr)
         return 1
     print(

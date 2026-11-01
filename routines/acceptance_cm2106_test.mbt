@@ -15,7 +15,10 @@ test "acceptance_CM-2106_trigger_microsoft_teams_wakes_routine" {
     Err(e) => fail(e)
     Ok(binding) => {
       assert_eq(binding.trigger_name(), "microsoftTeams")
-      assert_eq(binding.as_trigger(), @routines.Event(name="microsoftTeams:message"))
+      assert_eq(
+        binding.as_trigger(),
+        @routines.Event(name="microsoftTeams:message"),
+      )
       let event = @routines.MicrosoftTeamsEvent::of(
         tenant_id="tenant-A",
         team_id="team-1",

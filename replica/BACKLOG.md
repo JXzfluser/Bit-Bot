@@ -14,11 +14,19 @@
 | 联网搜索开关 | composer chip → `turn.search` → Host 真搜，缺 key 如实降级 |
 | 复制 / 反应 | M38 / M31 |
 | 侧栏列表形状 | 按 `replica/screens/grok-composer.png` 像素测量重做（行高 58、内缩 12px 圆角色带、32px 图标、15/13 字号） |
-| 样式单一真源 | 每个面一处声明，`!important` 346 → 189，门禁棘轮只降不升 |
+| 样式单一真源 | 每个面一处声明，`!important` 346 → 189，门禁棘轮只降不升（现 180） |
+| 代码块语法高亮（P1-1） | `vendor/highlight.min.js` 11.9（js/ts/py/java/go/sql/json/bash）+ `vendor/highlight-theme.css` 独立浅/深主题；`decorateCodeblock` 在 DOMPurify 之后 best-effort 上色；主题色不进 `ui_chrome.css`，避开 hex 棘轮 |
+| 会话未读汇总（P1-6） | `#sessions-popup` 顶部 `#unread-summary`（文案 `sessUnreadMore`，三语）；`renderUnreadMarks` 联动；点击走 `jumpToOldestUnread` → `activateSessionById` |
+| 未读落盘 + 行点击清未读（P2-7） | `persistUnread()` 整键覆盖 `settings.unread`（空表落 `{}`，不留 `sid:0`）；`restoreUnread()` 在 `refreshSessions()` 之后回填一次（`unreadRestored` 闸，防 settings-changed 覆盖内存）；行点击改走 `activateSessionById()`，不再"重画糊掉计数"；门禁 U-06/U-07 真关重开验证 |
 
 ## 二、[P0] 两个决定性问题（需要产品拍板，代码层面 1 小时内可落）
 
-### P0-1 主色到底是蓝还是黑
+### P0-1 主色到底是蓝还是黑 —— **已闭环（决策 D-1：近黑）**
+
+> **2026-10-31 收口**：定成「浅色 = 近黑 `#1c1c1c`、暗色反白 `#f5f5f5`」，依据是 Grok 实测
+> `sendButton` / `--sand-bg-primary`，注释在 `ui_chrome.css:33`。四个模式块（默认 / light
+> media / dark media / 显式 dark）都已收敛到 `--p-*-accent`，不再有 `:129` 那处蓝黑互斥。
+> `prove_ui_tokens` 现 PASS=9 FAIL=0。下面保留原始描述作为决策依据。
 
 - **现状**：`ui_chrome.css:33` 的 `:root` 写 `--accent: #1e86fc`（蓝），但
   `@media (prefers-color-scheme: light)` 在 `:129` 又把它改成 `#1a1a1a`（黑），
@@ -43,12 +51,10 @@
 
 | # | 缺口 | 证据 / 定位 | 验收标准 |
 |---|------|-------------|----------|
-| P1-1 | 代码块没有语法高亮（只有语言标签 + 复制钮） | 无 highlight.js / shiki；`renderMarkdownBody` 仅标 `data-lang` | 至少覆盖 js/ts/py/java/go/sql/json/bash；深色浅色两套；大代码块（>500 行）不卡 |
 | P1-2 | 没有推理档（Think / 深度模式） | `features.csv` 该行 `no`，无档位字段 | composer 内可切"快/深"，随回合下发；Host 侧透传到 provider |
 | P1-3 | 语音对话入口被隐藏 | `body.grok-ui #voicechat-btn { display:none }`；依赖外部二进制 | 二选一：要么接可用的 STT 并恢复按钮，要么在设置里说明"本平台不支持"并彻底移除入口（不留死按钮） |
 | P1-4 | 消息内联编辑入口不在气泡上 | `#tool-edit-message` 已接线，但不在 hover 工具条 | 气泡 hover 出现"编辑"，就地改完重发，旧回复标记为已替换 |
 | P1-5 | 附件预览不分类型 | GP-90 文件卡 + 全屏查看 | 图片走灯箱、PDF 内嵌翻页、代码高亮只读、其余给下载；都可 Esc 退出 |
-| P1-6 | 未读只有行内蓝点，没有汇总 | `renderUnreadMarks` 只挂 `.unread-dot` | 侧栏顶部给"更多未读消息 · N"浮标，点开跳到最早未读；全部已读后消失 |
 | P1-7 | 侧栏账户行缺参考图的两个圆钮（应用网格 / 上传云） | 参考图底部是 `[头像][名称…][▦][☁]` | 两个 32px 圆钮，功能分别接"连接应用"和"上传到云端"（已有 IPC 就复用） |
 | P1-8 | 侧栏 IA 与参考图结构不同 | 我们是「Bot 列表 / 群组 / 会话」三段；Grok 是单一会话列表 + `bitbot` 分组标签 | 产品决定：保留三段（则补一致的折叠记忆）或合并成单列表 + 分组。**不建议现状长期挂着——三段各自有一套标题，是最容易再次走样的地方** |
 
@@ -62,11 +68,13 @@
 | P2-4 | `index.html` 单文件约 1.2 万行 | 样式 / 脚本 / 三语词典混在一起，这正是"轮次覆盖"能累积的土壤 | 拆成 `styles.css` / `i18n.js` / `app.js`（含 index.html 只留结构），拆完门禁正则同步改 |
 | P2-5 | `--nav-*` 只挂在 `body.grok-ui` | 当前安全（`<body class="grok-ui">` 是静态的） | 若将来加第二套皮肤，把这三个变量提到 `:root` 的分主题块里 |
 | P2-6 | 侧栏行没有 hover 上下文菜单 | 只能右键（`showSessionMenu`） | hover 出现 `…`，与右键同一份菜单；键盘可达 |
+| P2-8 | 桌面 DM 回合上 `delete bot <id>` 没走确认门直接执行 | `product_surface.js:397 botsDelete` 有 `confirm !== "yes" → needs_confirm` 合同，但内核效果路由（Host FFI results applied）没经过它——实测 `delete bot b1` 直接执行 bot_delete（幸而失败于 host 调用）；CLI smoke（GP-07）的 needs_confirm 流程在桌面回合路径上缺位 | 桌面回合对 consequential 效果先出 needs_confirm 卡 → `#approval` 亮起 → confirm 后才放行；GP-07 的 needs_confirm/advise_hide_first 在桌面路径复验（2026-10-31 双写对账 e2e 探出） |
 
 ## 五、建议的下一步顺序
 
-1. **P0-1 + P0-2**（1~2 天）：这两个不定，后面做的视觉和功能都建在夹生地基上。
+1. **P0-1 + P0-2**（1~2 天）：P0-1 已闭环（D-1 近黑）；**P0-2 仍开着**，不定它后面所有"真实回合"验证都建在 stub 上。
 2. **P1-8 侧栏 IA**（1 天）：结构定了，样式才不会反复改。
-3. **P1-1 代码高亮 + P1-6 未读汇总**（2 天）：用户日常最容易感知。
+3. ~~**P1-1 代码高亮 + P1-6 未读汇总**~~ → **已完成**（详见 §一）。
 4. **P2-2 CI**（0.5 天）：趁门禁还是全绿，把闸门先装上，后面才有人兜底。
-5. 其余按 P1 → P2 排。
+5. ~~**P2-7 未读持久化**~~ → **已完成**（P1-6 落地的同一批，详见 §一）。
+6. 其余按 P1 → P2 排。

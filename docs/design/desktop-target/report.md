@@ -1364,3 +1364,2440 @@ smoke_grok_desktop_parity: PASS=382 FAIL=0
 - §8.28 那条边界继续沿用：`ON_PAUSE` 存草稿在真机切后台 / 被回收那一刻是否真走到，只有设备上能验。
 - 无 KVM → 起不了 emulator：真机安装、厂商 ROM 杀后台、OS 权限弹窗、厂商商店签名
   （`BITBOT_ANDROID_STORE_*`）仍未验证；本门禁不声称装过或跑过。
+
+## 8.30 屏幕写着「已转交」，收件箱里却什么都没有：转交不能只是一句话
+
+切到 `cursor/next-target-v1`（桌面 + 安卓整合分支）后按用户旅程重读群聊那条线，抓到的不是样式
+问题，而是一个会直接骗人的功能断点：**自媒体博主在群里说「这篇稿子交给审核 Bot」，屏幕上出现
+「已转交」，但那个 Bot 的收件箱里根本没有这笔任务。**
+
+**① 断点在哪（用户视角）。**
+
+转交这条链上有两种「当场没结果」是完全不同的事：
+
+- **被拒**：承接方不是群成员 / 群不存在 → 这笔转交压根不成立，什么都不该留下；
+- **受理了但对方这轮没答上**（没配密钥、provider 挂了、超时、没有 runner）：所有权已经转移、
+  任务已经挂在它名下，只是**还没跑完**。
+
+`hosts/desktop/product_surface.js` 的 `executeHandoff` 把这两件事用同一个字段（`ok`）说，于是第二种
+情况也回 `ok:false`。而 Host 侧（`hosts/shared/host_ffi.js`）正是拿 `res.ok` 决定要不要落凭据：
+`if (res && res.ok)` 才写 `data/agents/inbox/<bot>.jsonl` 那一笔和
+`data/agents/handoffs/handoff-<bot>-<ts>.json` 存根。结果就是——群转录已经写下了交接行
+（`appendRoomTranscript` 在此之前就执行了），收件箱与存根却整笔跳过。用户看到的是一句已经完成的
+话，实际什么都没有交出去。
+
+**② 复现与修复前红（实测，非预估）。**
+
+先把尺子改成能量出这件事的形状，再拿旧代码去撞（只换单个文件，不删依赖文件，否则红的是编译错误
+而不是产品行为）。
+
+`scripts/prove_room_orchestrator.js` 新判据 vs HEAD 的 `product_surface.js`：
+
+```
+prove_room_orchestrator pass=66 fail=10
+  ✗ handoff：目标 Bot 跑成功 → 受理成立（ok）
+  ✗ handoff：真答上了就不该挂着 pending
+  ✗ handoff：目标没答上，转交这笔仍然成立（凭据不得整笔跳过）
+  ✗ handoff：没答上就不能说已交接完成
+  ✗ handoff：没答上必须标 pending（这件事还挂着，不是终态）
+  ✗ handoff：没答上的原因可见（reply_error）
+  ✗ handoff：受理成立时不得再带 error（那是拒绝位）
+  ✗ handoff：受理成立的两种当场结果都满足「可落凭据」判据
+  ✗ handoff：没有 runner 时 = 受理 + 排队，而不是整笔消失
+  ✗ handoff 同步入口与异步入口同一套词汇（受理 / 答上）
+```
+
+前两条红的是「旧回包里根本没有 `accepted` / `replied` 这套词汇」——这不是苛刻，而是根因：一个 `ok`
+同时被用来表达「拒绝」和「受理但未完成」，下游就只能猜，而 Host 猜错了。
+
+切分支当时那轮全量矩阵（`/tmp/next-matrix-1.log`，HEAD 树）在产品路径上撞到的也是同一处：
+
+```
+smoke_grok_desktop_parity: PASS=377 FAIL=5
+  ✗ GP-52 chain
+  ✗ GP-52 inbox delivery
+  ✗ GP-52 handoff artifact
+```
+
+三条分别红在：整条 handoff 命令的回包、`inbox/<承接方>.jsonl` 里那一笔、`handoffs/` 里的存根。
+同一段里「群 transcript 落入 handoff 行」反而是绿的——正是这个组合说明了问题：**唯一被写下来的
+地方是那句漂亮话。** §8.29 收口时矩阵是 382 绿，这条分支把它带到 377/5，少的就是这五条。
+
+**③ 修的是什么。**
+
+| 文件 | 改动 | 为什么改在这里 |
+| --- | --- | --- |
+| `hosts/desktop/product_surface.js` | `executeHandoff` 返回拆成两层：`ok:true` + `accepted:true` 表示受理成立（凭据该落），`replied` / `pending` / `transferred` / `reply_error` 表示这轮有没有答上；`error` 只在真拒绝时非空 | `ok` 是 Host 落凭据的唯一判据，必须只表达「这笔转交成立」；只加可选字段，既有字段语义不动（`pretend_transferred` / `transferred` 仍按原规则，`transcript_row` 照旧） |
+| 同上 | 没有 runner 的分支从 `ok:false` 改为 `ok:true` + `pending:true` + `execution:"queued"` + `reply_error:"handoff_runner_required"` | 「这轮没人替它跑」是排队，不是消失 |
+| 同上 | 同步入口 `handoffTask` 补 `accepted:true` + `replied:false` | 同步 / 异步两套入口必须说同一套词汇，否则 UI 只能靠字段猜 |
+| `hosts/desktop/index.html` | 新增三语 `rHandoffPending` 与 pending 气泡：`host_results` 里 `handoff_task` 且 `ok` 且（`pending===true` 或 `replied===false`）时，如实补一句「{to} 这轮没答上（{reason}），任务仍挂在它名下，没有当成完成」 | 「已转交」这句本身没撒谎（所有权确实转了），但只说这一句不够——用户会把「转交了」读成「有人在做了」 |
+| `scripts/prove_room_orchestrator.js` | handoff 块重写 + 因果判据 `queueable(r) = r.ok===true && (r.replied===false ? r.pending===true : true)` | 尺子从「有没有 error」改成「受理与答上是两件事」 |
+| `scripts/smoke_grok_desktop_parity.sh` | GP-52 加因果锚点与负向对照；GP-53 改成量行为 + 三向自证；GP-143 锚点重钉；G-53 钉住屏幕上那句话 | 见④⑤⑥ |
+| `scripts/e2e_desktop_user_journeys.mjs` | 新增 GP-52 三条渲染取证（真 Electron DOM） | 文案在源码里 ≠ 用户看得见 |
+
+改完之后（同一棵树）：`prove_room_orchestrator pass=76 fail=0`（66+10 → 76/0，多的 10 条正是②里
+那 10 条红转绿，没有靠删断言换绿）。
+
+**④ 三条单独能绿、却挡不住半态：把尺子改成量因果。**
+
+GP-52 原有三条锚点（chain / inbox / handoff artifact）各自 grep 一次，但这次翻车的形状恰好能让它们
+其中两条**偶然**绿：只要用户那句换个 provider 恰好答上了，inbox 与存根就有了，锚点全绿，而半态
+（写了交接行却没排队）仍然没人管。所以新增一条因果锚点 `ho_causal`：
+
+```
+交接行存在 ⇒ inbox 那一笔存在（且 is_room / forbids_private_assumptions 都对）⇒ 存根存在
+```
+
+它签名是 `ho_causal <root> <room> <to_bot>` 三个参数。第一版把 room 和 to 写死在函数体里，负向对照
+喂 fixture 时因为 id 对不上而「偶然翻红」——看着像尺子有效，实际测的是参数不匹配。改成三参数后，
+对照只在「缺排队」这一个维度上失败：
+
+```
+✓ GP-52 因果一致：写了交接行就必然有收件箱那一笔与存根（三者同生，不许只剩转录那句漂亮话）
+✓ GP-52 因果尺子的负向对照：只有交接行、没有排队的半态被抓住（非恒真）
+```
+
+**⑤ 尺子跟着字段一起失效的那条：GP-53 改成量行为。**
+
+原来这条是 `grep -q "dm-only"`，拿的是回包里 `escalations:"dm-only"` 这个字面量。群路径被重写进
+`hosts/shared/room_*` 之后，这个字段整条链都不再产生（全仓只剩 `product_surface.js` 一处产出、零处
+消费），于是锚点在 HEAD 上直接翻红——**红的是尺子，不是产品**。
+
+改成量两件看得见的事：这条群回合的 `host_results[].kind` 里不许出现审批卡，这份群的持久转录里也不
+许出现审批行（`room_approval_leak`）。解析失败一律算红（`process.exit(1)`），不 fail-open；再补三向
+自证与注入对照：
+
+```
+✓ GP-53 审批不进群（按行为取证）：这条无点名群回合的 Host 结果与群转录里都没有审批卡
+✓ GP-53 尺子自证：有审批卡被抓、纯 delivery 被放、坏 JSON 不 fail-open
+✓ GP-53 尺子的负向对照：注入 approval_card 行后立刻翻红（非恒真）
+```
+
+过程里自己翻了一次车：谓词初版把 `c=>d+=c` 写成 `c=>d+=d`，stdin 永远读不到内容 → 解析失败 → 恒红，
+在矩阵里表现为「产品破了」。这条门要是没有三向对照，就会以产品缺陷的名义长期挂着；「有 / 没有 /
+坏输入」三个方向都试，才敢说这把尺子在量东西。
+
+**⑥ 屏幕上那句话不能只有源码锚点。**
+
+`GP-52 renderer` 原来靠 grep `index.html` 里有没有对应文案（本轮先把 `rHandoffPending` 加进这条静态
+锚点）。但「文案在源码里」和「用户看得见这句话」是两件事，所以把它接进真 Electron 门
+`scripts/e2e_desktop_user_journeys.mjs`：喂三笔 `host_results` 给页面里的 `postProcessWaveGResults`，
+看屏幕上真出现什么。
+
+修复前红（HEAD 的 `index.html`，只换这一个文件，`product_surface.js` 保持修复后）：
+
+```
+e2e_desktop_user_journeys: PASS=63 FAIL=3
+  ✗ GP-52 受理未答的 pending 气泡没渲染
+  ✗ GP-52 pending 气泡在答成功时也刷 — {"before":0,"after":0}
+  ✗ GP-52 被拒与受理未答在屏幕上没分开
+```
+
+第二条那行的失败文案是错的：`before/after` 都是 0，根本不是「也刷」，而是「从没刷过」。本轮把这条
+文案改成直说「期望渲染 1 条、答成功后仍是 1 条」并带上两个计数——留着这行原文，是因为失败信息写错
+和断言写错一样会骗人，红测的尾巴必须自己也能被读对。
+
+第三条的取证尾巴里能看到 HEAD 只渲染了「任务转交被拒：…（未写入群 transcript…）」这一种，受理未答
+那笔整条气泡都没有：旧界面要么说「被拒」，要么什么都不补。
+
+修复后绿（同一棵树）：
+
+```
+✓ GP-52 受理未答：屏幕上真写了「转交已受理并排队 + 没当成完成」（承接方与原因都点名）
+✓ GP-52 答上了的那笔不再刷「排队」这句话（受理未答才说，不滥报）
+✓ GP-52 被拒的那笔走「被拒」气泡，不混进「受理并排队」（三种当场结果各有其话）
+```
+
+三条一起才算数：只有第一条等于把 pending 当万能提示；第二条盯「不该说时别说」，第三条盯「拒绝和
+受理未答不许混」。矩阵侧再把这三行输出钉成一条锚点（门内部绿、但屏幕上没这句话就整条翻红）：
+
+```
+✓ G-53 GP-52 那句话真在 Electron 屏幕上说得出来：受理未答才说排队、答上了不刷、被拒不混
+```
+
+截图：`artifacts/uj-gp52-handoff-pending.png`。
+
+另外顺手重钉了一条**只是文案漂移**的锚点（不放松）：GP-143 原来 grep
+`"Host IPC 真接线：roomTurn → appendRoomTranscript → orchestrateRoom"`，群路径重写后探针里那句变成
+`dispatchRoomTurn(roomTurn → appendRoomTranscript → orchestrateRoom(runResponderTurn))`。改的是锚点里
+被引用的那句话，要求它逐字等于探针现在真实打印的那行；配套仍然要求
+`responder 回合用自己的 botId` 与 `preload 暴露 rooms.orchestrate` 两条同时成立。
+
+**⑦ 门禁与实测数字。**
+
+全量矩阵（修复后，`pkill -9 -f "dist/[e]lectron"` 后单跑，全程无并发门）：
+
+```
+smoke_grok_desktop_parity: PASS=387 FAIL=0
+```
+
+377（分支当时）→ 387：五条红全部转绿，新增五条锚点 = GP-52 因果一致、其负向对照、GP-53 尺子三向
+自证、GP-53 注入对照、G-53 屏幕渲染锚点。相对 §8.29 的 382 基线，净增 5 条，没有靠删断言或放宽
+判据换绿（`GP-52 renderer` 那条只把锚点文本改长，条数不变）。
+
+同一轮核验：`✗` 行数为 0；带自计数的 14 道门全部 `SKIP=0`（没有一条靠 skip 换绿）；跑完
+`git status --porcelain data/` 为 0 行（探针 Bot / 群行 / inbox 那一笔 / 存根都被级联清掉，用户历史
+行不动）。取证的两次单文件替换都回到原位并核过 md5：`product_surface.js`
+`9b62cb49657f79b74115ae2a78b10a59`、`index.html` `33a86b059a31684e4f1de2dea421182c`。
+`prove_room_orchestrator pass=76 fail=0`、`e2e_desktop_user_journeys: PASS=66 FAIL=0 SKIP=0`。
+
+**⑧ 残留（诚实）。**
+
+- **`data/agents/inbox/*.jsonl` 全仓没有消费者**（`AGENT_INBOX_DIR` 只有三处写、零处读）。本轮把
+  凭据诚实地落下来，但**没做「下一轮自动捡起」**：承接方这轮没答上，这笔任务就永远挂在 inbox 里，
+  不重跑、不提醒。对「定时发文 / 定时推邮箱」这条主线这是真断点——记为 GP-166（见
+  `docs/grok-desktop-parity/parity-gaps-next.md`），下一轮做捡起 + 幂等键。
+- `escalations:"dm-only"` 这个字段在群路径重写后整条链都不再产生、也没有消费者。本轮只把尺子改成量
+  「审批不进群」这个行为，**没有实现「群里触发的动作 → 审批走私聊」这条完整链路**：新路径
+  （`hosts/shared/room_*`）目前压根不产生审批卡，所以这条行为取证是靠「没有东西可漏」成立的，一旦
+  群路径接上需要审批的动作，它才第一次真正被压测。记为 GP-167。
+- pending 气泡是渲染层取证（真 Electron、真 DOM），但它喂的是构造的 `host_results`；「真实 provider
+  挂掉 → 屏幕上出现这句话」这一跳分别由 `prove_room_orchestrator`（回包形状）与因果锚点（凭据落盘）
+  各自成立，串起来端到端跑一次（真 UI 上点一次转交、真把 stub 打挂）还没做。
+- 本轮没改安卓侧：安卓 `TurnCoordinator` 走 `/v1/turn` 信封，`host_results` 的 `kind:"delivery"` 提取
+  路径与桌面这段不同，inbox 凭据只在桌面 / Host 侧产生。
+- 无 KVM、无真机：安卓侧仍只有构建与 Robolectric 级证据。
+
+## 8.31 每次 push 都红、一个 job 都没有：AE 那条门从没真跑过
+
+**① 现象（不是「产品红了」，是「门不存在」）。**
+
+推 §8.30 那次提交后去 Actions 看状态，读到的是这样三条：
+
+```
+40733472246 | .github/workflows/agent-eval.yml | cursor/next-target-v1 | push | completed | failure | 32efb447
+40714772671 | .github/workflows/agent-eval.yml | cursor/next-target-v1 | push | completed | failure | 6db5e608
+40714764350 | .github/workflows/agent-eval.yml | cursor/next-target-v1 | push | completed | failure | 6db5e608
+```
+
+三条里只有第一条来自本轮（`32efb447` = §8.30 那次提交），另两条在切分支之前就挂在那儿了。
+三个细节叠在一起才是结论：名字显示的是**文件路径而不是 `Agent Eval`**；
+`GET /actions/runs/<id>/jobs` 回 `total_count=0`（一个 job 都没建过）；而且这个 workflow 的
+触发条件写的是 `push: branches: [main]`，**它本该在这个分支上一次都不触发**。
+
+**② 根因。**
+
+最后一步写成 `if: ${{ secrets.BITBOT_LLM_API_KEY != '' }}`。官方 Contexts 参考里
+`jobs.<job_id>.steps.if` 这一行给的可用上下文是
+`github, needs, strategy, matrix, job, runner, env, vars, steps, inputs` —— **没有 `secrets`**；
+`secrets` 在步骤级只能出现在 `steps.env` / `steps.with` / `steps.run` 这类位置。
+
+这个引用让文件在 Actions 侧无效。为什么连 `on:` 的过滤都没生效是**推断**（文件解析不了，过滤器
+自然无从判断）；本轮能直接证的只有前后对照：改之前每次 push 都会出现这种「名字叫文件路径、
+0 job、立即 failure」的空运行，改之后（`50a4d9f`）同样的 push **不再产生任何运行** —— 说明这份
+文件现在能被 Actions 接受，`on: branches: [main]` 也重新开始起作用。
+
+这件事的代价不是「CI 难看」：**AE 是仓库里唯一一条断言「行为达标」（选对工具、失败收敛、
+不越审批、群内不重复劳动）的门**，其余上百条 `prove_*` / `e2e_*` 断的是接线。它从建好那天起
+没跑过一次，等于这段时间里所有「行为」层面的承诺都没有 CI 背书。
+
+**③ 改法（意图一字不动）。**
+
+密钥先进该步的 `env:`（那里允许 `secrets`），由这一步自己把结论写进 `GITHUB_OUTPUT`，真正跑
+`--live` 的那一步只看 `steps.live.outputs.can == '1'`。没有真 provider key 时整步不跑，
+**不拿 stub 冒充行为达标** —— 这条原则和原注释一致，只是现在它真的能被执行到了。
+
+**④ 本地先把 AE 真跑一遍（moon 在 PATH 上，全离线场景）：**
+
+```
+AE eval: pass=26 fail=0 skip=3  (gate 26/26 pass, observed 0, live 3)
+task_success_rate=1 tool_selection_accuracy=1 tool_call_success_rate=0.5205
+steps/task avg=9.06 p50=2 max=1  tokens(est)=4280  latency avg=43.65ms max=98ms
+skip AE-27/28/29 live：needs_live
+```
+
+其中 `AE-21 群协作：handoff 真执行（目标 bot 真的产出）` 在 §8.30 改完回包形状之后仍然绿，
+`AE-22/23`（无审批的 shell 不执行、参数里 `approved:true` 不能伪造审批）也照旧绿。
+`tool_call_success_rate=0.5205` 这个数本轮只记录、不当门用（分母含 provider 故意失败的场景），
+拿它当 KPI 之前得先说清口径。
+
+**⑤ 顺着这条线还抓到一处「整合分支打不出包」。**
+
+`android-apk.yml` 的 push 触发只写了旧分支 `cursor/android-mobile-target-v1`（外加 PR 改
+`hosts/android/**` 才跑）。桌面与安卓整合到 `cursor/next-target-v1` 之后，在这条最新分支上改安卓
+**Actions 一次都不会跑**，「能在 Action 里打出可安装包」这句话只对旧分支成立。修复只加分支、
+不动 paths 过滤（不碰安卓的提交不会白跑一次 45 分钟构建）。
+
+推上去之后实测真的被触发了，并且跑绿（这就是「加分支」是否生效的唯一证据）：
+
+```
+40734948337 | Android APK | cursor/next-target-v1 | completed | success
+job「编译 APK + 读回包里的事实」17 步全绿，其中三条是关键：
+  ✓ 真编译 APK + JVM 单测（线路解析）
+  ✓ 门禁：aapt 读回包名 / 权限 / SDK / flavor，并确认真的跑了单测
+  ✓ 产物与签名事实（写进 Summary，不写「已可上架」）
+产物：bitbot-android-universal-112271fa4d1211a6c944429af1081f1290121e60，13,310,179 B
+zip 里两个 APK（本轮真下载并 sha256 算过）：
+  universal-app-universal-debug.apk   8,034,166 B  d0ddf55b…41d3573
+  universal-app-universal-release.apk 5,964,777 B  6fce5124…9db6db
+```
+
+产物名里那串 sha 就是 `github.sha`，和本轮推的 HEAD（`112271f`）逐字一致 —— 「装到手机上那个包
+确实是这条分支现在的代码打出来的」这一点有凭据，不是拿旧包冒充。Actions REST 侧不返回 artifact
+的 sha256（`sha256_digest` 在两个端点都是 undefined），所以上面那两个和是本轮自己下载后算的。
+
+**⑥ 门禁与实测数字（本轮最后一次全量，跑在已推送的树 `112271f` 上）。**
+
+```
+smoke_grok_desktop_parity: PASS=387 FAIL=0
+```
+
+与 §8.30 收口时同一数字：本轮只动 `.github/workflows/*` 与文档，锚点条数不变（全仓 grep 确认
+没有任何门读 CI 文件，`scripts/` 里唯一提到 `android-apk.yml` 的地方是 RH 门引用报告里的一节标题）。
+同一轮核验：`✗` 行数 0；带自计数的 14 道门全部 `SKIP=0`；跑完 `git status --porcelain data/` 为 0 行；
+这一轮里 `prove_report_history_intact: PASS=7 FAIL=0` 与它的负向对照（截断版被抓住，4/3）同时成立。
+
+**⑦ 残留（诚实）。**
+
+- AE 在 **GitHub 上仍然没有成功跑过一次**：修复后可证的是「不再有名字叫文件路径、0 job 的空运行」
+  ——因为 `on:` 只允许 `main` 与 `pull_request`，这个分支的 push 现在正确地不触发它。要真正确认
+  CI 侧绿，得开一条到 `main` 的 PR（这是会影响他人可见状态的动作，本轮没做，等用户点头）。
+  本地 26/0/3 是行为门目前唯一的实测。
+- `--live` 三个场景（真模型自己选工具 / 自己决定下一步 / 失败后不重试）依旧整步不跑：仓库里没有
+  `BITBOT_LLM_API_KEY`，这个门的设计就是没 key 就不跑，不用假 PASS 凑数。
+- `desktop-macos.yml` 与 `kernel-binary.yml` 本轮没逐条查是否有同类「解析失败」症状，只确认它们
+  在这条分支的 push 上没有产生空运行（运行列表里只有 `Desktop macOS` 在 `desktop-v0.1.0` 上的成功记录）。
+- 无 KVM、无真机：AE 与 APK 都只到「行为断言 + 包内事实读回」这一层，装上手机后能不能走完
+  §8.30 那条转交流程，仍要设备验证。
+- 那个 `universal-release` 包在没配 `BITBOT_ANDROID_STORE_*` keystore 时**仍然是 debug 签名**
+  （工程未配置时回落 debug，workflow 头部就把这句话说在前面了）：它是一块能侧载的包，
+  不是一块能上架的包，Summary 也不写「已可上架」。
+
+## 8.32 群里说了「已转交」之后再没人接：把 pending 凭据的下游补上（GP-166）
+
+**① 断点在哪（不是文案问题，是没人上班）。**
+
+§8.30 把转交的状态诚实性修完之后，parity G-F 记下的是另一件事：
+`data/agents/inbox/<bot>.jsonl` 全仓 3 处写、0 处读；`data/agents/handoffs/handoff-<bot>-<ts>.json`
+存根只有落盘代码，没有任何消费者。所以用户在群里看到的「转交已受理并排队」确实是真的，
+但**这个队没人接手**——承接方这轮没答上（没配 key / provider 挂 / 超时 / 没 runner），
+这笔任务就永远挂着。对「热点搜集 → 内容编辑 → 稿件审核 → 定时发文」这条主线，
+后果是：稿子停在审核 Bot 名下，博主以为有人在做了，实际上一次都没重跑。
+
+**② 修复前红：Host 层合同（先写红测，再动产品代码）。**
+
+`scripts/prove_room_orchestrator.js` 新增 1b 节（R-01…R-10，17 条判据），跑在既有 handoff
+合同链后面，全部走产品入口而不是内部函数。插入后第一件事是跑红：
+
+```
+prove_room_orchestrator pass=82 fail=11
+  ✗ R-01 新一条群消息真的把 pending 的转交捡起重跑（产品入口在 dispatchRoomTurn，不是只留一个内部函数） — 回包里根本没有 handoff_retry
+  ✗ R-01b 捡起的答案真落进群转录（恰好多一条）
+  ✗ R-01c 凭据写下终态与次数（answered / attempts=1） — {}
+  ✗ R-03a 捡起策略给得出重试上限（不是一句「会重试」） — {"__missing":true,"attempted":0,"answered":0,"scanned":0}
+  ✗ R-03b 到上限就如实标 stuck（attempts 等于上限，不是悄悄挂到永远） — {}
+  ✗ R-05 承接方已不在群里 → 如实卡住（不产出任何「它答了」的行，原因点名 to_bot_not_member） — {"attempted":0}
+  ✗ R-06 坏凭据被如实跳过并计数，同目录其它凭据照常处理（不因为一个坏文件整批放弃） — {}
+  ✗ R-10 claim 过期（宿主中途没了）才允许接手，并把次数累加上去（不是从零开始） — {"state":"running","attempts":1}
+```
+
+红的都是「捡起没有发生」，不是崩溃、不是缺符号。11 条红之外，R 块另有 6 条在修复前就绿
+（R-01d / R-02 / R-03d / R-06b / R-07 / R-08）——它们是「不该发生的事没发生」型负向护栏，
+修复前它们恒绿是必然的（那时什么都不做），**它们单独不构成尺子**，靠的是与 R-01 / R-03b
+这些正向判据成对：先证明真的会捡，再证明只捡一次。这条口径在下面第 ⑥ 项的变异对照里逐条验。
+
+**③ 修复前红：真 Electron 渲染层（屏幕上那句话到底说不说得出）。**
+
+`scripts/e2e_desktop_user_journeys.mjs` 加三条取证，走真 IPC（`rooms.json` →
+`bitbot:rooms:list` → `renderRoomTranscript`），不是把拼好的 HTML 塞给探针。
+把渲染层的 `handoff_stuck` 映射摘掉（＝修复前状态）复跑：
+
+```
+  ✓ [18:37:30] GP-166 捡起后的答案在屏幕上真能看见（点名承接方，且不会被误报成「已停下」）
+  ✗ [18:37:30] GP-166 卡住提醒没落地，或把原始码摊给了用户 — {"n":0, … "UJ承接探针\n回复失败\n2026-10-28 18:37\n模型或服务返回失败，未取得该成员的产出。"}
+  ✓ [18:37:30] GP-166 负向对照：单次超时仍走超时那句话，没被并成「已停下」（提醒不是万能兜底串）
+
+e2e_desktop_user_journeys: PASS=68 FAIL=1 SKIP=0
+```
+
+`n:0` 是「这句话根本没出现过」，而屏幕上落的是通用兜底句「模型或服务返回失败」。
+这句对卡住的转交是**不完整的真话**：用户看不出这件事已经不再自动重试了、需要有人来看。
+补上三语 `roomFailStuck` 之后同一条门：`PASS=69 FAIL=0 SKIP=0`（截图 `artifacts/uj-gp166-handoff-retry.png`）。
+
+**④ 改了什么。**
+
+| 文件 | 改动 | 为什么是这里 |
+|------|------|--------------|
+| `hosts/desktop/product_surface.js:2582–2762` | 新增 `HANDOFF_DIR` / `readHandoffStub` / `patchHandoffStub` / `noteHandoffStuck` / `retryPendingHandoffs(opts)`，导出位 `:3336` | 凭据的读写与终态属于 store 层；与既有 `prepareHandoff` / `executeHandoff` 同一套成员校验与转录写入，不另造一套 |
+| `hosts/shared/room_dispatch.js:161–195` | 群回合跑完之后调 `surface.retryPendingHandoffs({room, deps})`，结果作为**可选字段** `handoff_retry` 带在回包里 | 这是桌面 IPC（`main.js:2003`）与 CLI / 移动端（`host_ffi.js:24866`）唯一的共同入口；挂在入口上才不会出现「一个端会捡、另一个端永远挂着」 |
+| `hosts/desktop/index.html:6100 / 13957 / 14656 / 15355` | `roomFailReason` 先认 `handoff_stuck`；三语 `roomFailStuck` | 卡住必须在群里说人话，且不许把 `provider down` 这类上游原文摊到产品面（沿用 GP-147 的 dev-mode 才露协议码纪律） |
+| `scripts/prove_room_orchestrator.js:175–424` | 1b 节 R-01…R-10 | 先把合同钉死（红），再实现 |
+| `scripts/e2e_desktop_user_journeys.mjs:1039–1091` | 三条真 Electron 渲染取证 | 「用户看得见」不能只靠 Host 层绿 |
+| `scripts/smoke_grok_desktop_parity.sh:2185–2226` | 新增 G-55：把 `prove_room_orchestrator.js` 接进聚合门 + 9 条锚点 + 接线注入对照 | 见第 ⑦ 项：这条门此前根本没被任何聚合门跑过 |
+
+**⑤ 契约口径（只加不改）。**
+
+- 幂等键 = 存根文件名（`handoff-<to>-<ts>` 是 host_ffi 写入时天然唯一的凭据 id）。
+  `state` 为 `answered` / `stuck` 的凭据一律不再调模型（`skipped_terminal`）。
+- `attempts` 只在**真跑了一轮**时 +1；被移出群、群被删、任务文字丢了这类不烧模型的终态
+  只写 `last_error` + `state:"stuck"`，不把次数虚增。
+- 有界重试：上限 3（`HANDOFF_MAX_ATTEMPTS`），第 3 次仍答不上 → `stuck` 并落一条
+  `bot_reply_error`（`error: "handoff_stuck:<原因>（第 3/3 次）"`）。**不新增转录 kind**，
+  渲染层已有的 `bot_reply_error` 通路就是它的显示面。
+- 每轮最多捡 5 笔（`HANDOFF_SCAN_LIMIT`）：用户发一句话不该换来五次模型调用，剩下的下一轮再来。
+- claim：跑之前先写 `state:"running" + claimed_at`；新鲜 claim 跳过（`skipped_running`），
+  超过 10 分钟才允许下一个回合接手，且次数累加不从零开始（R-10）。
+- 捡起的一轮与被拒前那轮同一套上下文：`role:"handoff_target"`、取消通道在、
+  `approved` 不带（R-04）——**审批不因为重跑而绕过**。
+- 不删用户数据：读不懂的存根原样留在原地（R-06b 断言字节不变）；inbox JSONL 仍是只进不出的账本。
+- `rooms.json` 读不动时**不把凭据演成「都卡住了」**：整轮返回 `ok:false,error:"rooms_store_unreadable"`，
+  存根保持 pending 等下一轮 —— 那是 store 的故障，不是这笔任务的终态。
+- 没有 runner（桌面没开机、`roomRuntimeDeps` 未注册）时返回 `handoff_retry_runner_required`，
+  而不是假装捡起了。
+- 既有回包字段一个都没动，`dispatchRoomTurn` 只多了 `handoff_retry` 这个可选字段。
+
+**⑥ 尺子的牙：变异对照（实现之后逐条拆掉再跑），以及尺子自己两次翻车。**
+
+实现写完、93/0 之后，把产品代码逐条改坏（每轮只改一处，改完立刻还原，
+`md5sum -c` 核验两个文件都回到实现态），看红是不是真的红在对应那条判据上：
+
+| 变异 | 拆掉的东西 | 立刻翻红的判据 | 计数 |
+|------|------------|----------------|------|
+| M1 | 终态不再跳过（`answered`/`stuck` 也重跑） | R-02 / R-03d / R-09 | 90 / 3 |
+| M2 | 群隔离（`stub.room !== roomId` 也照跑） | R-08 | 92 / 1 |
+| M3+M4 | 重试上限 + 新鲜 claim 一起摘 | R-03b / R-03c / R-03d / R-09 | 89 / 4 |
+| M6 | `attempts` 每次归零 | R-03b / R-03c / R-03d / R-10 | 89 / 4 |
+| M5 | `dispatchRoomTurn` 里不接捡起（产品入口摘掉） | R-01 / R-01b / R-01c | 90 / 3 |
+
+没有一条是「改了坏代码还全绿」，这才是第 ② 项里那 6 条负向护栏的意义：它们在实现之后
+分别被 M1 / M2 / M5 抓红过。
+
+尺子自己翻过的两次车（都不算产品红，但必须记）：
+
+1. 1b 节刚写出来时复用了上文 1 节的局部变量 `bad` 当夹具。但 1 节的 `const bad` 在那一节
+   `})();` 时就出了作用域，1b 里能取到的 `bad` 是模块级的**失败登记函数**——
+   `Object.assign({}, bad, …)` 会得到一份只有 `inbox_path` / `path` 的空凭据，
+   红就红在「夹具坏了」，而不是「产品没捡起」。改法：1b 自己造一笔「受理但没答上」的凭据
+   `pend`，并加一条 R-00 前置判据（凭据形状不对就直接判不过，不许让后面的判据拿空对象凑数）。
+2. G-55 的注入对照用 `String.replace` 摘入口。`room_dispatch.js` 里
+   `surface.retryPendingHandoffs` 有两处（`typeof` 判断 + 实际调用），`replace` 只换第一处，
+   副本仍然「看起来接着的」→ 第一次跑矩阵判 `PASS=397 FAIL=1`。
+   门是有牙的，坏的是尺子：改成 `split/join` 全量摘掉，同一条尺子的三向输出写进 stderr
+   （`real=true mut=false store=true i18n=true`）。这条坑与 §8.30 的「参数写死的因果锚点」
+   是同一类：**注入对照摘不干净，比没对照更危险**，因为它会一直绿。
+
+**⑦ 顺手抓到的一条真缺口：群编排合同链此前根本没被聚合门跑过。**
+
+`grep -rn "prove_room_orchestrator" scripts/*.sh` 在本轮登记前是 0 命中，
+`e2e_desktop_room_orchestration.mjs` 同样不在矩阵里。也就是说 §8.30 之后那 76 条 handoff
+合同、以及本轮 R-01…R-10 全都不在任何聚合门的覆盖范围内——改坏了矩阵照样全绿。
+这与 §8.25（G-53「验收标准本身的门没人跑」）是同一个病。本轮先把
+`prove_room_orchestrator.js` 接进 G-55（它跑在 mkdtemp 里，秒级、不碰 Electron），
+`e2e_desktop_room_orchestration.mjs` 需要真 `moon` + 本地 provider（分钟级），
+仍留在残留里（第 ⑩ 项）。
+
+**⑧ 打开工作树时读到的异常（不属于本轮改动，但必须记账）。**
+
+本轮开始时工作树里 `report.md` 相对 HEAD 是 `0 增 / 1482 删`、`parity-gaps-next.md` 是
+`5 增 / 85 删`——两份只许追加的文档被截断了（不是改写，是纯丢）。处理方式：
+先把残本备份到 `/tmp/truncated-*.bak`，再 `git checkout HEAD --` 还原，
+还原后行数回到 1664 / 175，本轮结束时 numstat 删除数为 0。
+`docs/design/desktop-target/reference/*` 那批截图与证据 json 也是脏的（历史门跑的输出），
+同样还原到 HEAD，不提交。
+
+**⑨ 全量矩阵与核验（只写实测数字）。**
+
+| 门 | 修复前 | 修复后 |
+|----|--------|--------|
+| `prove_room_orchestrator.js` | 82 / 11（R 块插入后） | **pass=93 fail=0** |
+| `e2e_desktop_user_journeys.mjs` | 68 / 1（渲染映射摘掉态） | **PASS=69 FAIL=0 SKIP=0** |
+| `prove_room_dispatch.js` | 29 / 0（既有） | 29 / 0 |
+| `prove_gp143_orchestration.js` | 40 / 0 | 40 / 0 |
+| `prove_m29_roomchat.js` | 41 / 0 | 41 / 0 |
+| `smoke_grok_desktop_parity.sh`（全量矩阵） | — | **PASS=398 FAIL=0**，`✗` 计数 0，14 道自计数门 `SKIP=0` 全在 |
+| `prove_report_history_intact`（矩阵内） | — | PASS=7 FAIL=0（负向对照 4/3 仍如实红） |
+| `git status --porcelain data/` | 空 | 空（门跑不污染用户数据） |
+
+矩阵第一次跑是 **397/1**，红在 G-55 自己的注入对照上（第 ⑥.2 项）；改尺子之后复跑 398/0。
+本轮没有为了让数字好看而跳过那一次 397/1。
+
+**⑩ 残留（诚实，不伪造）。**
+
+- **捡起仍然只搭「下一次群回合」这班车**：群里的消息停下来，挂着的那笔也就停着。
+  定时唤醒 / routines 那条路（`data/routines/fires.jsonl`）不走 `dispatchRoomTurn`，
+  所以还没接 `retryPendingHandoffs`；接上去是 GP-166 的下一跳，不是本轮已完成的事。
+- **端到端那一跳用的是注入 runner**：R 块与渲染取证都靠注入 / 真 store 行，
+  真 provider 挂掉 → 下一轮自动捡起 → 屏幕上出现答案，这条整链仍要在装了真 key 的机器上验一次。
+- 上限 3、每轮 5 笔、claim 10 分钟写死在代码里，没有用户可配项，也没做设备侧验证；
+  这三个数字是「说得清的默认值」，不是测出来的最优值。
+- inbox JSONL 依然只是账本：捡起后的终态只回写在存根上，两边靠 `path` / 文件名关联，
+  没有统一的「还挂着 N 笔」查询面（用户想知道总量只能在群里等它被捡）。
+- dm-only 审批链路（GP-167）没动，那条的验收仍靠「新路径压根不产生审批卡」成立。
+- `e2e_desktop_room_orchestration.mjs` 没接进聚合门（见第 ⑦ 项），
+  安卓真机上「下一轮把转交捡起来」也没有设备证据。
+
+## 8.33 挂账不能只等「下一次有人说话」；Box 的清单缺三块，手机那条链在真机上是断的（GP-168 / GP-169）
+
+**① 断点（两条，都是本轮跑门时撞出来的，不是设计的延伸）。**
+
+第一条直接承接 §8.32 自己写下的那条残留：GP-166 的捡起只搭「下一次群回合」这班车。自媒体的真实形状是
+08:00 定时发文内部转交给审核 Bot、provider 挂了 → 凭据落盘、标 `pending`；之后一整天群里没人再发消息，
+这笔任务就永远睡着。而定时 sweep（`routine_tick`）是唯一必然每天发生的唤醒 —— 它不捡，就没人捡。
+
+第二条更硬：本轮为了复核既有门跑 `scripts/prove_box_routine_sweep.js`，在 HEAD 树上是 `pass=0 fail=2`：
+Box 进程一起来就 `MODULE_NOT_FOUND`，后面 16 条（到点扫、手机拉待批、批准留痕、同一笔不能再批第二次）
+全都没机会执行。也就是「手机连上我这台电脑」这条链在真机上根本走不通，而当时全量矩阵是 398/0 ——
+因为聚合门里没有任何一行跑过它（登记前 `grep -rn "prove_box_routine_sweep" scripts/*.sh` 只命中它自己的
+`.sh` 壳）。根因不在逻辑，在 `scripts/pack-box.sh` 那份手写文件名清单：`cn_inbound_server.js` /
+`host_ffi.js` 后来新增的 `desktop_pairing` / `lan_candidates` / `machine_presence` 三个 require
+没回头补清单。单测跑的是仓库里的 `hosts/shared/`，永远发现不了「打包少带一块」。
+
+**② 修复前红（逐字，都在本轮留下日志）。**
+
+- 唤醒班车：`scripts/prove_gp168_handoff_wake.js` 首跑 `pass=8 fail=10`（`/tmp/gp168-red.log`），
+  红项 W-01「唤醒回包里没有 handoff_retry（班车没接）」、W-02b、W-03、W-03b、W-06、W-07、W-07b、
+  W-07c、W-08c、W-09；判据改写后复跑仍 `8/10`（`/tmp/gp168-red2.log`），红在同一个位置。
+- 真 Electron：把挂载摘掉后跑 `e2e_desktop_user_journeys.mjs` → `PASS=69 FAIL=2 SKIP=0`，红的正好是
+  GP-168 那两条，屏幕上只有「↪ task handed off …」和一句「模型或服务返回失败」，`stuck:0` ——
+  挂账躺着，谁也不来叫它（`/tmp/gp168-e2e-red.log`）。
+- Box：`prove_box_routine_sweep.js` HEAD 树复跑 `pass=0 fail=2`（`/tmp/sw-head.log`），SW-1 的 stderr
+  尾行 `code: 'MODULE_NOT_FOUND'`，requireStack 指到 `box/shared/cn_inbound_server.js`。
+- 清单闭包：新建 `scripts/prove_box_pack_closure.js` 首跑 `pass=3 fail=2`，P-01 报
+  「缺：shared/desktop_pairing.js, shared/lan_candidates.js, shared/machine_presence.js」。
+
+**③ 这把尺子先量错过自己三次，都记下来。**
+
+1. W-09 原写「`{room:"roomB"}` 时 `attempted === 0`」。判据本身是错的：那一刻 roomB 自己也挂着合法
+   待办，捡起当然去捡。红测详情里的 `{"attempted":4}` 不是产品破了，是我在要求「B 间不许有事可做」。
+   改成量真正不该发生的事：A 间那笔凭据 `attempts` 必须仍是 0、A 间转录不多一行、
+   `skipped_other_room>=1`、`scope==="single_room"`。
+2. W-03 带过一条 `max_attempts >= 1`：`max_attempts` 是回包里恒在的常量字段，这条子断言永真 = 没测。
+   换成 `retr3.stuck >= 1 && retr3.notified >= 1`（这一轮真数得出卡住、真往群里点了名）。
+3. G-57 的注入对照第一次是**假绿**：临时树里 `prove_box_pack_closure.js` 用 `ln -s` 挂进去，而 node 会把
+   主模块的 symlink 解析成 realpath —— 门里的 `ROOT` 退回仓库本身，「摘掉三个名字」的副本读的还是仓库
+   那份清单，照样 5/0 绿。改成 `cp -f`，并同时要求「原样副本仍绿」，红才归给清单而不是归给一把读错
+   输入的尺子。
+
+**④ 改动（四处，只加可选入参 / 可选字段，既有契约一字不动）。**
+
+| 文件 | 改动 |
+| --- | --- |
+| `hosts/desktop/product_surface.js` | `retryPendingHandoffs` 新增可选入参 `all_rooms:true`；回包新增可选字段 `scope`（`single_room` / `all_rooms`）与 `skipped_no_room`；循环内落点由写死的 `roomId` 改为 `target = roomId \|\| stub.room`（凭据自己记的那间群）。给了 `room` 时单群语义一字未改。 |
+| `hosts/shared/host_ffi.js` | async `executeHostEffects` 在 `routine_tick` / `routine_wake` 的效果行返回后 `await surface.retryPendingHandoffs({all_rooms:true})`，把 `handoff_retry` 同时挂到效果行与 stdout JSON；stdout 不可解析时只挂效果行（不伪造 stdout）。tick 原有 payload 一个字段没动。`executeRoutineEffect` 是同步的，捡起要 await 内核回合，所以只能挂在这个 async 收口处。 |
+| `hosts/shared/host_ffi.js` | `runHandoffTurn` 的 `ok` 加上 `&& !out.nested_skipped`（见第 ⑤ 项）。 |
+| `scripts/pack-box.sh` | shared 清单补 `desktop_pairing.js` / `lan_candidates.js` / `machine_presence.js`（20 → 23）。 |
+
+**⑤ `runHandoffTurn` 那个造假洞（本轮最该记的一条）。**
+
+`runWorkerMoonTurn` 在 nest depth≥1 时返回 `{ok:true, nested_skipped:true, assistant:"(worker nest skipped at depth N)"}`。
+responder 闭包按 `!out.nested_skipped` 判失败，唯独 `runHandoffTurn` 只看 `out.ok !== false` —— 而它正是
+捡起路径要用的 runner。后果：定时唤醒捡起挂账 → 内核被跳过 → 那句 `(worker nest skipped at depth 1)`
+被当成目标 Bot 的答复写进群转录、凭据标成 `answered`，用户看到「它答上了」，实际上一个字都没跑。
+变异对照 M2（把 `ok` 退回旧写法）实测把 W-02、W-03、W-03b、W-05、W-07b 五条一起演绿：一处宽松判定
+会把「假交付」传播到跨群隔离与有界重试上。现在两处同一口径 —— skipped = 失败，`last_error=nested_skipped`，
+群里渲染成兜底的人话，原始协议码只在 dev 模式露出。
+
+**⑥ 变异对照（七条，每条都有归属；全量摘用 `split/join`，`String.replace` 只摘第一处的坑在 §8.32 记过）。**
+
+| 变异 | 门结果 | 翻红的判据 |
+| --- | --- | --- |
+| M1 摘掉唤醒班车上的挂载 | 12/6 | W-01、W-02b、W-03、W-03b、W-06、W-08c |
+| M2 放回 `runHandoffTurn` 的 nested_skipped 造假 | 13/5 | W-02、W-03、W-03b、W-05、W-07b |
+| M3 `all_rooms` 把落点写死成第一间群 | 17/1 | W-07b |
+| M4 摘掉单次捡取上限 | 17/1 | W-06 |
+| M5 摘掉终态跳过（幂等键失效） | 17/1 | W-04 |
+| M6 没给 room 就自作主张扫全部 | 17/1 | W-10 |
+| M7 摘掉单群过滤 | 16/2 | W-09、W-09b |
+
+七条全有归属、`mutations_bad=0`；跑完立刻还原，`git diff --stat` 与变异前逐字一致
+（product_surface +23/-7、host_ffi +37/-1）。摘掉的行仍留在文件里（`typeof` 那行没删），
+所以 M1 是「假装有入口但不接」的形态，不是删函数式的作弊。
+
+**⑦ 修复后绿（实测数字，不口头担保）。**
+
+| 门 | 修复前 | 修复后 |
+| --- | --- | --- |
+| `scripts/prove_gp168_handoff_wake.js` | 8/10 | **PASS=18 FAIL=0** |
+| `scripts/prove_box_pack_closure.js` | 3/2 | **PASS=5 FAIL=0** |
+| `scripts/prove_box_routine_sweep.js`（HEAD 也红） | 0/2 | **PASS=18 FAIL=0** |
+| `scripts/prove_room_orchestrator.js`（GP-166 回归） | 93/0 | PASS=93 FAIL=0 |
+| gp157 / gp158 / gp161 / m22 | PASS | 全 PASS（routine 与 read-first 链无回归） |
+| 真生产入口 CLI `tick routines`（矩阵 G-56 内） | — | 唤醒回包带 `handoff_retry(scope=all_rooms)`，探针挂账 attempts 递增、`last_error=nested_skipped`、没被演成答上 |
+| `e2e_desktop_user_journeys.mjs`（真 Electron） | 摘掉班车 69/2 | **PASS=71 FAIL=0 SKIP=0**（新两条都在屏幕上落地） |
+| `smoke_grok_desktop_parity.sh` 全量矩阵 | 398/0 | **PASS=417 FAIL=0**，`✗` 计数 0，14 道自计数门 `SKIP=0` 全在，`git status --porcelain data/` 为 0 行 |
+| `prove_report_history_intact.mjs` | 7/0 | PASS=7 FAIL=0 |
+
+矩阵 +19 条逐笔对账：G-56 11 条（合同门 1 + W 锚点 8 + 真生产入口探针 1 + 接线/注入对照 1）、
+G-57 7 条（闭包门 1 + P 锚点 4 + 清单副本注入对照 1 + 真 Box 取证 1）、G-53 新增 GP-168 渲染锚点 1 条。
+探针只清自己造的那间群与那份凭据（跑完 `data/agents/handoffs/` 回到 0 个文件、rooms 数量回到原值）。
+
+**⑧ 门禁接线（继续堵「门存在但没人跑」这一类根因）。**
+
+G-56 = 唤醒合同门 + 8 条 W 锚点 + 真生产入口探针 + 三处各摘各的都翻红的注入对照；
+G-57 = 清单闭包门 + 4 条 P 锚点 + 清单副本注入对照 + 真 Box 取证（打包 → 起进程 → 到点扫 →
+手机拉待批 → 批准留痕 → 重复批准被拒）。G-53 另加一条 GP-168 渲染锚点：真 Electron 里这两行取证
+不出现就整条翻红；只有当数据根里存在别人的挂账、或可见 Bot 不足两个时才打 `· skip`
+（SKIP ≠ PASS —— 环境不足既不许记成产品缺陷，也不许记成绿）。
+
+**⑨ 残留（诚实）。**
+
+1. 唤醒班车只覆盖 `routine_tick` / `routine_wake` 这两个效果。Box 侧 `routine_scheduler.js` 经由同一条
+   `executeHostEffects`，已顺带覆盖；但**桌面 App 自己没有定时器** —— 用户开着桌面端、群里没人说话、
+   也没跑 daemon 时，挂账还是不动。要么在主进程里挂 sweep，要么把 daemon 装成服务，两条都还没做。
+2. `all_rooms` 单轮最多捡 5 笔（`HANDOFF_SCAN_LIMIT`）。挂账多时要靠连续几轮排空；回包里有 `pending`，
+   界面上还没有「今天还剩几笔」这个数。
+3. 单轮 sweep 内 `attempts` 只 +1，卡住要等三轮唤醒（daemon 间隔内是三次，日历上是三天）。
+   上限与间隔都没有产品化解释，也不可配。
+4. 取证用 `BITBOT_NEST_DEPTH=1` 让内核侧确定性短路，因此**没有**验到「真 provider 挂掉 → 真模型答复」
+   这一整段；那需要装了真 key 的机器。
+5. GP-169 修的是「清单缺文件」。Box 在真机（用户自己的机器）上能不能被手机连上、配对码走不走得通，
+   仍只有 SW 系列在同一台机器上的 loopback 取证；跨机器、真手机未验。
+6. 闭包门只覆盖 `box_main.js` / `host_ffi.js` / `product_surface.js` 三个入口的相对 `require("./x")`，
+   动态拼路径的 require 抓不到；以后再新增入口需要把 roots 一起加长。
+7. 新增 19 条只进 `smoke_grok_desktop_parity.sh` 这一份本地聚合门；CI 仍只跑 `scripts/eval/run.js` 与
+   `prove_android_build.mjs`（`android-apk.yml` 的 paths 只匹配安卓）—— 与 §8.32 记的同一条残留，未闭合。
+
+## 8.34 装好的 App 不会自己醒：唤醒被外包给了一份装不进包的 bash 脚本（GP-170）
+
+**① 断点：不是「没有定时器」这么简单，是「装机后唯一会醒的进程不在包里」。**
+
+§8.33 的残留 1 写的是「桌面 App 自己没有定时器」。继续查下去发现比这更糟：
+`hosts/desktop/main.js` 只在启动时 `spawn("/bin/bash", ["scripts/host_routine_daemon.sh", "--long-lived", ...])`
+（`ensureRoutineDaemon`，默认 60s 一轮），而 `hosts/desktop/package.json` 的 `build.files` 里**没有
+`scripts/`**。也就是说：
+
+- 源码 checkout 里跑 `npm start`：daemon 能起，唤醒正常 —— 开发时看不出问题；
+- 装好的 macOS / Linux App：`REPO_ROOT` 解析不到（或没有 `scripts/`），`ensureRoutineDaemon` 返回失败；
+- Windows：根本没有 `/bin/bash`；
+- 既有的 Electron 门禁**全部**设 `BITBOT_ROUTINE_DAEMON_AUTOSTART=0`（为了不污染用户仓库），
+  所以这条「唤醒到底有没有发生」的路径，从来没有一篇门禁真的跑过。
+
+用户的真实形状（自媒体博主）：08:00 定时发文、发完把稿子转交审核 Bot、晚上定时推邮箱。
+装机后电脑一直开着、群里没人说话 —— 这些都不会发生；GP-166/168 的「挂账要等下一次群回合或下一轮
+sweep」也就永远等不到。
+
+**② 修复前红（逐字）。**
+
+先写门 `scripts/e2e_desktop_sweep_timer.mjs`：故意在 `BITBOT_ROUTINE_DAEMON_AUTOSTART=0`
+（= 装机后的真实布局）下启动真 Electron，设 `BITBOT_DESKTOP_SWEEP_MS=250`，只认
+`data/routines/last-tick.json` 与 `desktop-sweep.jsonl`：
+
+```
+  ✗ S-01 daemon 关闭时，App 自己也会跑 routine_tick（last-tick.json 出现） — 8s 内没有 …/data/routines/last-tick.json
+  ✗ S-02 tick payload 标 desktop_sweep:true — 没有 tick
+  ✗ S-03 连续两轮 tick — t2=null
+  ✗ S-04 desktop-sweep.jsonl 至少两行 — rows=0
+  ✗ S-05 sweep 行有起止时间且不嵌套 — 行数不足
+e2e_desktop_sweep_timer: PASS=0 FAIL=5 SKIP=0
+```
+
+**③ 尺子先翻车两次（都记下来，免得下一轮重复）。**
+
+1. 首跑报 `Process failed to launch!`：`DISPLAY=:1` 指向一个不存在的 X socket。Electron 在 ozone 里
+   SIGSEGV，看起来像产品崩。按矩阵里既有写法用 `xvfb-run -a` 包住才成立。
+2. S-06 轮询写成每轮 `app.process()`：app 退出后 playwright 会把连接 dispose，再取 process 直接抛
+   `Cannot read properties of undefined (reading '_object')`。判据本身没问题，是尺子自己的 bug ——
+   改成在 quit 之前抓一次 child process，之后只读它的 `exitCode/signalCode`。
+
+**④ 改动（只加可选字段，不动既有契约）。**
+
+- `hosts/desktop/main.js`
+  - `DESKTOP_SWEEP_MS`：默认 60000（与 daemon 同节奏），`BITBOT_DESKTOP_SWEEP_MS` 可调，`0` = 关；
+  - `runDesktopSweep(reason)`：走 `ffi.executeHostEffects([{kind:"routine_tick",...}], {desktopSweep:true})`，
+    正是 daemon 每轮跑的同一个 Host 效果；**single-flight**（`desktopSweepInFlight`），上一轮没结束时
+    这一轮如实记 `skipped_in_flight`；失败不吞，行里带 `error`；
+  - `desktop-sweep.jsonl`：每轮的 `started_at/ended_at/tick_ok/due_count/fired_count/handoff_retry`；
+    这是 App 自己的运行日志（不是用户数据），超过 1MB 只留最近 500 行；
+  - `syncWakeSource()`：**只留一个唤醒源** —— shell daemon 真在跑就让位，否则主进程自己扫；daemon
+    `exit`/`error` 时自动接手（`error` 还顺手补了监听器：以前 spawn 失败会升级成主进程未捕获异常）；
+  - `before-quit` / `will-quit` 停表；`ensureRoutineDaemon` 对 `REPO_ROOT` 为空与 Windows 如实返回
+    `fallback:"desktop_sweep"`，不再在 `whenReady` 里 `path.join(null, …)` 抛错。
+- `hosts/shared/host_ffi.js`：tick 分支读 `effectOpts.desktopSweep`，只在为真时加
+  `wakeEntry.desktop_sweep = true` 并把 `note` 写成 `desktop in-process sweep (...)`；`daemon`/`long_lived`
+  仍如实为 `false`（不冒充 daemon）。tick 的 stdout 只加一个可选 `at`，给 sweep 日志对时间。
+
+**⑤ 一个容易「看起来修好了」的坑。**
+
+第一次注入对照只摘了 `whenReady` 里的 `syncWakeSource()`，门照样 6/0 全绿 —— 因为
+`ipcMain.handle("bitbot:daemon:ensure")` 里也调了一次（渲染进程启动时会问 daemon 状态），
+两条启动点互相兜底。把两处都摘掉才变成 5 红。教训同 GP-169：**能被两处喂饱的尺子不算尺子**，
+注入对照必须全量摘。
+
+**⑥ 注入对照（四次，各自只红该红的那几条）。**
+
+| 摘掉什么（全量 `split/join` / `str.replace`） | 结果 |
+| --- | --- |
+| 两处 `syncWakeSource()` 启动点 | `PASS=1 FAIL=5`，S-01…S-05 红；S-06 仍绿（见 ⑨.1） |
+| `host_ffi` 的 `wakeEntry.desktop_sweep = true` | `PASS=5 FAIL=1`，只有 S-02 红 |
+| sweep 行的 `ended_at` | `PASS=5 FAIL=1`，只有 S-05 红 |
+| `row.handoff_retry` 转述改成 `null` | `PASS=5 FAIL=1`，只有 S-04 红 |
+
+每次摘完都从 `/tmp/gp170-*.bak` 恢复并 `cmp` 核对，矩阵跑完工作树不留变异态。
+
+**⑦ 修复后绿（实测）。**
+
+| 门 | 修复前 | 修复后 |
+| --- | --- | --- |
+| `scripts/e2e_desktop_sweep_timer.mjs`（真 Electron） | 0/5 | **PASS=6 FAIL=0 SKIP=0** |
+| `scripts/prove_gp168_handoff_wake.js`（回归） | — | PASS=18 FAIL=0（tick 可选字段未影响旧判据） |
+| `scripts/prove_box_pack_closure.js`（回归） | — | PASS=5 FAIL=0 |
+| `scripts/e2e_desktop_quit.mjs`（回归：退出仍是干净退出） | — | PASS=8 FAIL=0 SKIP=0 |
+| `smoke_grok_desktop_parity.sh` 全量矩阵 | 417/0 | **PASS=441 FAIL=0**，`✗` 计数 0，15 道自计数门 `SKIP=0` |
+
+矩阵 +9 条全部来自 G-59：断点自证 1 + 真 Electron 门 1 + S 锚点 6 + 四路注入对照 1。
+（441 = 417 旧基线 + G-59 的 9 条 + G-60 的 6 条 + 远端提交带进来的 3 条 + 常驻内核 G-58 的
+6 条（整合分支上两块都自称 G-57，事件日志底座已挪到 G-61，编号以脚本里的 `echo "== G-` 为准）。
+最后这 6 条只在 `_build` 里有原生内核时才跑 —— 本轮 `pack-desktop.sh` 编了一次内核，
+它们才第一次进入矩阵。）
+
+**⑧ 门禁接线。**
+
+G-59 = 断点自证（`package.json` 不带 `scripts/` 且 `main.js` 仍需要它）+ 真 Electron 门 + 6 条 S 锚点
++ 四路注入对照。断点自证会在「以后有人把 scripts/ 打进包」或「main.js 不再依赖 shell 脚本」时翻红，
+提醒先复核断点是否还存在，而不是让门禁变成永远绿的装饰。
+
+**⑨ 残留（诚实）。**
+
+1. S-06「退出后不再产生新 tick」是**粗尺**：进程退出本身也会让定时器消失，所以即使 before-quit 里
+   忘了 `stopDesktopSweep()`，它也照样绿。它证明的是「没有退出后仍在写的幽灵进程」，不证明
+   `clearInterval` 那一行真的跑了；`stopDesktopSweep` 的接线靠代码审阅与 QUIT 门（进程真的退出）兜底。
+2. 「daemon 在跑时让位」这条分工没有门禁覆盖：门禁全部把 daemon 关掉，因为真 daemon 是长驻进程，
+   会在门禁跑完后继续写用户仓库。目前的证据是代码路径 + 启动日志 `[desktop] wake-source ...`。
+3. 默认 60s 是照 daemon 的节奏定的，没有按「定时发文最多晚多久」做过产品化论证；间隔也不可配给
+   最终用户（只有环境变量）。
+4. `desktop-sweep.jsonl` 1MB 轮转只保留 500 行，极端情况下历史会被截断（这是运行日志，不是用户数据）。
+5. 打包后的 App 仍**没有**被真机安装验证过；本门禁证明的是「同一个 main.js 在 daemon 不可用时自己会扫」，
+   `electron-builder` 打出来的包能不能找到 `hosts/shared`、能不能启动，属于打包门禁的范畴，未在本轮验证。
+6. 新增 9 条同样只进本地聚合矩阵；CI 仍不含它 —— 与 §8.32 / §8.33.⑦ 同一条残留。
+
+## 8.35 远端最新提交里躺着未解完的冲突标记：桌面 App 连 require 都过不去（GP-171）
+
+**① 事故事实（不是猜的，是对远端提交本身跑出来的）。**
+
+拉最新代码时 `cursor/next-target-v1` 已经推到 `a0ec929`。这个提交里有两份源码是
+**未解完冲突的工作树**直接提交的：
+
+```
+$ git show a0ec929:hosts/desktop/product_surface.js > /tmp/a.js && node --check /tmp/a.js
+/tmp/a.js:2516
+<<<<<<< HEAD
+^^
+SyntaxError: Unexpected token '<<'
+
+$ git show a0ec929:scripts/prove_room_orchestrator.js > /tmp/b.js && node --check /tmp/b.js
+/tmp/b.js:141
+<<<<<<< HEAD
+^^
+SyntaxError: Unexpected token '<<'
+```
+
+编排门里还多了一份重复夹具（`const noRunner` 出现两次，第 159 与 184 行）。也就是说：
+
+- 桌面 App 一 `require("./product_surface")` 就 SyntaxError —— **整个应用起不来**；
+- `prove_room_orchestrator.js` 即使在解掉标记之后也会因为重复 `const` 解析失败；
+- 而当时没有任何门禁/CI 报告这件事：所有门都跑在「源码已经解析成功」之后，
+  源码本身坏掉时它们连第一行都到不了，矩阵仍然是绿的。
+
+这正是本项目反复记的同一类根因：**「门存在但没人跑」之外，还有「门跑在坏源码的下游」**。
+
+**② 解决冲突的口径（按 §8.30 合同，不按哪边行数多）。**
+
+两侧其实在争同一件事的措辞：`accepted/ok` 是「受理」，`replied/transferred/pending/reply_error`
+是「答没答上」。采用的合并结果：
+
+- `handoffTaskAsync` 没有 runner：`ok/accepted=true`、`error=""`、`pending=true`、
+  `replied/transferred=false`、`reply_error="handoff_runner_required"`、`execution="queued"`，
+  保留 `queue_reason`（旧读者只认它也不受影响）；
+- `handoffTask` 同步入口：`accepted=true` + `replied=false`，注释保留「accepted 只说受理」；
+- `prove_room_orchestrator.js`：删掉重复夹具，合并两侧断言。**丢弃**了旧的
+  `bad.error.length > 0` —— 它和本轮实现（受理成立时 `error` 必须为空）自相矛盾，
+  而「原因可见」由 `reply_error === "provider down"` 覆盖。这一条如果照抄，门会永远红。
+
+**③ 新门：`scripts/prove_repo_integrity.mjs`（只问源码本身）。**
+
+- I-00 `git ls-files` 可用；
+- I-01 全部被跟踪文件里没有 `<<<<<<< ` / `>>>>>>> ` 行；**`.md` 代码围栏内的行算引用**
+  （本报告 §8.35 必须逐字贴 node 的报错原文），围栏外、以及所有非文档文件照罚；
+- I-02 全部被跟踪 `.js/.mjs` 通过 `node --check`（排除 `node_modules/vendor/_build/artifacts/dist`）；
+- I-03 尺子自身三向对照：代码里的标记必抓、文档围栏内的引用**不误报**、围栏外的标记照抓、
+  干净文件不误报且可解析。
+
+**④ 尺子翻车一次（记下来）。**
+
+注入对照最初把标记追加到「门禁脚本自己」身上：脚本直接解析失败退出，日志里根本没有
+`I-01` 那一行，于是判定条件「必须看到 I-01 变红」永远不成立 —— 尺子红对了，判据却读不到。
+改成往一份被跟踪、本门不执行的普通源码（`hosts/desktop/paths.js`）追加标记后，
+`✗ I-01` 如预期出现，恢复后 `cmp` 一致。
+
+**④b 尺子第二次翻车（全量矩阵抓到，比第一次更值得记）。**
+
+把 GP-170/171 的改动丢进全量矩阵后，G-60 反而红了 —— 不是源码坏了，是**门把报告自己判成了事故**：
+
+```
+✗ I-01 被跟踪文件里没有冲突标记 — docs/design/desktop-target/report.md
+prove_repo_integrity: pass=3 fail=1 skip=0
+```
+
+§8.35 ② 为了「逐字留证」，把 node 的报错连同 `<<<<<<< HEAD` 那几行原文贴进了代码围栏。
+旧 I-01 是「全仓任意文件行首出现标记即红」，于是**验收报告写了证据，就被自己的门判红**。
+这把尺子的问题不是误报本身，而是它逼着人「为了门绿而删掉证据」—— 那正是本项目明令禁止的
+「看起来修了」。修法不是给报告漂白，而是把口径收窄到危害面：
+
+- 代码/配置里的标记 → 红（危害：`node --check` 失败、应用起不来）；
+- `.md` **围栏内**的标记 → 引用，不报（本次事故的证据必须留）；
+- `.md` **围栏外**的标记 → 照红（README 里留一组没解完的冲突仍是事故）。
+
+I-03 也随之从两向变成三向。两次变异确认这条豁免既不松也不紧：
+
+| 变异 | I-01 | I-03 | 说明 |
+| --- | --- | --- | --- |
+| 删掉「围栏内豁免」（`if (fence) continue` → `false`） | ✗ report.md | ✗ `quoteExempt:false` | 证据又被误判 |
+| 把豁免放宽成「`.md` 整份不扫」 | ✓ | ✗ `bareCaught:false` | 围栏外的真冲突被放过 |
+
+恢复后 `cmp` 一致，`pass=4 fail=0`。**「能被两处喂饱的尺子不算尺子」之后，还要加一条：
+「会把证据判成事故的尺子，会训练人删证据」。**
+
+**⑤ 修复后绿（实测）。**
+
+| 门 | 修复前 | 修复后 |
+| --- | --- | --- |
+| `node --check`（全部被跟踪 .js/.mjs） | `product_surface.js` / `prove_room_orchestrator.js` 解析失败 | **174/174 通过**（本门自身提交后为 175/175） |
+| `scripts/prove_repo_integrity.mjs` | 0/3（若当时存在，会红在两份文件） | **pass=4 fail=0** |
+| `scripts/prove_room_orchestrator.js` | SyntaxError（重复 `const noRunner`） | **pass=97 fail=0** |
+| `scripts/prove_gp168_handoff_wake.js` | — | pass=18 fail=0 |
+| `scripts/e2e_desktop_sweep_timer.mjs` | 应用起不来，无从跑 | PASS=6 FAIL=0 |
+
+同一批还暴露了第二处断点：常驻内核提交把 `kernel_server.js` / `event_log.js` 变成新的
+`require`，但 `pack-box.sh` 的手写清单没跟着加 —— 闭包门立刻 **P-01 红（缺
+`shared/kernel_server.js`）**，`prove_box_pack_closure` 4/1。补进清单后 shared 23 → 25，
+闭包门 **5/0**，真 Box 取证 `prove_box_routine_sweep` 仍 **18/0**。这条不是 GP-171 修的，
+是 GP-169 的闭包门自己抓出来的 —— 正好证明「清单不能靠人记」。
+
+**⑥ 门禁接线：G-60。**
+
+G-60 = 完整性门 + 4 条 I 锚点 + 「真塞一行标记就翻红、恢复后仍绿」的注入对照
+（目标选 `paths.js`，不选门禁脚本本身）。
+
+**⑦ 残留（诚实）。**
+
+1. 完整性门只管「语法/标记」这一层。它能抓到这次的重复 `const`，但**抓不到**语义层面的重复：
+   同名 `function` / `var` 重复定义在 JS 里合法，I-02 不会红。合并后仍需人看 diff。
+2. I-02 只覆盖 `.js/.mjs/.cjs`；`index.html` 里的内联脚本、JSON 夹具、`.mbt` 不在内。
+3. I-01 只认行首的 `<<<<<<< ` / `>>>>>>> `；行内出现这些字符（文档讲解）不会触发；
+   `.md` 围栏内的引用按「证据」放行 —— 这是有意的口径，不是漏扫，双向由 I-03 钉住。
+4. 该门与 G-60 同样只进本地聚合矩阵；CI 仍不跑它 —— 与 §8.32 / §8.33.⑦ / §8.34.⑨.6 同一条残留。
+   这次事故恰好说明：**CI 不跑的验收，等于把分支质量交给运气**。
+
+
+## 8.36 装好的 App 第一次启动就崩：门禁一直跑在源码树里（GP-172）
+
+**① 这一步不是「再加一道门」，是把最外一层补上。**
+
+从 GP-170 起，「电脑开着就有人敲钟」已经成立 —— 但那条证据全部来自
+`electron hosts/desktop/main.js`：真 Electron、真内核，**却跑在源码树里**。
+`__dirname` 可写、`moon` 在 PATH、`scripts/` 就在旁边。用户拿到的不是这个，
+而是 electron-builder 打出来的 `app.asar`：只读、没有 moon、没有 scripts。
+
+2026-10-29 第一次真跑 `dist/linux-unpacked/bitbot-desktop`（本仓 `pack-desktop.sh`
+的 `--dir` 产物，Linux + xvfb），主进程在 **require 阶段**就炸了：
+
+```
+A JavaScript error occurred in the main process
+Uncaught Exception:
+Error: ENOENT, desktop/.env.local not found in
+  .../resources/app.asar
+    at upsertDesktopEnvLocal (…/app.asar/desktop/main.js:485)
+    at syncInjectedSecretsToEnvLocal (…/app.asar/desktop/main.js:440)
+```
+
+用户视角就是：双击图标 → 一个报错框 → 没有窗口。**所有开发机上的绿灯都没覆盖这条路径。**
+
+**② 两条缺陷叠加，缺一条都不会崩。**
+
+1. `DESKTOP_ENV_LOCAL = path.join(__dirname, ".env.local")`。开发时它是
+   `hosts/desktop/.env.local`（历史布局，可写）；装机后 `__dirname` 指向 asar
+   内部，**只读**。写就在这里 ENOENT。
+2. 触发写的不是用户注入的密钥，是 App 自己的默认值：`BITBOT_CONTENT_MODERATION`
+   在 `ALLOWED_SECRET_KEYS` 里，而 main.js 在同步之前先把它填成 `"1"`，
+   于是「云端注入了密钥，顺手落盘」这条逻辑把**产品默认值**当成了用户密钥。
+   开发机上表现为悄悄多一行 `.env.local`，没人注意；装机后就是崩溃。
+
+**③ 修复（每一条都对应上面的断点）。**
+
+- `DESKTOP_ENV_LOCAL`：`app.isPackaged && USER_DATA_DIR` → `<userData>/.env.local`，
+  否则保持 `hosts/desktop/.env.local`。密钥跟着用户数据走，不跟着安装目录走。
+- `upsertDesktopEnvLocal` 的写盘包 `try/catch`：写不进去返回
+  `{ok:false, error:"env_local_unwritable", detail}`（`pretend_saved:false`），
+  IPC 层原样回给 Settings，`process.env` 的热加载仍然生效 —— 一次会话可用，
+  下次启动要重新填，这个边界说清楚，不假装保存成功。
+- `syncInjectedSecretsToEnvLocal()` 在模块加载处包 `try/catch`：它是「顺手帮忙」，
+  不能成为启动的单点。
+- `BITBOT_CONTENT_MODERATION` 的默认值挪到同步**之后**：默认值是产品行为，不是注入。
+- 顺带修掉同一类装机断点：Linux 自启的 `Exec=` 之前是
+  `"<execPath>" "<__dirname>"`，装机后 `<__dirname>` 在 asar 里，桌面环境拉不起来；
+  现在 `app.isPackaged` 时只写 `"<execPath>"`。
+
+**④ 新门：`scripts/e2e_desktop_packaged.mjs`（只认打包产物）。**
+
+不启动源码树，直接 spawn `dist/<platform>-unpacked/...`，环境按「用户机器」构造：
+不继承任何 `BITBOT_*`（尤其 `BITBOT_REPO_ROOT` / `BITBOT_NO_SECRET_SYNC`）、
+PATH 里没有 moon、数据落在临时 `--user-data-dir`。
+
+| 门 | 判据 |
+| --- | --- |
+| P-00 | `app.asar` 在、`resources/kernel/bin/desktop_turn` 在；`moon.mod` / `cmd` / `scripts` 都**不在**包里 |
+| P-01 | 进程活着，日志里没有 `Uncaught Exception` / `FATAL` |
+| P-02 | `<userData>/data/routines/desktop-sweep.jsonl` 至少 2 轮 `tick_ok:true`，每轮带 `handoff_retry.ok:true`；`last-tick` 是 `desktop_sweep` 写的（daemon=false long_lived=false） |
+| P-03 | 注入的 `BITBOT_LLM_API_KEY` 落进 `<userData>/.env.local`（0600），安装目录里没有任何 `.env.local` |
+| P-04 | 运行前后 `app.asar` 的 sha256 不变（App 没往自己安装目录写） |
+| P-05 | SIGTERM 后退出，且退出后不再产生新 tick |
+
+**⑤ 红 → 绿（同一份产物，同一把尺子）。**
+
+| 版本 | P-00 | P-01 | P-02 | P-03 | P-04 | P-05 | 合计 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 修复前（`a0ec929` + GP-170 的源码打出来的包） | ✓ | ✗ 未捕获异常 | ✗ 0 行 | ✗ 没写 | ✓（什么都没写） | ✓（空跑） | **3 / 4** |
+| 修复后 | ✓ | ✓ | ✓ 19 轮 | ✓ 0600 | ✓ | ✓ | **7 / 0** |
+
+**⑥ 尺子自身对照（不是只看它绿）。**
+
+- 假产物对照：`BITBOT_PACKAGED_BIN=/tmp/fake-pack/bin/bitbot-desktop`（一个只会
+  `sleep 60` 的脚本）→ P-00 / P-02×2 / P-03 / P-04 **全部翻红**（2/5）。
+  这证明 P-02/P-03 不是「进程活着」就能喂饱的。
+- 尺子自己踩过一次坑：第一版用白名单环境（只给 `DISPLAY`），漏了 `XAUTHORITY`，
+  Electron 连不上 X 直接 **SIGSEGV**，看起来像产品崩了。改成「继承宿主环境 +
+  剔掉 `BITBOT_*`」后同一条命令稳定复现产品行为 —— 布局隔离和显示环境不是一回事。
+
+**⑦ 接线：不再靠人记得跑。**
+
+`scripts/pack-desktop.sh` 在打包之后直接跑本门（Linux；有 `DISPLAY` 就直接跑，
+没有就 `xvfb-run -a`）。也就是说以后每一次 `BITBOT_PACK_TARGET=dir|dist` 的本机
+打包都会真的启动一次产物。macOS/Windows 分支打印「本机未验」并跳过，**不假装跑过**。
+
+**⑧ 残留（诚实）。**
+
+1. 只在 **Linux + xvfb** 下验过。macOS / Windows 的安装包、真机双击安装、
+   首次启动向导，仍是未验状态（CI 的 mac 打包产物目前只验「包里有能跑的内核」，
+   不启动窗口）。
+2. 本门不点窗口、不验首启引导页是否出现；它证明的是「主进程能起、能扫、能写对地方」。
+   窗口渲染由 `e2e_grok_desktop_boot` / `shell_v2` 在源码树里覆盖，两者合起来才算完整。
+3. 自启 `Exec=` 的修复没有门禁：需要真桌面环境写 `~/.config/autostart` 再登录，
+   本沙箱做不到。现在只有代码路径与打包后 `app.isPackaged` 分支。
+4. P-02 的 19 轮来自 250ms 测试间隔；产品默认 60s 的节奏在 `e2e_desktop_sweep_timer`
+   与 GP-170 里论证，本门不重复。
+5. 打包本身依赖 `pack-desktop.sh` 先编内核；本门不负责「包里有没有内核」的构建正确性
+   （那是 `prove_pack_artifacts.mjs`），只负责「有内核的包能不能真的跑」。
+6. **全量矩阵在这一轮暴露了一个既有的不稳定点（不是 GP-172 引入的，但必须记）**：
+   三次全量矩阵里，两次在 `e2e_grok_desktop_boot` 的「回合落盘」型断言上偶发红
+   —— 一次是 `GP-112 isolation`（Bot B 的 recall 30s 内没有行），一次是
+   `GP-128 session`（M27 探针会话没进 store），且都会连带让后面 grep 该日志的
+   G-27 三条锚点一起红。同一个脚本单独连跑三次都是 **128/0**，最终矩阵 **441/0**。
+   当前结论是「墙钟等待 + 固定端口 stub 在长矩阵里偶发超时」，不是产品行为回退；
+   但**没有找到根因之前不算修好**。下一步该把这几处从固定 30s 等待改成事件驱动
+   （store 落盘即返回），并给 stub 端口做占用探测。
+
+## 8.37 用户只是填了个 key，内容审核门被静默关掉（GP-173）
+
+**① 用户路径与现象（装机包，CDP 真点，不是读源码猜的）。**
+
+```
+账户胶囊 → 设置 → 凭证 → 填 sk-ui-saved-2468 → 保存并热加载
+<userData>/.env.local 里出现：BITBOT_CONTENT_MODERATION=0
+```
+
+填 key 之前，这个复选框在页面上就是**未勾选**的（`勾选前=false`）——而产品的默认值
+是开（`main.js`：`BITBOT_CONTENT_MODERATION === undefined` 时填 `"1"`）。也就是说：
+**一次再普通不过的「保存并热加载」，把默认开启的内容审核门关掉了，用户全程没有看到任何提示。**
+对「自媒体博主 → 多 Bot 产稿 → 定时发群/推邮箱」这条主线，这是把安全默认值当成了可选项。
+
+**② 根因：三处各差一点，叠起来才发生。**
+
+1. `bitbot:secrets:status` 只对 `_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|
+   _TOUSER$|_FILING$|_FEED_URL$|_PROVIDER$|_API_BASE$` 回读 `value`；
+   `BITBOT_CONTENT_MODERATION` 不在里面 → 返回 `value: undefined`。
+2. 渲染层 `refreshSecretsForm()` 只在 `value !== undefined` 时回填复选框
+   （`index.html` 的 `if (mod && f.BITBOT_CONTENT_MODERATION && …value !== undefined)`），
+   所以它保持 HTML 里的初始「未勾选」，看起来就是「用户自己关的」。
+3. `saveSecretsFromForm()` **无条件**提交
+   `BITBOT_CONTENT_MODERATION = checked ? "1" : "0"`；写盘成功后热加载立刻生效。
+
+附带一条同类断点：`secrets:status` 的 `path` 硬编码 `"hosts/desktop/.env.local"`。
+GP-172 已经把装机后的真实文件挪到 `<userData>/.env.local`，但这条没跟上 ——
+界面上「配置文件位置」指着一个用户机器上根本不存在的路径。
+
+**③ 修复（一处读、一处显示）。**
+
+- `value` 的正则加 `_MODERATION$` → 复选框按进程里的真实值回填（默认就是勾选）。
+- `path: DESKTOP_ENV_LOCAL` → 开发时是 `hosts/desktop/.env.local`，装机后是
+  `<userData>/.env.local`，和 GP-172 的写盘路径同一个来源。
+
+**④ 新门 P-06：在装机包里走一遍真实 UI（不是直接调 IPC）。**
+
+在 `scripts/e2e_desktop_packaged.mjs` 里、P-05 之前，用 CDP 真点：
+账户胶囊 → 设置 → 凭证 → 填 key → 保存，然后断言三层：
+
+| 断言 | 为什么是这三层 |
+| --- | --- |
+| `<userData>/.env.local` 里 `BITBOT_CONTENT_MODERATION=1` | 最终事实：保存没有改掉默认值 |
+| `#sec-moderation` 保存后仍勾选 | 用户看到的状态与磁盘一致，不是「磁盘对、界面错」 |
+| `secrets.status().path === <userData>/.env.local` | 界面指向的路径真的存在 |
+
+红 → 绿（同一份装机产物，同一把尺子）：
+
+| 版本 | P-06 | 整门 |
+| --- | --- | --- |
+| 修复前（GP-172 产物） | ✗ `保存后审核门不是 1（实际 0）; 保存后复选框未勾选（勾选前=false）; status.path 不是 userData：hosts/desktop/.env.local` | **7 / 1** |
+| 修复后（重新 `pack-desktop.sh --dir`） | ✓ | **8 / 0** |
+
+**⑤ 尺子第三次翻车：`DISPLAY` 设了不等于能用。**
+
+把 P-06 接进 `pack-desktop.sh` 后，整门连续两次 4/4 红，P-01 只写
+`signal=SIGSEGV` —— 看起来像「刚修好的产物又崩了」。先补「崩溃时打印输出尾部」，
+下一轮立刻拿到真因：
+
+```
+[desktop] synced injected secrets → .env.local: BITBOT_LLM_API_KEY,...
+ERROR:ozone_platform_x11.cc(245)] Missing X server or $DISPLAY
+```
+
+本沙箱宿主有 `DISPLAY=:1`，但 `:1` 的 Xvfb 早就退了。`pack-desktop.sh` 的判断是
+「`DISPLAY` 为空才套 `xvfb-run`」，于是直接跑了 Electron；门的 `hasDisplay()` 也
+只认「变量非空 / 有 xvfb-run」，于是既不 SKIP 也起不来。
+
+修法：新增 `displayUsable()`（`xdpyinfo -display $DISPLAY` 探活；没装 `xdpyinfo`
+就退化为 `/tmp/.X11-unix/X<n>` 是否存在）。不可用且还没包装过 →
+用 `xvfb-run -a` **重新执行自己**（`BITBOT_XVFB_WRAPPED=1` 防递归）；
+已经在 xvfb 里仍不可用 → 判红 `P-00`，**不 SKIP**（那是尺子坏了，不是缺证据）。
+
+证据：修前 `node scripts/e2e_desktop_packaged.mjs`（宿主 `DISPLAY=:1`）→ 4/4 红；
+修后同一条命令打印「`DISPLAY=:1` 连不上，改用 xvfb-run 重跑」→ **8/0**；
+`BITBOT_PACK_TARGET=dir bash scripts/pack-desktop.sh` 端到端 → **8/0**。
+
+**⑥ 残留（诚实）。**
+
+1. P-06 只在 **Linux + xvfb** 的 `--dir` 产物上走过；macOS / Windows 的安装包与
+   真机安装同 §8.36 仍是未验。
+2. 只钉了「内容审核」这一个开关。其余开关（`_POST` 系列、`_FEED_URL`）本来就在
+   status 回读白名单里；P-06 是这类「保存会顺手改开关」缺陷的模板，但不是全量矩阵。
+3. dev 树里没有对应锚点：凭证页的「保存」会写用户真 `.env.local`（固定路径，
+   `BITBOT_REPO_ROOT` 隔离不到），所以 `e2e_desktop_llm_key_paste_guard` 只验到
+   「不点击保存」的那一层。要回归只能跑打包门；CI 仍不跑打包门。
+4. 本轮矩阵第一遍出现 **437/4**，全部集中在 `G-47 e2e_android_roster`（AR-06 401 /
+   AR-11 拿不到局域网地址）。根因不是产品：上一轮手工复现留了一个 packaged app
+   （`--user-data-dir=/tmp/pk-shot/ud`）占着 `127.0.0.1:18765`，门里的入站
+   `EADDRINUSE`，请求打到了那个旧实例上。杀掉后单跑 **20/0**，矩阵复跑
+   **441/0**。记一条：**固定端口的门禁不会自己发现环境里还有上个实例**；
+   下一步该让门禁用临时端口（`BITBOT_CN_INBOUND_PORT=0` 已是合法请求）或在启动前探测占用。
+
+## 8.38 「会话没进 store」不一定是产品丢了：800ms 单次读 + 固定 stub 端口（GP-174）
+
+**① 症状与代价。**
+
+GP-172 那一轮的三次全量矩阵里，两次红在同一条断言上：
+
+```
+✗ E2E GP-128 session — M27 probe session never reached the store
+```
+
+连带 G-27 三条 grep 锚点一起红（它们 grep 这份日志）。同一个脚本单跑三次都是 128/0。
+当时的结论只到「墙钟等待偶发超时」，根因未定位 —— 这条按未修记在 §8.36 ⑥.6。
+
+**② 根因（已定位的那一条）。**
+
+M27 段先发一条真消息，然后：
+
+```js
+await win.waitForTimeout(800);
+const st = JSON.parse(fs.readFileSync(SESS_M27, "utf8"));
+```
+
+**死等 800ms，然后只读一次**。store 的落盘是异步的：机器一忙（长矩阵里同时在编译、
+跑别的 Electron 门），写入晚于这个窗口，这一次读就是空的 → `m27SessionId` 为空 →
+整段右栏断言被 `if` 跳过 → 最后只报一句「没进 store」。
+
+这条**可以确定性复现**：stub 已支持 `BITBOT_STUB_LATENCY_MS`（同步阻塞、真的晚回包），
+给它 3s，旧代码 100% 红，报错原文一模一样。
+
+另一条同类隐患：这个 stub 用的是固定端口 `8796`。上一轮被打断的重跑留下的 stub 还在时，
+新 stub 绑不上，回合会打到旧进程（或者干脆 connection refused）。症状同样是「没进 store」。
+
+**③ 修复（只动尺子，不动产品）。**
+
+- 把「死等 + 单次读」换成**轮询到出现**（150ms 间隔，20s 兜底）；
+- stub 端口改成每轮 `pickFreePort()`，端口号写进 base_url；
+- 超时的时候把现场带进断言：store 条数、最近 3 个标题、stub 尾部、主进程尾部
+  （Playwright 的 `electron.launch` 解析时启动日志已输出完，主进程尾部可能为空，
+  空的时候明确写「启动日志早于 launch 解析」，不装成采集成功）；
+- `launchOnce` 里挂一个 300 行的进程输出环形缓冲，`GP-111/112` 失败时一并带出
+  新出现的 `recall-*.json`（prefix / bot_id / count）——GP-112 的偶发红还没有定位，
+  先把「看不见」变成「看得见」。
+
+**④ 红 → 绿（确定性复现，不是等它偶发）。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| 旧脚本 + `BITBOT_STUB_LATENCY_MS=3000` | **121 / 1**：`✗ E2E GP-128 session — M27 probe session never reached the store` |
+| 新脚本 + 同样 3s 延迟 | **128 / 0**（GP-128 三条 + GP-129 两条全绿） |
+| 新脚本 + 40s 延迟（> 20s 兜底，负向对照） | **118 / 4**，报错带现场：`{"store_sessions":33,"last_titles":[...],"stub_tail":"[stub-llm] http://127.0.0.1:36113/v1 mode=ok"}` |
+| 新脚本 + 正常时序 ×2 | **128 / 0**、**128 / 0** |
+
+负向对照是必须的：只证明「慢的时候也绿」还不够，还要证明**真的没有**的时候它仍然红。
+
+**⑤ 诚实边界。**
+
+- 这是尺子修复，产品行为没有改变；它解释的是「为什么同一份代码有时红」。
+- **GP-112 的偶发红仍未定位**（`recall` 30s 内没有出现该 Bot 的行）。这一轮只补了现场：
+  下一轮再红，断言里会直接看到是不是「点错 Bot / 文件归错人 / 回合根本没跑」。
+  在没有拿到那份现场之前，不写「已修」。
+
+## 8.39 固定 18765：环境里残留一个实例，门就假红 5 条（GP-175）
+
+**① 症状。**
+
+GP-173 收尾跑矩阵时，`G-47 e2e_android_roster` 判了 **13 / 5**：
+AR-06 带凭证打 `/v1/turn` 得到 `401 invalid_token`、AR-07 同、AR-08 花名册不点亮、
+AR-11 拿不到局域网地址。看起来像「手机连桌面大脑」整条链路断了。
+
+**② 根因：不是产品，是环境。**
+
+上一轮手工复现 GP-173 时留下的 packaged app（`--user-data-dir=/tmp/pk-shot/ud`）
+一直占着 `127.0.0.1:18765`。门里的 app 入站 `EADDRINUSE`（日志：
+`[desktop] cn-inbound failed: listen EADDRINUSE ... 18765`），请求于是打到了那个旧实例上：
+令牌当然对不上（401），`listening:false` 也就没有局域网地址。杀掉旧进程后单跑 **20/0**。
+
+**③ 修复：门禁自己挑一个空闲端口，并在本轮内固定。**
+
+`e2e_android_roster` 启动时 `pickFreePort()`，用 `BITBOT_CN_INBOUND_PORT` 传给 app。
+为什么不是直接 `0`（app 支持临时端口）：AR-11 收回局域网时会**重启**入站服务，
+`0` 会让重启后的端口变掉，于是「同一个局域网地址不该还能用」变成「端口换了当然连不上」，
+断言被掏空。挑一次、固定住，重启复用同一个端口，语义保持。
+
+**④ 红 → 绿（同一个占位进程在场时）。**
+
+| 跑法（18765 被一个返回 401 的假实例占着） | 结果 |
+| --- | --- |
+| 旧门（HEAD 版本） | **13 / 5**（AR-06/07/08/09/11） |
+| 新门 | **20 / 0** |
+| 新门（无占位） | **20 / 0** |
+
+**⑤ 残留。**
+
+- 同一份 boot 门里还有 4 个固定端口的 stub（8793/8794/8795/8799），同类碰撞风险没逐个清；
+  这一轮只把 M27 用的 8796 换成了空闲端口（§8.38）。
+- 这是「门禁对环境残留没有自愈」的一个实例，不是产品缺陷；但它会让矩阵的红色失去意义，
+  所以按缺陷对待。
+
+## 8.40 「退出后还在 tick」：快照取早了 250ms（GP-176）
+
+**① 症状。**
+
+GP-174/175 之后的全量矩阵到了最后一段，`G-59 e2e_desktop_sweep_timer` 判 **5 / 1**：
+
+```
+✗ S-06 退出后不再产生新 tick — before=…01:02:27.375Z after=…01:02:27.625Z rows 6→7
+```
+
+两个时间戳正好差一个 250ms 周期（本门的时间尺度）。同一份代码此前多次 6/0。
+
+**② 根因：快照在「发 quit」之前取，而不是「进程真的没了」之后。**
+
+S-06 原来的顺序是：
+
+```js
+const beforeQuit = readJson(TICK);      // ① 先拍快照
+void app.evaluate(({app:e}) => e.quit()); // ② 再请求退出（IPC 是异步的）
+await waitForAppExit(proc, 15000);
+```
+
+①和②之间只要跨过一个 tick 周期，就会有一轮在 `quitRequested` 置上之前已经开跑，
+它的写入被算成「退出后还在 tick」。矩阵里那次跨了整整一个 250ms 周期。
+**这不是定时器没停，是尺子把「退出中」算成了「退出后」。**
+
+**③ 复现（确定性）。**
+
+把「快照 → quit 真正到达主进程」这段延迟人为放大到 400ms（矩阵里那次是 250ms），
+旧逻辑立刻红，报错原文与矩阵一致：
+
+```
+✗ S-06 退出后不再产生新 tick — before=…41.831Z after=…42.333Z rows 6→8
+```
+
+**④ 修复：快照移到进程退出之后。**
+
+进程已经没了，此后任何写入都只可能来自残留写手 —— 这才是这条断言想抓的东西。
+`at_exit` / `rows_at_exit` 与 1.5s 后的值比较，失败信息也改成 `at_exit=…`。
+
+**⑤ 红 → 绿（同一段人为延迟）。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| 旧逻辑 + 400ms 延迟 | **5 / 1**（S-06，`rows 6→8`） |
+| 新逻辑 + 同样 400ms 延迟 | **6 / 0**（`rows=8`） |
+| 新逻辑 + 正常时序 ×2 | **6 / 0**、**6 / 0** |
+
+修复后的全量矩阵 **441 / 0**（无 `✗`；S-06 以 G-59 锚点身份在矩阵里绿），
+`data/` 无脏文件，`prove_repo_integrity` 4/0、`prove_report_history_intact` 7/0。
+上一轮 439/2 里的 S-06 由这次修复覆盖；同批的另一条红当时未留下可复现证据，
+不按「已修」记账，再出现就按现场定位。
+
+**⑥ 残留。**
+
+- 这条断言修完后仍然能抓「主进程退出后还有写手」，但它抓不到「退出过程中定时器
+  还在跑」—— 那本来就不是缺陷（`quitRequested` 之前的一轮属于正常收尾）。
+- 同一个「先拍快照再触发异步动作」的模式在别的门里是否还有，没有全量排查；
+  目前只修了 S-06 这一处有证据的。
+
+---
+
+## 8.41 boot 门里四个写死的 stub 端口（GP-177）
+
+**① 症状（同一类，只是没赶上）。** `scripts/e2e_grok_desktop_boot.mjs` 里还有
+四处 stub 端口写死：GP-14 用 8793、G19 用 8794、M28 用 8795、M29 用 8799。
+stub 自己 `listen(port)`，端口被别人占着就 bind 失败、不打 `[stub-llm]`，
+门的就绪等待 8s 超时，整段异常——产品代码一行没错，红却是真的。
+
+这不是「理论上可能」：G-47 那次 5 红就是残留实例占着 18765 造成的；M27 已经
+改成空闲端口，这四个是漏网的。
+
+**② 复现（确定性）。** 起一个 500 回包的 HTTP 服务占住这四口（冒充旧 stub 残留），
+再跑 boot 门：
+
+```
+✗ E2E GP-14 块异常 — stub boot timeout
+✗ E2E GP-130/131 块异常 — m28 stub boot timeout
+✗ E2E GP-143 real turns — {"returned":0,"total":2,"partial":true,
+     "sections":[{"id":"agent-bit","ok":false,"err":"(occupied by stale stub 8799)"}, …]}
+✗ E2E GP-146 reply cards — []
+✗ E2E GP-146 report card — …模型或服务返回失败，未取得该成员的产出…
+✗ E2E GP-93/94/95 块异常 — g19 stub boot timeout
+e2e_grok_desktop_boot: PASS=99 FAIL=6   （exit=1）
+```
+
+注意 GP-143 的残留是真打到 500 上的：占位服务自己的命中计数停在 4，
+说明这几段确实把回合发给了陌生进程，而不是单纯的 bind 冲突。
+
+**③ 修复。** 四处改成 `await pickFreePort()`，和 M27 同一条路：每次运行挑空闲端口，
+base_url 跟着走。改完门里不再有任何写死的 stub 端口。
+
+**④ 红 → 绿（同一批占位进程不撤）。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| 四口被占 + 旧代码 | **99 / 6**（exit=1，六条红如上） |
+| 四口被占 + 新代码 | **128 / 0**（exit=0；占位服务命中数仍停在 4，绿跑一次没碰旧端口） |
+
+修复后的全量矩阵 **441 / 0**（exit=0，无 `✗`；G-16 仍是 128 项、`data/` 干净）。
+端口被占时门不再假红，端口空着时项数一条没少。
+
+**⑤ 残留。**
+
+- 这是门禁的环境自愈，不是产品行为变化：用户不会因为 8793 被占而看到 bug。
+- 「写死端口」这类问题只按门逐个清，没有做全仓库静态扫描（比如直接把
+  `BITBOT_STUB_PORT: "87xx"` 列为 lint 规则）—— 现在四个门里已经没有固定端口，
+  但新写的门仍可能再犯。
+
+---
+
+## 8.42 全量矩阵搬进 CI（GP-178）
+
+**① 问题不是「有没有门」，是「门只在一个人机器上开」。** 441/0 这个数字此前
+只有最后一个跑矩阵的人见过；别人把改动合进去之前，没有任何独立环境复核过。
+本轮的几处偶发红（GP-174/175/176/177）全都只在「同一份代码、另一台机器/另一次
+运行」里露头。
+
+**② 加了什么。** `.github/workflows/desktop-parity.yml`：
+
+- 触发：`workflow_dispatch`、push 到 `cursor/next-target-v1` / `main`、PR 到 `main`；
+- `concurrency` 按 ref 取消旧跑（矩阵十几分钟，两条并行会抢 Xvfb 和端口）；
+- 步骤：装 MoonBit → `moon check` + `moon build --target native` → `npm ci
+  --prefix hosts/desktop` → 装 Xvfb → `xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh`；
+- 失败时打印 `✗` 行与日志尾部，无论成败都把矩阵日志上传成 artifact。
+
+**③ 本地能证的（和 CI 互相不替代）。**
+
+- YAML 能解析，10 个 step；
+- workflow 里那条外层 `xvfb-run` 的调用形式和本机一致：拿 S-06 那道门按同一形式
+  跑了一遍 **6/0**（门自己再包一层不会打架：DISPLAY 活着时它就不包）；
+- 矩阵本体在本机 **441/0**（§8.41 复跑）。
+
+**④ 第一次真跑（已观测，不是「应该会绿」）。**
+
+推上 `a04adaf` 之后 Actions 自己跑了一次，用公开 API 轮询到的现场：
+
+| 项 | 值 |
+| --- | --- |
+| run id | `40989489921`（event=push，head=`a04adaf`） |
+| 结果 | **completed / success** |
+| 步骤 1–8 | Checkout、Host info、Setup Node、Install MoonBit、**Build kernel (native)**、npm ci、Install Xvfb 全 success |
+| 步骤 9 | **Run full parity matrix — success** |
+| 步骤 10 | `Show red lines (if any)` — skipped（只有失败才跑，跳过本身说明它没红） |
+| 步骤 11 | Upload matrix log — success |
+
+矩阵脚本 `[ "$FAIL" -eq 0 ]` 才退 0，所以「步骤 9 success」等价于 runner 上
+`FAIL=0` 且无 `✗`；同一条命令在本机是 441/0。两份环境、同一个数字。
+
+**⑤ 仍然不能证的。**
+
+- **具体 PASS 计数没读到**：job 日志的下载接口要仓库 admin 权限（403），
+  我拿到的是步骤级结论，不是日志里的 `PASS=441`。若要看逐项清单，得有人
+  在 Actions 页面下载 artifact `parity-matrix-log`。
+- Android APK 段依赖 runner 的 SDK / gradle / JDK；缺任一件时
+  `prove_android_build` 打 SKIP，矩阵按 skip 记（SKIP ≠ PASS）。这一段的实际
+  状态在日志里，我读不到，所以**不声称 APK 在 CI 上真编译过**。
+- macOS / Windows 的「装上、双击、能用」仍然没验；`desktop-macos.yml` 只打包。
+- 这次成功只覆盖 `a04adaf` 这一个提交；回退或后续改动是否仍绿，要看它自己那次 run。
+
+---
+
+## 8.43 GP-112 红的时候，先说清「切没切过去」（GP-179）
+
+**① 症状。** GP-112 偶发红，签名是「切到 Bot B 之后，30s 内没有出现该 Bot 的
+recall 行」。上一轮（§8.38）只补了现场：新出现的 `recall-*.json` 的
+prefix / bot_id / count，加主进程尾部。**原因没定位，也没写「已修」。**
+
+**② 一个看起来对、被实验否掉的修法。** 阅读代码时最像原因的是：`openBot(id)`
+会把「点一下 + 等 pill 变成目标 Bot」重试到 20s，失败返回 false，而三处调用
+都没看返回值。直觉是「切成断言」：没落地就红。
+
+做了注入实验再决定 —— 把 `openBot` 的落地判定改成「永不匹配」（pill 名字不可能
+等于这个串），用**旧代码**跑整套门：
+
+```
+e2e_grok_desktop_boot: PASS=128 FAIL=0
+```
+
+点击本身把 Bot 切过去了，只是名字比对的判据没满足。**「pill 名字没对上」不等于
+「没切过去」**，按它判红会造出假红。这个方案撤回。
+
+**③ 现在的做法：不动判红条件，只改失败信息。** 三处 `openBot` 的返回值都存下来
+（`switchA1` / `switchB` / `switchA2`），失败信息改成先写现场、再写原始 JSON：
+
+```
+✗ E2E GP-112 isolation — switch_landed=false pill=«Bit Bot»
+  rows=[{"bot":"agent-bit","count":0}] got={"bot_id":"agent-bit",…
+```
+
+顺序不是随手排的：`bad()` 只保留 200 字，**现场必须写在被截断之前**。第一版把
+JSON 放在前面，实测红行在 `"at` 处就断了，switch_landed 根本没出现 —— 等于白加。
+
+**④ 负向对照（证明这段现场真的会打出来，不是死代码）。**
+
+在副本里注入两处：`want` 改成永不匹配、`count === 0` 改成 `count === -1`，
+强制走失败分支：
+
+| 跑法 | 结果 |
+| --- | --- |
+| 注入副本（强制失败分支） | **127 / 1**，红行原文：`switch_landed=false pill=«Bit Bot» rows=[{"bot":"agent-bit","count":0}] got={"bot_id":"agent-bit",…}` |
+| 未注入（同一份代码的正常路径） | **128 / 0**、**128 / 0**（本轮两次） |
+
+**⑤ 残留（照实写）。**
+
+- **GP-112 的偶发红当时没有消除**：那一轮没有拿到可复现的失败，所以只做到
+  「下一次红能指认」。后面 §8.44 就抓到了那一次真红，并按 id 修掉了判定层。
+  断言一个字没放松。
+- 本轮没有系统处理「块内异常之后那台 App 没关」的问题。实测后果真实存在：把
+  `openBot` 失败改成抛异常的那一版里，下一个块再 launch 时旧进程还占着
+  `127.0.0.1:18765`，红从 1 条蔓延成 3 条（`page has been closed`）。产品没坏，
+  是门的收尾不干净；要改就得逐个块改收尾，本轮没做。
+
+---
+
+## 8.44 那次 GP-112 真红：名字不是身份（GP-179 续 / GP-180）
+
+**① 真红来了（不是构造的）。** §8.43 的现场改造之后第一次全量跑，GP-112 就红了：
+
+```
+✗ E2E GP-112 isolation — switch_landed=true pill=«Bit Bot»
+  rows=[{"bot":"bot-cd3806","count":1}]
+```
+
+关键矛盾：**胶囊说切到了 B，实际回合跑在 A 上**（A 有这条记忆，count=1）。
+断言没错，它抓的是真实串位。
+
+**② 归因：判定用的是「名字」。** `openBot` 以前等 `#bot-pill .bot-pill-name`
+的文字等于目标 Bot 的名字。可是名字不是身份：门禁数据里就有一串同名的
+`SmokeRenamed`（几十个），用户也能把 Bot 改成重名。名字对上只能说明「标题看起来
+对」，说明不了 `activeBotId` 是谁。这一次就是「pill 文字匹配、activeBotId 没变」。
+
+**③ 修法（产品侧加一个可断言的事实，不改任何行为）。**
+`updateBotPill(..., botId)` 在胶囊上写 `data-bot-id`，两个调用点都传真实 id
+（默认主 Bot、点开 Bot）。门禁的 `openBot` 改成等 `pill.dataset.botId === id`，
+名字只留在失败信息里。判定变严了：以前按名字能过、实际没切过去的情况，现在会
+重试点击，20s 还不行就明确报 `switch_landed=false`。
+
+**④ 顺手抓到的产品缺陷：点头像条根本没切换（GP-180）。**
+侧栏默认折叠成头像条，chip 的点击回调写的是 `selectBotForChat(b.id)` —— 传的是
+字符串，而函数读 `b.id / b.name`。结果 `activeBotId = undefined`、胶囊退回默认
+文案、会话标题多出一条 `undefined · DM`。这不是门禁问题，是用户点一下就中。
+
+**⑤ 红 → 绿。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| 新增 GP-180 断言、`index.html` 未修（传字符串） | **129 / 1**：`✗ GP-180 strip avatar bot-cd3806 — stale pill=agent-bit/«Bit Bot»`（点 agent-bit 那条「通过」是因为胶囊本来就在 agent-bit 上） |
+| 同一份断言、改成传对象 | **130 / 0** |
+| GP-112（id 判定 + 修好的切换） | 本轮跑绿；上面那次红之后再没出现 |
+
+**⑥ 残留。**
+
+- GP-112 的偶发红在新判定下没有再出现，但这只是修复后 1 次绿的样本，**不写成
+  「已彻底消除」**；差别在于：下一次若还红，红行会直接给出 `switch_landed` 与
+  胶囊上的 id，而不是只剩一个名字。
+- 头像条只修了「点击传什么」；头像条本身没有键盘可达性（button 有了，但没有
+  aria-label / focus 样式），这块属于无障碍打磨，未做。
+
+
+---
+
+## 8.45 「胶囊说的是 B，消息发给了 A」：重绘把标题拉回主 Bot（GP-179 收尾）
+
+**① 按 id 判定之后，同一形态又红了一次。** 在 cc26876 上跑全量矩阵：
+
+```
+✗ G-16 E2E 冷启动+像素断言
+✗ G-20 界面契约
+  ✗ E2E GP-112 isolation — switch_landed=true pill=agent-bit/«Bit Bot»
+    rows=[{"bot":"bot-cd3806","count":1}]
+```
+
+`switch_landed=true` 意味着**点击那一刻**胶囊上的 id 就是 B，但回合仍落在 A 上。
+所以「按 id 判定」只解决了「假落地」，没有解决「胶囊先对、随后被改掉」。
+
+**② 根因：Bot 列表每次重绘都把胶囊拉回主 Bot。** `refreshBotsNow()` 末尾原来写死：
+
+```js
+const primary = bots.find(x => x.id === (view && view.primary_id)) || bots[0];
+if (primary) updateBotPill(primary.name, primary.id, primary.avatar_data_url);
+```
+
+侧栏会被 `bitbot:bots-changed` 广播频繁重绘。用户点开 A（胶囊 A、activeBotId=A），
+任何一次重绘就把胶囊改成主 Bot B —— 之后门禁/bot 切换逻辑看到的「当前 Bot」
+与真正接消息的 `activeBotId` 不再一致。这也是用户能看到的：跟 A 聊天时标题栏
+写着 B。
+
+**③ 修法。** 重绘时先看胶囊上已有的 `data-bot-id`：它在、且这个 Bot 还在列表里，
+就继续显示它；只有「还没选过」或那个 Bot 已经没了，才回落到主 Bot。id 由新增的
+`markPillBot(id)` 写在胶囊上（`updateBotPill` 签名保持三个参数，G-20 的静态契约
+不动 —— 第一版加第四个参数直接让 G-20 翻红，见 ⑤）。
+
+**④ 红 → 绿（同一台机器，同一份数据）。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| 全量矩阵（修前，cc26876） | **439 / 2**：G-16（内含 GP-112 isolation 那条）+ G-20（`updateBotPill` 签名多了一个参数） |
+| 单跑 G-20 静态门 | 修前 `23 passed, 1 failed`（bot pill）→ 修后 **24 / 0** |
+| 单跑 boot 门 | **130 / 0** |
+| 全量矩阵（修后） | **441 / 0**（exit=0，无 `✗`，`data/` 干净） |
+
+**⑤ 诚实边界。**
+
+- 同一提交在 GitHub Actions 上也红过一次（run `40996522403`），但 job 日志要仓库
+  admin 才能下载（403），**我没有读到那次 CI 的 `✗` 行**。上面两个红是本地在
+  `cc26876` 上复现出来的，不冒充「CI 的失败原因已确认」。
+- 胶囊现在只保证「点开谁就显示谁，重绘不再抢」，没有做「多窗口/多会话各自
+  独立标题」；那是另一个形状的需求，没在本轮范围。
+
+**⑥ 修完这一版在 CI 上也绿了。** 推上 `86134ea` 后 Actions 自动跑：
+
+| 项 | 值 |
+| --- | --- |
+| run id | `41001215575`（head=`86134ea`） |
+| 结果 | **completed / success** |
+| 「Run full parity matrix」 | **success**（`Show red lines` skipped —— 只有失败才跑） |
+
+同一条命令在本机是 **441/0**，与 §8.42 的第一次 CI 绿一致。上一版 `cc26876` 的
+CI 失败（run `40996522403`）与本机复现到的 439/2 是同一形状：G-16 里的 GP-112
+与 G-20 的静态签名。日志仍然只有 admin 能下，**逐项 `PASS=` 计数没有读到**。
+
+## 8.46 红的是尺子：`set -u` 下的空数组，和不听开关的进程内唤醒（GP-181 / GP-182）
+
+**① 一天之内三个红，没有一个是产品坏的。** 整合上游 14 个提交后跑全量矩阵：
+
+```
+scripts/smoke_grok_desktop_parity.sh: line 2534: gp170_xvfb[@]: unbound variable
+✗ G-16 E2E 冷启动+像素断言（见 /tmp/e2e-g16.log）
+✗ G-57 真 Box 取证未通过（见 /tmp/gp169-sweep.log；pass=0 fail=1）
+```
+
+第一条最贵：矩阵在 2534 行**直接断掉**，G-59 之后十几道门根本没跑（报的是
+430/2，其实分母也不完整）。这一条连同「G-1/G-2 每跑一次往用户侧栏留一批
+Smoke 夹具」一起在 `48ef31d` 里落了 —— 夹具现在按前缀自清（开跑前摘一次、
+跑完摘一次、EXIT trap 兜底），实测把 25 个 Bot 里的 16 个门禁造的清掉。
+
+**② 空数组这一类的形状。** macOS 自带 `/bin/bash` 是 3.2，`set -u` 下
+`"${ARR[@]}"` 摊到空数组不是「摊成 0 个词」，而是报 unbound 并让整条命令不执行
+（bash 4.4 才修）。命中的都是「按条件才 push 元素」的数组：
+
+| 位置 | 什么时候是空的 | 后果 |
+| --- | --- | --- |
+| 矩阵 G-59 `gp170_xvfb` | macOS 没有 `xvfb-run` | 整轮矩阵从 2534 行断掉 |
+| `scripts/pack-box.sh:59` `BUILD_FLAGS` | `--profile debug`（只有 release 才 `+=--release`） | 死在 `moon build` 之前，Box 打不出来 → G-57 真机取证 `0/1` |
+| `prove_agent_context.sh` / `prove_kernel_binary.sh` / `prove_product_tools.sh` 的 `FLAGS` | 非 release profile | 同型，一旦 CI 换 profile 就连环假红 |
+| `host_matrix_i_sweep.sh` 的 `EXTRA`、`host_xdotool_mock.sh` 的 `args` | 无附加参数 | 同型 |
+
+**这类破损 `bash -n` 全绿**，§8.35 之后新增的完整性门（冲突标记 + `node --check`）
+也全绿 —— 它们看的是「是不是一份源码」，不是「在这台机器的 shell 上跑不跑得动」。
+Linux（CI）既有 `xvfb-run` 又是 bash 4+，所以这道坑只在 mac 上开。
+
+**③ G-16 的红是另一个开关没关。** GP-170 把「唤醒源」从 bash daemon 搬进主进程后，
+`BITBOT_ROUTINE_DAEMON_AUTOSTART=0` 只关得掉 shell daemon，管不住进程内那个
+`DESKTOP_SWEEP_MS`（默认 60s，且 `startDesktopSweep()` 在 startup 就先扫一次）。
+boot 门的 GP-108 断言是「点 Fire **之后**新增几份草稿」，启动那一下多落 3 份，
+于是读出 `{"n":4,"d":{"routine_id":"desk-r",…}}` —— 数错了，不是草稿机制坏了。
+
+**④ 修法。** shell 侧统一换成仓库里其余八道门已经在用的
+`${ARR[@]+"${ARR[@]}"}`（`pack-desktop.sh` 那种「先 `${#ARR[@]}` 判长度」的写法也认可）。
+门禁侧把唤醒开关收进唯一入口：`scripts/electron_env.mjs` 的 `electronLaunchEnv()`
+在未显式指定时默认 `BITBOT_DESKTOP_SWEEP_MS=0`，测唤醒节律的两道门
+（`e2e_desktop_sweep_timer.mjs`、`e2e_desktop_packaged.mjs`）本来就自己显式设值，
+不受影响；boot 门另外把 `BITBOT_ROUTINE_DAEMON_AUTOSTART=0` 与新的 `…SWEEP_MS=0`
+成对写明。产品侧「应用本身就是唤醒源」没有改 —— 装机的 App 仍然会在启动时扫一次。
+
+**⑤ 补一把尺子（GP-181 的回归门）。** `scripts/prove_repo_integrity.mjs` 加两条：
+
+- **I-04** 扫全部被跟踪 `.sh`（实测 56 个）。四个条件同时成立才算红：文件里有
+  `set -u`、某数组出现过 `NAME=()`（含 `local/declare/typeset/export` 前缀）、
+  该数组有裸展开（先把 `${ARR[@]+…}` 与 `${ARR[@]:-…}` 剥掉再判，所以惯用法的
+  内层 `"${ARR[@]}"` 不会误报，同一行里另留一处裸展开照样抓）、且全文件找不到
+  对该数组的 `${#ARR[@]}` 长度守卫。
+- **I-05** 尺子自己的对照：9 份探针（裸 / 带引号 / 惯用法与裸展开混在同一行 /
+  `local` 起空 必抓；纯注释引用、`+` 惯用法、长度守卫、无 `set -u`、非空字面量 不报），
+  外加**行为对照** —— 用 `/bin/bash` 真跑一份 `set -u; FLAGS=(); printf '%s\n' "${FLAGS[@]}"`，
+  在 3.2.57 上必须非 0 退出（实测 `rc=1`），惯用法那份必须 0；bash 4.4+ 上
+  反过来要求两边都 0，版本号打在 ok 文案里，读的人知道走的是哪半边。
+  违规探针自己也带一行同名注释，用来证明「注释豁免」只豁免那一行、不会整份放过。
+- 矩阵 G-60 挂上真文件注入对照：把 `pack-box.sh:59` 的惯用法改回裸展开 →
+  `✗ I-04 … scripts/pack-box.sh:59 BUILD_FLAGS`，恢复后 `fail=0`、`cmp` 一致。
+  另一处手工实测（不落进矩阵）：把 `gp170_xvfb` 改回裸展开，尺子同样指到
+  `scripts/smoke_grok_desktop_parity.sh:2568 gp170_xvfb`。
+
+**⑥ 红 → 绿（同一台机器）。**
+
+| 跑法 | 结果 |
+| --- | --- |
+| `node scripts/prove_box_routine_sweep.js`（修前） | **0 / 1**（pack-box 死在 `BUILD_FLAGS[@]: unbound variable`） |
+| 同上（修后） | **18 / 0**，`bash scripts/pack-box.sh --out /tmp/boxprobe --profile debug` 打出 `[pack-box] done → /tmp/boxprobe` |
+| `node scripts/e2e_grok_desktop_boot.mjs`（修前） | G-16 红：GP-108 `n=4` |
+| 同上（修后） | **130 / 0**（GP-108 四条 + GP-109 两条都在） |
+| `node scripts/prove_repo_integrity.mjs` | **7 / 0**（I-00…I-05，含 56 个脚本全扫） |
+| 全量矩阵（修后） | **436 / 0**，exit=0，日志里无 `✗`；`· 收尾自清：夹具 Bot 2 条、夹具群 1 条`（最终树重跑 `/tmp/matrix-gp183b.log`；中途一次 436/**2** 是我把 §8.46 标题改字触发的 RH-06/07，见 ⑨ 倒数第二条） |
+
+矩阵里对应那四条（`/tmp/matrix-final.log`，逐字）：
+
+```
+✓ G-16 E2E 冷启动+像素断言全绿（130 项，e2e_grok_desktop_boot: PASS=130 FAIL=0)
+✓ G-57 真 Box 取证：打包→起进程→到点扫→手机拉待批→批准留痕→重复批准被拒（pass=18 fail=0）
+✓ G-60 锚点：I-04 被跟踪的 .sh 没有 / I-05 空数组尺子对照 / I-05 行为对照
+✓ G-60 注入对照（I-04）：把 BUILD_FLAGS 那条 + 惯用法改回裸展开就翻红、且指到 pack-box.sh 行号，恢复后仍绿
+```
+
+**⑦ 这一版在 CI（ubuntu runner）上也绿。** 推上 `59204d6` 后 Actions 自动跑同一份矩阵：
+
+| 项 | 值 |
+| --- | --- |
+| run id | `41062832802`（head=`59204d6`，workflow `Desktop Parity Matrix`） |
+| 结果 | **completed / success** |
+| 矩阵计数（CI 日志里摘到的汇总行） | **`smoke_grok_desktop_parity: PASS=439 FAIL=0`**，无 `✗` |
+| I-05 行为对照那半边 | 锚点在 CI 上同样绿：`✓ G-60 锚点：I-05 行为对照` —— runner 的 bash 是 5.x，走的是「4.4+ 要求两边都 0」那条分支，本机 3.2.57 走「裸展开必须 rc=1」那条，两平台各证一次 |
+
+这次的 CI 日志用 `gh run view --log` 读得到（本仓的 run，与 §8.45 里那个需要
+admin 的外部 run 不同），所以下面的 `·` 行是逐字摘录，不是推断。
+
+**⑧ GP-183：把两份日志逐条对差，抓到一条 CI 层的断点（与 §8.31 的 AE 门同型）。**
+本机 436 与 CI 439 差的不是「几条小项」，而是**两整块**：
+
+| 块 | 本机（mac） | CI（ubuntu） | 逐字的 skip 行 |
+| --- | --- | --- | --- |
+| G-47 APK 真编译 | **skip** | 跑（16 项全绿） | `· skip：prove_android_build: SKIP — 没装 Android SDK（ANDROID_HOME / local.properties sdk.dir 都没有）（SKIP ≠ PASS）` |
+| G-58 常驻内核（T1-07） | 跑（11 项全绿） | **skip** | `· skip：没有 release 内核二进制（_build/native/release/build/cmd/desktop_turn/desktop_turn.exe），G-58 未跑（SKIP ≠ PASS）` |
+
+也就是说：**T1-07 那条常驻内核契约（KR-01..KR-10）在 CI 上从来没跑过。**
+workflow 里那步 `moon build --target native` 出的是 **debug** profile 的产物，
+而 G-58 只认 `_build/native/release/…`，于是两边各自绿着、合起来才是全覆盖 ——
+单看任何一份日志都会以为另一块也跑了。门禁本身是诚实的（`SKIP ≠ PASS` 写在文案里），
+断的是**覆盖面**，不是判定。补法就是那两条命令（`moon build --target native --release`
+产 release 产物，紧跟一条 `ls _build/native/release/build/cmd/desktop_turn/desktop_turn*`
+当存在性断言）—— 产物不在就当场红，而不是让矩阵记一句 `·` 之后整体绿。
+
+**GP-183 的 CI 半边已自证（推上 `6e93e6b` 后自动跑的那轮）。**
+
+| 项 | 值 |
+| --- | --- |
+| run id | `41069037431`（head=`6e93e6b`，workflow `Desktop Parity Matrix`） |
+| 结果 | **completed / success**，`Run full parity matrix` 步骤 ✓，日志里 `✗` 计数 **0** |
+| 矩阵计数 | **`smoke_grok_desktop_parity: PASS=445 FAIL=0`** |
+| 与 ⑦ 那轮 439 的差 | 正好 **6 条** —— G-58 跑起来时走的是 2511/2517/2520/2524/2527/2531 这六个 `ok`，skip 分支只打一行 `·`（不计入）。439 + 6 = 445，差值能被门代码解释，不是我挑出来的数 |
+| 本机侧 | 同一份矩阵在 mac 上是 **436 / 0**（那边 G-47 的 APK 块仍是 skip），两平台合起来才是全绿 |
+
+G-58 那一段在 CI 日志里的逐字（`gh run download --name parity-matrix-log` 取到的
+`parity-matrix.log`，不是 `gh run view` 的步骤摘要）：
+
+```
+== G-58 常驻内核进程（T1-07 · 一行请求换一回合，替代每轮 spawn）==
+  ✓ G-58 常驻内核契约全绿（11 项，pass=11 fail=0）
+  ✓ G-58 反向对照 + 语义不变都在：关常驻 6 次 spawn，常驻侧 Host 侧 spawn=0；同一批 argv 两条路结果逐条相同
+  ✓ G-58 旧内核兼容锚点在：不认 --serve 的二进制被如实判成 not_serving，不是 crashed，也不挂死
+```
+
+原来那行 `· skip：没有 release 内核二进制…G-58 未跑（SKIP ≠ PASS）` 在这一轮里
+**已经不在日志里了**（全文 `grep -n "G-58 未跑"` 无命中），换成了上面的 11 项全绿。
+
+**⑨ 诚实边界。**
+
+- I-04 是**文本规则**，不是 shell 解析器：靠 `eval` 拼出来的命令名、`printf -v`
+  间接起的数组、以及把 `=()` 写进注释/字符串又恰好同名的展开，都看不见。它只保证
+  「这四种真炸过的形状」不再复发，不保证 shell 端口性无债。
+- 整行注释被豁免（门禁的注释天天引用 `"${ARR[@]}"` 讲这个坑），行中出现 `#` 的
+  不豁免；所以「注释里写了解释、代码里仍然裸用」这一行照样会被抓 —— I-05 的
+  违规探针就故意长这样。
+- `${#ARR[@]} -gt 0` 这条豁免是**文件级**的，不是控制流级的：同一个数组若既在守卫
+  分支里裸用、又在守卫外裸用，本规则会放过。选它是因为 `pack-desktop.sh` 已是这种
+  写法，宁可少报也不把存量全改一遍；新增的门禁请直接用 `+` 惯用法。
+- G-16 修的是**门禁环境**。GP-170「App 自己是唤醒源」这个产品行为没动，装机版启动
+  仍会扫一次；如果哪天需求变成「启动扫描也要出现在草稿计数里」，这把尺子得跟着改。
+- 本轮自己踩了一次 RH-06/07：把 §8.46 的**标题**改字（想把 GP-183 也写进标题）后，
+  这两条立刻翻红 —— 它们拿 HEAD 的标题逐字比，「改标题」和「段落被吃掉」在这把尺子
+  里同形。已还原标题、GP-183 只在正文里标；代价是**已提交段落的标题从此不能改字**，
+  要改就得连门一起改。这一条是记录，不是绕过它的理由。
+- ⑦/⑧ 的 CI 数字来自 `gh run view --log`（本仓 run 可读）。矩阵跑动期间工作区里
+  短暂出现过 `docs/next-target-requirements.md`、`parity-gaps-next.md` 的 `M` 状态、
+  几秒后又与 HEAD 一致 —— 我没有复现出是谁写的（两份内容现在都和 HEAD 相同，
+  没有丢段落）。写下以免下次再看到时被当成我改的。
+
+## 8.47 双写旁路上线：一条 require 打死整个桌面端，和 Box 里那块没拷进去的文件（GP-184）
+
+**① 起点是上一节自己写下的那句「残留」。** G-61 的诚实行说「T1-04 读切换、T1-06 单写者
+还没接上」，而它前面那格（`docs/next-target-requirements.md:259`）是 T1-03：
+
+```
+| T1-03 | 双写旁路：现有写入点同时写 events（不改行为） | T1-02 | 1d | `fold(events)` 与 JSON 快照逐字段相等（sessions/rooms/approvals） |
+```
+
+于是这一轮做的是**旁路本身**：`hosts/shared/event_mirror.js`（镜像 + `foldEvents`）挂进
+三个收敛点（`sessions.js:65-70` 的 `writeStore`、`product_surface.js:49-57` 的 `atomicWrite`、
+`product_surface.js:68-74` 的 `appendJsonl`），词表写进 `docs/events.md` §5.4（新增 8 个 kind、
+复用 4 个），门是 `scripts/prove_event_dual_write.mjs`。**本机门 28 项全绿之后我跑了全量矩阵。**
+
+**② 矩阵从 G-16 起一起翻红：318 绿 / 25 红。** 逐字（`/tmp/matrix-t103.log`，我在 G-46 中段掐掉的）：
+
+```
+  ✗ G-16 E2E 冷启动+像素断言（见 /tmp/e2e-g16.log）
+  ✗ E2E 冷启动 — electron.launch: Target page, context or browser has been closed
+  ✗ G-46 e2e_desktop_quit（见 /tmp/g46-quit.log；e2e_desktop_quit: PASS=0 FAIL=1 SKIP=0）
+✗ fatal — electronApplication.firstWindow: Timeout 30000ms exceeded while waiting for event "window"
+    at /Users/zfl/Downloads/bitbot/scripts/e2e_desktop_quit.mjs:129:25
+```
+
+红的 7 个块（G-16 / G-24 / G-25 / G-26 / G-27 / G-28 / G-46）**全是会启动 Electron 的门**，
+G-47 之后还有四处也启动 Electron（矩阵的第 2117 / 2149 / 2257 / 2628 行），它们只是没跑到。
+
+**③ 根因是一条 require 链，而开关是关着的。**
+
+| 位置 | 干了什么 |
+| --- | --- |
+| `hosts/desktop/sessions.js:11`、`product_surface.js:13` | 顶层 `require("../shared/event_mirror")`（每个 host 进程加载时执行） |
+| `hosts/shared/event_mirror.js`（原第 26 行） | 顶层 `require("./event_log")` |
+| `hosts/shared/event_log.js:22-33` | 顶层 `require("node:sqlite")`，失败就 `throw new Error("event_log 需要内置 SQLite…")` —— **加载即抛** |
+
+Electron 里那颗 Node 没有这个内置模块，实测：
+
+```
+node 20.18.3
+sqlite MISSING
+```
+
+（`electron` 33.4.11，`hosts/desktop/package.json:121` 钉的是 `^33.2.0`。）
+也就是说：**`BITBOT_EVENT_DUAL_WRITE` 还没被读到，主进程已经在 require 阶段死了。**
+「默认关就不改行为」这条设计在语义上守住了，在**加载路径**上完全没守住。
+
+**④ 为什么 28 项门的绿是假的（对我的问题而言）。** `prove_event_dual_write.mjs` 跑在宿主
+Node v22.23.1 上，G-62 整块的 skip 条件也是 `node -e "require('node:sqlite')"` —— 它问的是
+**门禁自己的运行时**，不是**产品的运行时**。这两件事此前从没在同一道门上对齐过，
+所以本轮之前没人说过「产品在 Electron 里跑」。补上的正是这一格（DW-10，见 ⑥）。
+
+**⑤ 修法分两层，都不动产品行为。**
+
+- `event_mirror.js` 把库依赖压到真要开库的那一刻（`openEventLogLazy`，
+  `hosts/shared/event_mirror.js:29-35`），失败由 `handle()` 的 try/catch 咽下并降级；
+- `getSharedMirror()` 先探一次可用性（`isAvailable()`），运行时撑不起来就返回一个
+  **接口相同、一个字都不写**的替身（`createDisabledMirror`，同文件 `:706-733`）：
+  开关关着完全静默，开着打印一行「已降级为不写」。入口只有 `getSharedMirror` 一处，
+  两个 host 文件里各只有一行 `mirror()` 调用，没有第二份判断。
+
+真 Electron 里的实测（不是设计意图）：
+
+```
+available false | enabled false | stub true | capture null | commit false | eventsDir false
+[event-mirror] 已降级为不写：当前运行时没有内置 SQLite（node:sqlite，Node v20.18.3），而双写开关是开着的…
+```
+
+`node scripts/e2e_desktop_quit.mjs` 从 `PASS=0 FAIL=1` 回到 **8 / 0**。
+
+**⑥ 但这不等于能上线：矩阵继续跑到 G-57，真 Box 取证翻红。** `pass=8 fail=3`，逐字：
+
+```
+FAIL SW-6 手机拉得到待批项 503 {"ok":false,"error":"approval_queue_unavailable"}
+FAIL SW-6 清单里有那一条 {"ok":false,"error":"approval_queue_unavailable"}
+prove_box_routine_sweep crashed — TypeError: Cannot read properties of undefined (reading 'every')
+    at main (/Users/zfl/Downloads/bitbot/scripts/prove_box_routine_sweep.js:284:38)
+```
+
+三层各有一个洞，缺一不可见血：
+
+| 洞 | 事实 | 后果 |
+| --- | --- | --- |
+| 清单级 | `scripts/pack-box.sh:81` 那张手写 `shared/` 允许清单里没有 `event_mirror.js` | 包里少一个文件 |
+| **布局级** | Box 的包是**平铺**的（`hosts/desktop/product_surface.js` → `<包>/product_surface.js`），那句 `require("../shared/event_mirror")` 在包里指向 `<包>/../shared/…`，**在包外面** | 就算拷了文件也照样 MODULE_NOT_FOUND |
+| 说话级 | `hosts/shared/product_surface_ref.js` 原来是 `catch (_) { _cached = null; }` | surface 没起来，日志一个字没有，症状只剩 503 |
+
+修法：新增 `hosts/desktop/event_mirror_ref.js`（两条候选：`../shared/event_mirror` →
+`./shared/event_mirror`，与 `hosts/shared/host_ffi.js:26-30`、`product_surface_ref.js:23-33` 同一个手法），
+两个 host 文件都改走它；`pack-box.sh` 补 `event_mirror.js` 进 `shared/`、补
+`event_mirror_ref.js` 进包根清单；`product_surface_ref.js` 把咽掉的错误写成一行 stderr。
+
+**⑦ 给这三层各补一把尺子，并且都做了注入对照。**
+
+- `scripts/check_box_requires.js`（新）：扫**打出来的包**，把每个 `.js` 的相对 require
+  按 basename 聚成簇，判「簇内至少一条候选指得到文件」——只要求每条都指得到会误报
+  try-chain（实测 10 条里 9 条是合法候选），所以按簇判。`pack-box.sh` 收尾调用它，
+  红就 abort 打包。
+- `prove_box_pack_closure.js` 的 walker 从「只认 `./x`」升级成认 `../shared/x`、
+  `../desktop/x`、`../../hosts/…`、平铺的 `../x` 与 `./shared/x`（try-chain 的多条拼法
+  归一到同一个 `(kind,name)`，靠 `seen` 去重，所以不会把「三选一」误当成「三都得在」）。
+  加 P-05（尺子自己的视力：必须有来自 `../…` 的边走通）和 P-06（GP-184 三个名字各在其位）。
+
+| 注入对照 | 实测 |
+| --- | --- |
+| 把顶层 `require("./event_log")` 塞回 `event_mirror.js` | `FAIL DW-10a — 开关关着、运行时没有 node:sqlite，主进程链却起不来：event_log 需要内置 SQLite（node:sqlite）…` + `FAIL DW-10b` → `PASS=29 FAIL=2`，恢复后 **31 / 0** |
+| 从 `pack-box.sh` 清单里摘掉 `event_mirror.js` | `✗ P-01 … 缺：shared/event_mirror.js`、`✗ P-06 …` → `pass=5 fail=2` |
+| 把 `REQUIRES` 退回只看 `./x`（老视力） | `✓ P-01`（**照样绿**）、`✗ P-05 …（来自 \`../…\` 的 0 条）` → 这条正是 ⑥ 那天「闭包尺子绿着、包却是坏的」的形状 |
+| 在打好的包里删 `shared/event_mirror.js` | `[pack-box] 1 个 require 簇在包内指不到文件：event_mirror_ref.js → event_mirror（试了 ../shared/event_mirror / ../shared/event_mirror / ./shared/event_mirror）` |
+| 在打好的包里把 `event_mirror_ref` 换回裸 `../shared/event_mirror` | `· product_surface.js → event_mirror（试了 ../shared/event_mirror，包内都指不到）` rc=1 —— 布局级破损单独可抓 |
+
+`prove_box_routine_sweep.js` 现在还会点名打印打包那步的自检行，G-57 块加了对应锚
+（缺这一行 = 尺子没跑，不算绿）。
+
+**⑧ 回到 T1-03 本体：棘轮抓到的四个真 bug。** DW-02 那条「每步写入后 fold 必须等于快照」
+不是摆设，每一条都是先红过一次才知道的：
+
+| 现象 | 机制 | 落点 |
+| --- | --- | --- |
+| 激活 A→B→A 只落一行 | 镜像曾按 payload 内容哈希发 `idem_key`，第二次、第三次 A→A 的转换被当成重复吞掉，`fold` 折回来的 `active_id` 停在旧值 | 决定改成**镜像不发 `idem_key`**（§5.4 规则 3），幂等落在 diff 上；DW-05b/c 双向钉住 |
+| 一次 no-op 重写被报成「有行被改写」 | `diffList` 无 id 分支里 `tail === nh.length` 那条 problem 只在两份完全相同的列表上触发（`deleteBot` 级联会无条件 `saveRooms`） | 删掉那条分支，新增 `describeIdlessMismatch`（`event_mirror.js:189-199`）把「对不上在哪」说清楚；DW-03d 从红转绿 |
+| 一批事件静默消失 | `entity_activated` 曾把 `active_id`（删到空时是 `""`）当 `session_id` 送进适配器，被「需要 sessionId」拒收，异常咽下后**同批剩下的事件一起丢** | store 级事件一律用保留 id `"system"`（`event_mirror.js:335,339`），DW-09b 专门造这个形状 |
+| 顶层字段少了却不报错 | `changedScalars` 只看 `next` 的键，`removed` 那半边没人记，fold 把旧值留在原地 | `store_state_changed` 带 `removed[]`（`event_mirror.js:324-326,337-340`），DW-09 一冒一消都断言 |
+
+**⑨ 两条「假覆盖」也是同一把尺子逼出来的。** `rooms.roomLibraryAdd` 那一步原本传的参数
+根本写不进快照（`added:0`），清单上多算一步、DW-02 少考一步 → 新增 **DW-03e**：清单里每一步
+都必须真的改到快照，空步直接红。`DW-04` 原来只比最终态，于是「一个后来被删掉的会话」
+的当年事件对最终态毫无贡献，被误判成三个死词 → 改成**逐类真删 + 对全部 20 步按 seq 前缀
+整轮重放**（DW-04z），库里 11 类每类都能指到「第几步跟不上」。
+
+**⑩ 数字。**
+
+| 项 | 值 |
+| --- | --- |
+| `prove_event_dual_write.mjs` | 28 → **31 / 0**（DW-10a/b/z 三条是本轮加的） |
+| `prove_box_pack_closure.js` | 5 → **7 / 0**（P-05 视力 / P-06 名字；跨目录边实测 17 条） |
+| `prove_box_routine_sweep.js` | `pass=8 fail=3` → **18 / 0** |
+| G-57 块 | 8 项 → **10 项**（P-05 / P-06 / 打包 require 自检三个锚） |
+| G-62 块 | **PASS=31 / 0**，263 条事件、11 类 kind 逐个承重（矩阵逐字行见 `/tmp/matrix-t103c.log`） |
+| `e2e_desktop_quit.mjs` | `PASS=0 FAIL=1` → **8 / 0** |
+| 全量矩阵（本机 mac） | 中断那轮 318/**25** → 修 Electron 后 442/**1**（只剩 G-57）→ 修 Box 后 **446 / 0** |
+| 全量矩阵（CI ubuntu，run `41091196664`） | **PASS=455 FAIL=0**，两平台都是 61 个块；差的 9 项逐块比过，**全部在 G-47**：本机没装 Android SDK，`prove_android_build` 在 mac 打成 skip 说明行（SKIP ≠ PASS），CI 上该门 `PASS=16 FAIL=0`。其余 60 个块两侧逐项等量 |
+
+**⑪ 诚实边界。**
+
+- **DW-10 是伪装，不是真机**：它用 `Module._load` 把 `node:sqlite` 拦成 MODULE_NOT_FOUND，
+  跑在宿主 Node 22 上。真老运行时的开机证明在 G-16 / G-46 / G-59 那几道 Electron 门里，
+  两边缺一不可 —— ④ 说的正是只有前者会绿、只有后者会红的错配。
+  伪装生效由 DW-10z 自己断言（同一份 hook 下直接 `require("event_log")` 必须抛）。
+- **今天装机版跑不起双写**：产物里是 Electron 33（Node 20.18.3），没有 `node:sqlite`。
+  开关在装机版里开着也只会走 ⑤ 那行「已降级为不写」。要它真写库，得先让宿主运行时升到
+  内置 SQLite 的版本（`hosts/desktop/package.json:121` 现在钉 `^33.2.0`），或者换一个后端。
+  本轮刻意不为此改打包策略。
+- **可用性探测只看 `node:sqlite` 在不在**：如果哪天 `event_log` 因为**别的原因**加载即抛，
+  这条探测会一并判成「撑不起来」→ 静默降级（开关开着还有一行说明）。目前可接受，
+  但 T1-04 把读路径接上去之前要重新看这个口径。
+- **替身只装在 `getSharedMirror()` 这一个入口**：门里的夹具直接调 `createMirror()`，
+  在老运行时仍会走到 `handle()` 的「开库失败」那条。这是显式请求，刻意不改成替身。
+- `check_box_requires.js` 只判 require 簇，不判动态 `require(变量)`、不判 `import()`；
+  闭包尺子（P-01）的入口是写死的三个（`box_main.js` / `host_ffi.js` / `product_surface.js`），
+  入口选漏了照样看不见。两条都只覆盖 Box；桌面安装包（G-59）是整棵 `hosts/` 进 asar，
+  没有这张清单，因此也没有这类漂移。
+- **双写 ≠ 上线**：T1-03 证明的是「日志记得下今天的 JSON」，不证明产品已改读它（T1-04）、
+  不再写 JSON（T1-05）、或同会话单写者（T1-06）；`approvals.log.jsonl` 与
+  bots/settings/routines 不在这三张面里（`docs/events.md` §7）。
+- 本轮把 `product_surface_ref.js` 的静默 catch 改成一行 stderr：它让 ⑥ 从「只有 503」
+  变成「有 MODULE_NOT_FOUND 的名字」。这条改动没有被哪道门断言（只作为可读性），
+  如果哪天有人把它改回 `catch (_)`，G-57 仍然会红，但要重新靠 503 猜一次。
+
+## 8.48 同一件事写三遍：多端通用逻辑收口（GP-185）
+
+Desktop、CLI Host、iOS/Android 壳、`mobile_host` 用的是同一颗 MoonBit 大脑和同一套
+Host FFI。但 Host 侧还有三件事各写一份：
+
+1. **`.env.local` 解析**：桌面主进程 `parseEnvFile` / `loadEnvLocalFiles`、`mobile_host`
+   的 `loadEnvLocalFiles`、入站 onTurn 的 `loadEnvLocal` —— 三份，切分/引号/注释相同，
+   差别只在「跳过哪些键、打不打日志」。任一端学会 `export KEY=…` 或行尾注释时，另外两端
+   不会跟着变。
+2. **42 个 `*_residual` 词表**：`mobile_host/run.js` 的镜像里手写一遍，
+   `send_to_user_surface.js` 的 chip 里又手写一遍（集合相同、顺序不同）。漂移的表现是
+   手机侧说「已投递」而桌面侧说「仍有残差」，单端门禁看不见。
+3. **机器 id 默认值**：`machine_identity.DEFAULTS` 一份，入站 `seedMachineId` 又写死
+   `phone-ios` / `phone-android`，`agent_loop_product_wire` 还写死一个 `desk-1`。
+
+改法（不改任何 store / IPC / 内核 JSON 契约）：
+
+- 新增 `hosts/shared/host_env.js`：只做纯解析 + 可配置装载（`skip` / `overwrite` /
+  `onFile` / `onError`）。桌面、`mobile_host`、入站都改为调用；各端的密钥策略仍留在各端
+  （SK-D7 / `BITBOT_NO_SECRET_SYNC` 一行未动）。
+- 新增 `hosts/shared/delivery_mirror.js`：`DELIVERY_HOST_KINDS`（98 项）+
+  `RESIDUAL_KEYS`（42 项）+ `collectResidualFlags` + `pickMirrorPath` +
+  `buildDeliveryMirror`。镜像字段顺序与旧落盘文件逐字一致；`send_to_user_surface`
+  只从它取词表，chip 的嵌套规则仍是展示层自己的事。
+- `seedMachineId()` 改为 `DEFAULTS[normalizeKind(kind)]`；`agent_loop_product_wire`
+  的默认上下文槽位改用 `DEFAULTS.desktop`。三处字面量只剩 `machine_identity.js` 一份。
+- `scripts/pack-box.sh` 的 shared 清单补 `host_env.js` —— 入站 onTurn 在 Box 里 require
+  它，漏拷的后果和 GP-184 那次「一条 require 打死整个桌面端」同型。
+
+尺子 `scripts/prove_multihost_common.mjs`（MC-00..MC-08，矩阵 G-63）：
+
+- **改前红**：`pass=3 fail=5`。MC-00 指出 mobile 没接 `delivery_mirror`；MC-01 列出
+  三份 `.env` 解析；MC-02 列出两份残差词表；MC-03 指出 mobile 内联 98 项 kind；
+  MC-04 列出 `agent_loop_product_wire` / 入站 / `machine_identity` 三处字面量。
+- **改后绿**：`pass=9 fail=0`。
+- **注入对照**：把一份 `.env` 解析塞回 `mobile_host/run.js` → MC-01 翻红并指名该文件；
+  把 `phone-android` 写回 `seedMachineId` → MC-04 翻红并指名入站文件；恢复后 `cmp`
+  核对仍绿。两条都在 G-63 里每轮重跑。
+- **MC-08 行为等价**：`.env` 的注释 / 引号 / 空值 / 坏行 / 值里带 `=`；装载的
+  「默认不覆盖 / overwrite / skip」；镜像 58 个字段的名称、值与顺序；SendToUser chip
+  与镜像同源 —— 都用 fixture 钉住，不靠「看起来一样」。
+- **真链**：`node hosts/cli_host/run_turn.js --machine-kind ios "ListMachines"` 与
+  `node hosts/mobile_host/run.js --machine-kind ios …` 都返回 200/ok，手机侧落出
+  58 字段镜像（`data/device/mobile-delivery-mirrors/machines_list-*.json`）。
+- **全量矩阵**：`xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh` →
+  **PASS=467 FAIL=0**（G-63 的 9 个锚点 + 2 条注入对照全绿）。
+
+诚实边界：
+
+- 共享的是**词表与布尔收集**，不是像素。SendToUser chip、iOS/Android 的
+  `SendToUserSurface`、桌面 `index.html` 仍各自决定怎么展示；这些是展示层，不强行合并。
+- Android / iOS 仍是薄壳，本轮没有真机样本；`pack-mobile.sh` 只暂存 shell 树。
+- `pack-box.sh` 的 shared 清单仍是人工维护。但「该打忘打」并非只能靠人看：
+  从**真入口**算 require 闭包的 `scripts/prove_box_pack_closure.js` P-01 能抓住
+  （GP-186 复核：从清单删掉 `host_env.js` → `✗ P-01 … 缺：shared/host_env.js`，
+  恢复后 7/0）。`check_box_requires.js` 是打包后自检的另一把尺子，只查「已经打进去的
+  require 指不指得到」，不负责清单完整性；两者职责不同，不能互相替代。
+  （原文「P-01 也发现不了」是过度表述，GP-186 实测更正。）
+
+
+
+## 8.49 把残留真正关上：原生壳指令矩阵、旧 smoke 回矩阵、打包闭包更正（GP-186）
+
+GP-185 诚实留了四条：展示层各写、原生壳薄且无真机样本、`pack-box.sh` 清单人工维护、
+旧 `smoke_desktop_turn.sh` 不在矩阵。这一轮逐条处理；过程中又抓出三处「门禁自己过期」
+的假红（HEAD 上就红，不是本轮改坏），一并修正并留下红→绿证据。
+
+### 8.49.1 原生壳的 42 个残差键与 canonical 同序（MC-09）
+
+iOS `SendToUserSurface.swift` 与 Android `SendToUserSurface.kt` 的 `residualSuffix`
+词表此前是「集合一样、顺序不同」。顺序不同就会让镜像/展示按不同次序裁切，
+单端门禁看不出来。现在两份都按 `hosts/shared/delivery_mirror.js` 的 `RESIDUAL_KEYS`
+逐项同序排列（各 42 项），并由 `prove_multihost_common.mjs` 新增的 **MC-09** 钉住：
+先定位 `residualSuffix`，再解析其后的 keys 块，与 canonical 做有序全等比较；
+失败信息能指出「第 N 项起不同」或「共同前缀之外缺哪项」。
+
+- 改前：MC-09 不存在（词表顺序无人管）。
+- 改后：`prove_multihost_common: pass=10 fail=0`。
+- 注入对照（G-63 每轮重跑）：从 iOS 壳删掉 `"signin_fill_residual",` → MC-09 翻红并
+  指名 iOS；恢复后 `cmp` 核对仍绿。
+
+### 8.49.2 原生壳从「薄壳」到有完整指令矩阵（154 条模板）
+
+`scripts/verify_native_shells.sh` 在 HEAD 上本身就是红的，根因不是本轮改动：
+
+1. `7789966` 重写 Grok 风格聊天壳时删掉了 ContentView / MainActivity 里的
+   quick-action 矩阵，但 gate 的 163 条 needle 一直留着；
+2. GP-185 把 `mobile_host` 里的 Host kind 字面量与 `receipt_path` / `skill_path`
+   选择逻辑收进 `hosts/shared/delivery_mirror.js`，gate 仍去 `mobile_host/run.js` 找；
+3. `list models` 的真实 Host 路径已经是 `llm_list_models`（真列提供方），gate 只认
+   `settings_open`。
+
+处理（都不是把门放宽）：
+
+- 两个壳各新增 **154 条 `commandTemplates`**，词表与桌面快捷指令同源。点一条只
+  **填入输入框**，不直接发送——`room `、`cold mail to=`、`todo write ` 这类模板还缺
+  参数，直接发会变成半句话；注释写明这一点。iOS 在「能力」里加「全部指令模板」入口，
+  Android 在 `CapabilitiesSheet` 里加同一段模板列表，点击即填回草稿并落盘。
+- gate 的 mobile_host 部分改为断言**唯一事实源** `delivery_mirror.js + host_ffi.js`，
+  同时要求 `mobile_host` 仍 wire `DELIVERY_HOST_KINDS` / `buildDeliveryMirror` /
+  `pickMirrorPath`（防止「有源没接线」）。
+- `list models` 改为两路都认：`llm_list_models` 必须 ok 且输出 `LLM providers`，
+  `settings_open` 必须不 pretend 且 anchor 含 models。
+
+证据：`bash scripts/verify_native_shells.sh` → `OK`（163 条 needle 全过）；
+Android `:app:testUniversalDebugUnitTest` **126 tests / 0 failures**（其中
+`SendToUserSurfaceTest` 7/0）。iOS 仍无 Xcode/真机，模板 UI 只在源码与 gate 层验证，
+这一条按残留记，不冒充「真机点过」。
+
+### 8.49.3 旧 smoke 回矩阵（G-64）
+
+`smoke_desktop_turn.sh` 是产品路径最全的老脚本，但长期不在矩阵里。本轮的修法不是
+「让它少跑」，而是把它跑通：
+
+- **模型**：沙箱没有真 provider，第一条入站 turn 就红。脚本顶部起仓库自带的
+  `scripts/dev_stubs/openai_compat_stub.js`，只替模型应答；`run_turn → Host FFI →
+  llm_chat HTTP → deliver` 仍是真链。
+- **root 容器 Chrome**：显式 `BITBOT_CU_CHROME_NO_SANDBOX=1` /
+  `BITBOT_OAUTH_CHROME_NO_SANDBOX=1` 才加 `--no-sandbox`，默认安全姿态不变。
+- **媒体 / OCR / 语音**：CI 安装 `ffmpeg espeak-ng tesseract-ocr xdotool wmctrl`；
+  本机缺工具时保留显式 `SKIP:` 并只断言 Host 如实记 residual，不假 PASS。
+- **mic**：`/dev/snd` 只有 seq/timer 时先试真 ALSA，失败后回退
+  `data/device/mic.wav` fixture，mode=`host_device_mic_fixture`；仍失败才 residual。
+- **产品 bug（code_changes 路径）**：kernel 输出的是 box 虚拟路径
+  `/workspace/README.mbt.md`，Host 用 `path.isAbsolute` 直接当宿主绝对路径
+  → `exists=false`、`applied=false`，`code_apply_residual` 永远关不上。现在
+  `/workspace/`、`/home/box/` 前缀统一映射到 `REPO_ROOT`，其余绝对路径仍按原样
+  且拒绝出仓。红证据：`target=/workspace/README.mbt.md, applied=false`；绿证据：
+  apply / commit mock / push mock 三段全过（commit_sha 来自 mock，不伪造）。
+- **gh 未登录**：live PR view/dry-run 不可达时走诚实分支（`remote_pr_residual=True`、
+  `mode=gh_pr_create_failed`、打印 `SKIP:`），gated mock 的 dry-run / real create 照跑。
+- **过期断言**：travel 只存在 `pretend_purchased`，`pretend_booked` 是旧字段名；
+  改为两者都不得为真。另把 G-53 的 qwen 回执从「stub 收到请求后立刻读 DOM」改为
+  有界等待文本出现——原写法在负载下会先读到上一条气泡（实测 FAIL=1，重跑即绿；
+  改后 `PASS=71 FAIL=0`）。
+- **矩阵**：新增 **G-64**，跑完旧脚本并校验四条锚点（webhook 入站、Electron 回合、
+  payment_wall fixture、live charge），`SKIP:` 逐行打印。
+
+证据：完整 legacy smoke 日志 915 行，0 处 `Traceback` / `AssertionError`，
+2 条显式 SKIP（headless 无 WM 的 native OS act、gh 未登录）；全量矩阵
+`smoke_grok_desktop_parity: PASS=474 FAIL=0`（G-63 含 MC-09 锚点，G-64 在矩阵内）。
+
+### 8.49.4 `pack-box.sh` 闭包：P-01 能抓「该打忘打」
+
+GP-185 的原文说「`check_box_requires.js` 查不出该打忘打」是过度表述。实测：
+从清单里删掉 `host_env.js`，`prove_box_pack_closure.js` P-01 立刻报
+`✗ P-01 … 缺：shared/host_env.js`；恢复后 **7/0**。P-01 从**真入口**算 require
+闭包，能抓漏拷；`check_box_requires.js` 是打包后自检的另一把尺子，只查「已经打进去的
+require 指不指得到」。两者职责不同，不能互相替代，也不能拿后者去否定前者。
+（§8.48 末条已按此更正。）
+
+### 8.49.5 诚实残留（本轮没关掉的）
+
+- **真机样本**：Android 有 JVM/Robolectric 126/0，iOS 连编译器都没有；两个壳的
+  模板 UI 没有在真机上点过。`pack-mobile.sh` 仍只暂存 shell 树。
+- **native OS act**：本机 headless、无窗口管理器，`xdotool` 能装但枚举不到真实窗口；
+  G-64 只断言 `os_window_automation_residual=true` 并打印 SKIP。
+- **gh 未登录**：remote PR 的 live view 不可达，只有 mock 的 gated create 证据。
+- **`pack-box.sh` 清单**：仍人工维护；P-01 能在打包前抓住漏拷，但不会自动生成清单。
+- **文档事故（已恢复）**：本轮早期一次工具回写把 report/parity 文档覆盖成陈旧快照
+  （3180→182 行 / 322→95 行），已从 HEAD 恢复后只做增量；本轮末
+  `prove_report_history_intact: PASS=7 FAIL=0`（RH-05/06/07）证明段落只增不减。
+
+### 8.49.6 复跑命令与结果
+
+```
+node scripts/prove_multihost_common.mjs          # pass=10 fail=0（MC-00..MC-09）
+node scripts/prove_box_pack_closure.js           # pass=7 fail=0（P-01..P-06）
+node scripts/prove_repo_integrity.mjs            # pass=7 fail=0 skip=0
+node scripts/prove_report_history_intact.mjs     # PASS=7 FAIL=0
+bash scripts/verify_native_shells.sh             # OK（含 154 条模板 + 移动端 kind 事实源）
+cd hosts/android/BitBotHost && ./gradlew --offline :app:testUniversalDebugUnitTest
+                                                 # 126 tests / 0 failures（STU 7/0）
+env -u DISPLAY xvfb-run -a bash scripts/smoke_desktop_turn.sh
+                                                 # OK；2 条显式 SKIP；0 断言失败
+env -u DISPLAY xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh
+                                                 # PASS=474 FAIL=0（G-63 MC-09、G-64 旧 smoke）
+```
+
+### 8.49.7 CI 上的 G-64 红：不是产品 bug，是 runner 缺 Pillow/python-pptx
+
+第一次把旧 smoke 接进 GitHub Actions（#10 `ef4aa38`、#11 `d6853fe`），两次都在
+G-64 的 **29 秒**处红，本机（root 与非 root 干净副本）复跑却都是 `PASS=465 FAIL=0`。
+差别只有 runner 的 Python 环境：
+
+- `scripts/host_h5_media.py` 的 `generate_image` / `structured_chart` 用 **Pillow** 画真 PNG，
+  `slides_pptx` 用 **python-pptx** 写真 PPTX；ubuntu-latest 镜像两样都没有，本机有。
+- 缺依赖时 Host 的表现是诚实的（`ok:false`、`pretend_media:false`、不落假文件），
+  所以这不是产品 bug；红的是「环境缺运行期依赖」。
+- 子日志那次没被上传（workflow 只收了 `/tmp/g4*.log`，而文件名是 `g64-turn-smoke.log`），
+  只能看到裸 `AssertionError`。先把可观测性补齐：上传 `/tmp/g6*.log`、失败时把
+  「最近一节 + 尾部 25 行」写进矩阵日志和 `::error` 注解（匿名读者在 run 页面可见）。
+
+修法（workflow 侧，不动产品契约）：
+
+```yaml
+python3 -m pip install --quiet --user --break-system-packages pillow python-pptx \
+  || python3 -m pip install --quiet --user pillow python-pptx
+python3 -c "import PIL, pptx; print('media py deps ok', PIL.__version__, pptx.__version__)"
+```
+
+最后一行是断言：依赖装不上就直接红在这一步，而不是让 G-64 红在一个看不懂的
+`AssertionError` 上，也不把「环境没有 → SKIP」当绿。脚本侧只加了两行 `NEED:`
+提示（缺 Pillow / python-pptx 时说清原因），断言仍然是硬的 —— 媒体真产物是
+验收项，不接受 SKIP。
+
+诚实残留：Pillow/python-pptx 是 Host 的运行期依赖，仓库里没有 `requirements.txt`
+声明，用户机器缺它们时 `generate_image` / `slides_pptx` 会如实失败。把这两件写进
+盒子安装清单、并在 `box doctor` 里暴露，是下一轮该做的事（本轮只保证 CI 与开发机
+一致，且缺依赖时原因可读）。
+
+### 8.49.8 更正 §8.49.7：真因是 Host 媒体脚本硬编码 `/workspace`（Pillow 只是第二个坑）
+
+§8.49.7 的结论（「不是产品 bug，是 runner 缺 Pillow/python-pptx」）**只对了一半**，
+按 RH-07「已提交段落不许删」保留原文，在这里更正：
+
+装上 Pillow + python-pptx 并当场 `import` 断言（`media py deps ok 13.0.0 1.0.2`）之后，
+G-64 仍然红在同一处。补上证据链（上传 `/tmp/g6*.log`、矩阵日志贴子日志尾部、
+`set -E` + ERR trap 在失败时打印最近一次 `/tmp/bitbot-*.json`）后，#14 `dfc0c94`
+把 payload 原样打了出来：
+
+```
+cmd=`/workspace/agent-tools/gen-image-desktop-1.png|smoke aurora desk`
+--out /home/runner/work/Bit-Bot/Bit-Bot/data/gen-image-desktop-1.png
+FileNotFoundError: [Errno 2] No such file or directory: '/workspace/agent-tools'
+```
+
+`scripts/host_h5_media.py` 的 `_ensure_agent_tools()` 无条件
+`mkdir /workspace/agent-tools`。开发容器里 `/workspace` 恰好存在（box 虚拟路径），
+所以本机 root / 非 root 怎么跑都是绿的；真实桌面与 CI runner 上没有这个目录，
+mkdir 直接抛异常 —— **这是产品在真机上会红的 bug，不是 CI 环境缺件**。
+
+修法（产品代码，`host_h5_media.py`）：
+
+- `_ensure_agent_tools(out)` 只建**调用方 `--out` 的父目录**；Host 本来就会先
+  `mkdirSync(dirname(outPath))`，脚本不承担「造 /workspace」的职责。
+- `AGENT_TOOLS` 默认值改为 `BITBOT_AGENT_TOOLS` 或相对 `agent-tools`（只影响
+  手工裸跑；Host 永远显式传 `--out`）。
+- 五个子命令全部改传真实输出路径（image / video / watch 的 frame / chart / pptx）。
+
+红→绿证据（本地，非 root + `/workspace` 不可访问，模拟 runner）：
+
+| 状态 | 命令 | 结果 |
+| --- | --- | --- |
+| 修复前 | `chmod 000 /workspace` + `python3 host_h5_media.py generate-image --out /tmp/…` | `PermissionError: '/workspace/agent-tools'`，rc=1 |
+| 修复后 | 同上 | rc=0，写出 7 KB PNG |
+| 修复后 | 五个子命令全跑（image/video/frame/chart/pptx） | 全部 rc=0，产物 6–28 KB |
+
+Pillow / python-pptx 的安装仍然保留：它们是真依赖，缺了媒体段会红（只是不是本次
+29 秒红的原因）；workflow 里用 `import` 断言，避免「装没装上」变成谜。
+
+同一类问题在 smoke 自身还有一处：内联媒体样例直接 `Path('/workspace')` 建目录，
+runner 上同样在 mkdir 处崩（#15 的红，行 854）。已改成仓库内的 `agent-tools/`
+（脚本本来就 `cd "$ROOT"`），并用「非 root + `/workspace` 不可访问」的干净副本把
+整段跑通，作为本地模拟 CI 的复核手段。
+
+诚实残留：`host_h5_media.py` 的产物落在 Host 给的 `data/…` 路径
+（`resolveAgentToolsPath` 把出仓的 `/workspace/…` 收进 `DATA_ROOT`），而规格写的是
+「PNG 落在 `/workspace/agent-tools/`」。这是路径收敛策略与规格文字的差异，本轮没改
+（会动 Host 写盘契约）；真机上用户拿到的是 `media_path`，能打开，但「文件在
+agent-tools 下」这句话目前只在 box 内成立。
+
+### 8.49.9 关掉「native OS act 只能 SKIP」：CI 里起真窗口管理器（openbox）
+
+§8.49.5 的残留「native OS act：本机 headless、无窗口管理器」在 CI 上一样成立：
+G-64 起来了、绿了，但那一条是 **SKIP** 而不是 PASS —— `xdotool` 装了，却没有 WM
+把窗口管起来，`xdotool search` / `wmctrl` 枚举到 0 个窗口，Host 的 `probe_ready`
+为 false，于是只断言「residual 如实保留」就跳过。#16（`96ce01a`）的日志原文：
+
+```
+✓ G-64 旧 smoke_desktop_turn 跑完且零断言失败（2 行环境 SKIP，逐行可查）
+  · SKIP: 本机没有可枚举的真实桌面窗口（headless / 无 WM）……
+  · SKIP: 本机 gh 未登录……
+```
+
+这不是 Host 逻辑错（`probe_ready=false` 时保留 residual 正是诚实行为），缺的是
+**窗口管理器**这一环境件。所以用一个开关把它补上，而不是改断言：
+
+- `scripts/smoke_desktop_turn.sh`：`BITBOT_START_WM=1` 且 `DISPLAY` 存在且装了
+  `openbox` 时，脚本自己在当前 display 起 openbox，退出时收掉。不设该变量时行为
+  完全不变（真实桌面本来就有 WM，不能去抢窗口）。
+- `.github/workflows/desktop-parity.yml`：apt 里加 `openbox`，矩阵步设
+  `BITBOT_START_WM=1`。**没有 openbox 时脚本仍退回 SKIP**，不会假绿；有 WM 时才会
+  走「真窗口清单 + xdotool 点击 + residual 真关」的强断言分支。
+
+红→绿证据（同一条断言的两个分支，不是改小断言）：
+
+| 状态 | 环境 | `native_os_input` / `native_os_act` | 结论 |
+| --- | --- | --- | --- |
+| 修复前（#16 `96ce01a`） | CI：Xvfb，无 WM | `windows.count=0`、`probe_ready=false` | SKIP（residual 保留） |
+| 本地对照（`sim-ci4`） | 非 root + `/workspace` 不可访问 + Xvfb，无 WM | 同上 | 全脚本 OK，2 条 SKIP |
+| 本地（`sim-wm.log`） | 同上 + openbox | `probe_ready=true`、wmctrl 看到 `Example Domain - Google Chrome for Testing`、`actions=1`、`os_window_automation_residual=false` | `computer_use native OS act ok`；整脚本 OK，1 条 SKIP |
+| 修复后（#17 `86bbd82`） | CI：Xvfb + openbox | 同上（artifact `g64-turn-smoke.log` 第 273 行） | G-64 ✓，`PASS=474 FAIL=0`，只剩 gh 1 条 SKIP |
+
+顺带被这层 WM 影响的两条也仍然是真跑：`screenshot live frame ok ffmpeg-x11grab
+… 2749 bytes`（有窗口后 x11grab 抓得到真帧），以及原有 media 段
+`generate_image / structured_chart / slides_pptx` 仍落 `data/…`（见 §8.49.8 的路径残留）。
+
+诚实残留：Xvfb + openbox 仍不是用户的真桌面 —— 没有 GPU/多显示器/真实输入设备，
+`os_window` 只能证明 Host 的窗口枚举与 xdotool 点击链路通了；真机 UI 仍需人工点。
+gh 未登录（第 2 条 SKIP）与 §8.49.5 的其余三条残留不变。
+
+
+## 8.50 设置 → 凭证：门只问「id 在不在」，所以烂布局能全绿（GP-185）
+
+**① 这一屏的门是假门的证据，不是观感，是计数。** 「设置 → 凭证」在改动前有 **6 张等大的卡、
+4 颗粒色完全相同的动作按钮、6 处行内 `font:`/色字面值**，而盯它的门（`prove_m43_settings` 8 项、
+`prove_m37_layout` 13 项、G-51/G-52/G-54 三条真机门）加起来只问两件事：**某个 id 在不在**、
+**某个计算字号等不等于 `--text-sm`**。没有任何一条问「它在第几层」「折叠了没有」「和谁同屏」。
+所以布局可以一路烂下去而矩阵常绿 —— 这不是推测，是把 `#sec-llm-key` 手动收进 `<details>`
+再跑那三条真机门，它们**照样全绿**（Playwright 对闭合 `<details>` 里的 input 仍判可见，
+见 ⑤ 的机制），当场就证明了尺子量不到形状。
+
+**② 重排按「非做不可 → 选填 → 一次性」排，不按「有哪些字段」排。** 四张分区卡 + 一个折叠 + 一条吸底保存条：
+
+| 分区 | 权重标记 | 里面是什么 |
+| --- | --- | --- |
+| `sec-zone-brain` 本机大脑 | **必填** | 接入方式 / 模型 ID / Base URL / API Key 四栏（后两栏并成两列网格），下面一个折叠「备用渠道与 provider 标签」收 `provider_id` + 通义 + Kimi 三栏 |
+| `sec-zone-capability` 能力扩展 | 选填 | 联网搜索 provider + Key + Base 一行两列 |
+| `sec-zone-devices` 手机与入站 | — | 配对码 / 手动地址 / 入站公网 URL（原来自己占一张卡，其实只是这一屏第二条只读地址） |
+| `sec-zone-compliance` 合规 | — | 两颗备案号并排 + 内容审核门 checkbox |
+
+`#sec-status` 从页尾搬进 `.st-foot`（`position: sticky; bottom: 0`），点保存后结果就在按钮左边；
+「跑验收门禁」和它的输出框一起挂 `data-lab`，产品态不占按钮位。**所有 id 一个没动**（31 个
+被门按 id 引用的控件全在原位），改的只有层级与顺序。
+
+**③ 真开机量到的前后差（`scripts/shot_settings_credentials.mjs`，同一份临时 user-data-dir、
+同一视口 1440×900、主题显式钉成浅色，走「头像 → 设置 → 凭证」的用户路径）。**
+
+| 口径 | 改动前 | 改动后 |
+| --- | --- | --- |
+| 首屏 680px 内出现的栏位 | `sec-llm-preset, sec-llm-provider, sec-llm-base, sec-llm-model` —— **必填的 API Key 不在首屏**，被 provider_id 挤到下面 | `sec-llm-preset, sec-llm-model, sec-llm-base, sec-llm-key` —— 主流程四栏齐在一屏内 |
+| 整屏滚动高 `#secrets-panel.scrollHeight` | 1791px | **1441px（-350px / -19.5%）** |
+| 备用渠道三栏占位 | 摊平，292px | 折叠一行 33px（点开才 292px） |
+| 这一屏行内字面字号/色 | 6 处 | **0 处**（收进 `.st-readout` / `.st-check` / `.st-tag`） |
+| 保存条 | `position: static`、首屏不可见 | `sticky` + 在视口内 |
+
+**④ 截图顺手逼出来的两个真缺陷（都不是本轮引入的，都在图里看得见）。**
+
+- **产品态把内部诊断行印在屏幕上**：`showSettingsTab()` 无条件往 `#settings-meta` 写
+  `tab=凭证`，而 `renderSettingsPanel()` 是 `devModeOn()` 才写 —— 两个入口口径不一致，
+  于是左下角永远躺着一条 `tab=凭证`。改成只在开发态写、产品态清空。AR-10 那条要读
+  `#settings-meta` 里的「移动=可配对」，它本来就跑在 `BITBOT_DEVMODE=1` 下，口径不受影响。
+- **折叠看不出可以点**：`.st-adv > summary` 为了对齐抹掉了 `list-style` 与
+  `::-webkit-details-marker`，结果「备用渠道与 provider 标签」读起来就是一行普通文本。
+  补一个 `.st-adv-mark`（CSS 画的箭头，`[open]` 时翻转），并让运行时探针断言它有非零尺寸。
+  同时把「模型与供应商」按钮从折叠**后面**挪到**前面** —— 它属于大脑那一步，压在折叠下面
+  会被读成「备用渠道的按钮」。
+
+**⑤ 一个 Chromium 事实，值得记下来免得下次再猜**：本机 Electron 33 = Chromium 130，闭合的
+`<details>` 用 `content-visibility` 隐藏子树，所以 `offsetParent` 仍非 null、
+`getBoundingClientRect()` 仍报 39px 高、computed `display` 仍是 `block` —— 只有
+`checkVisibility({contentVisibilityAutoStateProperty:true})` 说实话。这解释了两件事：
+G-54 的 LK-06 为什么一直能填通义/Kimi 的 key（折叠不破坏真机门），以及为什么「隐藏了几个控件」
+这种断言必须用 `checkVisibility` 而不是 `offsetParent`（用后者量到的是 0，会把「折叠生效」判成没生效）。
+
+**⑥ 新门 `scripts/prove_settings_credentials_zones.js`（CL-01…13，PASS=15 / FAIL=0）。**
+每条断言写成纯函数，反向对照把同一个函数跑在**真实改坏**的文本上（不是构造的假输入）：
+14/14 条全部翻红 —— 包括「把能力卡改名成第五张区」「把 `#sec-save` 塞进折叠」「把
+`data-i18n` 挂回含 `<a>` 的说明行」「繁体字典删掉分区标题」「给入站地址写回行内字体」
+「保存条的 sticky 换成 static」。矩阵侧新增 **G-63** 块，锚点取 CL-04（可见性底线）与
+CL-10（负向对照），缺任一即红。
+
+| 断言 | 钉住什么 |
+| --- | --- |
+| CL-01/01b | 恰好 4 张分区卡、顺序、四个 `sec-zone-*` id |
+| CL-02/03 | 折叠外输入 10 个（主流程四栏 + 搜索三 + 备案二 + 审核 checkbox）；`provider_id`/通义/Kimi 三栏在折叠内，且**只有一个折叠**（防套娃） |
+| CL-04 | 真机门按 visible 点的 8 个控件不得被折叠吃掉 |
+| CL-05/05b | `#sec-status` 与 `#sec-save` 同一条，且 `.st-foot` 是 `sticky; bottom:0` |
+| CL-06/07 | `data-i18n` 不挂在含元素子节点的标签上（applier 是 `textContent` 覆盖）；12 条新文案在 zh-CN/zh-TW/en 三本字典都齐 |
+| CL-08/09 | 这一屏行内字面量 0 处（只许降）；开发动作带 `data-lab` |
+| CL-11/12/13 | 产品态不写诊断行；折叠自带指示器；模型入口在折叠之前 |
+
+**⑦ 回归面（本机 mac，全部真跑）。** 静态：`prove_settings_credentials_zones` 15/0、
+`prove_m43_settings` 8/0、`prove_m37_layout` 13/0、`prove_m33_grokchrome` 8/0、
+`prove_m34_account_actions` 7/0。真机：`e2e_desktop_llm_key_paste_guard` 7/0、
+`e2e_desktop_cn_channel_guard` 8/0、`e2e_desktop_cn_secret_inputs` 6/0、
+`e2e_android_roster` 20/0、`e2e_modal_computed` 28/0、`e2e_desktop_shell_v2` 89/0、
+`e2e_desktop_token_parity` 5/0、`e2e_desktop_user_journeys` 71/0。**SKIP 一律 0。**
+
+**⑧ 诚实边界。**
+
+- **`prove_ui_tokens` T-2 是红的，且本轮之前就已经红**：`hosts/desktop/index.html` 的字面 hex
+  实测 **39 处 > 基线 28**，而 `git show HEAD:…` 同样是 39 —— 也就是上一轮把它推上去的时候
+  没有重锚、也没有进矩阵（`prove_ui_tokens` 不在 `smoke_grok_desktop_parity.sh` 里，只被
+  `grok_acceptance_expectations.mjs` 的文档字段引用）。本轮没让它更差（行内 `font-size`
+  14 → 13、这一屏字面量 6 → 0），也**没有**擅自把基线从 28 抬到 39 —— 抬基线是「只许降」
+  棘轮的例外动作，要点头。
+- **只重排了「凭证」一屏**：另外四张页签（通用/电脑/用量与账单/更新）保持原样，五页签骨架、
+  导航与 sheet 几何一行没动（那三处被门钉死）。
+- **两个已知缺陷刻意留着，因为裁决没回**：① `#sec-ota`（更新通道）的保存责任仍落在另一张
+  页签的按钮上，全仓 0 条门引用；② 内核 `SettingsAnchor::tab()` 把 `SecurityKeys`/`AutoReview`
+  归到 **General**，而渲染层把它们放**凭证/通用**，`ui_protocol/permission_guide.mbt:76-85`
+  会把这句矛盾直接念给用户听（「打开 设置 → 常规 (security-keys)」）。
+- **截图脚本会改用户看得见的数据**：切主题写进 `data/desktop/settings.json`（dev 数据根 = 仓库
+  `data/`）。脚本现在开跑前备份、`process.on("exit")` 还原；本轮另有一次还原前遗留
+  （`appearance` 被留在 `dark`），已改回 `light`（首张真开机图量到的就是浅色）。
+- **CL 系列只断形状，不断观感**：`artifacts/gp185-credentials-{before,after}{,-dark,-fold}.png`
+  是这次唯一的人眼验收凭据；吸底条在滚动中会盖住下一张卡的标题（sticky 的固有代价），
+  如果这点不可接受，改法是给 `.settings-tab` 加底部 padding 而不是撤掉 sticky。
+
+## 8.51 窄窗口从来没有单列过：`body.grok-ui` 把 `<900px` 规则整条压掉（D-L-13）
+
+**症状。** 窄视口只有一句 `@media (max-width:900px)`，从未被渲染门覆盖（`e2e_desktop_layout_target.mjs`
+只跑 1440×900 与 1280×800）。补上 480/700/900 三档后，在**未改任何产品代码**的 HEAD 上量到：
+
+| 视口 | header 宽 | main 宽 | agents 宽 | rail 宽 |
+|------|-----------|---------|-----------|---------|
+| 480×720 none | 452 | 452 | 28 | — |
+| 700×700 bot | 675 | 452 | 25 | 223 |
+| 900×700 computer | 791.5 | 452 | 108.5 | 339.5 |
+
+**根因。** `ui_chrome.css` 的 `body.grok-ui { grid-template-areas: "agents header header" … }`
+选择器（0,1,1）比媒体查询里的 `body`（0,0,1）更具体，所以窄屏规则里的 areas 被压掉，
+但 `grid-template-columns: 1fr` 生效了：网格只剩 1 个显式列，areas 却仍指名 3 列，
+浏览器于是生成隐式 auto 列 —— 三块内容按内容宽度抢位置，composer 被挤到主列右侧 452px 处。
+单列从来不是“没写好”，是**写好了但被具体度更高的规则整条覆盖**。
+
+**修复。**
+1. 媒体查询同时写 `body, body.grok-ui`，显式声明 4 行
+   `header 56 / agents auto / main minmax(0,1fr) / composer auto`；
+2. ≤900px 时 rail 不再占列：`position:fixed; top:56; right:0; width:min(340px,100vw)` 覆盖抽屉。
+   480px 下若仍占 340px 列，聊天列只剩 140px；改成抽屉后打开面板不再挤窄主列，
+   且三条 rail 本来就都有“关闭”按钮，不会打开后关不掉。
+3. 渲染门新增 **D-L-13**：900/700/480 × 6 面板态，断言
+   `header/main/agents 宽 = viewport`、composer 完整在视口内（右/下不越界）、
+   区域两两不重叠、`scrollWidth ≤ clientWidth`、rail 开启时 main 宽度不变且右缘贴 viewport。
+4. D-L-13 接进 `smoke_grok_desktop_parity.sh` 的 **G-46** 聚合 —— 此前这道门不在 CI 的任何
+   列表里，只有人记得手动跑；现在每次推送都真跑。
+
+**红→绿证据（同一台机器、同一命令 `xvfb-run -a node scripts/e2e_desktop_layout_target.mjs`）：**
+
+| 状态 | 结果 |
+|------|------|
+| 修复前（`git checkout -- hosts/desktop/index.html`） | `PASS=13 FAIL=63 SKIP=0`，exit 1；62 条 D-L-13 断言红 |
+| 修复后 | `PASS=14 FAIL=0 SKIP=0`，exit 0；`D-L-13: 900x700, 700x700, 480x720` 绿 |
+
+窄屏截图：`reference/live-{900x700,700x700,480x720}-none.png`（480 图里侧栏是 140px 横带，
+主列 480 满宽，输入框完整可见）。
+
+**诚实残留。**
+- **侧栏在窄屏是 140px 顶部横带，不是抽屉**：能用（可滚动、折叠后 0 高），但占掉 480×720
+  近 1/5 高度。真要做成左滑抽屉是产品交互变更，需要单独裁决；本轮只保证“不破、不挤”。
+- **rail 抽屉会盖住 composer 右半**（包括发送键）。抽屉是显式打开的，自带“关闭”，
+  但打开时无法一边看主列一边发消息 —— 这是覆盖层的固有代价，未加遮罩/侧滑手势。
+  → **已在 §8.52 修掉发送键被盖住**；抽屉仍会盖住 composer 之外的右半主列，这是覆盖层本意。
+- **只验了 100% 缩放**：Electron 内容缩放不等于 1 时的 CSS px 换算未覆盖。
+
+## 8.52 面板打开时发送键点不到：composer 在抽屉下面，没人量过命中（D-L-13 补命中测试）
+
+**症状。** §8.51 把窄屏 rail 改成覆盖抽屉后，只断言了 composer 的矩形“在视口内”，
+没断言它**没被更高层盖住**。补上真实命中测试（`document.elementFromPoint(发送键中心)`）后，
+在未改产品代码的 HEAD 上，900/700/480 三档 × {bot, conv, computer, tools} 12 个组合全红：
+
+```
+✗ narrow/bot@480: send button is covered (hit=bot-rail)
+✗ narrow/tools@480: send button is covered (hit=lab)
+...
+e2e_desktop_layout_target: PASS=13 FAIL=13 SKIP=0   (exit 1)
+```
+
+**根因。** 四条 rail 在窄屏是 `position:fixed; top:56; bottom:0; z-index:60`，composer 是普通
+grid item（`z-index:auto`）。抽屉一路铺到窗口底部，480 宽时正好盖住 composer 右侧的发送键：
+面板看得见、消息发不出，而旧断言只看矩形，量不到“被谁压住”。
+同一个根因也存在于桌面宽的群资料抽屉（`#room-rail`，460px 覆盖层），只是此前没有命中测试。
+
+**修复。**
+1. 抽屉降到 `z-index:57`、`#composer` 抬到 `58` 并铺 `--page-bg`：57 < composer 58 < modal 60，
+   抽屉从 composer 下方穿过，composer 又不会盖住任何弹层；
+2. 抽屉加 `padding-bottom:96px`，最后一条内容仍能滚到可视区，而不是永远停在 composer 背后；
+3. **D-L-13 新增命中断言**：每个窄视口/面板态都要求发送键中心命中的是发送键本身
+   （`hit === send || send.contains(hit)`），不是只比矩形。G-46 里自动跑。
+
+第一版把 composer 直接抬到 `z-index:61`，结果压过了 `--z-modal:60` 的弹层：CI 的
+G-51 在点「去保存并试连」时 `page.click` 超时（按钮被 composer 盖住），
+`PASS=5 FAIL=1`。这说明“抬高发送键”必须分层，而不是比抽屉高就行：
+**抽屉 57 < composer 58 < modal 60**，用 G-51 复跑验证弹层底部仍可点。
+
+**红→绿证据（同一命令 `xvfb-run -a node scripts/e2e_desktop_layout_target.mjs`）：**
+
+| 状态 | 结果 |
+|------|------|
+| 修复前（只加命中测试，产品 CSS 不动） | `PASS=13 FAIL=13 SKIP=0`，exit 1；12 条逐档红 + 1 条汇总红 |
+| 修复后 | `PASS=14 FAIL=0 SKIP=0`，exit 0 |
+
+**诚实残留。**
+- 抽屉底部只给 composer **单行**留了 96px；输入框长到多行时，抽屉最后几条内容会被
+  更高的 composer 挡住，需要滚一下或先收起面板。发送键本身不再受影响。
+- 窄屏侧栏仍是 140px 顶部横带、非 100% 缩放未覆盖，见 §8.51。
+
+## 8.53 移动端远程控制弹窗：能力早就在，缺的是入口与「现在能不能连」的实话
+
+用户拿一张别家产品的截图问「移动端控制，现在有这种成熟度吗？」。对答案分两半：
+
+- **线协议那半是真的**：pairing-v1 的局域网发现、6 位短码换令牌、一次性与 TTL 都在，
+  `prove_pairing_code` 19/0、`e2e_android_roster` 20/0、`PairingDiscoveryTest` 23、
+  `PairingIntegrationTest` 17、APK 16/0（§8.15.7 / pairing-v1.md 的验收表）。
+- **那一屏那半是没有的**：桌面只把这件事摊在「设置 → 凭证 → 手机与入站」一张卡里，
+  四个平铺按钮 + 一句状态文案；没有独立入口，没有「手机现在能不能连」的状态点，
+  一键配对和「抄 64 位令牌」摆在同一排，主次不分。截图里那种「手机扫码连接 /
+  使用 Bot Channel」双卡弹窗，桌面当时并不存在。
+
+所以这一波只补 IA、状态如实与几何（S 档），不动线协议、不加假入口。
+
+**做了什么。**
+
+1. 账户菜单加一条 `#ap-remote`「移动端远程控制」，点开是居中双卡弹窗
+   `#mobile-control-modal`（`.bb-modal` + `.bb-sheet-lg`，层号走 `--z-modal:60`，
+   不碰 §8.52 定下的 57/58/60 分层）；
+2. 左卡把同一份 `pairing.state()` 讲成三句话：状态点（`data-state=off|on`）、
+   一行带真实地址的状态、一个主行动；配对码在这屏内闭环（生成 → 已有码时按钮转「刷新」
+   → 作废收起），倒计时 m:ss 与 Host 的 `pair_code` 每步对齐；复制链接当场回显；
+3. 右卡只列真跑通的三条渠道（钉钉 / 飞书 / 企业微信），「去配置」先关自己再开
+   连接应用并滚到国内渠道卡 —— 不叠两层弹窗；
+4. 弹窗内**零令牌控件**（MC-02 数 id、MC-08 拿真令牌做对照串），抄 64 位令牌
+   不再是这条路的必经动作；手动兜底留在 设置→凭证，那张卡加一行
+   `#sec-pairing-modal-hint` 说明主路去哪，两处入口共用一份状态，不打架。
+
+**门禁 `scripts/e2e_desktop_mobile_control.mjs`（MC-01..MC-11），红→绿都是真跑：**
+
+| 阶段 | 结果 |
+|------|------|
+| 断言先写、产品未动 | `PASS=0 FAIL=10 SKIP=0`，10 条各自报「入口/弹窗/状态点/渠道列不存在」 |
+| 弹窗做完，窄屏另挖出一条 | `PASS=9 FAIL=2 SKIP=0`（MC-11 + MC-09 红） |
+| 横带内账户弹层改向下开 | `PASS=11 FAIL=0 SKIP=0` |
+
+**顺带挖出来的真缺陷（不是本波要求的，但同样点不到）。** 480×693 下先按 Ctrl/Cmd+B
+展开侧栏，再点「账户」：`#account-popup` 量到 `y=-167 h=309`，逐行
+`ap-usage y=-161 / ap-mobile y=-129 / ap-remote y=-97 / ap-settings y=-33 / ap-connect y=1`，
+`elementFromPoint` 返回 null。根因是弹层平时用 `bottom: calc(100% + 2px)` **向上开**——
+宽桌面下账户条贴在侧栏底部，向上开正好浮在正文上；≤900 的 140px 横带把账户条抬到
+y≈143，向上 309px 直接出屏，而 `#agents` 是 overflow 容器、向下也会被 140px 裁掉。
+修法：横带内改 `position: fixed`，贴横带下缘向下开，`max-height` 受视口约束自己滚，
+层号 **57 < composer 58 < 菜单 59 < modal 60**（菜单要浮在已开抽屉之上，但不能压过弹层）。
+这条影响的不只新入口：窄窗口里「设置」「连接应用」此前同样点不动。已写进
+layout-contract.md §3.1 的窄视口表。
+
+**诚实残留。**
+- **没有二维码**。现在靠「复制配对链接」或手敲 6 位码，手机摄像头那条路是下一波（M 档）；
+  做的时候内容只放 `base_url` + 一次性短码，绝不放 64 位令牌，短码保留为无摄像头兜底。
+- **不做真·远程操作当前工作区**。截图那种「手机上继续指挥这个会话」需要新协议面
+  （工作区镜像 / 远程 UI 控制），是 L 档，要单独设计评审，这一屏不假装它有。
+- 480 宽 ≤ 折叠断点(768) 时侧栏自动收起，账户入口要先 Ctrl/Cmd+B 展开才点得到；
+  横带要不要改成抽屉仍是 §8.51 那条残留。
+- MC 系列只验到 UI 与 Host 状态一致、按钮点得到；手机侧真正的发现/换令牌仍由
+  pairing-v1 既有门与 Android 门盯着，真机同 Wi-Fi 的人工验收仍未做过（§8.15.7 已记）。
+- 渠道侧只列了三条国内渠道；Telegram / Lark 国际版没有适配器，微信个人号建议不做，
+  这一屏不给点了没反应的入口。
+
+## 8.54 「复制配对链接」点开是 JSON 404：名字叫链接，就得是链接
+
+上一波把配对搬进「账户 → 移动端远程控制」之后，自己复核这一屏，抓到一条半真：
+那颗按钮写着**复制配对链接**，复制出去的却是裸地址 —— 真 HTTP 量到的现场是
+
+```text
+GET /pair → 404 {"ok":false,"error":"unknown_cn_inbound_route","routes":[...]}
+剪贴板     http://25.4.80.50:41795        （端口 41795，弹窗里那颗按钮复制的就是它）
+```
+
+用户把这条「链接」粘到微信 / 手机浏览器里，得到的是一页机器读的 JSON。
+更糟的是那份 404 里的 `routes` 清单本身过期了：连 `/v1/pair/discover`、
+`/v1/pair/redeem` 都没列，等于在最该指路的地方指错路。
+
+**做了什么。** 入站服务加一页**只读**说明页（`GET /pair`，`GET /` 同页 —— 用户常常
+只粘得到裸地址），只讲三件事：这是哪台桌面（主机名 + 实际端口）、手机下一步做什么
+（打开 App → 点「连接 Desktop」→ 输 6 位码）、现在到底能不能连。最后一条不许粉饰：
+局域网没放开时写「只在桌面自己这台机器上开着（127.0.0.1:端口）」；放开时按
+`hosts/shared/lan_candidates.js` 的排名逐条列地址，并标出它是 private / cgnat /
+public / link_local —— 与桌面弹窗同一份真源，两处不许各说各话。弹窗那颗按钮改
+`copy("page")`，`pairingState()` 加可选字段 `pair_page_url`；设置里那一栏仍复制
+裸地址（那是给 App 手填用的，语义没动，既有 `url` / `token` 两种 kind 也不变）。
+
+**三条线钉死在门禁里**（`scripts/e2e_desktop_pair_page.mjs` PP-01..10，真 Electron + 真 socket）：
+
+1. 页面不含 64 位令牌，也不含刚生成的配对码 —— 它未鉴权，局域网里谁都敲得开。
+2. 页面不是第二个 redeem 面：没有 `<form>`、不碰 `/v1/pair/redeem`。谁在浏览器里
+   输 6 位码，bearer 就落到那个浏览器里；那不是配对的客户端，是白送一个令牌。
+3. 不引外部资源，并带 `noindex` / `no-store` / `nosniff` / `default-src 'none'` ——
+   走 `scripts/cn_inbound_tunnel.sh` 的公网隧道时这一页全网可见。
+
+**红 → 绿。** 断言先写、产品未动：**PASS=1 FAIL=10**（唯一那条绿是收尾自清）；
+加页面 + 改复制目标之后：**PASS=11 FAIL=0**。邻居回归同步跑过：
+`e2e_desktop_mobile_control` 11/0、`e2e_desktop_layout_target` 14/0、
+`prove_ui_tokens` 9/0、`prove_pairing_code` 19/0、`prove_pairing_lan_rank` 9/0、
+`prove_p0_inbound_security` 8/0（host-checks 11/0）。已接进
+`smoke_grok_desktop_parity.sh` **G-68**。
+
+**顺带挖出的一条门禁口径错。** 全量矩阵里 `e2e_desktop_user_journeys` 报
+「zh-TW 凭证页字典文案残留简体」，指向我上一波写的 `pairingModalHint`
+（「…讀的是同一份配對狀態」）。查下来不是文案的错：那条简体检测的正则里有
+`同一份`，而**同一份简繁同形**，拿它当简体证据迟早误伤合法繁体。换成简体专属的
+`对应`（繁体 對應）之后，同一句繁体过了，而原本想抓的那条硬编码简体
+`.st-note`（「同一份 .env.local；切到对应渠道…」）仍然被抓到 —— 计数没松。
+这和该文件里 `委派任務` 那条注释是同一条教训。
+
+**诚实残留。**
+- 这一页**故意不能**在浏览器里完成配对：它只是说明页。想把它做成 web 客户端是另一件事
+  （要新的鉴权与会话语义），本轮不假装已经具备。
+- 页面显示主机名与端口，泄露面与既有的 `/v1/pair/discover` 同级 —— 没有更高，但也没更低；
+  走公网隧道时全网可读，这一点在门禁 echo 里写明，不靠 noindex 假装安全。
+- **二维码仍不做**，且卡点已经查清不在桌面侧：Android 的 `build.gradle.kts` 里没有任何
+  摄像头 / 扫码依赖（CameraX、ML Kit 都没有），`AndroidManifest.xml` 只有 LAUNCHER
+  一个 intent-filter —— 系统相机扫出来的 URL 手机 App 接不住。桌面这时候画一张 QR
+  只是装饰图。要落地得三件一起：桌面 vendored 编码器、手机端扫码或 deep-link、
+  真机验收（本机无 KVM 起不了 emulator）。缺任何一件都不做，短码继续作为主路。
+- 真机同 Wi-Fi 的人工验收仍未做过（§8.15.7 已记）；本轮全部证据是沙箱内真 Electron
+  + 真 socket，不含手机侧。
+- **配对这件事至今不在能力矩阵里**：`docs/capability-matrix.md` 234 行合同里搜不到
+  任何 pairing / 配对 行，所以 `docs/qa/product-readiness.md` 那本「能不能用」的账
+  也没法给它归类 —— 用户手册已经写了这条路径，账本上却是空白。补它不是改文档：
+  `prove_capability_matrix.mjs` 的 CM1/CM2 要求每行指向一个 `.mbt` 里的具名测试，
+  而配对住在 Host 侧（Node + Electron），没有对应的内核合同。要么先写一条内核侧
+  的配对合同（`cmd/desktop_turn` 或新的 `pairing` 包），要么给矩阵加一种 Host 级证据格式
+  —— 两条都是单独的活，本轮只把缺口记下来，不用「文档里提一句」冒充已入账。
+
+## 8.55 「安卓现在能连吗」：协议层早就通，卡在包里少声明一条权限（GP-187）
+
+问的是能不能连，答的是两件事：**桌面这边的协议是不是真的走得通**，和**手机上那一端有没有入口**。
+第一轮答案是硬的，第二轮答案是坏的。
+
+### 8.55.1 桌面侧：配对 v1 有真 HTTP 往返，不是契约文档
+
+`node scripts/prove_pairing_code.mjs` 本轮重跑 **PASS=19 FAIL=0**（PC-01..19）。它不是读文件：
+自己起 `cn_inbound_server`（bind 0.0.0.0 的临时端口）再用 `http.request` 打真请求。关键的三条：
+
+- **PC-12/13**：`/v1/pair/discover` 拿到形状正确的应答（不漏令牌）→ `/v1/pair/redeem` 换到
+  `turn_token` + `base_url` → 拿这个 token 调 `/v1/turn` **真的跑完一个回合**并返回 200。
+- **PC-14/15/16**：一次性（第二次换码 400）、5 次错码后连对码也拒（`attempts_exceeded`）、
+  TTL 过期前 200 后 400。
+- **PC-18/19**：`base_url` 按 `lan_candidates` 排序选 `192.168.x.x` 而不是容器网卡 `172.17.x.x`；
+  没点「允许手机连接」（回环绑定）时换码返回 409 `pairing_not_open`，发现接口照旧可答。
+
+### 8.55.2 手机侧：`扫描` 这一步在真机上大概率是崩，不是「没找到桌面」
+
+`MainActivity` 的配对扫描先要手机自己的局域网 IPv4：`cm.activeNetwork` →
+`getNetworkCapabilities` → `getLinkProperties`。这三条 API 的文档都标了
+`@RequiresPermission(ACCESS_NETWORK_STATE)`，缺声明时 `ConnectivityService` 抛
+`SecurityException`（经典日志：`Neither user N nor current process has
+android.permission.ACCESS_NETWORK_STATE`）。而 `hosts/android/BitBotHost/app/src/main/AndroidManifest.xml`
+只声明了 `INTERNET / CAMERA / RECORD_AUDIO / ACCESS_FINE_LOCATION`，全仓 `grep ACCESS_NETWORK_STATE` 零命中。
+
+更要紧的是调用点（远端头 `MainActivity.kt:478`）：
+
+```kotlin
+val localIp = getLocalWifiIp(this@MainActivity)   // 外面没有 runCatching
+```
+
+异常从协程里逃出去就是崩。后果是**连那条本该兜底的文案都看不到**——「读不到手机自己的局域网地址……
+也可以用下方「高级」手动填写桌面地址」，用户连手动填的入口都够不着。
+
+这条是静态取证：本机没有 Android SDK（矩阵里 G-47 的 APK 段在 mac 上一直是 `SKIP ≠ PASS`），
+runner 无 KVM 起不了 emulator，所以「真机必崩」是推断，不是实测。但修法是文档要求的、且不修就没有退路。
+
+### 8.55.3 修了什么，门禁怎么钉住
+
+- 清单补 `<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />`（normal 权限，装上即授予，不弹框）。
+- 取地址那步改成 `runCatching { getLocalWifiIp(...) }.getOrNull()`，失败就落回既有那句人话 + 手动填地址。
+- `prove_android_build.mjs`：**AB-03** 的 `wanted` 加上这条权限，断言来源仍是 `aapt dump badging` 从**包里**读回，
+  不是 gradle 自述；新增 **AB-03b** 同时要求「包里有声明」与「源码里取地址那步有兜异常」，两者缺一都红。
+- 矩阵 **G-47** 补 `AB-03b` 锚点，摘掉锚点会红而不是静默少一项。
+- 负向对照 3/3 逐个翻红（实测脚本 `/tmp/ab03b_neg.cjs`）：删清单声明 → 红；把 `runCatching` 摘回裸调用 → 红；
+  把扫描改回写死 IP（不再读 `getNetworkCapabilities/getLinkProperties`）→ 红；逐条恢复后重跑仍绿。
+
+### 8.55.4 打包事实（本轮 Actions 真产出）
+
+`android-apk.yml` 手动派发在 `cursor/next-target-v1` 头（`86bbd82`）：run **41181452467** 全绿，
+`prove_android_build: PASS=16 FAIL=0 SKIP=0`，产物 **`bitbot-android-universal-86bbd82da75d…`／12.7 MB**（保留 30 天）。
+包名 `com.bitbot.host.debug`，`minSdk 26 / targetSdk 34`，六个国内渠道 flavor 都在，JVM 单测 **126 用例 0 失败（16 个类）**。
+
+**这个包是修复前编出来的**，里面没有 8.55.3 那三行改动 —— 它证明了「打得出包」，不证明「手机上点得动扫描」。
+8.50.3 的改动要在推上去之后重新派发一次才算进包。
+
+### 8.55.5 诚实残留
+
+- **AB-03b 是源码锚点 + 包内声明**，不是设备行为：Robolectric 不校验权限，这条在 JVM 上验不到
+  「装了声明就不抛 SecurityException」。真机点击仍是残留，与 §8.49 那句「iOS/Android 仍无真机样本」是同一笔账。
+- release 包仍是 debug 签名（没配 `BITBOT_ANDROID_STORE_*`），能侧载自测，不等于能上架。
+- 自动发现之外的那条路（手动填桌面地址 + 配对令牌）在 UI 里存在，但本轮没有真机走通，
+  不能因为它存在就把扫描的崩溃说成「只是不便」。

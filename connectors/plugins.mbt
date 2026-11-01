@@ -72,14 +72,8 @@ pub fn PluginRegistry::seed_demo() -> PluginRegistry {
     ],
     mcp_namespace: "user-Slides",
     mcp_tools: [
-      {
-        name: "make_deck",
-        description: "Render a deck from an outline.",
-      },
-      {
-        name: "list_templates",
-        description: "List available deck templates.",
-      },
+      { name: "make_deck", description: "Render a deck from an outline.", },
+      { name: "list_templates", description: "List available deck templates.", },
     ],
   })
   reg.available.push({
@@ -94,10 +88,7 @@ pub fn PluginRegistry::seed_demo() -> PluginRegistry {
     ],
     mcp_namespace: "user-Calendar",
     mcp_tools: [
-      {
-        name: "list_events",
-        description: "List upcoming calendar events.",
-      },
+      { name: "list_events", description: "List upcoming calendar events.", },
     ],
   })
   reg

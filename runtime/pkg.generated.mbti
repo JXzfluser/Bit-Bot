@@ -52,12 +52,6 @@ pub fn decide_autonomy(AutonomyAction, in_delegated_scope~ : Bool) -> AutonomyDe
 
 pub fn default_retry_policy() -> LoopRetryPolicy
 
-pub fn demo_ack_envelope(String, String) -> @ui_protocol.SendEnvelope
-
-pub fn demo_review_send() -> @security.ApprovalDecision
-
-pub fn demo_zone_label() -> String
-
 pub fn detect_ask_language(String) -> AskLanguage
 
 pub fn emit_two_readonly_same_turn(a_name~ : String, a_args~ : String, b_name~ : String, b_args~ : String) -> Result[ParallelToolPlan, String]
@@ -181,10 +175,11 @@ pub(all) struct AgentContext {
   mut keep_recent_turns : Int32
   mut compacted : Bool
 } derive(Eq, @debug.Debug)
-pub fn AgentContext::append(Self, AgentRole, String, tool_name? : String, step? : Int32, key? : Bool) -> Unit
+pub fn AgentContext::append(Self, AgentRole, String, tool_name? : String, step? : Int32, key? : Bool, call_id? : String, call_args? : String) -> Unit
 pub fn AgentContext::append_assistant(Self, String, step? : Int32) -> Unit
-pub fn AgentContext::append_observation(Self, String, String, step? : Int32) -> Unit
-pub fn AgentContext::append_tool(Self, String, String, step? : Int32) -> Unit
+pub fn AgentContext::append_observation(Self, String, String, step? : Int32, call_id? : String) -> Unit
+pub fn AgentContext::append_tool(Self, String, String, step? : Int32, call_id? : String) -> Unit
+pub fn AgentContext::append_tool_call(Self, String, String, String, step? : Int32) -> Unit
 pub fn AgentContext::append_user(Self, String) -> Unit
 pub fn[S : AgentSummarizer] AgentContext::compact(Self, S) -> Bool
 pub fn AgentContext::decode(String) -> Self
@@ -211,6 +206,8 @@ pub(all) struct AgentHistoryEntry {
   tool_name : String
   step : Int32
   key : Bool
+  call_id : String
+  call_args : String
 } derive(Eq, @debug.Debug)
 pub fn AgentHistoryEntry::equal(Self, Self) -> Bool
 pub fn AgentHistoryEntry::not_equal(Self, Self) -> Bool
@@ -472,8 +469,11 @@ pub impl AgentLoopHost for LoopHostAbi
 pub(all) struct LoopMessage {
   role : String
   content : String
+  tool_calls : Array[ToolCallReq]
+  tool_call_id : String
 } derive(Eq, @debug.Debug)
 pub fn LoopMessage::equal(Self, Self) -> Bool
+pub fn LoopMessage::new(role~ : String, content~ : String, tool_calls? : Array[ToolCallReq], tool_call_id? : String) -> Self
 pub fn LoopMessage::not_equal(Self, Self) -> Bool
 pub fn LoopMessage::to_repr(Self) -> @debug.Repr
 
@@ -752,7 +752,6 @@ pub fn TurnContext::allows_tools(Self) -> Bool
 pub fn TurnContext::deliver_attachment(Self, name~ : String, mime~ : String, path~ : String) -> Result[Self, String]
 pub fn TurnContext::deliver_confirm_then(Self, confirm~ : String, follow_up~ : String) -> Result[Self, String]
 pub fn TurnContext::deliver_text(Self, body~ : String, channel_hint? : String?) -> Result[Self, String]
-pub fn TurnContext::deliver_text_to_inbound(Self, body~ : String, inbound_address~ : String) -> Result[Self, String]
 pub fn TurnContext::deliver_voice_memo(Self, spoken_text~ : String, audio_path? : String) -> Result[(Self, VoiceMemoDelivery), String]
 pub fn TurnContext::deliver_widget(Self, widget_id~ : String, spec~ : @ui_protocol.WidgetSpec) -> Result[Self, String]
 pub fn TurnContext::done_todo_count(Self) -> Int32
@@ -766,7 +765,6 @@ pub fn TurnContext::mark_todo_done(Self, id~ : String) -> Result[Self, String]
 pub fn TurnContext::milestone(Self, body~ : String) -> Result[Self, String]
 pub fn TurnContext::new(String, String) -> Self
 pub fn TurnContext::not_equal(Self, Self) -> Bool
-pub fn TurnContext::reply_to_channel_target(Self, body~ : String, inbound_address~ : String?) -> Result[Self, String]
 pub fn TurnContext::should_ack_user(Self) -> Bool
 pub fn TurnContext::to_repr(Self) -> @debug.Repr
 pub fn TurnContext::todo_write(Self, Array[TodoItem]) -> Result[Self, String]

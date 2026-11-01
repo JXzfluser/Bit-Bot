@@ -29,6 +29,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
+const { asarPathOf } = require("./lib_pack_manifest.js");
 
 const REPO = path.resolve(__dirname, "..");
 const STUB_PORT = Number(process.env.BITBOT_G19_STUB_PORT || 8796);
@@ -342,10 +343,14 @@ async function main() {
       ? ok("GP-94 preload：只暴露 links.open 白名单通道（renderer 拿不到 shell）")
       : bad("GP-94 preload wiring", "links.open missing");
 
+    // 「模块有没有进打包清单」这句话不能按清单的书写形状读：桌面模块挂在
+    // {from:".", to:"desktop", filter:[…]} 里（包内镜像 hosts/ 树），
+    // 解读收在 scripts/lib_pack_manifest.js，门禁只问「进包了吗、在包内哪条路径」。
     const files = (pkg.build && pkg.build.files) || [];
-    files.includes("link_discipline.js") && files.includes("link_open.js")
-      ? ok("GP-93/94 打包清单含两个新模块（打进 asar，打包版不会缺文件）")
-      : bad("GP-93 packaging", JSON.stringify(files).slice(0, 240));
+    const packed = ["link_discipline.js", "link_open.js"].map((m) => asarPathOf(files, m));
+    packed.every((p) => p && /^desktop\/[^/]+$/.test(p))
+      ? ok("GP-93/94 打包清单含两个新模块（打进 asar 的 desktop/ 下，打包版不会缺文件）")
+      : bad("GP-93 packaging", JSON.stringify({ files: files.map((f) => (typeof f === "string" ? f : f.to)), packed }));
 
     const i18n = ["linkOpenHint:", "linkBlocked:", "linkRefused:", "linkOpenFailed:"].every(
       (k) => (html.match(new RegExp(k, "g")) || []).length >= 3,

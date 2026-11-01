@@ -9,11 +9,13 @@ test "K-1 agent context slot is per (bot, session)" {
   assert_eq(agent_context_slot("  bot-B  ", "  sess-2  "), "bot-B__sess-2")
   // 同一个 Bot 换会话 → 不同的槽位。
   assert_true(
-    agent_context_slot("bot-A", "sess-1") != agent_context_slot("bot-A", "sess-2"),
+    agent_context_slot("bot-A", "sess-1") !=
+    agent_context_slot("bot-A", "sess-2"),
   )
   // 同一个会话换 Bot → 不同的槽位。
   assert_true(
-    agent_context_slot("bot-A", "sess-1") != agent_context_slot("bot-B", "sess-1"),
+    agent_context_slot("bot-A", "sess-1") !=
+    agent_context_slot("bot-B", "sess-1"),
   )
   // 缺省值:没 Bot 走默认 Bot,没会话走默认会话。
   assert_eq(agent_context_slot("", ""), "agent-bit__default")
@@ -36,7 +38,10 @@ test "K-1 context request encodes op, slot and text" {
 test "K-1 context reply extracts the text and tolerates an unknown op" {
   assert_eq(parse_context_reply("{\"output\":\"abc\"}"), "abc")
   // 旧 Host 不认识这两个 op → unknown op → 当作没有历史。
-  assert_eq(parse_context_reply("{\"error\":\"unknown op\",\"output\":\"\"}"), "")
+  assert_eq(
+    parse_context_reply("{\"error\":\"unknown op\",\"output\":\"\"}"),
+    "",
+  )
   assert_eq(parse_context_reply(""), "")
 }
 

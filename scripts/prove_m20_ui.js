@@ -63,9 +63,17 @@ function main() {
     : bad("user bubble", "user pill styling lost");
 
   /* ---- 2) Sidebar: avatar color, preview, unread dot ---- */
-  /const AVATAR_PALETTE = \[/.test(html) && /function avatarColorFor\(seed\)/.test(html)
-    ? ok("侧栏头像色板 + 确定性哈希（同一 id 恒定同色）")
-    : bad("avatar palette", "missing AVATAR_PALETTE/avatarColorFor");
+  // T-2 清债后色板抽到了独立模块（avatar_palette.js），index.html 只负责加载它；
+  // 门禁跟着真源走：模块里有色板 + 哈希函数，页面里有 <script src> 引用。
+  (() => {
+    const PALETTE = path.join(REPO, "hosts/desktop/avatar_palette.js");
+    let paletteSrc = "";
+    try { paletteSrc = fs.readFileSync(PALETTE, "utf8"); } catch (_) { /* missing → bad below */ }
+    const wired = /vendor\/avatar_palette\.js|src="\.\/avatar_palette\.js"/.test(html);
+    /(var|let|const) AVATAR_PALETTE = \[/.test(paletteSrc) && /function avatarColorFor\(seed\)/.test(paletteSrc) && wired
+      ? ok("侧栏头像色板 + 确定性哈希（同一 id 恒定同色；真源 avatar_palette.js 且页面已加载）")
+      : bad("avatar palette", "missing AVATAR_PALETTE/avatarColorFor in avatar_palette.js or page not loading it");
+  })();
 
   /\.sess-avatar \{[^}]*border-radius:\s*50%/.test(html)
     ? ok("会话/Bot 行用圆形头像")

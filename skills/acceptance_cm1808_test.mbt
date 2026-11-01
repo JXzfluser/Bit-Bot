@@ -5,14 +5,11 @@ test "acceptance_CM-1808_learn_from_demonstration_skill_draft" {
     @skills.learn_from_demonstration_skill_name(),
     "learn-from-demonstration",
   )
-  let demo = @skills.Demonstration::of(
-    title="Weekly expense report",
-    steps=[
-      { kind: "navigate", detail: "Open finance spreadsheet", },
-      { kind: "fill", detail: "Enter line items from receipts", },
-      { kind: "export", detail: "Export CSV to /workspace/out", },
-    ],
-  )
+  let demo = @skills.Demonstration::of(title="Weekly expense report", steps=[
+    { kind: "navigate", detail: "Open finance spreadsheet", },
+    { kind: "fill", detail: "Enter line items from receipts", },
+    { kind: "export", detail: "Export CSV to /workspace/out", },
+  ])
   match
     @skills.crystallize_demonstration_to_skill_draft(
       demo,
@@ -37,7 +34,10 @@ test "acceptance_CM-1808_learn_from_demonstration_skill_draft" {
   }
   match demo.to_skill_md_draft() {
     Err(e) => fail(e)
-    Ok(md) => assert_true(md.contains("Weekly expense report") || md.contains("learned-"))
+    Ok(md) =>
+      assert_true(
+        md.contains("Weekly expense report") || md.contains("learned-"),
+      )
   }
   match
     @skills.crystallize_demonstration_to_skill_draft(

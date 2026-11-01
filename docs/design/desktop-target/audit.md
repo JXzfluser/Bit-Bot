@@ -1,9 +1,13 @@
 # Desktop UI Audit — cursor/desktop-layout-target-v1
 
-**Audit Date:** 2026-10-22  
+**Audit Date:** 2026-10-22（文件行数为 **2026-10-31** 复核值）  
 **Target Files:**  
-- `/data/Bit-Bot/hosts/desktop/index.html` (12569 lines)  
-- `/data/Bit-Bot/hosts/desktop/ui_chrome.css` (639 lines)
+- `hosts/desktop/index.html`（当前 18336 行；审计当时 12569 行）  
+- `hosts/desktop/ui_chrome.css`（当前 2887 行；审计当时 639 行）
+
+> 审计当时写的是另一台机器上的绝对路径 `/data/Bit-Bot/…`，在本仓库里读不到——
+> 已改成仓库相对路径。控件清单本身是审计当天的快照，行数变动不代表清单失效；
+> 要复核某个控件是否还在，用 `hosts/desktop/index.html` 搜对应的 id/class。
 
 ---
 

@@ -170,6 +170,12 @@ pub fn parse_product_verdict(raw : String) -> @runtime.ApprovalVerdict {
 }
 
 ///|
+/// One wire message as the provider expects it.
+///
+/// `tool_calls` / `tool_call_id` must survive this encoder: the kernel pairs a
+/// model tool call with its result so the Host can rebuild a legal OpenAI
+/// conversation. Dropping them here (and in the Host rebuild) is what made a
+/// replayed tool loop come back as HTTP 422.
 fn encode_product_messages(
   messages : Array[@runtime.LoopMessage],
   tools_json : String,
@@ -185,7 +191,31 @@ fn encode_product_messages(
     buf.write_string(escape_json_string(m.role))
     buf.write_string("\",\"content\":\"")
     buf.write_string(escape_json_string(m.content))
-    buf.write_string("\"}")
+    buf.write_string("\"")
+    if m.tool_calls.length() > 0 {
+      buf.write_string(",\"tool_calls\":[")
+      let mut j = 0
+      for c in m.tool_calls {
+        if j > 0 {
+          buf.write_string(",")
+        }
+        buf.write_string("{\"id\":\"")
+        buf.write_string(escape_json_string(c.id))
+        buf.write_string("\",\"type\":\"function\",\"function\":{\"name\":\"")
+        buf.write_string(escape_json_string(c.name))
+        buf.write_string("\",\"arguments\":\"")
+        buf.write_string(escape_json_string(c.arguments_json))
+        buf.write_string("\"}}")
+        j = j + 1
+      }
+      buf.write_string("]")
+    }
+    if m.tool_call_id != "" {
+      buf.write_string(",\"tool_call_id\":\"")
+      buf.write_string(escape_json_string(m.tool_call_id))
+      buf.write_string("\"")
+    }
+    buf.write_string("}")
     i = i + 1
   }
   // The tool catalog travels with the request: the Host must not keep its

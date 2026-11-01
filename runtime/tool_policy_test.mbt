@@ -100,8 +100,7 @@ test "K-2 the scope comes from the path-ish argument only" {
 
 ///|
 test "K-2 a policy parses from the Host's JSON" {
-  let raw =
-    "{\"subject\":\"bot-A\",\"device_trust\":\"limited\"," +
+  let raw = "{\"subject\":\"bot-A\",\"device_trust\":\"limited\"," +
     "\"deny_tools\":[\"web_fetch\"]," +
     "\"need_approval\":[\"send_mail\",\"Shell\"]," +
     "\"limited_needs_approval\":[\"web_fetch\"]," +

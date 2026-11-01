@@ -98,3 +98,69 @@ pub fn HostAbi::diagnose_box_chrome_lockfile(
       }
   }
 }
+
+///|
+/// CM-0802 negative path: Host-side launch guard. Only the box-chrome launcher
+/// paths pass; bare chrome / chromium are refused. Mirrors the `box-chrome`
+/// policy in `scripts/host_h1_smoke.sh`. Pure check — never launches.
+/// 这段以前寄居在 `box_host/h1_probes.mbt`（一个探针骨架文件）里，但它是通用
+/// 安全策略而不是探针脚手架，探针层删除时一并搬回真正的归属地。
+pub fn box_chrome_launch_guard(command_line : String) -> Result[String, String] {
+  let trimmed = command_line.trim().to_owned()
+  let argv0 = match trimmed.split(" ").to_array() {
+    [] => ""
+    parts => parts[0].to_owned()
+  }
+  if argv0 == "" {
+    return Err("refused: empty launch command")
+  }
+  let allowed : Array[String] = [
+    box_chrome_launch_path(),
+    "/usr/local/libexec/sand/box-chrome",
+    "/opt/sand/sand-host/box-launchers/box-chrome",
+    "box-chrome",
+  ]
+  for a in allowed {
+    if argv0 == a {
+      return Ok(argv0)
+    }
+  }
+  Err(
+    "refused: bare chrome launch '" +
+    argv0 +
+    "' forbidden; must launch via " +
+    box_chrome_launch_path(),
+  )
+}
+
+///|
+/// Live wrapper: records an audit span (ok=false on refusal) so Bit验证 can
+/// query refusals. Does not launch anything and does not claim I.
+pub fn HostAbi::guard_browser_launch(
+  self : HostAbi,
+  command_line : String,
+) -> Result[String, String] {
+  let res = box_chrome_launch_guard(command_line)
+  let (ok, detail) = match res {
+    Ok(p) => (true, "allowed " + p)
+    Err(e) => (false, e)
+  }
+  self.effects.push(
+    "browser_launch_guard:" + (if ok { "allowed" } else { "refused" }),
+  )
+  match self.backend {
+    Live(_) =>
+      self.record_audit(
+        AuditSpan::make(
+          "browser_launch_guard",
+          artifact_path=Some(
+            host_artifacts_dir() + "/cm-0802-box-chrome/bare_refusal.txt",
+          ),
+          ok~,
+          detail~,
+        ),
+      )
+    Mock => ()
+  }
+  res
+}

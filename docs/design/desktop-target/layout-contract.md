@@ -38,7 +38,6 @@ grid-template-areas:
 - SHOULD：切换带 150–250ms 宽度过渡；过渡不改变终值断言。
 
 ## 3. 区域尺寸合同（1440x900 与 1280x800 两档视口分别断言）
-
 | 区域 | 选择器 | 期望 | 误差带 |
 |------|--------|------|--------|
 | header | `body>header` | height = 56px | ±2 |
@@ -52,6 +51,27 @@ grid-template-areas:
 - MUST：区域矩形两两不重叠（header/sidebar/main/composer/rail 的 `getBoundingClientRect()` 交集面积为 0；composer 与 main 共享列但垂直不重叠）。
 - MUST：任何可见交互元素完全位于其区域矩形内（误差 ≤2px），position:fixed 元素只允许：modal/lightbox/toast 层（必须带合同 z-index 层级：modal=`--z-modal`、toast > modal）。
 - 清理：shell `<style>` 与 `ui_chrome.css` 中除 `[hidden]{display:none!important}` 一类的全局修正外，0 个 `!important`（迁移后 lint 断言 `!important` 命中数 ≤ 现存唯一豁免并逐条注释原因）。
+
+### 3.1 窄视口（≤900px，含产品最小宽 480）
+
+桌面窗口 `minWidth=480`，所以 480 是产品必须可用的下界，不是假想档位。
+
+| 约束 | 期望 | 断言（`D-L-13`） |
+|------|------|------------------|
+| 列 | 单列 `minmax(0,1fr)`；`body.grok-ui` 的 areas 不得压过媒体查询 | header/main/agents 宽 = viewport ±2 |
+| 行 | `header 56 / agents auto（≤140）/ main minmax(0,1fr) / composer auto` | composer 完整落在视口内（右/下都不越界） |
+| sidebar | 展开时占满整行；折叠时 0 宽（`#agents` display:none） | 两态都断言 |
+| rail | 不再占列：`position:fixed`，`top:56`、`right:0`、宽 `min(340px,100vw)` 的覆盖抽屉 | 打开面板时 main 宽度不变；抽屉右缘贴 viewport |
+| composer | 抽屉打开时仍要发得出：composer 在 rail 之上、modal 之下（57 < composer 58 < modal 60），发送键命中的是按钮本身 | `elementFromPoint(发送键中心)` 属于发送键 |
+| 账户弹层 | ≤900 的 140px 横带把账户条抬到 y≈143，平时「向上开」的 `#account-popup` 会整片跑出屏外；横带里改 `position:fixed` + 贴横带下缘**向下开**，层号 59（57 < 58 < 59 < modal 60），高度受视口约束自己滚 | `MC-11`：弹层每一项都在视口内，且中心命中自己（`e2e_desktop_mobile_control.mjs`） |
+| 移动端远程控制弹窗 | sheet 不超视口、两列降为单列、关闭与生成键都在视口内 | `MC-09` |
+| 滚动 | 无横向滚动 | `scrollWidth ≤ clientWidth` |
+| 重叠 | header / agents / main / composer 两两不重叠（rail 是覆盖层，允许压在 main 上） | 矩形交集 |
+
+已踩过的坑：`ui_chrome.css` 的 `body.grok-ui { grid-template-areas: ... }` 比裸 `body`
+选择器更具体，曾把 `<900px` 的单列规则整条压掉 —— 网格只剩 1 个显式列、areas 却仍写 3 个名字，
+于是浏览器生成隐式 auto 列。480px 下实测 main 被挤到 380px、rail 74px、header 455px。
+窄视口规则必须同时写 `body, body.grok-ui`。
 
 ## 4. 默认状态
 
@@ -76,6 +96,7 @@ grid-template-areas:
 ## 7. 渲染门编号（`e2e_desktop_layout_target.mjs`）
 
 - **D-L-01..12** 几何：两档视口 × {none,bot,conv,computer,tools,collapsed} 的 §3 表断言 + §2 可见性/互斥 + §1 无第 4 列。
+- **D-L-13** 窄视口：900 / 700 / 480 三档 × 6 面板态的 §3.1 断言（单列、composer 在视口内且发送键不被 rail 盖住、rail 覆盖不挤主列、无横向滚动）。本门由 `smoke_grok_desktop_parity.sh` 的 G-46 聚合，CI 每次推送都真跑。
 - **D-L-OVL**：区域矩形不重叠；交互元素不出区；无横向滚动。
 - **D-L-DIF**：前后截图逐区对比（掩码负面红）；误差红区 ≤2px 带宽外即 FAIL。
 - **D-C-01..03**：可见文案全量扫描（text/placeholder/title/aria-label）：zh-CN 无未豁免英文句、en 无汉字、三语键集合一致（`copy-contract.md` §4 口径）。

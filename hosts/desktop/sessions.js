@@ -8,6 +8,8 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const eventMirror = require("./event_mirror_ref").loadEventMirror();
+const eventReadModel = require("./event_mirror_ref").loadEventReadModel();
 
 function createSessionStore(repoRoot, opts = {}) {
   const root = path.resolve(repoRoot);
@@ -57,19 +59,168 @@ function createSessionStore(repoRoot, opts = {}) {
     return state;
   }
 
+  // T1-03 双写旁路：默认关（BITBOT_EVENT_DUAL_WRITE=1 才开），开也只是在同一
+  // 次落盘后多追加几条事件；镜像失败不改这次写入的结果。
+  const mirror = () => eventMirror.getSharedMirror(dataRoot);
+
+  function writeStore(text) {
+    const m = mirror();
+    const token = m.capture(storePath);
+    fs.writeFileSync(storePath, text);
+    m.commit(storePath, token, text);
+  }
+
+  /* ===== T1-05 EVENT_ONLY（BITBOT_EVENT_ONLY=1）=====
+     事件库成为唯一写路径与读真源；sessions.json 一个字节都不再写。
+     diff 的左半边不再是「盘上文件」，而是内存里最后一次读到的状态文本
+     （lastLoadedText，load() 的每条路都负责刷新它）——这就是「prev 从盘上
+     搬进内存」。读模型的降级路在这里只用于「读」，写侧一律 fail loud：
+     JSON 不再是备份，写失败吞掉就是静默丢数据（commitText 会往外抛）。 */
+  const eventOnly = () => process.env.BITBOT_EVENT_ONLY === "1";
+  let lastLoadedText = null;
+  /* 遗留基底标记：load() 从遗留 JSON 读来且库还没有这张面的账时置位。
+     delta diff 只记增量——基底（旧会话们）从没进过库，直接落 delta 会让
+     顺序事件指向幽灵实体（EO-05 抓出来的）。所以首次写必须先从 BASELINE
+     把基底导进去（与导入脚本同一语义），再落 delta。 */
+  let legacyBasePending = false;
+  const eventOnlySaid = new Set();
+  function sayOnce(key, line) {
+    if (eventOnlySaid.has(key)) return;
+    eventOnlySaid.add(key);
+    process.stderr.write(line);
+  }
+
+  function saveEventOnly(state) {
+    const nextText = JSON.stringify(state, null, 2);
+    const def = eventMirror.surfaceOf(storePath);
+    const m = mirror();
+    if (legacyBasePending) {
+      m.commitText(def, null, lastLoadedText); // 基底导入（从 BASELINE，prevText=null）
+      legacyBasePending = false;
+    }
+    m.commitText(def, lastLoadedText, nextText);
+    lastLoadedText = nextText;
+  }
+
+  /** EVENT_ONLY 的「从 BASELINE 播种」：与导入脚本共用同一语义（prevText=null）。 */
+  function seedEventOnly() {
+    const seed = empty();
+    mirror().commitText(eventMirror.surfaceOf(storePath), null, JSON.stringify(seed, null, 2));
+    lastLoadedText = JSON.stringify(seed, null, 2);
+    return seed;
+  }
+
+  /** 从 JSON 文本恢复 store（EVENT_ONLY 的遗留数据 / 降级路共用），并刷新 prev。 */
+  function stateFromJsonText(text) {
+    let raw;
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      return empty();
+    }
+    if (!raw || !Array.isArray(raw.sessions) || !raw.sessions.length) {
+      return empty();
+    }
+    if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+    lastLoadedText = text;
+    return ensureMessageIds(raw);
+  }
+
+  // T1-04 读切换：BITBOT_EVENT_READ=1 时优先从事件日志折叠出 sessions 面。
+  // 读模型不可用（没开双写→没有库 / 日志坏 / 折叠有 anomaly）就老实回退 JSON
+  // 读，并打一行说明——绝不静默，也绝不把读失败当成「没有会话」。
+  // 写侧照旧（JSON + 双写镜像），这条路只换「读」，这就是 T1-04 的边界。
+  // 降级说明的「只说一次」闸：READ=1 时开机的头几次 load() 落在双写建库之前，
+  // no_db 是预期状态，不能每次读都刷一行；但换一种失败原因（库坏 / anomaly）
+  // 必须重新开口。RM-02/RM-06 断言的就是这第一行。
+  const degradedSaid = new Set();
+
+  function readFromEvents() {
+    const hit = eventReadModel.readSurfaces(dataRoot);
+    if (hit.ok && !hit.anomalies.length) {
+      return { state: hit.sessions, source: "events", count: hit.count };
+    }
+    if (hit.ok) {
+      // fold 有 anomaly 但 ok —— readSurfaces 已把这种情况降级为 ok:false，
+      // 这里理论上到不了；到了就当作不可用处理。
+      return { state: null, source: "events_anomalies", detail: hit.anomalies.join("; ") };
+    }
+    return { state: null, source: hit.reason, detail: hit.error || "" };
+  }
+
   function load() {
     fs.mkdirSync(dir, { recursive: true });
+    if (eventOnly()) {
+      const hit = eventReadModel.readSurfaces(dataRoot);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        const raw = hit.sessions;
+        if (!Array.isArray(raw.sessions) || !raw.sessions.length) {
+          return seedEventOnly(); // 库里有事件但还没有会话：从 BASELINE 播种
+        }
+        if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+        lastLoadedText = JSON.stringify(raw);
+        return ensureMessageIds(raw);
+      }
+      /* 库空（count===0）或读模型不可用：看有没有遗留 JSON。
+         有 → 读它并说一句话（首次写入会把它增量带进事件库，即「自导入」；
+         更稳妥是先跑导入脚本）；没有 → 正常播种。 */
+      const legacyText = (() => {
+        try {
+          const j = JSON.parse(fs.readFileSync(storePath, "utf8"));
+          return j && Array.isArray(j.sessions) && j.sessions.length ? fs.readFileSync(storePath, "utf8") : null;
+        } catch {
+          return null;
+        }
+      })();
+      if (legacyText) {
+        sayOnce(
+          "legacy-sessions",
+          "[sessions] BITBOT_EVENT_ONLY：事件库为空但存在遗留 sessions.json（未导入）——暂以 JSON 为读真源，" +
+            "首次写入会把它增量带进事件库；建议先跑 scripts/import_json_to_events.mjs。\n",
+        );
+        legacyBasePending = true;
+        return stateFromJsonText(legacyText);
+      }
+      if (hit.ok && hit.anomalies.length) {
+        sayOnce("ano-sessions", `[sessions] BITBOT_EVENT_ONLY：事件折叠有异常（${hit.anomalies[0]}）——按空库处理，写入继续\n`);
+      } else if (!hit.ok && hit.reason !== "no_db" && hit.reason !== "read_disabled") {
+        sayOnce(`rm-sessions-${hit.reason}`, `[sessions] BITBOT_EVENT_ONLY：事件读模型不可用（${hit.reason}${hit.error ? ": " + hit.error : ""}）——按空库处理，写入继续\n`);
+      }
+      return seedEventOnly();
+    }
     if (!fs.existsSync(storePath)) {
       const seed = empty();
-      fs.writeFileSync(storePath, JSON.stringify(seed, null, 2));
+      writeStore(JSON.stringify(seed, null, 2));
       return seed;
     }
+    if (eventReadModel.eventReadEnabled()) {
+      const hit = readFromEvents();
+      if (hit.state) {
+        const raw = hit.state;
+        if (!Array.isArray(raw.sessions) || !raw.sessions.length) {
+          return empty();
+        }
+        if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+        lastLoadedText = JSON.stringify(raw);
+        return ensureMessageIds(raw);
+      }
+      if (!degradedSaid.has(hit.source)) {
+        degradedSaid.add(hit.source);
+        process.stderr.write(
+          `[sessions] BITBOT_EVENT_READ 已开但事件读模型不可用（${hit.source}` +
+            (hit.detail ? `: ${hit.detail}` : "") + "），本次回退 JSON 读。\n",
+        );
+      }
+    }
     try {
-      const raw = JSON.parse(fs.readFileSync(storePath, "utf8"));
+      const text = fs.readFileSync(storePath, "utf8");
+      const raw = JSON.parse(text);
       if (!raw || !Array.isArray(raw.sessions) || !raw.sessions.length) {
+        lastLoadedText = text;
         return empty();
       }
       if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+      lastLoadedText = text;
       return ensureMessageIds(raw);
     } catch {
       return empty();
@@ -77,8 +228,12 @@ function createSessionStore(repoRoot, opts = {}) {
   }
 
   function save(state) {
+    if (eventOnly()) {
+      saveEventOnly(state);
+      return;
+    }
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(storePath, JSON.stringify(state, null, 2));
+    writeStore(JSON.stringify(state, null, 2));
   }
 
   function list() {

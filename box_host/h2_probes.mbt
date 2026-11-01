@@ -136,10 +136,7 @@ pub fn H2UiEvidence::asserts_i_not_claimed(self : H2UiEvidence) -> Bool {
 /// Schedule/run H2 intent. Mock and Live both leave i_claimed=false.
 /// Live records an audit span pointing at the artifacts dir.
 /// Optionally drives HostUiShell to emit HostUiEvent (queryable).
-pub fn HostAbi::run_h2_probe(
-  self : HostAbi,
-  intent : H2Intent,
-) -> H2UiEvidence {
+pub fn HostAbi::run_h2_probe(self : HostAbi, intent : H2Intent) -> H2UiEvidence {
   let sub = intent.artifact_subdir()
   let artifact_dir = host_artifacts_dir() + "/" + sub
   let backend_kind = self.backend_kind()
@@ -270,11 +267,12 @@ pub fn HostAbi::run_h2_probe(
     }
     Cm1507AutoReviewDeeplink => {
       entry = Some(@ui_protocol.CommandPalette)
-      for a in [
-        @ui_protocol.AutoReview,
-        @ui_protocol.AutoReviewRules,
-        @ui_protocol.SecurityKeys,
-      ] {
+      for
+        a in [
+          @ui_protocol.AutoReview,
+          @ui_protocol.AutoReviewRules,
+          @ui_protocol.SecurityKeys,
+        ] {
         let _ = shell.open_settings(
           @ui_protocol.OpenSettingsIntent::open(
             @ui_protocol.CommandPalette,

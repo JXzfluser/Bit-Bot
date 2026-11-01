@@ -33,11 +33,9 @@ pub fn plan_meetings_live_chat_outbound(
     skill_loaded~,
     explicit_allow_direct~,
   )
-  @channels.plan_live_meeting_chat_outbound(
-    {
-      is_live_meeting_chat,
-      skill_allows_direct_send: allow,
-      body,
-    },
-  )
+  @channels.plan_live_meeting_chat_outbound({
+    is_live_meeting_chat,
+    skill_allows_direct_send: allow,
+    body,
+  })
 }

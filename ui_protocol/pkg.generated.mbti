@@ -493,37 +493,6 @@ pub fn ReactToMessageHost::new() -> Self
 pub fn ReactToMessageHost::react_outbound_end_turn(Self, turn_id~ : String, message_id~ : String, emoji~ : String, omit_body~ : Bool) -> Result[ReactOutboundTurn, String]
 pub fn ReactToMessageHost::react_to_message(Self, message_id~ : String, emoji~ : String) -> Result[MessageReactionPill, String]
 
-pub(all) struct SecretHandle {
-  id : String
-  name : String
-} derive(Eq, @debug.Debug)
-pub fn SecretHandle::equal(Self, Self) -> Bool
-pub fn SecretHandle::not_equal(Self, Self) -> Bool
-pub fn SecretHandle::to_repr(Self) -> @debug.Repr
-
-pub(all) struct SecretRequestCard {
-  name : String
-  label : String
-} derive(Eq, @debug.Debug)
-pub fn SecretRequestCard::equal(Self, Self) -> Bool
-pub fn SecretRequestCard::not_equal(Self, Self) -> Bool
-pub fn SecretRequestCard::to_repr(Self) -> @debug.Repr
-
-pub(all) struct SecretVault {
-  mut seq : Int32
-  entries : Array[SecretVaultEntry]
-  transcript : Array[String]
-}
-pub fn SecretVault::has_handle(Self, SecretHandle) -> Bool
-pub fn SecretVault::new() -> Self
-pub fn SecretVault::submit_secret(Self, SecretRequestCard, String) -> Result[SecretHandle, String]
-pub fn SecretVault::transcript_log(Self) -> Array[String]
-
-pub(all) struct SecretVaultEntry {
-  handle : SecretHandle
-  plaintext : String
-}
-
 pub(all) struct SendEnvelope {
   turn_id : String
   parts : Array[MessageKind]

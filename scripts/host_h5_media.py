@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
-"""H5 media helpers: real PNG / MP4 / PPTX under /workspace/agent-tools/.
+"""H5 media helpers: real PNG / MP4 / PPTX at the --out path the Host resolves.
 
 Not mock magic-only strings. Each command writes openable Host artifacts.
 i_claimed is never set true here.
+
+The output location is *always* the caller's --out / --frame-out path (the Host
+maps box virtual paths like /workspace/... onto real ones before spawning us).
+Never mkdir a hardcoded /workspace here: on a plain desktop or a CI runner that
+directory does not exist, and the create fails (GP-186: G-64 red on 2026-10-31).
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-AGENT_TOOLS = Path("/workspace/agent-tools")
+# Only used as a default for bare manual runs (the Host always passes --out).
+AGENT_TOOLS = Path(os.environ.get("BITBOT_AGENT_TOOLS") or "agent-tools")
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 PK_MAGIC = b"PK"
 
 
-def _ensure_agent_tools() -> None:
-    AGENT_TOOLS.mkdir(parents=True, exist_ok=True)
+def _ensure_agent_tools(out: Path) -> None:
+    """Create the real output's parent — not a hardcoded box path."""
+    out.parent.mkdir(parents=True, exist_ok=True)
 
 
 def file_magic(path: Path, n: int = 8) -> bytes:
@@ -30,7 +38,7 @@ def cmd_generate_image(out: Path, prompt: str) -> dict:
     """CM-1601: Pillow writes a real PNG from a prompt string (drawn text)."""
     from PIL import Image, ImageDraw, ImageFont
 
-    _ensure_agent_tools()
+    _ensure_agent_tools(out)
     img = Image.new("RGB", (640, 360), color=(24, 36, 54))
     draw = ImageDraw.Draw(img)
     # Gradient-ish bands for non-flat atmosphere
@@ -62,7 +70,7 @@ def cmd_generate_image(out: Path, prompt: str) -> dict:
 
 def cmd_generate_video(out: Path, seconds: float = 1.0) -> dict:
     """CM-1602: ffmpeg encodes a short real mp4."""
-    _ensure_agent_tools()
+    _ensure_agent_tools(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "ffmpeg",
@@ -102,7 +110,7 @@ def cmd_generate_video(out: Path, seconds: float = 1.0) -> dict:
 
 def cmd_watch_video(video: Path, frame_out: Path) -> dict:
     """CM-1603: ffmpeg extracts one PNG frame from mp4."""
-    _ensure_agent_tools()
+    _ensure_agent_tools(frame_out)
     frame_out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "ffmpeg",
@@ -130,7 +138,7 @@ def cmd_structured_chart(out: Path, series_json: str) -> dict:
     """CM-2157: Pillow bar chart from structured data (no matplotlib)."""
     from PIL import Image, ImageDraw, ImageFont
 
-    _ensure_agent_tools()
+    _ensure_agent_tools(out)
     try:
         series = json.loads(series_json) if series_json else {"A": 3, "B": 7, "C": 5}
     except json.JSONDecodeError:
@@ -180,7 +188,7 @@ def cmd_pptx(out: Path, title: str) -> dict:
     from pptx import Presentation
     from pptx.util import Inches, Pt
 
-    _ensure_agent_tools()
+    _ensure_agent_tools(out)
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[5])  # blank
     box = slide.shapes.add_textbox(Inches(0.8), Inches(1.5), Inches(8), Inches(2))

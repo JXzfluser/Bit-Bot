@@ -25,8 +25,6 @@
  *                the machine.
  */
 
-const READ_ONLY_SAFE_TOOLS = ["Read", "fs_read", "read", "web_search", "describe_schedule"];
-
 function splitList(raw) {
   return String(raw || "")
     .split(",")
@@ -85,7 +83,6 @@ function buildToolPolicy(opts) {
 }
 
 module.exports = {
-  READ_ONLY_SAFE_TOOLS,
   buildToolPolicy,
   splitList,
 };

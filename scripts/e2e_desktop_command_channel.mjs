@@ -33,6 +33,38 @@ const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
 
+/* 用户的 data/desktop 里本来就有「选题策划师」这样的 Bot，所以「夹具字符串在不在」
+ * 这种写法必然误报（也证明不了隔离）。改成真正的问题：本门禁跑的那几十秒里，
+ * 用户目录的字节动过没有。进门禁前拍快照，出门禁逐文件比；只有差异真存在才判红，
+ * 并在消息里点名是哪几个文件、是否带着本门禁的夹具标记。 */
+const REAL_DESKTOP = path.join(REPO, "data/desktop");
+const WATCHED = ["bots.json", "rooms.json", "sessions.json", "settings.json"];
+const FIXTURE_MARKERS = ["新团队", "派单调度", "gate-r1"];
+function snapshotRealDesktop() {
+  const map = {};
+  for (const name of WATCHED) {
+    try {
+      map[name] = fs.readFileSync(path.join(REAL_DESKTOP, name), "utf8");
+    } catch {
+      map[name] = null;
+    }
+  }
+  return map;
+}
+function diffRealDesktop(before) {
+  const changed = [];
+  for (const name of WATCHED) {
+    let now = null;
+    try {
+      now = fs.readFileSync(path.join(REAL_DESKTOP, name), "utf8");
+    } catch {
+      now = null;
+    }
+    if (now !== before[name]) changed.push({ name, now: now || "" });
+  }
+  return changed;
+}
+
 let PASS = 0,
   FAIL = 0,
   SKIP = 0;
@@ -194,6 +226,7 @@ async function waitFor(fn, ms, step) {
 
 (async () => {
   let app = null;
+  const realBefore = snapshotRealDesktop();
   try {
     app = await _electron.launch({
       executablePath: ELECTRON,
@@ -459,19 +492,17 @@ async function waitFor(fn, ms, step) {
       ? ok("C-11 回执里没有内部 id / cron 原文")
       : bad("C-11 internal routine id or cron leaked", line11);
 
-    /* ---------- 夹具不泄漏到用户的 data/ ---------- */
-    const realBots = path.join(REPO, "data/desktop/bots.json");
-    let leaked = null;
-    if (fs.existsSync(realBots)) {
-      const txt = fs.readFileSync(realBots, "utf8");
-      for (const s of ["新团队", "选题", "派单助手"]) {
-        if (txt.includes(s)) {
-          leaked = s;
-          break;
-        }
-      }
+    /* ---------- 隔离性：用户的 data/desktop 一个字节都没动 ---------- */
+    const moved = diffRealDesktop(realBefore);
+    if (moved.length === 0) {
+      ok("C-08 隔离性：本门禁全程没有改动用户 data/desktop 的 " + WATCHED.length + " 个文件");
+    } else {
+      const markers = FIXTURE_MARKERS.filter((s) => moved.some((m) => m.now.includes(s)));
+      bad(
+        "C-08 用户 data/desktop 在本门禁期间被写",
+        JSON.stringify({ files: moved.map((m) => m.name), 含本门禁夹具: markers }),
+      );
     }
-    leaked ? bad("C-08 夹具漏进了用户 data/desktop", leaked) : ok("C-08 门禁夹具没有写进用户的 data/desktop");
   } catch (err) {
     bad("门禁异常", err && err.message ? err.message : String(err));
   } finally {

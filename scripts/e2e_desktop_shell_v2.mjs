@@ -67,9 +67,17 @@ const require = createRequire(path.join(REPO, "hosts/desktop/package.json"));
 const { _electron } = require("playwright-core");
 
 async function shutdown(app) {
+  /* Playwright `app.close()` 偶尔在 Electron 进程已经退出后仍不 resolve
+     （实测停在第一档 zh-TW 截图之后，electron 已无进程，node 还挂着）。
+     门禁不能因此永远不结束：每一步都给上限，超时就当已关闭继续跑下一档。
+     产品退出本身由 e2e_desktop_quit / single_instance 门独立把关。 */
+  const within = (p, ms, why) => Promise.race([
+    Promise.resolve(p).catch(() => null),
+    new Promise((r) => setTimeout(r, ms, why)),
+  ]);
   try {
-    await app.evaluate(({ app: electronApp }) => { electronApp.isQuiting = true; electronApp.quit(); });
-    await app.close();
+    await within(app.evaluate(({ app: electronApp }) => { electronApp.isQuiting = true; electronApp.quit(); }), 10000, "quit-timeout");
+    await within(app.close(), 15000, "close-timeout");
   } catch { /* already gone */ }
 }
 

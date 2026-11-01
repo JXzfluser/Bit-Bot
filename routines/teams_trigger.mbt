@@ -44,13 +44,7 @@ pub fn MicrosoftTeamsRoutineBinding::new(
   if !ok {
     return Err("unknown microsoftTeams event_kind: " + event_kind)
   }
-  Ok({
-    routine_id,
-    tenant_id,
-    team_id,
-    event_kind,
-    armed: true,
-  })
+  Ok({ routine_id, tenant_id, team_id, event_kind, armed: true, })
 }
 
 ///|
@@ -192,7 +186,7 @@ pub fn MicrosoftTeamsTriggerRegistry::deliver(
 ///|
 pub fn MicrosoftTeamsTriggerRegistry::wake_count(
   self : MicrosoftTeamsTriggerRegistry,
-) -> Int {
+) -> Int32 {
   self.wake_log.length()
 }
 

@@ -320,6 +320,25 @@ contextBridge.exposeInMainWorld("bitbot", {
     ipcRenderer.on("bitbot:menu-new-chat", handler);
     return () => ipcRenderer.removeListener("bitbot:menu-new-chat", handler);
   },
+  onMenuOpenSettings: (cb) => {
+    const handler = () => {
+      try {
+        cb();
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:menu-open-settings", handler);
+    return () => ipcRenderer.removeListener("bitbot:menu-open-settings", handler);
+  },
+  // 语言变化：渲染端侦测到后把 language 发给主进程，主进程按语言重建原生菜单。
+  relocalizeMenu: (lang) => {
+    try {
+      ipcRenderer.send("bitbot:menu-relocalize", lang);
+    } catch (_) {
+      /* ignore */
+    }
+  },
   autostart: {
     get: () => ipcRenderer.invoke("bitbot:autostart:get"),
     set: (enabled) => ipcRenderer.invoke("bitbot:autostart:set", enabled),

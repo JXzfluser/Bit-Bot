@@ -12,8 +12,6 @@ pub fn box_ordinary_file_is_profile_authority(String) -> Bool
 
 pub fn classify_scope(String) -> Result[MemoryScope, String]
 
-pub fn memory_grants_send(MemoryEntry) -> Bool
-
 pub fn user_attribute_job_key() -> String
 
 // Errors

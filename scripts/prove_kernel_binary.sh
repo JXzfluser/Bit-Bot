@@ -15,6 +15,7 @@
 #   BITBOT_KERNEL_BUILD=debug bash scripts/prove_kernel_binary.sh   # faster
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "${ROOT}/scripts/lib/timeout_polyfill.sh"
 cd "$ROOT"
 export PATH="${HOME}/.moon/bin:${PATH}"
 
@@ -28,7 +29,8 @@ ok()   { printf 'ok %s — %s\n' "$1" "$2"; pass=$((pass+1)); }
 bad()  { printf 'FAIL %s — %s\n' "$1" "$2"; fail=$((fail+1)); }
 
 echo "== KB0 build the kernel (profile=$PROFILE) =="
-if ! moon build --target native "${FLAGS[@]}" >/tmp/kb_build.log 2>&1; then
+# BITBOT_KERNEL_BUILD!=release 时 FLAGS 是空数组，set -u + bash 3.2 下会 unbound。
+if ! moon build --target native ${FLAGS[@]+"${FLAGS[@]}"} >/tmp/kb_build.log 2>&1; then
   echo "FAIL KB0 — kernel build failed"; tail -20 /tmp/kb_build.log; exit 1
 fi
 BIN_DIR="$ROOT/_build/native/$PROFILE/build/cmd/desktop_turn"

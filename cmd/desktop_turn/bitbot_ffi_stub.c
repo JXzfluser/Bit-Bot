@@ -134,3 +134,29 @@ moonbit_string_t bitbot_ffi_exchange(moonbit_string_t request) {
   free(line);
   return out;
 }
+
+/* ---- T1-07 常驻内核：一行请求进，一行响应出 ---------------------------- */
+
+/* 读一条请求行。返回空串有两种含义 —— 「这一行本来就是空的」和「对端已经关掉了
+ * stdin」；调用方用 bitbot_ffi_stdin_eof 区分，所以不必往内容里塞哨兵字符。 */
+moonbit_string_t bitbot_ffi_serve_read(void) {
+  char *line = NULL;
+  size_t cap = 0;
+  ssize_t got = getline(&line, &cap, stdin);
+  if (got < 0) {
+    free(line);
+    return moonbit_make_string(0, 0);
+  }
+  while (got > 0 && (line[got - 1] == '\n' || line[got - 1] == '\r')) {
+    line[--got] = '\0';
+  }
+  moonbit_string_t out = utf8_to_moonbit(line, (size_t)got);
+  free(line);
+  return out;
+}
+
+int bitbot_ffi_stdin_eof(void) { return feof(stdin) ? 1 : 0; }
+
+/* MoonBit 的 println 落到 C 的 stdout，不保证行缓冲；Host 在等这一行，所以每一
+ * 条响应之后必须自己冲刷。 */
+void bitbot_ffi_flush_stdout(void) { fflush(stdout); }

@@ -7,6 +7,7 @@
 #   bash scripts/prove_all.sh [output-file]
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "${ROOT}/scripts/lib/timeout_polyfill.sh"
 cd "$ROOT"
 export PATH="${HOME}/.moon/bin:${PATH}"
 export BITBOT_KERNEL_BUILD="${BITBOT_KERNEL_BUILD:-debug}"
@@ -19,8 +20,35 @@ cleanup_stubs() {
 }
 trap cleanup_stubs EXIT INT TERM
 
-OUT="${1:-/tmp/prove_out.txt}"
-touch "$OUT"
+OUT="${1:-}"
+if [[ -z "$OUT" ]]; then
+  # No explicit path: use a fresh, tree-scoped file so a run NEVER inherits the
+  # green results of an earlier run. The old default was a fixed
+  # /tmp/prove_out.txt, so a previous run — possibly from another machine, another
+  # checkout, or another code state — left "rc=0" lines behind and the next run
+  # skipped those gates and reported green without ever executing them.
+  OUT="$(mktemp "/tmp/prove_out.$(printf '%s' "$ROOT" | shasum | cut -c1-8).XXXXXX")"
+  : >"$OUT"
+else
+  # Explicit path: keep the documented resumable behaviour, but only for the
+  # SAME tree. A result file carried over from a different checkout describes a
+  # different codebase, so inheriting it is exactly the false-green bug.
+  header="# tree: $ROOT"
+  existing="$(head -n 1 "$OUT" 2>/dev/null || true)"
+  if [[ -f "$OUT" && -n "$existing" && "$existing" != "$header" ]]; then
+    echo "prove_all: result file $OUT belongs to a different tree; starting fresh" >&2
+    : >"$OUT"
+  fi
+fi
+
+# The header must be the FIRST line, because that is what identifies the file's
+# owning tree. Do not clobber it on a resumed run — that would wipe the results
+# we are about to resume from.
+header="# tree: $ROOT"
+existing="$(head -n 1 "$OUT" 2>/dev/null || true)"
+if [[ "$existing" != "$header" ]]; then
+  printf '%s\n' "$header" >"$OUT"
+fi
 
 for f in scripts/prove_*; do
   [[ -f "$f" ]] || continue

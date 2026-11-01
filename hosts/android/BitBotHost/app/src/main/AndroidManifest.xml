@@ -5,6 +5,11 @@
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
   <uses-permission android:name="android.permission.INTERNET" />
+  <!-- 局域网扫描第一步是问 ConnectivityManager「我现在挂在哪个网上、这个网的 IPv4 是多少」；
+       getActiveNetwork / getNetworkCapabilities / getLinkProperties 都要求 ACCESS_NETWORK_STATE，
+       没声明就是 ConnectivityService 抛 SecurityException（Neither user nor current process has …）。
+       这是 normal 权限，装上即授予，不弹框。 -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <application
     android:allowBackup="true"
     android:label="Bit Bot"

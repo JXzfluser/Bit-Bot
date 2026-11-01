@@ -39,8 +39,14 @@ function createProductSurfaceRef(repoRoot, dataRoot) {
   }
   try {
     _cached = mod.createProductSurface(repoRoot, dataRoot ? { dataRoot } : undefined);
-  } catch (_) {
+  } catch (err) {
+    /* 这里以前是 `catch (_) { _cached = null; }`：整台 Box 的 surface 没起来，
+       日志里一个字都没有，用户侧只剩一句 503 approval_queue_unavailable。
+       降级本身保留（入站服务还要跑），但原因必须说出口。 */
     _cached = null;
+    process.stderr.write(
+      `[product-surface] 构造失败，跨端审批队列不可用：${(err && err.message) || err}\n`,
+    );
   }
   return _cached;
 }

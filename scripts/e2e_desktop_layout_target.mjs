@@ -8,6 +8,10 @@
  *           region-rect non-overlap, no horizontal scroll, <=1 visible rail,
  *           panel=none contributes 0 rail width (no empty rail),
  *           default state at boot (sidebar expanded, panel none, no modal).
+ *   D-L-13  narrow viewports (900 / 700 / 480 — the product minWidth): the
+ *           shell is a single column, main = viewport, composer fully inside
+ *           the viewport, rails become overlay drawers (never squeeze main),
+ *           no horizontal scroll, regions still don't overlap.
  *   D-D-xx  debug surfaces absent by default; present with dev-mode.
  *   D-C-xx  visible-copy scan (zh-CN no unlisted English; keys 3-lang parity).
  * Skips honestly (and prints SKIP with the reason) when electron/xvfb are
@@ -119,6 +123,18 @@ const GEOMETRY_PROBE = `(() => {
   const vis = (el) => { const s = getComputedStyle(el); return el.offsetWidth > 0 && s.display !== 'none' && s.visibility !== 'hidden' && parseFloat(s.opacity) > 0; };
   const q = (s) => document.querySelector(s);
   const rails = ['#bot-rail','#conv-rail','#computer-rail','#machines'].map(q).filter(Boolean);
+  const send = q('#composer #send');
+  let sendHit = null;
+  if (send) {
+    const b = send.getBoundingClientRect();
+    const hit = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+    sendHit = hit ? {
+      id: hit.id || '',
+      cls: typeof hit.className === 'string' ? hit.className : '',
+      inSend: hit === send || send.contains(hit),
+      inComposer: !!(hit.closest && hit.closest('#composer')),
+    } : null;
+  }
   return {
     panel: document.body.dataset.panel || 'none',
     sidebar: document.body.dataset.sidebar || 'expanded',
@@ -126,8 +142,10 @@ const GEOMETRY_PROBE = `(() => {
     agents: q('#agents') && rect(q('#agents')),
     main: rect(q('#main')),
     composer: rect(q('#composer')),
+    send: send && rect(send),
+    sendHit,
     log: rect(q('#log')),
-    railEls: rails.map(el => ({ id: el.id, w: el.getBoundingClientRect().width, visible: vis(el) })),
+    railEls: rails.map(el => { const b = el.getBoundingClientRect(); return { id: el.id, w: b.width, x: b.x, y: b.y, right: b.right, visible: vis(el) }; }),
     msgMax: Math.max(0, ...Array.from(document.querySelectorAll('#log .msg')).map(e => e.getBoundingClientRect().width)),
     hscroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     viewport: { w: document.documentElement.clientWidth, h: document.documentElement.clientHeight },
@@ -153,6 +171,58 @@ function checkState(g, vpW, state) {
     bad(`${state}: region rects overlap`);
   if (g.composer && rectsOverlap(g.main, g.composer)) bad(`${state}: main/composer vertical overlap`);
   if (g.msgMax > 760 + 0.5) bad(`${state}: msg column ${g.msgMax} > 760`);
+}
+
+/* Narrow widths use a different contract (§1 single column, rails overlay).
+ * The product window minWidth is 480, so 480 is the floor, not a hypothetical.
+ * 900 is the breakpoint itself — included so a specificity regression (the
+ * old `body.grok-ui` areas beat the media query) cannot silently return. */
+function checkNarrowState(g, vpW, state) {
+  const collapsed = g.sidebar === "collapsed";
+  const tag = `narrow/${state}@${vpW}`;
+  if (!near(g.header.h, 56)) bad(`${tag}: header h=${g.header.h} ≠ 56±${BAND}`);
+  if (!near(g.header.w, vpW)) bad(`${tag}: header w=${g.header.w} ≠ viewport ${vpW}`);
+  if (!near(g.main.w, vpW)) bad(`${tag}: main w=${g.main.w} ≠ viewport ${vpW} (rail must overlay, not squeeze)`);
+  if (g.hscroll > 0) bad(`${tag}: horizontal scroll ${g.hscroll}px`);
+  /* composer must be fully inside the viewport: no clipping off the bottom or
+     right edge (the old implicit-column layout put it at y=654 in a 720 window
+     while main stretched past it). */
+  if (!g.composer || g.composer.w <= 0 || g.composer.h <= 0) bad(`${tag}: composer missing/zero`);
+  else {
+    if (g.composer.x < -0.5 || g.composer.x + g.composer.w > vpW + 0.5) bad(`${tag}: composer x=${g.composer.x}..${g.composer.x + g.composer.w} outside 0..${vpW}`);
+    if (g.composer.y + g.composer.h > g.viewport.h + 0.5) bad(`${tag}: composer bottom ${g.composer.y + g.composer.h} > viewport h ${g.viewport.h}`);
+  }
+  /* 抽屉打开时，发送键必须仍然点得到。旧实现把 rail 从 header 一直铺到
+     bottom:0，480 宽时正好盖住 composer 右侧的发送键——面板看得见、消息发不出。
+     用真实命中测试（elementFromPoint）而不是只量矩形：矩形在视口内也可能被
+     更高 z-index 的兄弟元素压住。 */
+  if (!g.send || g.send.w <= 0 || g.send.h <= 0) bad(`${tag}: send button missing/zero`);
+  else if (!g.sendHit || !g.sendHit.inSend) {
+    bad(`${tag}: send button is covered (hit=${g.sendHit && (g.sendHit.id || g.sendHit.cls || "?")})`, JSON.stringify(g.sendHit));
+  }
+  if (rectsOverlap(g.header, g.agents) || rectsOverlap(g.header, g.main) ||
+      rectsOverlap(g.agents, g.main) || rectsOverlap(g.main, g.composer))
+    bad(`${tag}: region rects overlap`);
+  if (collapsed) {
+    if (g.agents.w > 0.5) bad(`${tag}: collapsed sidebar still ${g.agents.w}px wide`);
+  } else if (!near(g.agents.w, vpW)) {
+    bad(`${tag}: agents w=${g.agents.w} ≠ viewport ${vpW} (single column)`);
+  }
+  const visibleRails = g.railEls.filter((r) => r.visible);
+  const expectRail = state !== "none" && state !== "collapsed";
+  if (expectRail) {
+    if (visibleRails.length !== 1) bad(`${tag}: visible rails=${visibleRails.length}`, JSON.stringify(g.railEls));
+    else {
+      const r = visibleRails[0];
+      const expectW = Math.min(340, vpW);
+      if (!near(r.w, expectW)) bad(`${tag}: overlay rail w=${r.w} ≠ ${expectW}`);
+      if (!near(r.right, vpW)) bad(`${tag}: overlay rail right edge=${r.right} ≠ viewport ${vpW}`);
+      if (r.y < 56 - BAND) bad(`${tag}: overlay rail starts at y=${r.y}, above header bottom`);
+    }
+  } else if (visibleRails.length !== 0) {
+    bad(`${tag}: ${visibleRails.length} rail(s) visible with panel=${state}`, JSON.stringify(g.railEls));
+  }
+  if (g.msgMax > 760 + 0.5) bad(`${tag}: msg column ${g.msgMax} > 760`);
 }
 
 /* 门禁的应用数据一律指向隔离的临时根目录，不碰真仓库的 data/desktop。
@@ -205,6 +275,7 @@ const realLeak = () => {
 };
 
 const STATES = ["none", "bot", "conv", "computer", "tools", "collapsed"];
+const NARROW_VIEWPORTS = [[900, 700], [700, 700], [480, 720]];
 
 async function runViewport(win, vpW, vpH, { devmode = true } = {}) {
   await win.waitForTimeout(150);
@@ -240,6 +311,31 @@ async function runViewport(win, vpW, vpH, { devmode = true } = {}) {
   /* 结论里写**实测**视口，不写请求值。窗口高度会被系统按可用屏幕高度钳住
    * （本机 availHeight=858，1440x900 那档实际量到的是 1440x858），
    * 汇总行若写 "@1440" 会让人以为 1440x900 已被覆盖。 */
+  return measured;
+}
+
+async function runNarrowViewport(win, vpW, vpH) {
+  await win.waitForTimeout(150);
+  let measured = null;
+  for (const st of STATES) {
+    await win.evaluate((s) => {
+      if (s === "collapsed") {
+        if (typeof setPanel === "function") setPanel("none");
+        if (typeof applySidebarCollapse === "function") applySidebarCollapse(true);
+      } else {
+        if (typeof applySidebarCollapse === "function") applySidebarCollapse(false);
+        if (typeof setPanel === "function") setPanel(s);
+      }
+    }, st);
+    await win.waitForTimeout(320);
+    const g = await win.evaluate(GEOMETRY_PROBE);
+    measured = measured || { w: g.viewport.w, h: g.viewport.h };
+    checkNarrowState(g, g.viewport.w, st);
+  }
+  await win.evaluate(() => { setPanel("none"); applySidebarCollapse(false); });
+  await win.waitForTimeout(250);
+  const shot = await win.screenshot({ type: "png" });
+  fs.writeFileSync(path.join(OUT, `live-${vpW}x${vpH}-none.png`), shot);
   return measured;
 }
 
@@ -399,6 +495,36 @@ const COPY_PROBE = `(() => {
     await shutdown(app);
   } catch (e) {
     bad("1280 pass", (e && e.message) || String(e));
+  }
+
+  /* third pass: narrow viewports. The product window minWidth is 480, so the
+     shell has to be usable there — not just at the two desktop sizes. */
+  try {
+    let b = null;
+    let lastErr = "";
+    for (let i = 0; i < 3 && !b; i++) {
+      await new Promise((r) => setTimeout(r, 3000 + i * 2000));
+      try { b = await launchWith(480, 720, { devmode: true }); } catch (e) { lastErr = (e && e.message) || String(e); }
+    }
+    if (!b) throw new Error("narrow launch retries exhausted — " + lastErr.split("\n")[0]);
+    ({ app, win } = b);
+    const measured = [];
+    const failsBefore = FAIL;
+    for (const [w0, h0] of NARROW_VIEWPORTS) {
+      await win.evaluate(([W, H]) => { window.resizeTo(W, H); }, [w0, h0]);
+      await win.waitForTimeout(350);
+      const m = await runNarrowViewport(win, w0, h0);
+      measured.push(`${m.w}x${m.h}`);
+    }
+    if (FAIL === failsBefore) {
+      ok(`D-L-13: narrow viewports ${measured.join(", ")} — single column, no hscroll, rail overlays, composer in view`);
+    } else {
+      bad(`D-L-13: narrow viewports ${measured.join(", ")} — ${FAIL - failsBefore} assertion(s) failed`);
+    }
+    await shutdown(app);
+  } catch (e) {
+    bad("narrow pass", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));
+    try { await shutdown(app); } catch {}
   }
 
   /* 门禁自己不能污染用户数据 —— 隔离要可自证 */

@@ -6,6 +6,7 @@
 <title>Bit Bot 桌面版</title>
 <link rel="icon" type="image/png" href="./build/icon.png"/>
 <link rel="stylesheet" href="./ui_chrome.css"/>
+<link rel="stylesheet" href="./vendor/highlight-theme.css"/>
 <style>
   /* Color, space, radius, type, and shell widths live in ui_chrome.css.
      This block is component layout only. Do not add new hex values here. */
@@ -96,8 +97,14 @@
     bottom: 0;
     width: 460px;
     max-width: 92vw;
-    z-index: 60;
+    /* 57 < composer 58 < modal 60：抽屉可以在 composer 下面穿过，
+       但不能压过任何弹层（--z-modal 就是 60）。 */
+    z-index: 57;
     padding: var(--space-6);
+    /* 抽屉从 header 铺到窗口底部，收起前会压住 composer 右侧的发送键。
+       composer 本身抬到 58 层（见 #composer），这里留出它的单行高度，
+       让最后一条内容仍能滚到抽屉可视区里，而不是永远藏在 composer 后面。 */
+    padding-bottom: 96px;
     overflow: auto;
     background: var(--surface);
     box-shadow: -20px 0 48px rgba(0, 0, 0, 0.12);
@@ -165,7 +172,7 @@
   .ri-form textarea { min-height: 64px; resize: vertical; font-family: inherit; }
   .ri-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
   /* 群资料分段 tab（照团队详情抽屉设计稿：灰轨 + 白色 active 胶囊，radius 999）。
-     轨道色不引入新字面量——--user-bubble 本就是 #f4f4f5，与稿子的灰轨同值。 */
+     轨道色不引入新字面量——--user-bubble 本就是同款灰值，与稿子的灰轨同值。 */
   .ri-tabs { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 999px; margin: 0 0 var(--space-4); }
   .ri-tab { flex: 1; border: 0; background: transparent; border-radius: 999px; padding: 5px 8px; font: inherit; font-size: var(--text-sm); color: var(--muted); cursor: pointer; white-space: nowrap; }
   .ri-tab[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
@@ -579,7 +586,7 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    /* §4.5：渐变终点原来硬编码 #4b4b4b —— 暗色下 accent 变纸白、字变近黑，
+    /* §4.5：渐变终点原来是硬编码中灰 —— 暗色下 accent 变纸白、字变近黑，
        中灰渐变会让对比度掉到不足。改用主题内的 accent/ink 混合，两端都跟主题。 */
     background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, var(--ink)) 100%);
     color: var(--accent-ink);
@@ -1030,6 +1037,28 @@
     align-self: center;
     margin-left: 4px;
   }
+  /* P1-6：会话列表顶部（G-28 之后 = #sessions-popup 顶部）的未读汇总条。
+     只有文字 + 复用 .unread-dot，颜色全部走 token，这里不引入新字面色值。 */
+  .unread-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 10px;
+    margin: 0 0 4px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+  }
+  .unread-summary:hover { background: var(--accent-soft); color: var(--ink); }
+  .unread-summary .unread-summary-tx { flex: 1 1 auto; }
+  .unread-summary .unread-dot { margin-left: 0; }
   .agent-item .name, .machine-item .name {
     font-weight: 600;
     font-size: var(--text-md);
@@ -1129,7 +1158,7 @@
      whole 760px column. The previous version painted it as a "card" — a 32px
      avatar dot, a 1px stroke, a 4px drop shadow, an 85% width cap and one
      flattened corner. None of those exist in the reference
-     (replica/screens/grok-composer.png: flat #f6f6f6 block, full column).
+     (replica/screens/grok-composer.png: flat near-white block, full column).
      G-28 adds a Grok-style circular avatar + sender name above DM bot replies,
      matching replica/screens/grok-team-conv.png (the sender name is the
      pink/magenta --accent). Room replies keep their own roomSpeakerRow, so
@@ -1538,6 +1567,12 @@
   }
   #composer {
     position: relative;
+    /* 群资料 / 窄屏右栏都是 position:fixed 的抽屉（z-index 57），一路铺到
+       窗口底部。composer 不抬高就会被盖住发送键——面板打开时消息发不出去。
+       抬到 58 层并铺同色底，抽屉从 composer 下方穿过；modal 在 60 层，
+       所以不能抬到 61（会反过来盖住弹层底部的按钮，G-51 在 CI 抓到过）。 */
+    z-index: 58;
+    background: var(--page-bg);
   }
   #composer #send:disabled { cursor: wait; }
   #json-out {
@@ -1849,17 +1884,67 @@
     font-size: var(--text-md);
   }
   @media (max-width: 900px) {
-    body {
-      grid-template-columns: 1fr;
+    /* The app window can be as narrow as 480px (main.js minWidth). Below 900
+       the shell must stop being a 3-column grid.
+       `body.grok-ui` (ui_chrome.css) sets its own grid-template-areas with
+       higher specificity than a bare `body` selector, so it silently defeated
+       the single-column layout: the grid kept only 1 explicit column while the
+       areas still named 3, producing implicit auto columns (measured at 480:
+       rail squeezed to 74px, main to 380px, header to 455px). Both selectors
+       are restated here so the narrow layout actually applies. */
+    body,
+    body.grok-ui {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: var(--header-h) auto minmax(0, 1fr) auto;
       grid-template-areas:
         "header"
         "agents"
         "main"
-        "composer"
-        "rail";
+        "composer";
     }
-    body[data-sidebar="collapsed"] { grid-template-columns: 1fr; }
-    #agents { max-height: 140px; border: 0; border-bottom: 1px solid var(--line); }
+    body[data-sidebar="collapsed"],
+    body.grok-ui[data-sidebar="collapsed"] { grid-template-columns: minmax(0, 1fr); }
+    #agents { max-height: 140px; border-right: 0; border-bottom: 1px solid var(--line); }
+    /* 账户弹层在横带里必须换个开法（G-67 MC-11 修复前红，480×693 实测）：
+       平时 #account-popup 用 bottom: calc(100% + 2px) 向上开 —— 宽桌面下账户条
+       贴在侧栏底部，向上开正好浮在正文上，没问题。但 ≤900 的 140px 横带把账户条
+       抬到 y≈143，向上开 309px 的菜单整片跑出屏外：
+         ap-usage y=-161 / ap-mobile y=-129 / ap-remote y=-97 / ap-settings y=-33 /
+         ap-connect y=1，elementFromPoint 命中 null —— 用户看得见「账户」，
+         点不到里面的任何一项（不只是新加的移动端远程控制，设置/连接应用同样死）。
+       往下方开也不行：#agents 是 overflow 容器，绝对定位的子元素会被 140px 裁掉。
+       所以这里让弹层脱离侧栏滚动面改 fixed，贴着横带下缘开，水平跟着账户条左缘，
+       高度受视口约束自己滚。层号 59 = 抽屉 57 < composer 58 < 菜单 59 < modal 60，
+       菜单浮在正文与已开抽屉之上，但压不过任何弹层。 */
+    #account-popup {
+      position: fixed;
+      top: calc(var(--header-h) + 140px + 2px);
+      left: 16px;
+      bottom: auto;
+      max-height: calc(100vh - var(--header-h) - 148px);
+      overflow-y: auto;
+      z-index: 59;
+    }
+    /* Rails stop being a grid column and become overlay drawers under the
+       header. A 340px third column at 480px would leave a 140px chat column;
+       as an overlay the open panel never squeezes or displaces the composer,
+       and every rail already ships a visible close button. */
+    #bot-rail,
+    #conv-rail,
+    #computer-rail,
+    #machines {
+      position: fixed;
+      top: var(--header-h);
+      right: 0;
+      bottom: 0;
+      width: min(var(--rail-w), 100vw);
+      max-width: 100vw;
+      z-index: 57;
+      /* composer 抬到 58 层后仍要从抽屉前面穿过；给它留出单行高度，
+         抽屉最后一条内容才滚得到，而不是停在 composer 背后。 */
+      padding-bottom: 96px;
+      box-shadow: -20px 0 48px rgba(0, 0, 0, 0.12);
+    }
   }
   /* Layout contract v1 §6 — debug-surface governance.
      [data-lab] surfaces are absent from the product UI by default and only
@@ -2022,6 +2107,9 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-8.5 8.5H8L3.5 23l1.3-4.6A8.5 8.5 0 1 1 20.5 12z"/></svg>
         </button>
         <div id="sessions-popup" hidden>
+          <!-- P1-6：未读汇总。列表本身收在弹层里（G-28），所以「列表顶部」就是
+               弹层顶部；只有存在未读时才出现，点一下跳到最早那条未读会话。 -->
+          <button type="button" id="unread-summary" class="unread-summary" hidden></button>
           <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
           <div id="session-list" aria-label="会话列表"></div>
         </div>
@@ -2032,6 +2120,7 @@
                一处入口，弹层里这一行已经去掉。 -->
           <button type="button" class="ap-item" id="ap-usage"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7.1 2.5a5.6 5.6 0 1 1-4.6 4.4"/><path d="M8 8.4 5.3 5.2"/></svg></span><span class="ap-tx" data-i18n="apUsage">每周用量</span><span class="ap-sub" id="ap-usage-sub" hidden></span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
           <button type="button" class="ap-item" id="ap-mobile"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="4" y="1.5" width="8" height="13" rx="2"/><path d="M7 12.5h2"/></svg></span><span class="ap-tx" data-i18n="apMobile">获取移动版 Bit Bot</span></button>
+          <button type="button" class="ap-item" id="ap-remote"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="1.5" width="6" height="10.5" rx="1.6"/><path d="M6 10.6h1"/><path d="M11.5 6.2a3 3 0 0 1 0 5.1"/><path d="M13 4.2a5.4 5.4 0 0 1 0 9"/></svg></span><span class="ap-tx" data-i18n="apRemote">移动端远程控制</span></button>
           <button type="button" class="ap-item" id="ap-support"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.6"/><path d="M6.2 2v12"/><path d="M3.6 10.9h9.4"/></svg></span><span class="ap-tx" data-i18n="apSupport">支持</span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
           <button type="button" class="ap-item" id="ap-settings"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg></span><span class="ap-tx" data-i18n="settings">设置</span></button>
           <button type="button" class="ap-item" id="ap-connect"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.6 9.4a2.8 2.8 0 0 0 4 0l2-2a2.8 2.8 0 1 0-4-4l-1 1"/><path d="M9.4 6.6a2.8 2.8 0 0 0-4 0l-2 2a2.8 2.8 0 1 0 4 4l1-1"/></svg></span><span class="ap-tx" data-i18n="connectApps">连接应用</span></button>
@@ -2247,14 +2336,17 @@
       </div>
       <div id="secrets-panel" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="credentials">模型与密钥</div>
-        <div class="st-note">Key 与凭证由你填写，写入本机 gitignored <code>.env.local</code> 并热加载；仓库与安装包不含真实密钥。申请 DeepSeek：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link" style="color:var(--accent)">platform.deepseek.com/api_keys</a></div>
-        <div class="st-card">
-          <div class="st-card-title">模型接入</div>
+        <div class="st-note" data-i18n="credLead">只有第一张卡是必须的：接上本机大脑就能用，其余都能先跳过。</div>
+        <!-- 分区不按「有什么字段」排，按「非做不可 → 可选 → 一次性」排：
+             大脑（必填）/ 能力（选填）/ 手机与入站 / 合规。
+             Key 与凭证写入本机 gitignored .env.local 并热加载；仓库与安装包不含真实密钥。 -->
+        <div class="st-card" id="sec-zone-brain">
+          <div class="st-card-title"><span data-i18n="credZoneBrain">本机大脑</span> <span class="st-tag st-tag-req" data-i18n="credTagRequired">必填</span></div>
           <!-- 不再把渠道写死成「DeepSeek / 通义 / Kimi 三个 key 框」。
                本机大脑走 OpenAI 兼容协议，所以任何兼容端点都能接：官方渠道、
                自建推理服务（vLLM / Ollama / LM Studio）、或企业网关。
                接入方式只负责预填 base/model/provider，用户随时可以改。 -->
-          <div class="st-note">本机大脑走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填 Base URL 与模型，之后可以随意改。</div>
+          <div class="st-note" data-i18n="credBrainNote">走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填下面几栏，之后可以随意改。</div>
           <label class="st-field"><span class="st-field-name">接入方式</span>
             <select id="sec-llm-preset" class="bb-field">
               <option value="deepseek">DeepSeek（官方）</option>
@@ -2264,88 +2356,81 @@
               <option value="custom">自定义 · OpenAI 兼容端点</option>
               <option value="gateway">企业网关 / 代理转发</option>
             </select>
+            <!-- 预填了什么要在选完那一行说清，否则用户不知道下面三栏被改了没有 -->
+            <div id="sec-llm-hint" class="st-note">…</div>
           </label>
-          <label class="st-field"><span class="st-field-name">提供商标签（provider_id）</span>
-            <input id="sec-llm-provider" type="text" autocomplete="off" placeholder="deepseek / my-gateway" class="bb-field" />
-          </label>
-          <label class="st-field"><span class="st-field-name">Base URL</span>
-            <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" class="bb-field" />
-          </label>
-          <label class="st-field"><span class="st-field-name">模型 ID</span>
-            <input id="sec-llm-model" type="text" placeholder="deepseek-chat" class="bb-field" />
-          </label>
+          <div class="st-grid">
+            <label class="st-field"><span class="st-field-name">模型 ID</span>
+              <input id="sec-llm-model" type="text" placeholder="deepseek-chat" class="bb-field" />
+            </label>
+            <label class="st-field"><span class="st-field-name">Base URL</span>
+              <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" class="bb-field" />
+            </label>
+          </div>
           <label class="st-field"><span class="st-field-name">API Key <span id="sec-llm-mask"></span></span>
             <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
             <!-- 粘错了要在这一栏下面当场说清楚，而不是等模型 401 之后再让人猜 -->
             <span id="sec-llm-key-err" class="st-field-error" hidden></span>
             <div id="sec-llm-key-note" class="st-note" hidden></div>
           </label>
-          <div id="sec-llm-hint" class="st-note">…</div>
           <!-- GP-148 §1-J4：产品态的模型/供应商面板入口。表头那颗芯片在精简外壳里
                是隐藏的（shell_v2 S-HEADER 要求），所以这里给一个正经入口，和密钥表单
-               读同一个 Host 数据源（llmCatalog + secrets）。 -->
+               读同一个 Host 数据源（llmCatalog + secrets）。
+               放在折叠之前：它属于「本机大脑」这一步，压在折叠下面会被读成
+               「备用渠道的按钮」（GP-185 真开机截图抓到的歧义）。 -->
           <div class="gp-row" style="margin-top:10px">
             <button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">模型与供应商</button>
           </div>
+          <!-- provider_id 和备用渠道 key 都是「切渠道时才要」的东西，收到同一个折叠里：
+               主流程只剩接入方式 / 模型 / Base URL / Key 四栏。 -->
+          <details class="st-adv" id="sec-alt-channels">
+            <summary class="st-adv-sum"><span data-i18n="credAdvTitle">备用渠道与 provider 标签</span> <span class="st-tag" data-i18n="credTagOptional">选填</span><span class="st-adv-mark" aria-hidden="true"></span></summary>
+            <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
+            <label class="st-field"><span class="st-field-name">提供商标签（provider_id）</span>
+              <input id="sec-llm-provider" type="text" autocomplete="off" placeholder="deepseek / my-gateway" class="bb-field" />
+            </label>
+            <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
+              <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+              <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
+              <div id="sec-qwen-key-note" class="st-note" hidden></div>
+            </label>
+            <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
+              <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+              <span id="sec-moon-key-err" class="st-field-error" hidden></span>
+              <div id="sec-moon-key-note" class="st-note" hidden></div>
+            </label>
+          </details>
         </div>
-        <details class="st-card" id="sec-alt-channels">
-          <summary class="st-card-title" style="cursor:pointer">备用渠道 Key（可选）</summary>
-          <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
-          <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
-            <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
-            <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
-            <div id="sec-qwen-key-note" class="st-note" hidden></div>
-          </label>
-          <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
-            <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
-            <span id="sec-moon-key-err" class="st-field-error" hidden></span>
-            <div id="sec-moon-key-note" class="st-note" hidden></div>
-          </label>
-        </details>
-        <div class="st-card">
-          <div class="st-card-title">联网搜索</div>
+        <div class="st-card" id="sec-zone-capability">
+          <div class="st-card-title"><span data-i18n="credZoneCapability">能力扩展</span> <span class="st-tag" data-i18n="credTagOptional">选填</span></div>
           <!-- Replica C6：真实搜索 + 引用。key 走和大脑 key 同一条开放配置链路
                （写进 gitignored .env.local 并热加载），不内置、不写死。 -->
-          <label class="st-field"><span class="st-field-name">搜索服务</span>
+          <label class="st-field"><span class="st-field-name">联网搜索</span>
             <select id="sec-search-provider" class="bb-field">
               <option value="tavily">Tavily（有免费额度）</option>
               <option value="brave">Brave Search</option>
             </select>
           </label>
-          <label class="st-field"><span class="st-field-name">搜索 API Key <span id="sec-search-mask"></span></span>
-            <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
-            <span id="sec-search-key-err" class="st-field-error" hidden></span>
-            <div id="sec-search-key-note" class="st-note" hidden></div>
-          </label>
-          <label class="st-field"><span class="st-field-name">API Base（可选）</span>
-            <input id="sec-search-base" type="text" placeholder="自建或代理地址；留空走官方" class="bb-field" />
-          </label>
-          <div class="st-note">不填也能用，只是不会联网：回答里不会出现编造的来源。</div>
+          <div class="st-grid">
+            <label class="st-field"><span class="st-field-name">搜索 API Key <span id="sec-search-mask"></span></span>
+              <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
+              <span id="sec-search-key-err" class="st-field-error" hidden></span>
+              <div id="sec-search-key-note" class="st-note" hidden></div>
+            </label>
+            <label class="st-field"><span class="st-field-name">API Base（自建或代理）</span>
+              <input id="sec-search-base" type="text" placeholder="留空走官方" class="bb-field" />
+            </label>
+          </div>
+          <div class="st-note" data-i18n="credCapNote">不填也能用，只是不会联网：回答里不会出现编造的来源。</div>
         </div>
-        <div class="st-card">
-          <div class="st-card-title">合规与安全</div>
-          <label class="st-field"><span class="st-field-name">AI 备案号</span>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <input class="bb-control" id="sec-icp" type="text" placeholder="ICP 备案号" style="flex:1;min-width:140px" />
-              <input class="bb-control" id="sec-algo" type="text" placeholder="算法备案号" style="flex:1;min-width:140px" />
-            </div>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;margin:0">
-            <input id="sec-moderation" type="checkbox" />
-            <span style="font-size:13px;font-weight:500;color:var(--g-ink)">内容审核门（拦截违禁词输出）</span>
-          </label>
-        </div>
-        <div class="st-card">
-          <div class="st-card-title">入站地址</div>
-          <!-- 更新源 URL 已搬到「设置 → 更新」，凭证页不再重复一份。
-               这里只留连接应用回调需要的入站公网地址。 -->
-          <div id="sec-inbound-url" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">入站公网 URL：读取中…</div>
-        </div>
-        <div class="st-card">
-          <div class="st-card-title">手机配对</div>
+        <div class="st-card" id="sec-zone-devices">
+          <div class="st-card-title"><span data-i18n="credZoneDevices">手机与入站</span></div>
+          <!-- 主路已经挪到独立弹窗；这张卡留作手动兜底。不写这一行的话，
+               两处入口会变成两处真相 —— 用户不知道哪个才是正门。 -->
+          <div class="pairing-modal-hint" id="sec-pairing-modal-hint" data-i18n="pairingModalHint">主路在「账户 → 移动端远程控制」；这里保留手动填写与配对令牌，读的是同一份配对状态。</div>
           <!-- 安卓 / iOS 端连的就是这台大脑。地址与令牌以前只在 README 里，
                用户点不开这一屏就走不到「手机说话 → 桌面记得」。 -->
-          <div id="sec-pairing-line" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace;word-break:break-all">配对状态：读取中…</div>
+          <div id="sec-pairing-line" class="st-readout">配对状态：读取中…</div>
           <!-- 手机敲不到地址时，光给一个「像地址的东西」等于骗人：这一行如实说明
                这个地址从哪类网卡来、大概率连不通的原因。 -->
           <div id="sec-pairing-note" class="pairing-note" style="display:none;margin-top:6px"></div>
@@ -2369,23 +2454,46 @@
             <p id="pairing-code-hint" class="pc-hint">手机只需点「连接 Desktop」并输入这 6 位数字</p>
           </div>
           <p id="pairing-manual-label" class="pc-hint">手动填写（同一 Wi-Fi 连不上时才用）</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+          <div class="gp-row">
             <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
             <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
             <button type="button" id="pairing-copy-url" class="bb-btn bb-btn-sm" disabled>复制地址</button>
             <button type="button" id="pairing-copy-token" class="bb-btn bb-btn-sm" disabled>复制令牌</button>
           </div>
-          <div id="sec-pairing-token" style="display:none;margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:12px/1.5 ui-monospace,monospace;word-break:break-all;background:var(--surface)"></div>
-          <div id="sec-pairing-status" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
+          <div id="sec-pairing-token" class="st-readout" style="display:none;margin-top:8px"></div>
+          <div id="sec-pairing-status" class="st-readout" style="margin-top:8px"></div>
+          <!-- 入站公网地址：连接应用（钉钉/飞书/企微）回调要填的地方。
+               以前自己占一张卡，其实只是这一屏的第二条只读地址，收到同一张卡里。 -->
+          <div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">入站公网地址（连接应用回调要用）</span>
+            <div id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <div class="st-card" id="sec-zone-compliance">
+          <div class="st-card-title"><span data-i18n="credZoneCompliance">合规</span></div>
+          <div class="st-grid">
+            <label class="st-field"><span class="st-field-name">AI 备案号</span>
+              <input class="bb-control" id="sec-icp" type="text" placeholder="ICP 备案号" />
+            </label>
+            <label class="st-field"><span class="st-field-name">算法备案号</span>
+              <input class="bb-control" id="sec-algo" type="text" placeholder="算法备案号" />
+            </label>
+          </div>
+          <label class="st-check">
+            <input id="sec-moderation" type="checkbox" />
+            <span>内容审核门（拦截违禁词输出）</span>
+          </label>
+        </div>
+        <!-- 保存条：状态就在按钮左边，点完不用滚到页尾去找「存上了没有」。
+             跑验收门禁是开发动作，跟着 data-lab 收起，产品态不占这颗按钮位。 -->
+        <div class="st-foot" id="sec-foot">
+          <div id="sec-status" class="st-foot-status">…</div>
           <button type="button" id="sec-save" class="bb-btn bb-btn-primary">保存并热加载</button>
           <button type="button" id="sec-probe" class="bb-btn bb-btn-sm">试连大脑</button>
           <button type="button" id="sec-probe-cn" class="bb-btn bb-btn-sm">试连国内渠道</button>
-          <button type="button" id="sec-gate" class="bb-btn bb-btn-sm">跑验收门禁</button>
+          <button type="button" id="sec-gate" class="bb-btn bb-btn-sm" data-lab>跑验收门禁</button>
         </div>
-        <div id="sec-status" style="margin-top:10px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
-        <pre id="sec-gate-out" class="bb-meta bb-control" style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
+        <pre id="sec-gate-out" class="bb-meta bb-control" data-lab style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
+        <div class="st-note"><span data-i18n="credApplyLead">申请 DeepSeek</span>：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link">platform.deepseek.com/api_keys</a></div>
       </div>
       </div>
     </div>
@@ -2647,6 +2755,62 @@
         <div class="bb-sheet-note" data-i18n="mkHint">选择一个模板即可快速创建 Bot。</div>
         <div id="mk-meta" class="bb-meta" style="margin-top:8px"></div>
         <div id="mk-grid" class="ca-grid" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <!-- 移动端远程控制：配对这件事的主路。
+         能力早就在（pairing-v1：局域网发现 + 6 位短码 + 换令牌，协议层 19/0、
+         安卓 20/0、APK 16/0 都真跑过），缺的是入口和「现在能不能连」的实话。
+         这一屏只做 IA / 状态 / 几何：二维码是下一波，真·远程工作区另立设计，
+         所以渠道列只摆钉钉/飞书/企业微信这三条真有的路，不给微信个人号、
+         Telegram、Lark 国际版做假入口。 -->
+    <div id="mobile-control-modal" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="mc-title">
+      <div class="bb-sheet bb-sheet-lg">
+        <div class="bb-sheet-head">
+          <div class="bb-sheet-title" id="mc-title" data-i18n="mcTitle">移动端远程控制</div>
+          <button type="button" id="mc-close" class="bb-btn bb-close" data-i18n="settingsClose">关闭</button>
+        </div>
+        <div class="bb-sheet-note" id="mc-hint" data-i18n="mcHint">手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。</div>
+        <div class="mc-grid">
+          <section class="mc-card" id="mc-pair-card">
+            <div class="mc-card-head">
+              <span id="mc-dot" class="mc-dot" data-state="off" aria-hidden="true"></span>
+              <span class="mc-card-title" data-i18n="mcPairTitle">手机连接这台桌面</span>
+            </div>
+            <div id="mc-status" class="mc-status" data-i18n="mcReading">配对状态：读取中…</div>
+            <div id="mc-scope-note" class="mc-note" hidden></div>
+            <div class="mc-actions">
+              <button type="button" id="mc-enable-btn" class="bb-btn bb-btn-sm" data-i18n="pairingBtnEnable">允许手机连接</button>
+              <button type="button" id="mc-copy-url-btn" class="bb-btn bb-btn-sm" disabled data-i18n="mcCopyUrl">复制配对链接</button>
+            </div>
+            <div id="mc-pair-note" class="mc-note" hidden></div>
+            <p class="mc-note" data-i18n="mcLinkNote">「复制配对链接」复制的是这台桌面的说明页：粘到手机浏览器里打开，会写明下一步该干什么；配对码仍然只在 App 里输。</p>
+            <div class="pc-block" id="mc-code-block">
+              <div class="pc-head">
+                <span class="pc-head-title" id="mc-code-title" data-i18n="mcCodeTitle">让手机自己找</span>
+                <button type="button" id="mc-gen-btn" class="bb-btn bb-btn-sm" data-i18n="mcCodeGen">生成配对码</button>
+              </div>
+              <div class="pc-display" id="mc-code-display" hidden>
+                <span class="pc-digits" id="mc-code"></span>
+                <span class="pc-countdown" id="mc-countdown"></span>
+              </div>
+              <div class="pc-actions" id="mc-code-actions" hidden>
+                <button type="button" id="mc-revoke-btn" class="bb-btn bb-btn-sm" data-i18n="mcCodeRevoke">立即作废</button>
+              </div>
+              <p class="pc-hint" data-i18n="mcCodeHint">手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。</p>
+            </div>
+            <p class="mc-note" data-i18n="mcManualNote">同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 手机与入站。</p>
+          </section>
+          <section class="mc-card" id="mc-channel-card">
+            <div class="mc-card-title" data-i18n="mcChannelTitle">使用 Bot Channel</div>
+            <p class="mc-note" data-i18n="mcChannelNote">下面三条是真跑通过的入站渠道。没列出的渠道目前没有适配器，这里不给点了没反应的入口。</p>
+            <ul class="mc-channels">
+              <li class="mc-ch" id="mc-ch-ding"><span data-i18n="mcChDing">钉钉 · 群机器人 Webhook</span></li>
+              <li class="mc-ch" id="mc-ch-feishu"><span data-i18n="mcChFeishu">飞书 · 自建应用事件回调</span></li>
+              <li class="mc-ch" id="mc-ch-wecom"><span data-i18n="mcChWecom">企业微信 · 应用消息回调</span></li>
+            </ul>
+            <button type="button" id="mc-goto-channels" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mcGotoChannels">去配置</button>
+          </section>
+        </div>
       </div>
     </div>
     <div id="agent-info-panel" class="bb-card bb-inset" style="display:none">
@@ -3178,6 +3342,8 @@
   <!-- Replica C1/C2: markdown rendering + XSS sanitizer (vendored, UMD globals) -->
   <script src="./vendor/marked.umd.js"></script>
   <script src="./vendor/dompurify.umd.js"></script>
+  <script src="./vendor/highlight.min.js"></script>
+  <script src="./avatar_palette.js"></script>
   <script>
     if (!window.__bitbotUntrusted) {
       document.write('<script src="./shared/untrusted_fence.js"><\/script>');
@@ -3317,9 +3483,13 @@
         if (el) el.style.display = k === key ? "block" : "none";
       }
       const metaEl = document.getElementById("settings-meta");
-      if (metaEl) {
+      // #settings-meta 是开发诊断行：产品态必须留空，否则「tab=凭证」这种内部
+      // 字串会直接印在用户看得见的屏幕上（GP-185 真开机截图抓到的）。
+      if (metaEl && typeof devModeOn === "function" && devModeOn()) {
         const label = { general: "常规", computer: "电脑", credentials: "凭证", usage: "用量与账单", updates: "更新" }[key];
         metaEl.textContent = metaEl.textContent.replace(/tab=[^·]*(·|$)/, "tab=" + label + " $1").trim() || "tab=" + label;
+      } else if (metaEl) {
+        metaEl.textContent = "";
       }
       document.querySelectorAll("#settings-tabs .settings-tab-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.stab === key);
@@ -4403,23 +4573,8 @@
     if (loopDenyBtn) loopDenyBtn.addEventListener("click", () => answerLoopApproval("deny"));
     // end loop approval card
 
-    // Grok-parity: deterministic pastel avatar color per session/bot id (hash →
-    // palette). Same id always maps to the same color, so the sidebar reads as
-    // distinct identities rather than a flat grey list.
-    // G-28: 色板对齐 Grok Bot 的 Bot 头像实拍色（前 5 个是从
-    // replica/screens/grok-composer.png 逐像素采样得到的主色：绿 / 橙 / 紫 /
-    // 棕 / 粉，色值见数组本身），后面补足到 10 个以免分布过于集中。
-    // 数量与替换前一致，token 门禁的 hex 计数不受影响。
-    const AVATAR_PALETTE = [
-      "#18c272", "#fd6d17", "#915cf9", "#a16d3c", "#f9399a",
-      "#2f8df5", "#17b8c9", "#e5484d", "#f5a623", "#7c5cff",
-    ];
-    function avatarColorFor(seed) {
-      const s = String(seed || "");
-      let h = 0;
-      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-      return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
-    }
+    // avatarColorFor() + AVATAR_PALETTE 已抽到 ./avatar_palette.js（P2-4 拆 monolith
+    // + T-2 hex 预算）；此处由该模块提供全局函数，所有调用点不变。
 
     // G-28: Grok 的 Bot 头像内部是**白色图形**，不是首字母。逐像素看真源，
     // 那些"blob"其实= 彩色实心圆 + 内部白色 logo。这里用 6 个简单的几何
@@ -4650,6 +4805,11 @@
       pre.classList.add("bb-codeblock");
       const m = (code.className || "").match(/language-([\w-]+)/);
       const lang = m ? m[1] : "";
+      // P1-1: syntax highlight (best-effort). Runs after DOMPurify already
+      // sanitized the markdown; hljs only wraps text in <span class="hljs-*">.
+      if (window.hljs && typeof window.hljs.highlightElement === "function" && !code.dataset.highlighted) {
+        try { window.hljs.highlightElement(code); } catch (_) { /* highlighting is non-critical */ }
+      }
       if (lang) {
         const lab = document.createElement("span");
         lab.className = "bb-codeblock-lang";
@@ -5690,14 +5850,10 @@
           el.addEventListener("click", async () => {
             // 群聊 composer 是独占态：点开任何私聊会话都要先退出群模式，
             // 否则用户以为在跟这个人说话，实际又发进了群。
-            if (composerRoom) exitRoomChat();
-            const r = await window.bitbot.sessions.setActive(s.id);
-            if (r && r.ok) {
-              activeSessionId = s.id;
-              await loadActiveSessionTranscript();
-              const list = await window.bitbot.sessions.list();
-              renderSessionList(list);
-            }
+            // P2-7：走 activateSessionById 而不是就地重写一遍 —— 就地版本
+            // 只重画列表，未读计数留在内存里，行点看着消失了但汇总条和
+            // 系统 badge 还在数（P1-6 之后这条会直接露馅）。
+            await activateSessionById(s.id);
           });
           // GP-123: rename / delete on the real Host IPC (right-click menu).
           el.addEventListener("contextmenu", (ev) => {
@@ -6099,7 +6255,8 @@
     function roomFailReason(raw) {
       const s = String(raw == null ? "" : raw).trim();
       let key = "roomFailProvider";
-      if (/timeout/i.test(s)) key = "roomFailTimeout";
+      if (/handoff_stuck/i.test(s)) key = "roomFailStuck";
+      else if (/timeout/i.test(s)) key = "roomFailTimeout";
       else if (/runner_required/i.test(s)) key = "roomFailRunner";
       else if (/no_reply|no reply/i.test(s)) key = "roomFailNoReply";
       else if (/not_found/i.test(s)) key = "roomFailNotFound";
@@ -6115,6 +6272,7 @@
       else if (/room_not_found/i.test(s)) key = "roomFailRoomGone";
       else if (/room_and_text_required/i.test(s)) key = "roomFailEmpty";
       else if (/orchestrate_recursion/i.test(s)) key = "roomFailBusy";
+      else if (/room_turn_timeout|room_turn_deadline/i.test(s)) key = "roomTurnTimeout";
       return devModeOn() && s ? wavegT(key) + " · " + s : wavegT(key);
     }
     // 失败分区落盘形如 "(原因)"：展示时去壳再本地化，不留英文括号协议味。
@@ -6965,6 +7123,33 @@
       el.appendChild(body);
       return el;
     }
+    /* 渲染层的兜底闸。
+     *
+     * Host 侧自己有总时限（BITBOT_ROOM_TURN_DEADLINE_MS，共享的 dispatchRoomTurn），
+     * 但如果 Host 那边也卡住（IPC 根本不返回），用户看到的就会是「消息发出去了、
+     * 没人回、连报错都没有」—— 和 Bot 故意不理他完全一样，**没法区分**。
+     * 这道闸保证：无论如何都有一句实话，而且发送键一定恢复可用。
+     * 比 Host 的闸略长，好让 Host 先如实收口。 */
+    const ROOM_CLIENT_DEADLINE_MS = 330000;
+    function roomOrchestrateWithDeadline(payload) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          const err = new Error("room_turn_timeout");
+          err.code = "room_turn_deadline";
+          reject(err);
+        }, ROOM_CLIENT_DEADLINE_MS);
+        Promise.resolve(window.bitbot.rooms.orchestrate(payload)).then(
+          (value) => {
+            clearTimeout(timer);
+            resolve(value);
+          },
+          (err) => {
+            clearTimeout(timer);
+            reject(err);
+          },
+        );
+      });
+    }
     async function sendRoomTurn(text) {
       const roomId = composerRoom ? composerRoom.id : "";
       if (!roomId) return;
@@ -6972,7 +7157,7 @@
       let outcome = null;
       try {
         renderRoomUser({ kind: "user", text, at: new Date().toISOString() });
-        const res = await window.bitbot.rooms.orchestrate({ room_id: roomId, text });
+        const res = await roomOrchestrateWithDeadline({ room_id: roomId, text });
         if (!res || !res.ok) {
           outcome = { kind: "error", reason: roomOpFailReason(res && res.error) };
         } else if (res.deduped) {
@@ -6984,7 +7169,10 @@
       } finally {
         clearRoomWorking();
         sendBtn.disabled = false;
-        await renderRoomTranscript(roomId);
+        // 重绘转录不能吃掉结果卡：转录读不动时，这张卡仍是这一轮唯一的真相。
+        try {
+          await renderRoomTranscript(roomId);
+        } catch (_) { /* 读不到就留着结果卡 */ }
         if (outcome) roomAppend(roomOutcomeCard(outcome));
       }
     }
@@ -8887,6 +9075,20 @@
                     .replace("{routines}", String(p.routines_deleted || 0))
                     .replace("{kept}", String(p.workspace_files_kept || 0)),
                 );
+                // 群被连带解散了要说出来：否则用户回头发消息只会得到「群不存在」，
+                // 根本不知道群是自己刚才删人删掉的。
+                const dropped = Array.isArray(p.rooms_dropped) ? p.rooms_dropped : [];
+                if (dropped.length) {
+                  addMsg(
+                    "assistant",
+                    wavegT("rBotDeleteRoomsDropped")
+                      .replace("{n}", String(dropped.length))
+                      .replace(
+                        "{titles}",
+                        dropped.map((x) => String((x && x.title) || "?")).join("、"),
+                      ),
+                  );
+                }
               } else if (p.error === "cannot_delete_builtin") {
                 addMsg("assistant", wavegT("rBotDeleteBuiltin"));
               } else if (p.needs_confirm === true && p.advise_hide_first === true) {
@@ -11569,6 +11771,224 @@
       });
     }
 
+    /* ---------- 移动端远程控制弹窗（pairing-v1 的产品正门）--------------
+     * 这一屏不重算协议，只把同一份 pairing.state() 讲成人能读懂的三句话：
+     * 现在手机能不能连、连的地址是哪个、下一步做什么。状态与设置里那张卡
+     * 同源，所以两边永远不会各说各话（MC-03/MC-04 钉住这一点）。 */
+    let mcSnapshot = null;
+    let mcCodeTimer = null;
+    const mcEls = {
+      dot: document.getElementById("mc-dot"),
+      status: document.getElementById("mc-status"),
+      scope: document.getElementById("mc-scope-note"),
+      enable: document.getElementById("mc-enable-btn"),
+      copyUrl: document.getElementById("mc-copy-url-btn"),
+      note: document.getElementById("mc-pair-note"),
+      block: document.getElementById("mc-code-block"),
+      display: document.getElementById("mc-code-display"),
+      digits: document.getElementById("mc-code"),
+      countdown: document.getElementById("mc-countdown"),
+      codeActions: document.getElementById("mc-code-actions"),
+      gen: document.getElementById("mc-gen-btn"),
+      revoke: document.getElementById("mc-revoke-btn"),
+    };
+
+    function mcNote(text) {
+      if (!mcEls.note) return;
+      if (!text) {
+        mcEls.note.hidden = true;
+        mcEls.note.textContent = "";
+        return;
+      }
+      mcEls.note.textContent = text;
+      mcEls.note.hidden = false;
+    }
+
+    function mcStopCountdown() {
+      if (mcCodeTimer) { clearInterval(mcCodeTimer); mcCodeTimer = null; }
+    }
+
+    function mcStartCountdown(ms) {
+      mcStopCountdown();
+      let remaining = Math.max(0, Math.round(ms / 1000));
+      const tick = () => {
+        if (mcEls.countdown) {
+          const m = Math.floor(remaining / 60);
+          const s = remaining % 60;
+          mcEls.countdown.textContent = m + ":" + String(s).padStart(2, "0");
+        }
+        if (remaining <= 0) {
+          mcStopCountdown();
+          refreshMobileControl();
+        }
+        remaining--;
+      };
+      tick();
+      mcCodeTimer = setInterval(tick, 1000);
+    }
+
+    function mcPaintCode(st) {
+      if (!mcEls.display || !mcEls.codeActions || !mcEls.gen) return;
+      if (st && st.pair_code) {
+        mcEls.digits.textContent = st.pair_code;
+        mcEls.display.hidden = false;
+        mcEls.codeActions.hidden = false;
+        // 已有码时按钮说「刷新」：留着「生成」会让人以为要点出第二个码。
+        mcEls.gen.textContent = wavegT("mcCodeRefresh");
+        mcStartCountdown(st.pair_code_expires_in_ms || 0);
+      } else {
+        mcEls.digits.textContent = "";
+        if (mcEls.countdown) mcEls.countdown.textContent = "";
+        mcEls.display.hidden = true;
+        mcEls.codeActions.hidden = true;
+        mcEls.gen.textContent = wavegT("mcCodeGen");
+        mcStopCountdown();
+      }
+    }
+
+    async function refreshMobileControl() {
+      if (!mcEls.status || !window.bitbot || !window.bitbot.pairing) return;
+      try {
+        const st = await window.bitbot.pairing.state();
+        mcSnapshot = st && st.ok ? st : null;
+        if (!mcSnapshot) {
+          mcEls.dot.dataset.state = "off";
+          mcEls.status.textContent = wavegT("pairingReadFail");
+          if (mcEls.enable) mcEls.enable.disabled = true;
+          if (mcEls.copyUrl) mcEls.copyUrl.disabled = true;
+          if (mcEls.scope) { mcEls.scope.hidden = true; mcEls.scope.textContent = ""; }
+          mcPaintCode(null);
+          return;
+        }
+        // 状态点只在「真放开了、且拿得到一个地址」时亮 —— 读取失败或没放开都是 off。
+        const ready = Boolean(st.listening && st.lan_open && (st.turn_urls || []).length);
+        mcEls.dot.dataset.state = ready ? "on" : "off";
+        if (!st.listening) mcEls.status.textContent = wavegT("pairingNotListening");
+        else if (ready) mcEls.status.textContent = t("pairingLanOn", { url: st.pair_base || st.turn_urls[0] });
+        else if (st.lan_open) mcEls.status.textContent = wavegT("pairingLanOnNoIp");
+        else mcEls.status.textContent = t("pairingLocalOnly", { url: st.loopback_base || st.loopback_url || "" });
+        const scopeNote = pairingScopeNote(st);
+        if (mcEls.scope) {
+          mcEls.scope.textContent = scopeNote;
+          mcEls.scope.hidden = !scopeNote;
+        }
+        if (mcEls.enable) {
+          mcEls.enable.textContent = st.lan_enabled ? wavegT("pairingBtnDisable") : wavegT("pairingBtnEnable");
+          mcEls.enable.disabled = false;
+        }
+        if (mcEls.copyUrl) mcEls.copyUrl.disabled = !(st.pair_base || st.loopback_base || (st.turn_urls || []).length || st.loopback_url);
+        mcPaintCode(st);
+      } catch (e) {
+        mcEls.dot.dataset.state = "off";
+        mcEls.status.textContent = wavegT("pairingReadFail");
+        if (mcEls.enable) mcEls.enable.disabled = true;
+        if (mcEls.copyUrl) mcEls.copyUrl.disabled = true;
+      }
+    }
+
+    if (mcEls.enable) {
+      mcEls.enable.addEventListener("click", async () => {
+        const next = !(mcSnapshot && mcSnapshot.lan_enabled);
+        mcEls.enable.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.setLan(next);
+          if (r && r.ok) mcSnapshot = r;
+          await refreshMobileControl();
+          mcNote(
+            r && r.ok
+              ? next ? wavegT("mcNowOpen") : wavegT("mcNowClosed")
+              : t("pairingToggleFail", { err: (r && r.error) || "unknown" }),
+          );
+        } catch (e) {
+          mcNote(t("pairingToggleFail", { err: String((e && e.message) || e) }));
+          await refreshMobileControl();
+        } finally {
+          mcEls.enable.disabled = false;
+        }
+      });
+    }
+    if (mcEls.copyUrl) {
+      mcEls.copyUrl.addEventListener("click", async () => {
+        mcEls.copyUrl.disabled = true;
+        try {
+          /* page = 配对链接（点开是 /pair 说明页）。裸 base_url 点开是 JSON 404，
+             那不该叫「链接」。设置里那一栏仍复制裸地址（那是给 App 手填用的）。 */
+          const r = await window.bitbot.pairing.copy("page");
+          mcNote(r && r.ok ? wavegT("pairingCopied") : t("pairingCopyFail", { err: (r && r.error) || "unknown" }));
+        } catch (e) {
+          mcNote(t("pairingCopyFail", { err: String((e && e.message) || e) }));
+        } finally {
+          mcEls.copyUrl.disabled = false;
+        }
+      });
+    }
+    if (mcEls.gen) {
+      mcEls.gen.addEventListener("click", async () => {
+        mcEls.gen.disabled = true;
+        try {
+          const r = await window.bitbot.pairing.code({ action: "issue" });
+          if (r && r.ok) {
+            mcNote("");
+            await refreshMobileControl();
+          } else {
+            mcNote(t("pairingCodeFail", { err: (r && r.error) || "host_failed" }));
+          }
+        } catch (e) {
+          mcNote(t("pairingCodeFail", { err: String((e && e.message) || e) }));
+        } finally {
+          mcEls.gen.disabled = false;
+        }
+      });
+    }
+    if (mcEls.revoke) {
+      mcEls.revoke.addEventListener("click", async () => {
+        mcEls.revoke.disabled = true;
+        try {
+          await window.bitbot.pairing.code({ action: "revoke" });
+          mcNote("");
+          await refreshMobileControl();
+        } catch (e) {
+          mcNote(t("pairingCodeFail", { err: String((e && e.message) || e) }));
+        } finally {
+          mcEls.revoke.disabled = false;
+        }
+      });
+    }
+
+    function openMobileControl(triggerEl) {
+      const m = document.getElementById("mobile-control-modal");
+      if (!m) return;
+      m.style.display = "flex";
+      bbSheetOpened("mobile-control-modal", triggerEl || document.getElementById("account-avatar-btn"));
+      mcNote("");
+      refreshMobileControl().catch(() => {});
+    }
+    function closeMobileControl() {
+      const m = document.getElementById("mobile-control-modal");
+      if (m) m.style.display = "none";
+      mcStopCountdown();
+      bbSheetClosed("mobile-control-modal");
+    }
+    const mcCloseBtn = document.getElementById("mc-close");
+    if (mcCloseBtn) mcCloseBtn.addEventListener("click", () => closeMobileControl());
+    const mcGotoChannels = document.getElementById("mc-goto-channels");
+    if (mcGotoChannels) {
+      mcGotoChannels.addEventListener("click", () => {
+        // 跳走就先关自己：两层弹窗叠着，用户不知道该关哪一个。
+        closeMobileControl();
+        openConnectApps(document.getElementById("account-avatar-btn"));
+        const cn = document.getElementById("ca-cn-channels");
+        if (cn && cn.scrollIntoView) cn.scrollIntoView({ block: "start" });
+      });
+    }
+    const apRemote = document.getElementById("ap-remote");
+    if (apRemote) {
+      apRemote.addEventListener("click", () => {
+        setAccountPopup(false);
+        openMobileControl(document.getElementById("account-avatar-btn"));
+      });
+    }
+
     const secProbe = document.getElementById("sec-probe");
     if (secProbe) {
       secProbe.addEventListener("click", async () => {
@@ -11816,7 +12236,10 @@
           }
           chip.appendChild(av);
           chip.addEventListener("click", () => {
-            if (typeof selectBotForChat === "function") selectBotForChat(b.id);
+            /* 这里以前传的是 b.id（字符串）。selectBotForChat 读 b.id / b.name，
+               传字符串等于把 activeBotId 写成 undefined：胶囊退回默认文案、
+               会话标题变成「undefined · DM」。传对象（GP-180）。 */
+            if (typeof selectBotForChat === "function") selectBotForChat(b);
           });
           strip.appendChild(chip);
         }
@@ -11837,8 +12260,16 @@
         });
       }
       // Grok-parity: title-bar pill reflects the primary Bot by default.
-      const primary = bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
-      if (primary) updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url);
+      // 但「默认」只在还没有选中任何 Bot 时成立：以前每次重绘都把胶囊拉回主
+      // Bot，于是「点开 A 正在聊天、侧栏一刷新标题就变回 B」——胶囊说的是 B，
+      // 真正接消息的是 A（§8.44 的 GP-112 真红就死在这上面）。
+      const pillEl = document.getElementById("bot-pill");
+      const shownId = (pillEl && pillEl.dataset && pillEl.dataset.botId) || "";
+      const primary = bots.find((x) => x.id === shownId) || bots.find((x) => x.id === (view && view.primary_id)) || bots[0];
+      if (primary) {
+        updateBotPill(primary.name || primary.id, primary.id || primary.name, primary.avatar_data_url);
+        markPillBot(primary.id);
+      }
     }
 
     function botRow(b, primaryId, isHidden, lastText) {
@@ -11894,6 +12325,13 @@
 
     // Grok-style: clicking a Bot opens its DM session (session id bot-<id>),
     // sets activeBotId for notifications, and shows the agent info in side panel.
+    /* 名字不是身份：Bot 可以被改重名（门禁数据里就有一串 SmokeRenamed）。
+       胶囊上记下当前 Bot 的 id，界面与门禁都能分清「现在到底切到谁」，
+       而不是靠「标题看起来对」——那正是 GP-112 偶发红分不清的一层。 */
+    function markPillBot(id) {
+      const pill = document.getElementById("bot-pill");
+      if (pill && id) pill.dataset.botId = String(id);
+    }
     function updateBotPill(name, colorSeed, avatarDataUrl) {
       const pill = document.getElementById("bot-pill");
       if (!pill) return;
@@ -11927,6 +12365,7 @@
       // 点开一个 Bot 就是回到私聊面：群 composer 必须先让位（同 sess-row 合同）。
       if (composerRoom) exitRoomChat();
       updateBotPill(b.name || b.id, b.id || b.name, b.avatar_data_url);
+      markPillBot(b.id);
       /* G-30：点开 Bot 是**导航**，不是一次对话回合。
          这里原来调 runUserTurn("open agent info agent=…")，会在消息流里留下
          [user] open agent info agent=bot-xxx  +  [bot] 已完成。   两条气泡，
@@ -11958,6 +12397,7 @@
         const total = Object.values(unreadBySession).reduce((a, x) => a + x, 0);
         if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
         renderUnreadMarks();
+        persistUnread();
         openInfoPanel();
       })().catch(() => {
         openInfoPanel();
@@ -13114,6 +13554,7 @@
       "marketplace-modal": () => closeMarketplace(),
       "connect-apps-modal": () => closeConnectApps(),
       "settings-panel": () => closeSettingsPanel(),
+      "mobile-control-modal": () => closeMobileControl(),
     };
     window.__bbSheetStack = window.__bbSheetStack || [];
     function bbSheetOpened(id, triggerEl) {
@@ -13206,6 +13647,7 @@
     if (modelCloseBtn) modelCloseBtn.addEventListener("click", closeModelSheet);
     bbBindSheetMask("model-modal");
     bbBindSheetMask("settings-panel");
+    bbBindSheetMask("mobile-control-modal");
     const caTemplateBtn = document.getElementById("ca-template-btn");
     if (caTemplateBtn) {
       caTemplateBtn.addEventListener("click", (ev) => {
@@ -13402,6 +13844,22 @@
             "assistant",
             wavegT("rHandoffFail").replace("{reason}", reason),
           );
+        }
+        // GP-52 / §8.30: 受理成立但承接方这轮没答上 —— 不能说「被拒」，也不能只说「已转交」。
+        // 旧写法把这种情况整笔判成失败（Host 连收件箱与存根都不写），界面只留一句「已转交」
+        // 的规划文案；现在如实说出来：这件事还挂着，没做完。
+        const hoAccepted = hosts.find((h) => h && h.kind === "handoff_task" && h.ok);
+        if (hoAccepted) {
+          let hp = {};
+          try { hp = JSON.parse(hoAccepted.stdout || "{}"); } catch (_) { hp = {}; }
+          if (hp.pending === true || hp.replied === false) {
+            const who = String(hp.to_name || hp.to_bot || "？");
+            const why = String(hp.reply_error || "handoff_target_pending");
+            addMsg(
+              "assistant",
+              wavegT("rHandoffPending").replace("{to}", who).replace("{reason}", why),
+            );
+          }
         }
         // GP-74: the account answer must come from the Host payload (real local
         // profile + credential truth), never from the kernel's planning prose.
@@ -13937,11 +14395,13 @@
         roomFailRunner: "成员执行器未就绪，本轮未产出。",
         roomFailNotFound: "找不到对应的 Bot（可能已被删除或改名）。",
         roomFailProvider: "模型或服务返回失败，未取得该成员的产出。",
+        roomFailStuck: "这件事已停下（不再自动重试），需要有人来看。",
         roomFailTooMany: "应答成员超过 6 个上限，本次没有执行。",
         roomFailNotMember: "被点名的 Bot 不是本群成员，本次没有执行。",
         roomFailRoomGone: "这个群聊已不存在（可能随成员删除被一起清理）。",
         roomFailEmpty: "先写出要让成员做的事，再发到群里。",
         roomFailBusy: "同样的任务正在执行中，本次没有重复发起。",
+        roomTurnTimeout: "群协作这一轮超过时限没有收尾，成员可能还在路上。请重发一次或缩短任务。",
         roomTextClipped: "（内容较长，这里只保留开头，完整正文见上方该成员的回复）",
         roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（本轮由各 Bot 自行决定是否应答）。",
         roomReportDeduped: "这件事已经汇报过了：同一任务不会重复执行成员回合。",
@@ -13965,6 +14425,7 @@
         sessYesterday: "昨天",
         sessEarlier: "更早",
         sessNoMatch: "没有匹配的会话",
+        sessUnreadMore: "更多未读消息 · {n}",
         sessRename: "重命名",
         sessDelete: "删除",
         sessRenameTitle: "重命名会话",
@@ -14070,6 +14531,18 @@
         usageBilling: "用量与账单（本周真实 LLM 用量；无数据即空态，不造假）",
         credentials: "模型与密钥",
         secModelOpen: "模型与供应商",
+        credLead: "只有第一张卡是必须的：接上本机大脑就能用，其余都能先跳过。",
+        credZoneBrain: "本机大脑",
+        credTagRequired: "必填",
+        credTagOptional: "选填",
+        credBrainNote: "走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填下面几栏，之后可以随意改。",
+        credAdvTitle: "备用渠道与 provider 标签",
+        credZoneCapability: "能力扩展",
+        credCapNote: "不填也能用，只是不会联网：回答里不会出现编造的来源。",
+        credZoneDevices: "手机与入站",
+        credInboundLabel: "入站公网地址（连接应用回调要用）",
+        credZoneCompliance: "合规",
+        credApplyLead: "申请 DeepSeek",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本机屏幕",
         takeoverHint: "密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。",
@@ -14141,6 +14614,29 @@
         pairingToggleFail: "开关失败 · {err}（没放开，也没假装放开）",
         pairingCopied: "已复制到剪贴板",
         pairingCopyFail: "复制失败 · {err}",
+        pairingCodeFail: "配对码没生成 · {err}（没有码，手机就只能走手动那一栏）",
+        pairingModalHint: "主路在「账户 → 移动端远程控制」；这里保留手动填写与配对令牌，读的是同一份配对状态。",
+        apRemote: "移动端远程控制",
+        mcTitle: "移动端远程控制",
+        mcPairTitle: "手机连接这台桌面",
+        mcReading: "配对状态：读取中…",
+        mcHint: "手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。",
+        mcCopyUrl: "复制配对链接",
+        mcLinkNote: "「复制配对链接」复制的是这台桌面的说明页：粘到手机浏览器里打开，会写明下一步该干什么；配对码仍然只在 App 里输。",
+        mcCodeTitle: "让手机自己找",
+        mcCodeGen: "生成配对码",
+        mcCodeRefresh: "刷新配对码",
+        mcCodeRevoke: "立即作废",
+        mcCodeHint: "手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。",
+        mcManualNote: "同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 手机与入站。",
+        mcChannelTitle: "使用 Bot Channel",
+        mcChannelNote: "下面三条是真跑通过的入站渠道。没列出的渠道目前没有适配器，这里不给点了没反应的入口。",
+        mcChDing: "钉钉 · 群机器人 Webhook",
+        mcChFeishu: "飞书 · 自建应用事件回调",
+        mcChWecom: "企业微信 · 应用消息回调",
+        mcGotoChannels: "去配置",
+        mcNowOpen: "已放开局域网：同一 Wi-Fi 下的手机现在能连进来 — 手机点「连接 Desktop」输 6 位配对码，令牌由手机端自己拿到",
+        mcNowClosed: "已收回局域网：现在只有桌面自己能连",
         gpPanel: "对齐面板",
         gpComputer: "电脑",
         gpGroup: "群组",
@@ -14278,6 +14774,7 @@
         rRoomTurn: "群聊 {room}：已投递本条消息，等待 Bot 回应。",
         rHandoff: "{from} 已将任务转交给 {to}（群「{room}」，转交已写入群 transcript）。",
         rHandoffFail: "任务转交被拒：{reason}（未写入群 transcript，Bot 不会假装接手）。",
+        rHandoffPending: "转交已受理并排队：{to} 这轮没答上（{reason}），任务仍挂在它名下，没有当成完成。",
         attachTooMany: "附件被拒绝：一次最多 6 个（GP-11）。",
         replyAction: "回复",
         reactAction: "反应",
@@ -14376,6 +14873,7 @@
         rBotDeleteGo: "正在删除：配置、会话与定时任务已级联清理（共享 Computer 文件保留）。",
         rBotDeleteDone: "已删除 Bot：会话 {sess} 个、定时任务 {routines} 个已级联清理；共享 Computer 文件保留 {kept} 个。",
         rBotDeleteBuiltin: "内置 Bit Bot（agent-bit）不可删除。",
+        rBotDeleteRoomsDropped: "连带解散了 {n} 个群聊（成员不足 2 人）：{titles}。以后在这些群里发消息会得到「群不存在」。",
         menuPin: "置顶",
         menuUnpin: "取消置顶",
         menuDuplicate: "创建副本",
@@ -14634,11 +15132,13 @@
         roomFailRunner: "成員執行器未就緒，本輪未產出。",
         roomFailNotFound: "找不到對應的 Bot（可能已被刪除或改名）。",
         roomFailProvider: "模型或服務返回失敗，未取得該成員的產出。",
+        roomFailStuck: "這件事已停下（不再自動重試），需要有人來看。",
         roomFailTooMany: "應答成員超過 6 個上限，本次沒有執行。",
         roomFailNotMember: "被點名的 Bot 不是本群成員，本次沒有執行。",
         roomFailRoomGone: "這個群聊已不存在（可能隨成員刪除被一起清理）。",
         roomFailEmpty: "先寫出要讓成員做的事，再發到群裡。",
         roomFailBusy: "同樣的任務正在執行中，本次沒有重複發起。",
+        roomTurnTimeout: "群協作這一輪超過時限沒有收尾，成員可能還在路上。請重發一次或縮短任務。",
         roomTextClipped: "（內容較長，這裡只保留開頭，完整正文見上方該成員的回覆）",
         roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（本輪由各 Bot 自行決定是否應答）。",
         roomReportDeduped: "這件事已經匯報過了：同一任務不會重複執行成員回合。",
@@ -14662,6 +15162,7 @@
         sessYesterday: "昨天",
         sessEarlier: "更早",
         sessNoMatch: "沒有符合的會話",
+        sessUnreadMore: "更多未讀訊息 · {n}",
         sessRename: "重新命名",
         sessDelete: "刪除",
         sessRenameTitle: "重新命名會話",
@@ -14767,6 +15268,18 @@
         usageBilling: "用量與帳單（本週真實 LLM 用量；無資料即空態，不造假）",
         credentials: "產品憑證 · 開放設定（不寫死）",
         secModelOpen: "模型與供應商",
+        credLead: "只有第一張卡是必須的：接上本機大腦就能用，其餘都能先跳過。",
+        credZoneBrain: "本機大腦",
+        credTagRequired: "必填",
+        credTagOptional: "選填",
+        credBrainNote: "走 OpenAI 相容協定：官方渠道、自建推理服務、企業閘道都能接。選一個接入方式會預填下面幾欄，之後可以隨意改。",
+        credAdvTitle: "備用渠道與 provider 標籤",
+        credZoneCapability: "能力擴充",
+        credCapNote: "不填也能用，只是不會聯網：回答裡不會出現編造的來源。",
+        credZoneDevices: "手機與入站",
+        credInboundLabel: "入站公網地址（連接應用回調要用）",
+        credZoneCompliance: "合規",
+        credApplyLead: "申請 DeepSeek",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本機螢幕",
         takeoverHint: "密碼 / 驗證碼 / 2FA 請在本機輸入，不要貼進對話。",
@@ -14838,6 +15351,29 @@
         pairingToggleFail: "開關失敗 · {err}（沒放開，也沒假裝放開）",
         pairingCopied: "已複製到剪貼簿",
         pairingCopyFail: "複製失敗 · {err}",
+        pairingCodeFail: "配對碼未產生 · {err}（沒有碼，手機就只能走手動那一欄）",
+        pairingModalHint: "主路在「帳戶 → 移動端遠端控制」；這裡保留手動填寫與配對權杖，讀的是同一份配對狀態。",
+        apRemote: "移動端遠端控制",
+        mcTitle: "移動端遠端控制",
+        mcPairTitle: "手機連接這台桌面",
+        mcReading: "配對狀態：讀取中…",
+        mcHint: "手機和桌面在同一個 Wi-Fi 下，輸入 6 位配對碼就能連上這台大腦，不需要手填長權杖。",
+        mcCopyUrl: "複製配對連結",
+        mcLinkNote: "「複製配對連結」複製的是這台桌面的說明頁：貼到手機瀏覽器裡打開，會寫明下一步該做什麼；配對碼仍然只在 App 裡輸入。",
+        mcCodeTitle: "讓手機自己找",
+        mcCodeGen: "產生配對碼",
+        mcCodeRefresh: "重新產生配對碼",
+        mcCodeRevoke: "立即作廢",
+        mcCodeHint: "手機只需點「連接 Desktop」並輸入這 6 位數字：5 分鐘內有效，用過一次即作廢。",
+        mcManualNote: "同一 Wi-Fi 也連不上時才走手動：設定 → 憑證 → 手機與入站。",
+        mcChannelTitle: "使用 Bot Channel",
+        mcChannelNote: "下面三條是真跑通的入站渠道。沒列出的渠道目前沒有配接器，這裡不給點了沒反應的入口。",
+        mcChDing: "釘釘 · 群組機器人 Webhook",
+        mcChFeishu: "飛書 · 自建應用事件回調",
+        mcChWecom: "企業微信 · 應用消息回調",
+        mcGotoChannels: "去設定",
+        mcNowOpen: "已放開區域網路：同一 Wi-Fi 下的手機現在能連進來 — 手機點「連接 Desktop」輸 6 位配對碼，權杖由手機端自己拿到",
+        mcNowClosed: "已收回區域網路：現在只有桌面本身能連",
         gpPanel: "Grok Parity 面板",
         gpComputer: "電腦",
         gpGroup: "群組",
@@ -14975,6 +15511,7 @@
         rRoomTurn: "群聊 {room}：已投遞本則訊息，等待 Bot 回應。",
         rHandoff: "{from} 已將任務轉交給 {to}（群「{room}」，轉交已寫入群 transcript）。",
         rHandoffFail: "任務轉交被拒：{reason}（未寫入群 transcript，Bot 不會假裝接手）。",
+        rHandoffPending: "轉交已受理並排隊：{to} 這輪沒答上（{reason}），任務仍掛在它名下，沒有當成完成。",
         attachTooMany: "附件被拒絕：一次最多 6 個（GP-11）。",
         replyAction: "回覆",
         reactAction: "反應",
@@ -15073,6 +15610,7 @@
         rBotDeleteGo: "正在刪除：設定、對話與排程任務已級聯清理（共用電腦檔案保留）。",
         rBotDeleteDone: "已刪除 Bot：對話 {sess} 個、排程任務 {routines} 個已級聯清理；共用電腦檔案保留 {kept} 個。",
         rBotDeleteBuiltin: "內建 Bit Bot（agent-bit）不可刪除。",
+        rBotDeleteRoomsDropped: "連帶解散了 {n} 個群聊（成員不足 2 人）：{titles}。以後在這些群裡發訊息會得到「群不存在」。",
         menuPin: "釘選",
         menuUnpin: "取消釘選",
         menuDuplicate: "建立副本",
@@ -15331,11 +15869,13 @@
         roomFailRunner: "The member runner is not ready; nothing was produced.",
         roomFailNotFound: "That Bot cannot be found (it may have been deleted or renamed).",
         roomFailProvider: "The model or service failed, so this member produced nothing.",
+        roomFailStuck: "This handoff has stopped (no further automatic retries) and needs someone to look at it.",
         roomFailTooMany: "More than 6 members were addressed, so nothing ran this time.",
         roomFailNotMember: "The addressed Bot is not in this group, so nothing ran.",
         roomFailRoomGone: "This group chat no longer exists (it may have been removed with its members).",
         roomFailEmpty: "Write what the members should do before sending it to the group.",
         roomFailBusy: "The same task is already running, so it was not started twice.",
+        roomTurnTimeout: "This group round did not finish within the time limit; members may still be working. Send it again or shorten the task.",
         roomTextClipped: " (long content truncated here; the member's reply above keeps the full text)",
         roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (each bot decides whether to reply this round).",
         roomReportDeduped: "Already reported: the same task does not run member turns twice.",
@@ -15359,6 +15899,7 @@
         sessYesterday: "Yesterday",
         sessEarlier: "Earlier",
         sessNoMatch: "No matching chats",
+        sessUnreadMore: "More unread · {n}",
         sessRename: "Rename",
         sessDelete: "Delete",
         sessRenameTitle: "Rename chat",
@@ -15464,6 +16005,18 @@
         usageBilling: "Usage & Billing (real weekly LLM usage; empty state, never faked)",
         credentials: "Product credentials · open config (never baked in)",
         secModelOpen: "Model & provider",
+        credLead: "Only the first card is required: connect the local brain and the rest can wait.",
+        credZoneBrain: "Local brain",
+        credTagRequired: "Required",
+        credTagOptional: "Optional",
+        credBrainNote: "OpenAI-compatible: official channels, self-hosted inference (vLLM / Ollama / LM Studio) or an enterprise gateway. Picking one prefills the fields below; you can edit them after.",
+        credAdvTitle: "Backup keys & provider tag",
+        credZoneCapability: "Capabilities",
+        credCapNote: "Works without this: no web search, and no invented sources in answers.",
+        credZoneDevices: "Phone & inbound",
+        credInboundLabel: "Public inbound URL (needed by app callbacks)",
+        credZoneCompliance: "Compliance",
+        credApplyLead: "Get a DeepSeek key",
         takeover: "Take over",
         takeoverTitle: "Take over — you are controlling this screen directly",
         takeoverHint: "Type passwords / codes / 2FA on the machine — never paste them into chat.",
@@ -15535,6 +16088,29 @@
         pairingToggleFail: "Toggle failed · {err} (not opened, and not pretended open)",
         pairingCopied: "Copied to clipboard",
         pairingCopyFail: "Copy failed · {err}",
+        pairingCodeFail: "No pairing code issued · {err} (without one the phone has to fall back to manual entry)",
+        pairingModalHint: "The main path now lives under Account → Mobile remote control; this card keeps the manual fields and the pairing token, reading the same pairing state.",
+        apRemote: "Mobile remote control",
+        mcTitle: "Mobile remote control",
+        mcPairTitle: "Connect your phone to this desktop",
+        mcReading: "Pairing state: loading…",
+        mcHint: "On the same Wi-Fi, the phone just types a 6-digit pairing code to reach this brain — no long token to paste.",
+        mcCopyUrl: "Copy pairing link",
+        mcLinkNote: "This copies the desktop's read-only page: open it in the phone's browser and it says what to do next. The pairing code is still typed in the app only.",
+        mcCodeTitle: "Let the phone find it",
+        mcCodeGen: "Generate pairing code",
+        mcCodeRefresh: "Refresh pairing code",
+        mcCodeRevoke: "Revoke now",
+        mcCodeHint: "On the phone tap “Connect Desktop” and enter these 6 digits: valid for 5 minutes, single use.",
+        mcManualNote: "Only when the same Wi-Fi still fails: Settings → Credentials → Phone & inbound.",
+        mcChannelTitle: "Use a Bot Channel",
+        mcChannelNote: "The three below are the inbound channels actually working today. Anything not listed has no adapter yet, so there is no dead entry for it here.",
+        mcChDing: "DingTalk · group robot Webhook",
+        mcChFeishu: "Feishu · custom app event callback",
+        mcChWecom: "WeCom · app message callback",
+        mcGotoChannels: "Configure",
+        mcNowOpen: "LAN opened: phones on the same Wi-Fi can connect now — tap “Connect Desktop” and enter the 6-digit code, the phone receives the token itself",
+        mcNowClosed: "LAN closed: only this desktop can connect now",
         gpPanel: "Grok Parity Panel",
         gpComputer: "Computer",
         gpGroup: "Groups",
@@ -15672,6 +16248,7 @@
         rRoomTurn: "Room {room}: message delivered, waiting for bots.",
         rHandoff: "{from} handed the task off to {to} (room «{room}», transfer written to the room transcript).",
         rHandoffFail: "Task handoff refused: {reason} (nothing written to the room transcript; no bot pretends to have taken it).",
+        rHandoffPending: "Handoff accepted and queued: {to} did not answer this round ({reason}); the task stays assigned and is not treated as done.",
         attachTooMany: "Attachment refused: max 6 files per send (GP-11).",
         replyAction: "Reply",
         reactAction: "React",
@@ -15770,6 +16347,7 @@
         rBotDeleteGo: "Deleting: config, sessions and routines cascaded (shared Computer files kept).",
         rBotDeleteDone: "Bot deleted: {sess} session(s) and {routines} routine(s) cascaded; {kept} shared Computer file(s) kept.",
         rBotDeleteBuiltin: "Built-in Bit Bot (agent-bit) cannot be deleted.",
+        rBotDeleteRoomsDropped: "{n} group chat(s) were dissolved with it (fewer than 2 members left): {titles}. Sending in those groups will now say the group no longer exists.",
         menuPin: "Pin",
         menuUnpin: "Unpin",
         menuDuplicate: "Duplicate",
@@ -16633,6 +17211,40 @@
 
     // ----- GP-80/81/82 notifications + unread + badge -----
     let unreadBySession = {};
+    let unreadRestored = false;
+
+    /* P2-7 · 未读落盘。settings.unread 的 allowlist 早就放行了，但渲染层以前从不
+       读也不写，重启即失忆（行内蓝点 / 汇总条 / 系统 badge 一起归零）。
+       落盘用「整键替换」（Host settingsPatch 就是整键覆盖），空表就落 {}，
+       不留 `sid: 0` 这种幽灵行。 */
+    function persistUnread() {
+      if (!window.bitbot.settings) return;
+      const snap = {};
+      for (const sid of Object.keys(unreadBySession)) {
+        const n = unreadBySession[sid] || 0;
+        if (n > 0) snap[sid] = n;
+      }
+      try {
+        window.bitbot.settings.set({ unread: snap }).catch(() => {});
+      } catch (_) {
+        /* 落盘失败不影响本轮未读显示 */
+      }
+    }
+
+    /* 启动回填：只认第一次。之后 onSettingsChanged 还会再读设置，如果每次都
+       用磁盘快照覆盖内存，刚累加的计数会被旧值盖回去。 */
+    function restoreUnread(raw) {
+      if (unreadRestored) return;
+      unreadRestored = true;
+      if (!raw || typeof raw !== "object") return;
+      for (const sid of Object.keys(raw)) {
+        const n = Number(raw[sid]);
+        if (sid && isFinite(n) && n > 0) unreadBySession[sid] = Math.floor(n);
+      }
+      renderUnreadMarks();
+      const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
+      if (window.bitbot.badge && total > 0) window.bitbot.badge.set(total).catch(() => {});
+    }
     async function notifyTurnIfNeeded(r, opts) {
       if (!window.bitbot.notify) return;
       if (opts && opts.skipSession) return;
@@ -16646,6 +17258,7 @@
         const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
         if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
         renderUnreadMarks();
+        persistUnread();
       }
       await window.bitbot.notify
         .turn({
@@ -16674,7 +17287,92 @@
           dot.remove();
         }
       });
+      renderUnreadSummary();
     }
+
+    /* P1-6 · 未读汇总。会话列表收在 #sessions-popup 里（G-28），所以「侧栏顶部」
+       落成弹层顶部这一条。没有未读就整条隐藏；有未读时显示总数。 */
+    function renderUnreadSummary() {
+      const btn = document.getElementById("unread-summary");
+      if (!btn) return;
+      const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
+      if (total <= 0) {
+        btn.hidden = true;
+        btn.textContent = "";
+        return;
+      }
+      btn.hidden = false;
+      btn.textContent = "";
+      const tx = document.createElement("span");
+      tx.className = "unread-summary-tx";
+      tx.textContent = t("sessUnreadMore", { n: total });
+      const dot = document.createElement("span");
+      dot.className = "unread-dot";
+      btn.appendChild(tx);
+      btn.appendChild(dot);
+    }
+
+    /* P1-6 · 切会话的共用路径。行点击各有一份内联闭包，汇总条这里复用同一套
+       动作：退群聊独占态 → 切活跃 → 清该会话未读 → 重渲染列表与未读标记。 */
+    async function activateSessionById(sid) {
+      if (!sid) return;
+      if (composerRoom) exitRoomChat();
+      const r = await window.bitbot.sessions.setActive(sid);
+      if (!r || !r.ok) return;
+      activeSessionId = sid;
+      delete unreadBySession[sid];
+      const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
+      if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
+      persistUnread();
+      await loadActiveSessionTranscript();
+      const list = await window.bitbot.sessions.list();
+      renderSessionList(list);
+      renderUnreadMarks();
+    }
+
+    /* 「最早未读」：列表按 今天 → 昨天 → 更早 排列（新 → 旧），所以 DOM 里
+       最后一条带未读的行就是最老的未读会话。弹层从没打开过、列表还没渲染时
+       退化成按 unreadBySession 的键序取第一个。 */
+    function jumpToOldestUnread() {
+      const items = Array.from(document.querySelectorAll("#session-list .agent-item"));
+      for (let i = items.length - 1; i >= 0; i--) {
+        const sid = items[i].dataset.sessionId;
+        if (sid && (unreadBySession[sid] || 0) > 0) return activateSessionById(sid);
+      }
+      const sid = Object.keys(unreadBySession).find((k) => (unreadBySession[k] || 0) > 0);
+      return sid ? activateSessionById(sid) : Promise.resolve();
+    }
+
+    {
+      // 汇总条自己的点击：跳完把弹层收起来，用户直接看到那条会话。
+      // 它不是 .sess-row，所以弹层里那条「点行即收起」的监听管不到它，
+      // 这里显式收一次，行为和点行一致。
+      const unreadBtn = document.getElementById("unread-summary");
+      if (unreadBtn) {
+        unreadBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          jumpToOldestUnread()
+            .then(() => {
+              const pop = document.getElementById("sessions-popup");
+              const ab = document.getElementById("ab-sessions-btn");
+              if (pop) pop.hidden = true;
+              if (ab) ab.setAttribute("aria-expanded", "false");
+            })
+            .catch(() => {});
+        });
+      }
+    }
+
+    /* 测试钩子（与 window.__bbSetSessionSearchOpen 同款）：返回未读表本体 +
+       重绘入口，让 e2e 能构造未读态并断言汇总条，不必走真实回合完成路径。 */
+    window.__bbUnread = {
+      state: () => unreadBySession,
+      render: () => renderUnreadMarks(),
+      commit: () => {
+        renderUnreadMarks();
+        persistUnread();
+      },
+    };
 
     // ----- GP-ATx accelerators + sidebar collapse -----
     let sidebarCollapsed = false;
@@ -16825,6 +17523,7 @@
           delete unreadBySession[sid];
           const total = Object.values(unreadBySession).reduce((a, b) => a + b, 0);
           if (window.bitbot.badge) await window.bitbot.badge.set(total).catch(() => {});
+          persistUnread();
           await loadActiveSessionTranscript();
           const list = await window.bitbot.sessions.list();
           renderSessionList(list);
@@ -16832,7 +17531,17 @@
         }
       });
       if (window.bitbot.onSettingsChanged) {
-        window.bitbot.onSettingsChanged(() => refreshWaveGSettings());
+        window.bitbot.onSettingsChanged(async () => {
+          await refreshWaveGSettings();
+          // 语言变化 → 通知主进程重建原生菜单（菜单标签按 language 取 zh/en）。
+          try {
+            const st = window.bitbot.settings && window.bitbot.settings.get
+              ? await window.bitbot.settings.get()
+              : null;
+            const lang = st && st.settings && st.settings.language ? st.settings.language : null;
+            if (lang && window.bitbot.relocalizeMenu) window.bitbot.relocalizeMenu(lang);
+          } catch (_) { /* ignore */ }
+        });
       }
       if (window.bitbot.onApprovalAlwaysAllow) {
         window.bitbot.onApprovalAlwaysAllow((payload) => {
@@ -17002,6 +17711,9 @@
           window.addEventListener("resize", adaptSidebarToViewport);
           wavegApplyAppearanceClass(st.appearance || "system");
           wavegLangApply(st.language || "zh-CN");
+          // P2-7：未读回填放在 refreshSessions() 之后，行已经在 DOM 里，
+          // 一次 renderUnreadMarks() 就能把行点 + 汇总条一起点亮。
+          restoreUnread(st.unread);
         } catch (_) {
           /* ignore */
         }

@@ -37,17 +37,13 @@ pub(all) struct ProductToolResult {
 ///|
 /// 产品工具的注册名。模型看到的名字必须与这里完全一致 ——
 /// `runtime/agent_loop.mbt` 的 `resolve_spec` 按 id 精确匹配。
+///
+/// 归一表本身在 `core/tool_names.mbt`(唯一真源):内核在模型边界归一一次,
+/// 这里只做转发,不再维护第二份 —— 两份表曾经漂移出三个后果:内核不认识
+/// `createRoom`(工具变成 unknown tool)、策略按原始名匹配导致 `sendMail`
+/// 绕过 `send_mail` 的审批、Host 侧路由不到 B 类工具。
 pub fn product_tool_name_canonical(name : String) -> String {
-  match name {
-    "describeSchedule" | "DescribeSchedule" => "describe_schedule"
-    "createTeammate" | "CreateTeammate" => "create_teammate"
-    "createRoutine" | "CreateRoutine" => "create_routine"
-    "webSearch" | "WebSearch" | "search_web" | "searchWeb" => "web_search"
-    "webFetch" | "WebFetch" | "open_url" | "openUrl" => "web_fetch"
-    "sendMail" | "SendMail" | "send_mail" | "mail_send" => "send_mail"
-    "createRoom" | "CreateRoom" | "create_group" | "createGroup" => "create_room"
-    _ => name
-  }
+  @core.canonical_tool_id(name)
 }
 
 ///|
@@ -64,7 +60,10 @@ pub fn is_kernel_tool(name : String) -> Bool {
 /// 不是"我打算做"的承诺。
 pub fn is_host_tool(name : String) -> Bool {
   let c = product_tool_name_canonical(name)
-  c == "web_search" || c == "web_fetch" || c == "send_mail" || c == "create_room"
+  c == "web_search" ||
+  c == "web_fetch" ||
+  c == "send_mail" ||
+  c == "create_room"
 }
 
 ///|
@@ -127,10 +126,7 @@ pub fn product_tool_specs() -> Array[@tools.ToolSpec] {
 ///|
 /// 依次尝试几个 JSON 字段名,取第一个非空字符串。模型对参数名的写法不稳定,
 /// 认几个常见别名比让模型重试一轮便宜得多。
-fn first_json_string(
-  args_json : String,
-  keys : Array[String],
-) -> String? {
+fn first_json_string(args_json : String, keys : Array[String]) -> String? {
   for k in keys {
     match @runtime.json_field_string(args_json, k) {
       Some(v) => {
@@ -153,7 +149,8 @@ pub fn parse_product_tool_action(
 ) -> Result[ProductToolAction, String] {
   let c = product_tool_name_canonical(name)
   if c == "describe_schedule" {
-    let desc = match first_json_string(args_json, ["description", "schedule", "text"]) {
+    let desc = match
+      first_json_string(args_json, ["description", "schedule", "text"]) {
       Some(v) => v
       None => return Err("describe_schedule needs a description")
     }
@@ -164,7 +161,8 @@ pub fn parse_product_tool_action(
       Some(v) => v
       None => return Err("create_teammate needs a name")
     }
-    let role = match first_json_string(args_json, ["role", "responsibility", "job"]) {
+    let role = match
+      first_json_string(args_json, ["role", "responsibility", "job"]) {
       Some(v) => v
       None => return Err("create_teammate needs a role")
     }
@@ -172,14 +170,16 @@ pub fn parse_product_tool_action(
       Some(v) => v
       None => product_tool_agent_id(nm, role)
     }
-    return Ok(CreateTeammate(id=id, name=nm, role=role))
+    return Ok(CreateTeammate(id~, name=nm, role~))
   }
   if c == "create_routine" {
-    let sched = match first_json_string(args_json, ["schedule", "cron", "when", "trigger"]) {
+    let sched = match
+      first_json_string(args_json, ["schedule", "cron", "when", "trigger"]) {
       Some(v) => v
       None => return Err("create_routine needs a schedule")
     }
-    let prompt = match first_json_string(args_json, ["prompt", "task", "content"]) {
+    let prompt = match
+      first_json_string(args_json, ["prompt", "task", "content"]) {
       Some(v) => v
       None => return Err("create_routine needs a prompt")
     }
@@ -187,7 +187,7 @@ pub fn parse_product_tool_action(
       Some(v) => v
       None => cn_routine_id(prompt)
     }
-    return Ok(CreateRoutine(id=id, schedule=sched, prompt=prompt))
+    return Ok(CreateRoutine(id~, schedule=sched, prompt~))
   }
   Err("not a product tool: " + name)
 }
@@ -243,12 +243,20 @@ pub fn exec_product_tool_action(
             observation: "{\"cron\":\"" + escape_json_string(cron) + "\"}",
             effects: [],
           }
-        Err(e) => ProductToolResult::{ observation: "schedule_error: " + e, effects: [], }
+        Err(e) =>
+          ProductToolResult::{
+            observation: "schedule_error: " + e,
+            effects: [],
+          }
       }
     CreateTeammate(id~, name~, role~) => {
       let dir = @teammates.TeammateDirectory::new()
       match dir.create_agent(id~, name~, role~) {
-        Err(e) => ProductToolResult::{ observation: "teammate_error: " + e, effects: [], }
+        Err(e) =>
+          ProductToolResult::{
+            observation: "teammate_error: " + e,
+            effects: [],
+          }
         Ok(agent) => {
           let effect : DesktopEffect = {
             kind: "teammate_create",
@@ -256,13 +264,12 @@ pub fn exec_product_tool_action(
             needs_host_ffi: true,
           }
           ProductToolResult::{
-            observation:
-              "teammate created " +
-              agent.name +
-              " (" +
-              agent.id +
-              ") role=" +
-              agent.boundary.role,
+            observation: "teammate created " +
+            agent.name +
+            " (" +
+            agent.id +
+            ") role=" +
+            agent.boundary.role,
             effects: [effect],
           }
         }
@@ -270,7 +277,11 @@ pub fn exec_product_tool_action(
     }
     CreateRoutine(id~, schedule~, prompt~) =>
       match resolve_schedule_cron(schedule) {
-        Err(e) => ProductToolResult::{ observation: "routine_error: " + e, effects: [], }
+        Err(e) =>
+          ProductToolResult::{
+            observation: "routine_error: " + e,
+            effects: [],
+          }
         Ok(cron) => {
           let store = @routines.RoutineStore::empty()
           let spec : @routines.RoutineSpec = {
@@ -284,7 +295,11 @@ pub fn exec_product_tool_action(
             late_minutes: 0,
           }
           match store.create(spec) {
-            Err(e) => ProductToolResult::{ observation: "routine_error: " + e, effects: [], }
+            Err(e) =>
+              ProductToolResult::{
+                observation: "routine_error: " + e,
+                effects: [],
+              }
             Ok(_) => {
               let effect : DesktopEffect = {
                 kind: "routine_schedule",
@@ -300,7 +315,12 @@ pub fn exec_product_tool_action(
                 "；到点会备好草稿等你批准（这台机器没开自动执行）。"
               }
               ProductToolResult::{
-                observation: "routine " + id + " scheduled (" + cron + ")" + tail,
+                observation: "routine " +
+                id +
+                " scheduled (" +
+                cron +
+                ")" +
+                tail,
                 effects: [effect],
               }
             }
@@ -323,6 +343,7 @@ pub fn encode_product_tool_output(output : String) -> String {
 /// live loop, but the wasm target owns the tests, and both must see the SAME
 /// tool catalog — otherwise the tests would be asserting on a different
 /// registry than the product ships.
+
 ///|
 pub fn product_tool_registry() -> @runtime.ToolRegistry {
   let reg = @runtime.ToolRegistry::empty()

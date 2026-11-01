@@ -83,7 +83,34 @@ POST /v1/pair/redeem
 `bitbot:pairing:code`，入参 `{ action: "issue" | "revoke" }`
 → `{ ok:true, code:"482913", expires_in_ms:299988, attempts_left:5 }`
 → revoke：`{ ok:true, code:"" }`
-`pairingState()` 增加可选字段：`pair_code`、`pair_code_expires_in_ms`、`pair_code_attempts_left`。
+`pairingState()` 增加可选字段：`pair_code`、`pair_code_expires_in_ms`、`pair_code_attempts_left`、
+`pair_page_url`（G-68 新增，可选；老客户端忽略即可）。
+
+### 4) 配对说明页（只读，`GET /pair`；`GET /` 同页）
+
+桌面弹窗里那颗按钮叫**复制配对链接**，那它复制出去的东西点开就必须是一页纸。
+以前复制的是裸 `http://ip:port`，粘到微信 / 手机浏览器里得到的是
+`unknown_cn_inbound_route` 的 JSON 404 —— 名字叫链接却不是链接，是半真。
+
+```
+GET /pair  → 200 text/html（未鉴权，只读）
+```
+
+页面上只有三块：**这是哪台桌面**（hostname + 实际端口）、**手机下一步做什么**
+（打开 App → 点「连接 Desktop」→ 输 6 位码）、**现在能不能连**（局域网没放开时写
+「只在桌面自己这台机器上开着」；放开时按 `lan_candidates` 的排名逐条列地址并标出
+它是 private / cgnat / public / link_local，口径与桌面弹窗同一份真源）。
+
+三条不许越过的线（`scripts/e2e_desktop_pair_page.mjs` 钉死）：
+
+1. **不含任何凭证**：64 位令牌与配对码原文都不出现在这一页（它未鉴权，局域网里谁都敲得开）。
+2. **不是第二个 redeem 面**：没有表单、不 fetch `/v1/pair/redeem`。谁在浏览器里输 6 位码，
+   bearer 就落到那个浏览器里 —— 那不是配对的客户端，是白送一个令牌。配对动作只在 App 里做。
+3. **不引外部资源**，并带 `noindex` / `no-store` / `nosniff` / `default-src 'none'`：
+   走 `scripts/cn_inbound_tunnel.sh` 的公网隧道时这一页全网可见，不许被缓存、被索引。
+
+顺带修的：未知路由的 404 应答里 `routes` 清单已经过期（连 `/v1/pair/*` 都没列），
+现在列出 `/pair`、`/v1/pair/discover`、`/v1/pair/redeem`。
 
 ## 手机端流程（目标：两步，零抄写）
 
@@ -107,6 +134,8 @@ POST /v1/pair/redeem
 | **换到的令牌真能打通 `/v1/turn`** | 同上 PC-13 | 全绿 |
 | base_url 走网卡排序，不给 docker0（PC-18）、LAN 未放开如实 409（PC-19） | 同上 | 全绿 |
 | 桌面面板：生成配对码出 6 位数字 + 倒计时、可作废 | `scripts/e2e_android_roster.mjs` AR-16/17（真 Electron） | 20/0 |
+| 桌面「移动端远程控制」弹窗：入口、状态点 off→on 如实、码生成/刷新/作废与 Host 每步一致、复制链接回显、弹窗内零令牌控件、Esc/遮罩关闭且焦点归还、渠道列只有钉钉/飞书/企业微信且「去配置」真跳转、480 宽不破版 | `scripts/e2e_desktop_mobile_control.mjs` MC-01..11（真 Electron，G-67） | 11/0 |
+| 配对说明页真 HTTP：`GET /pair` 与 `GET /` 回 200 text/html、写明主机名/端口/下一步、不含令牌与配对码、无表单不碰 redeem、未放开时说实话、404 清单不再过期、无外部资源、带 noindex/no-store/nosniff/CSP、弹窗复制的确实是这一页 | `scripts/e2e_desktop_pair_page.mjs` PP-01..10（真 Electron + 真 socket，G-68） | 11/0（修复前红 PASS=1 FAIL=10） |
 | 手机端纯逻辑（/24 枚举、discover 解析、码校验、四种失败映射、scope 提醒） | `PairingDiscoveryTest`（23 条） | 全绿 |
 | 手机端**真 HTTP 集成**（进程内 ServerSocket 起服务，走真 socket 校字段与映射） | `PairingIntegrationTest`（17 条，ephemeral 端口，无 skip 路径） | 全绿 |
 | 门禁把上面几条钉成「真在跑」 | `prove_android_build.mjs` AB-09、AB-10（含负向对照） | 10/0 |
@@ -122,5 +151,13 @@ JVM 单测合计 66 用例 0 失败；内核回归 `moon test ./cmd/desktop_turn
   没有指纹确认这一步。
 - 桌面端口默认 18765 可改，手机侧要手动同步一次端口（v1 未做端口广播）。
 - 公网 / 跨网段机器仍配不上（没有内网穿透产品路径），此时 discover 也扫不到。
-- 未做二维码方案：桌面渲染 QR + 手机 CameraX 解码是 M 档改造，v1 先用 6 位码把
-  「零抄写」这一步做到；QR 落地后短码仍应保留作为无摄像头兜底。
+- 未做二维码方案。**卡点不在桌面侧，在手机侧**：`hosts/android/.../build.gradle.kts`
+  现在没有任何摄像头 / 扫码依赖（CameraX、ML Kit 都没有），`AndroidManifest.xml`
+  也只有 LAUNCHER 一个 intent-filter —— 系统相机扫出来的 URL 手机 App 接不住，
+  所以桌面就算画出一张 QR 也只是张装饰图（造一个消费不掉的入口，比不做更糟）。
+  落地需要三件事一起：桌面 QR 编码器（vendored，别把 64 位令牌放进去）、
+  Android 扫码或 deep-link、真机验收。做完 v1 的 6 位短码仍保留作为无摄像头兜底。
+  桌面侧现在给的是独立弹窗 + 状态点 + 「复制配对链接」（G-67 MC-01..11），
+  链接点开是只读说明页（G-68 PP-01..10），仍然不是扫码。
+- 「在手机上继续指挥当前工作区」不在 v1 范围内：桌面只暴露 `/v1/turn` 与配对两条路，
+  没有工作区镜像 / 远程 UI 控制协议，那是 L 档，需要单独设计评审。

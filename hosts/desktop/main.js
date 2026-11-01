@@ -37,6 +37,15 @@ if (!GOT_INSTANCE_LOCK) {
   });
 }
 
+/* T1-07 —— 桌面宿主默认使用常驻内核：一次进程创建做完所有回合，群聊一轮 3 个 Bot
+   不再起 3 个进程（这不是「更快」，是「不再按回合数 spawn」）。要回到每轮直起的
+   老行为，启动前设 BITBOT_KERNEL_RESIDENT=0 即可 —— 两条路共用同一个内核二进制、
+   同一套 argv 语义，scripts/prove_kernel_resident.mjs 的 KR-07 逐条比对过两侧产出，
+   KR-03 就是把本段默认关掉之后量出来的对照数。 */
+if (!process.env.BITBOT_KERNEL_RESIDENT) {
+  process.env.BITBOT_KERNEL_RESIDENT = "1";
+}
+
 // Dev: hosts/shared; packaged: hosts/desktop/shared (copied by electron-builder).
 let createTurnRunner;
 let createHostFfi;
@@ -142,6 +151,24 @@ try {
   autoUpdater = null;
 }
 
+/**
+ * Whether this packaged app carries a baked github publish config (resources/
+ * app-update.yml). If so, electron-updater already knows its feed (GitHub
+ * Releases) with no env override. This lets us report OTA "feed_configured"
+ * honestly instead of conflating it with the optional BITBOT_UPDATE_FEED_URL
+ * self-host override.
+ */
+function hasBakedGithubFeed() {
+  try {
+    if (!RESOURCES_PATH) return false;
+    const p = path.join(RESOURCES_PATH, "app-update.yml");
+    if (!fs.existsSync(p)) return false;
+    return /provider:\s*['"]?github/i.test(fs.readFileSync(p, "utf8"));
+  } catch (_) {
+    return false;
+  }
+}
+
 /** CN inbound HTTP server (钉钉/飞书/企微 callbacks). */
 let cnInbound = null;
 
@@ -153,7 +180,10 @@ const DEV_MODE_LAUNCH = process.argv.includes("--bitbot-devmode") || process.env
 /**
  * Path roots — see hosts/desktop/paths.js for the full contract.
  *
- *   REPO_ROOT : the MoonBit code tree (`moon run cmd/desktop_turn` runs here)
+ *   SRC_ROOT  : the MoonBit code tree (`moon run cmd/desktop_turn` runs
+ *               there); null in a packaged install
+ *   REPO_ROOT : the root the host modules work from (= SRC_ROOT in dev,
+ *               = the user-data parent when there is no source tree)
  *   DATA_ROOT : user data (sessions / rooms / memory / routines / secrets)
  *
  * The previous inline resolver probed for `moon.mod.json`, but MoonBit's
@@ -180,7 +210,9 @@ const RESOURCES_PATH = (() => {
 /** Where the kernel lives when it is shipped inside the app bundle. */
 const BUNDLED_KERNEL_ROOT = RESOURCES_PATH ? path.join(RESOURCES_PATH, "kernel") : null;
 
-const REPO_ROOT = resolveRepoRoot({
+/** The MoonBit *source* tree, or null in a packaged install (which ships the
+ *  compiled kernel instead). Nothing below may guess this one. */
+const SRC_ROOT = resolveRepoRoot({
   dirname: __dirname,
   kernelRoot: BUNDLED_KERNEL_ROOT,
   resourcesPath: RESOURCES_PATH,
@@ -214,13 +246,23 @@ const USER_DATA_DIR = (() => {
 
 /** User data root. Dev keeps the historical <repo>/data layout. */
 const DATA_ROOT = resolveDataRoot({
-  repoRoot: REPO_ROOT,
+  repoRoot: SRC_ROOT,
   userDataDir: USER_DATA_DIR,
   packaged: Boolean(app.isPackaged),
 });
 
-if (!REPO_ROOT) {
-  // Honest failure: no guessed path, and a reason the user can act on.
+/** The root the host modules work from. In dev it IS the source tree.
+ *  A packaged install has no source tree, but those modules read `repoRoot` as
+ *  "the directory whose `data/` holds the user data" — for a packaged app that
+ *  is the user-data dir (DATA_ROOT is `<userData>/data`). Deriving it from
+ *  DATA_ROOT keeps every `<repoRoot>/data/...` write landing in the right place
+ *  instead of throwing on a null path; source-only helpers (`scripts/*.sh`)
+ *  then report "missing" on their own instead of crashing the host. */
+const REPO_ROOT = SRC_ROOT || (DATA_ROOT ? path.dirname(DATA_ROOT) : null);
+
+if (!SRC_ROOT && !KERNEL_BIN) {
+  // Honest failure: neither a checkout to run `moon` from nor a bundled
+  // kernel binary, so there is no Product Brain in this install.
   const why = describeMissingKernel({ env: process.env });
   console.error("[bitbot] FATAL: " + why);
   try {
@@ -291,53 +333,46 @@ if (autoUpdater) {
   });
 }
 
-const DESKTOP_ENV_LOCAL = path.join(__dirname, ".env.local");
-
-/** Parse KEY=VALUE lines from an env file. */
-function parseEnvFile(file) {
-  const out = {};
-  if (!fs.existsSync(file)) return out;
-  const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq <= 0) continue;
-    const k = t.slice(0, eq).trim();
-    let v = t.slice(eq + 1).trim();
-    if (
-      (v.startsWith('"') && v.endsWith('"')) ||
-      (v.startsWith("'") && v.endsWith("'"))
-    ) {
-      v = v.slice(1, -1);
-    }
-    if (k) out[k] = v;
-  }
-  return out;
+/* 密钥文件的位置：开发时就在 hosts/desktop/.env.local（历史布局），装机后
+ * 必须是 userData —— app.asar 是只读的，__dirname 在包里指向 asar 内部，
+ * 往那儿写会 ENOENT 并在 require 阶段抛未捕获异常（2026-10-29 真打包实测：
+ * 主进程直接炸，窗口都没出来）。路径必须跟着 DATA_ROOT 一起搬。 */
+// GP-185: `.env.local` 的切分/引号/注释只有 hosts/shared/host_env.js 一份。
+// 打包态是平铺布局（shared/ 与 desktop/ 同级），开发态在 ../shared —— 两种都试。
+let hostEnv;
+try {
+  hostEnv = require("./shared/host_env");
+} catch (_e) {
+  hostEnv = require("../shared/host_env");
 }
+const { parseEnvFile } = hostEnv;
+
+const DESKTOP_ENV_LOCAL = app.isPackaged && USER_DATA_DIR
+  ? path.join(USER_DATA_DIR, ".env.local")
+  : path.join(__dirname, ".env.local");
+
+/** GP-185: parsing lives in hosts/shared/host_env.js (one copy for every host). */
+
 
 /**
  * Load hosts/desktop/.env.local then repo .env.local (never commit secrets).
+ * GP-185: one implementation (shared/host_env.js); Desktop only decides order,
+ * overwrite policy and where the logs go.
  * @param {{overwrite?: boolean}} opts — overwrite=true applies file values over process.env
  */
 function loadEnvLocalFiles(opts = {}) {
   const overwrite = Boolean(opts && opts.overwrite);
   const candidates = [DESKTOP_ENV_LOCAL, path.join(REPO_ROOT, ".env.local")];
   if (USER_DATA_DIR) candidates.push(path.join(USER_DATA_DIR, ".env.local"));
-  for (const file of candidates) {
-    if (!fs.existsSync(file)) continue;
-    try {
-      const map = parseEnvFile(file);
-      for (const [k, v] of Object.entries(map)) {
-        if (overwrite || process.env[k] === undefined) process.env[k] = v;
-      }
-      process.stdout.write(`[desktop] loaded env file ${file}\n`);
-    } catch (err) {
+  hostEnv.loadEnvFiles(candidates, {
+    overwrite,
+    onFile: (file) =>
+      process.stdout.write(`[desktop] loaded env file ${file}\n`),
+    onError: (err, file) =>
       process.stderr.write(
         `[desktop] env load failed ${file}: ${err && err.message ? err.message : err}\n`,
-      );
-    }
-  }
+      ),
+  });
 }
 loadEnvLocalFiles();
 // Bot timezone default = system timezone (never hardcoded UTC). Seed BITBOT_TZ
@@ -349,10 +384,6 @@ if (!String(process.env.BITBOT_TZ || "").trim()) {
     sysTz = Intl.DateTimeFormat().resolvedOptions().timeZone || process.env.TZ || "UTC";
   } catch (_) { /* ignore */ }
   process.env.BITBOT_TZ = sysTz;
-}
-// Product default: content moderation armed unless explicitly disabled.
-if (process.env.BITBOT_CONTENT_MODERATION === undefined) {
-  process.env.BITBOT_CONTENT_MODERATION = "1";
 }
 
 const ALLOWED_SECRET_KEYS = new Set([
@@ -458,20 +489,47 @@ function upsertDesktopEnvLocal(patch) {
     .sort()
     .map((k) => `${k}=${current[k]}`)
     .join("\n");
-  fs.writeFileSync(
-    DESKTOP_ENV_LOCAL,
-    header + (body ? body + "\n" : ""),
-    { mode: 0o600 },
-  );
+  try {
+    fs.writeFileSync(
+      DESKTOP_ENV_LOCAL,
+      header + (body ? body + "\n" : ""),
+      { mode: 0o600 },
+    );
+  } catch (err) {
+    /* 写不进去必须回一句人话，而不是把主进程炸掉。装机后只读/权限异常时
+       Settings 会拿到 ok:false + env_local_unwritable，用户知道该去哪儿看；
+       热加载部分（process.env）仍已生效，本次会话可用。 */
+    return {
+      ok: false,
+      error: "env_local_unwritable",
+      path: DESKTOP_ENV_LOCAL,
+      applied,
+      pretend_saved: false,
+      detail: err && err.message ? err.message : String(err),
+    };
+  }
   return {
     ok: true,
-    path: "hosts/desktop/.env.local",
+    path: DESKTOP_ENV_LOCAL,
     applied,
     pretend_saved: false,
   };
 }
 
-syncInjectedSecretsToEnvLocal();
+/* 同步注入的密钥是「顺手帮忙」，不能成为启动的单点。写不进去（装机后的
+   只读位置、权限异常）要带着原因继续跑，交给 IPC 层如实回话。 */
+try {
+  syncInjectedSecretsToEnvLocal();
+} catch (err) {
+  process.stderr.write(
+    "[desktop] secret sync skipped: " + (err && err.message ? err.message : String(err)) + "\n",
+  );
+}
+
+// 产品默认：内容审核默认开启，除非用户显式关掉。现在才填，见上面的注释。
+if (process.env.BITBOT_CONTENT_MODERATION === undefined) {
+  process.env.BITBOT_CONTENT_MODERATION = "1";
+}
 
 const runner = createTurnRunner(REPO_ROOT, { dataRoot: DATA_ROOT, moonBin: MOON_BIN, kernelBin: KERNEL_BIN });
 let releaseActiveTurnCancel = null;
@@ -493,6 +551,10 @@ const { computePrivacyStatus } = require(path.join(
 let mainWindow = null;
 let tray = null;
 let routineDaemonChild = null;
+/* GP-170: in-process routine sweep. Exactly one wake source at a time: the
+ * shell daemon when it is actually running, otherwise this timer. */
+let desktopSweepTimer = null;
+let desktopSweepInFlight = false;
 /* 「用户真的要退出」这一件事必须有一个明确来源。窗口的 close 事件无法区分
  * 「用户点了红叉」和「退出流程正在关窗」—— 两者都是 close。没有这个标志，
  * 下面 close 里的 preventDefault 就会把 Cmd+Q / 菜单退出一起取消掉，
@@ -510,6 +572,26 @@ const DAEMON_AUTOSTART =
     ? true
     : process.env.BITBOT_ROUTINE_DAEMON_AUTOSTART === "1";
 
+/* GP-170 — the app itself must be a wake source.
+ *
+ * History: wakes were 100% delegated to scripts/host_routine_daemon.sh (bash).
+ * That script is not in hosts/desktop/package.json build.files, and Windows has
+ * no /bin/bash, so an installed app never swept anything. Every Electron gate
+ * also sets BITBOT_ROUTINE_DAEMON_AUTOSTART=0, so nothing ever noticed.
+ *
+ * Now the main process runs routine_tick itself whenever the shell daemon is
+ * not running. Default cadence matches the daemon (60s); 0 disables it
+ * (deterministic-quiet gates), and BITBOT_DESKTOP_SWEEP_MS shortens it in
+ * gates. Only an optional field (desktop_sweep:true) is added to the tick
+ * payload — the existing routine payload contract is untouched.
+ */
+const DESKTOP_SWEEP_MS = (() => {
+  const raw = process.env.BITBOT_DESKTOP_SWEEP_MS;
+  if (raw === undefined || raw === "") return 60000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 60000;
+})();
+
 /** Linux XDG autostart .desktop (Electron setLoginItemSettings is weak on Linux). */
 function applyLinuxXdgAutostart(enabled) {
   const home = process.env.HOME || "";
@@ -525,9 +607,14 @@ function applyLinuxXdgAutostart(enabled) {
     return { ok: true, openAtLogin: false, path: desk, removed: true };
   }
   fs.mkdirSync(dir, { recursive: true });
+  /* 装机后不能把 __dirname 当 app 路径传：它在 asar 里，桌面环境的 Exec
+     既不认 `app.asar`（没有可执行位）也不会帮你加参数。装好的应用就是
+     execPath 本身；开发态才需要把 main.js 目录交给 electron。 */
   const execLine = process.env.BITBOT_DESKTOP_AUTOSTART_EXEC
     ? String(process.env.BITBOT_DESKTOP_AUTOSTART_EXEC)
-    : `"${process.execPath}" "${path.join(__dirname)}"`;
+    : app.isPackaged
+      ? `"${process.execPath}"`
+      : `"${process.execPath}" "${path.join(__dirname)}"`;
   const body =
     "[Desktop Entry]\n" +
     "Type=Application\n" +
@@ -600,6 +687,26 @@ function ensureRoutineDaemon() {
       pid: routineDaemonChild.pid,
     };
   }
+  /* GP-170: the shell daemon only exists in a source checkout. In an installed
+   * app REPO_ROOT is null (or lacks scripts/) and Windows has no /bin/bash.
+   * Report that honestly instead of throwing inside whenReady — the in-process
+   * sweep below is what keeps the machine awake in those layouts. */
+  if (!REPO_ROOT) {
+    return {
+      ok: false,
+      error: "repo_root_unavailable",
+      note: "installed layout: no scripts/ to run; desktop in-process sweep takes over",
+      fallback: "desktop_sweep",
+    };
+  }
+  if (process.platform === "win32") {
+    return {
+      ok: false,
+      error: "daemon_script_needs_bash",
+      note: "no /bin/bash on Windows; desktop in-process sweep takes over",
+      fallback: "desktop_sweep",
+    };
+  }
   const script = path.join(REPO_ROOT, "scripts", "host_routine_daemon.sh");
   if (!fs.existsSync(script)) {
     return { ok: false, error: "missing scripts/host_routine_daemon.sh" };
@@ -632,6 +739,17 @@ function ensureRoutineDaemon() {
         `[routine-daemon] exited code=${code}\n`,
       );
       routineDaemonChild = null;
+      // GP-170: daemon 走了，桌面定时器接手 —— 不能让「开着电脑」空转。
+      syncWakeSource();
+    });
+    /* spawn /bin/bash 失败（例如被裁剪的镜像）会 emit 'error'；没有监听器时
+       Node 会把它升级成未捕获异常，整个主进程崩掉。这里落一笔并交给 sweep。 */
+    routineDaemonChild.on("error", (err) => {
+      process.stderr.write(
+        `[routine-daemon] spawn failed: ${err && err.message ? err.message : err}\n`,
+      );
+      routineDaemonChild = null;
+      syncWakeSource();
     });
     return {
       ok: true,
@@ -747,6 +865,158 @@ function stopRoutineDaemon(signal) {
   } catch (_) {
     /* ignore */
   }
+}
+
+/** 关掉常驻内核池（T1-07）。`stop()` 的语义是「关上 stdin，让内核见 EOF 自己收摊」，
+ *  不需要信号；但 before-quit 里不能 await，所以真正的兜底是 will-quit 那一记 SIGKILL。
+ *  即使两记都没落地也不会留孤儿：主进程一退，管道写端就关闭，内核读到 EOF 必然退出。 */
+function stopResidentKernel() {
+  try {
+    if (runner && typeof runner.stopKernel === "function") runner.stopKernel();
+  } catch (_) {
+    /* 退出路径上的异常不许挡住关闭 */
+  }
+}
+
+function killResidentKernel() {
+  let pids = [];
+  try {
+    const st = runner && typeof runner.kernelStats === "function" ? runner.kernelStats() : null;
+    pids = (st && st.pids) || [];
+  } catch (_) {
+    pids = [];
+  }
+  for (const pid of pids) {
+    try {
+      process.kill(Number(pid), "SIGKILL");
+    } catch (_) {
+      /* 已经退了 */
+    }
+  }
+}
+
+/** daemon 现在还活着吗？（child.killed 只表示信号发过，退出码才是真相） */
+function routineDaemonAlive() {
+  const child = routineDaemonChild;
+  return !!child && !child.killed && child.exitCode === null && child.signalCode === null;
+}
+
+/** 把一轮 sweep 如实写进 data/routines/desktop-sweep.jsonl（失败也写）。
+ *  这是 App 自己的运行日志，不是用户数据：超过 1MB 只保留最近 500 行，
+ *  否则一个常年开着的桌面端会把磁盘写成无止境。 */
+function appendDesktopSweepRow(row) {
+  try {
+    const dir = path.join(DATA_ROOT, "routines");
+    fs.mkdirSync(dir, { recursive: true });
+    const p = path.join(dir, "desktop-sweep.jsonl");
+    try {
+      if (fs.statSync(p).size > 1000000) {
+        const kept = fs
+          .readFileSync(p, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .slice(-500);
+        fs.writeFileSync(p, kept.join("\n") + "\n");
+      }
+    } catch (_) {
+      /* 文件还不存在 */
+    }
+    fs.appendFileSync(p, JSON.stringify(row) + "\n");
+  } catch (_) {
+    /* 记账失败不能把定时器带崩 */
+  }
+}
+
+/** 走一遍 routine_tick —— 和 shell daemon 每轮跑的是同一个 Host 效果。
+ *  single-flight：上一轮还在等内核 / 转交重试时，这一轮如实记
+ *  skipped_in_flight，不并发、也不谎报跑过。 */
+async function runDesktopSweep(reason) {
+  const startedAt = new Date().toISOString();
+  if (quitRequested) return null;
+  if (desktopSweepInFlight) {
+    appendDesktopSweepRow({
+      mode: "desktop_sweep",
+      started_at: startedAt,
+      ended_at: new Date().toISOString(),
+      reason: String(reason || "interval"),
+      skipped_in_flight: true,
+      tick_ok: false,
+    });
+    return null;
+  }
+  desktopSweepInFlight = true;
+  const row = {
+    mode: "desktop_sweep",
+    started_at: startedAt,
+    reason: String(reason || "interval"),
+    tick_ok: false,
+  };
+  try {
+    const results = await ffi.executeHostEffects(
+      [{ kind: "routine_tick", command: "desktop-sweep" }],
+      { sessionId: "desktop-sweep", desktopSweep: true },
+    );
+    const hit = (results || []).find(
+      (r) => r && (r.kind === "routine_tick" || r.kind === "routine_wake"),
+    );
+    let payload = {};
+    try {
+      payload = JSON.parse((hit && hit.stdout) || "{}");
+    } catch (_) {
+      payload = {};
+    }
+    row.tick_ok = Boolean(hit && hit.ok);
+    row.tick_at = payload.at || null;
+    row.due_count = payload.due_count != null ? payload.due_count : null;
+    row.fired_count = payload.fired_count != null ? payload.fired_count : null;
+    // 挂账转交搭同一班车（GP-168）；这里如实转述，不做第二次判断。
+    row.handoff_retry = (hit && hit.handoff_retry) || payload.handoff_retry || null;
+    if (!row.tick_ok) row.error = (hit && (hit.error || hit.stderr)) || "routine_tick_failed";
+  } catch (err) {
+    row.error = String((err && err.message) || err);
+  } finally {
+    desktopSweepInFlight = false;
+    row.ended_at = new Date().toISOString();
+    appendDesktopSweepRow(row);
+  }
+  return row;
+}
+
+function startDesktopSweep() {
+  if (quitRequested) return { ok: false, skipped: true, reason: "quitting" };
+  if (desktopSweepTimer) {
+    return { ok: true, already_running: true, interval_ms: DESKTOP_SWEEP_MS };
+  }
+  if (!(DESKTOP_SWEEP_MS > 0)) {
+    return { ok: false, skipped: true, reason: "BITBOT_DESKTOP_SWEEP_MS=0" };
+  }
+  // 开机先扫一轮：已经到点的任务不必等满一个周期。
+  void runDesktopSweep("startup");
+  desktopSweepTimer = setInterval(() => {
+    void runDesktopSweep("interval");
+  }, DESKTOP_SWEEP_MS);
+  return { ok: true, interval_ms: DESKTOP_SWEEP_MS, desktop_sweep: true };
+}
+
+function stopDesktopSweep() {
+  if (!desktopSweepTimer) return;
+  try {
+    clearInterval(desktopSweepTimer);
+  } catch (_) {
+    /* ignore */
+  }
+  desktopSweepTimer = null;
+}
+
+/** 只留一个唤醒源：daemon 在跑就用 daemon，否则 App 自己扫。
+ *  两个同时扫会争同一批到期任务（可能重复触发发文/发邮件）。 */
+function syncWakeSource() {
+  if (quitRequested) return null;
+  if (routineDaemonAlive()) {
+    stopDesktopSweep();
+    return { wake_source: "routine_daemon" };
+  }
+  return Object.assign({ wake_source: "desktop_sweep" }, startDesktopSweep());
 }
 
 /** 唯一的退出入口：托盘菜单、应用菜单的 role:"quit" 最终都落到 before-quit，
@@ -2307,7 +2577,12 @@ ipcMain.handle("bitbot:daemon:status", async () => {
   };
 });
 
-ipcMain.handle("bitbot:daemon:ensure", async () => ensureRoutineDaemon());
+ipcMain.handle("bitbot:daemon:ensure", async () => {
+  const res = ensureRoutineDaemon();
+  // 手动拉起 daemon 之后重新分工：daemon 在跑就不再让主进程定时器抢。
+  syncWakeSource();
+  return res;
+});
 
 ipcMain.handle("bitbot:llm:status", async () => {
   try {
@@ -2320,7 +2595,7 @@ ipcMain.handle("bitbot:llm:status", async () => {
       base_url: cfg.base_url,
       key_configured: Boolean(cfg.key_configured),
       key_source: cfg.key_source,
-      env_local_hint: "hosts/desktop/.env.local",
+      env_local_hint: app.isPackaged ? DESKTOP_ENV_LOCAL : "hosts/desktop/.env.local",
       pretend_ready: false,
     };
   } catch (err) {
@@ -2466,9 +2741,11 @@ ipcMain.handle("bitbot:secrets:status", async () => {
     fields[k] = {
       present: m.present,
       masked: m.masked,
-      // Non-secret toggles / urls may show value when short and non-key-like
+      // Non-secret toggles / urls may show value when short and non-key-like.
+      // `_MODERATION` 必须回读：凭证页的复选框靠它回填；漏了就会从「未勾选」
+      // 开始，用户只是填个 key 保存，就会把默认开启的审核门写成 0（GP-173）。
       value:
-        /_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|_TOUSER$|_FILING$|_FEED_URL$|_PROVIDER$|_API_BASE$/.test(
+        /_POST$|_MODEL$|_BASE_URL$|_CHAT_ID$|_AGENT_ID$|_TOUSER$|_FILING$|_FEED_URL$|_PROVIDER$|_API_BASE$|_MODERATION$/.test(
           k,
         ) && !/_TOKEN$|_KEY$|_WEBHOOK$/.test(k)
           ? String(process.env[k] || "")
@@ -2483,7 +2760,9 @@ ipcMain.handle("bitbot:secrets:status", async () => {
   }
   return {
     ok: true,
-    path: "hosts/desktop/.env.local",
+    /* 装机后 .env.local 在 userData 下（GP-172）；这里曾经硬编码 dev 相对路径，
+       导致界面上「配置文件位置」指向一个用户机器上根本不存在的路径（GP-173）。 */
+    path: DESKTOP_ENV_LOCAL,
     fields,
     llm: llm
       ? {
@@ -2765,9 +3044,9 @@ ipcMain.handle("bitbot:product:status", async () => {
     String(process.env.BITBOT_ALGORITHM_FILING || "").trim(),
   );
   const moderation = process.env.BITBOT_CONTENT_MODERATION === "1";
-  const otaFeed = Boolean(
-    String(process.env.BITBOT_UPDATE_FEED_URL || "").trim(),
-  );
+  const otaFeed =
+    Boolean(String(process.env.BITBOT_UPDATE_FEED_URL || "").trim()) ||
+    (app.isPackaged && hasBakedGithubFeed());
   return {
     ok: true,
     desktop_first: true,
@@ -2808,16 +3087,6 @@ ipcMain.handle("bitbot:ota:check", async () => {
       pretend_update: false,
     };
   }
-  if (!feed) {
-    otaState.error = "BITBOT_UPDATE_FEED_URL not set";
-    persistOtaState();
-    return {
-      ok: false,
-      residual: true,
-      error: otaState.error,
-      pretend_update: false,
-    };
-  }
   if (!app.isPackaged) {
     otaState.error = "OTA check only in packaged app (npm run dist)";
     persistOtaState();
@@ -2830,7 +3099,9 @@ ipcMain.handle("bitbot:ota:check", async () => {
     };
   }
   try {
-    autoUpdater.setFeedURL({ provider: "generic", url: feed });
+    // Self-hosted override: explicit generic feed. Otherwise rely on the baked
+    // github provider (GitHub Releases) — no env needed.
+    if (feed) autoUpdater.setFeedURL({ provider: "generic", url: feed });
     autoUpdater.autoDownload = false;
     otaState.update_downloaded = false;
     otaState.last_check = new Date().toISOString();
@@ -3707,6 +3978,9 @@ function pairingState() {
     lan_ips: ips,
     lan_detail: detail,
     pair_base: base,
+    // 「复制配对链接」复制出去的东西必须真是一页能打开的纸（G-68）：
+    // 裸 base_url 点开是 JSON 404，那不叫链接。可选字段，老客户端忽略即可。
+    pair_page_url: base ? base + "/pair" : "",
     pair_scope: detail.length ? String(detail[0].scope || "") : "",
     turn_urls: ips.map((ip) => `http://${ip}:${port}/v1/turn`),
     loopback_url: port ? `http://127.0.0.1:${port}/v1/turn` : "",
@@ -3755,17 +4029,23 @@ ipcMain.handle("bitbot:pairing:token", async () => {
 /** 手机上手敲 64 位令牌不是「走通」，所以给一个复制入口。 */
 ipcMain.handle("bitbot:pairing:copy", async (_e, what) => {
   const st = pairingState();
+  const kind = String(what || "url");
   // 复制出去的就是「凭证」里那一栏要的东西：配对地址（http://ip:port）。
   // 路径由手机端自己补，用户多抄一段 /v1/turn 反而容易出错。
-  const text =
-    what === "token" ? turnTokenValue() : (st.pair_base || st.loopback_base || "");
+  // kind=page 是「移动端远程控制」弹窗那条主路：复制**配对链接**（点开是说明页），
+  // 不是裸地址 —— 名字叫链接的东西点开必须是页面。
+  let text;
+  if (kind === "token") text = turnTokenValue();
+  else if (kind === "page")
+    text = st.pair_page_url || (st.pair_base || st.loopback_base || "") + (st.pair_base || st.loopback_base ? "/pair" : "");
+  else text = st.pair_base || st.loopback_base || "";
   if (!text) return { ok: false, error: "nothing_to_copy" };
   try {
     clipboard.writeText(String(text));
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : String(err) };
   }
-  return { ok: true, kind: String(what || "url"), length: String(text).length };
+  return { ok: true, kind, length: String(text).length };
 });
 
 /**
@@ -3811,41 +4091,154 @@ app.whenReady().then(async () => {
     const stBoot = surface.settingsGet();
     if (stBoot && stBoot.appearance) applyAppearance(String(stBoot.appearance));
   } catch (_) { /* keep OS default */ }
-  // GP-A1: app menu with accelerators (Cmd/Ctrl+B sidebar, Cmd/Ctrl+N new chat).
-  const appMenu = Menu.buildFromTemplate([
-    {
-      label: "Bit Bot",
-      submenu: [
-        {
-          label: "新对话",
-          accelerator: "CmdOrCtrl+N",
-          click: () => {
-            sessions.create("新对话");
-            broadcast("bitbot:sessions-changed", sessions.list());
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.show();
-              mainWindow.focus();
-              mainWindow.webContents.send("bitbot:menu-new-chat", {});
-            }
-          },
-        },
-        {
-          label: "折叠/展开侧边栏",
-          accelerator: "CmdOrCtrl+B",
-          click: () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send("bitbot:menu-sidebar-toggle", {});
-            }
-          },
-        },
-        { type: "separator" },
-        { role: "quit", label: "退出" },
-      ],
+  // GP-A1 (revised): 完整产品菜单。应用名统一为 "Bit Bot"（避免 macOS 菜单栏
+  // 显示默认的 "Electron"），并补齐 关于 / 外观 / 设置 / 检查更新 / 窗口 / 帮助。
+  try { app.setName("Bit Bot"); } catch (_) { /* no-op */ }
+  try {
+    app.setAboutPanelOptions({
+      applicationName: "Bit Bot",
+      applicationVersion: app.getVersion(),
+      version: app.getVersion(),
+      copyright: "Bit Bot",
+    });
+  } catch (_) { /* no-op */ }
+
+  const openMain = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  };
+  const newChat = () => {
+    sessions.create("新对话");
+    broadcast("bitbot:sessions-changed", sessions.list());
+    openMain();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("bitbot:menu-new-chat", {});
+    }
+  };
+  const toggleSidebar = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("bitbot:menu-sidebar-toggle", {});
+    }
+  };
+  // 外观：写入持久化设置并立即切换原生主题（nativeTheme.themeSource 是唯一真相）。
+  const setAppearance = (mode) => {
+    try { surface.patchSettings({ appearance: mode }); } catch (_) { /* ignore */ }
+    applyAppearance(mode);
+    try {
+      broadcast("bitbot:settings-changed", { ok: true, settings: surface.getSettings() });
+    } catch (_) { /* ignore */ }
+  };
+  // 设置面板由渲染端承载：主进程只发事件，渲染端订阅 "bitbot:menu-open-settings"。
+  const openSettings = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("bitbot:menu-open-settings", {});
+    }
+  };
+  const checkForUpdates = () => {
+    try { autoUpdater.checkForUpdates(); }
+    catch (err) {
+      process.stderr.write(`[desktop] ota check failed: ${err && err.message ? err.message : err}\n`);
+    }
+  };
+
+  // 菜单标签不写死：按 language 取（zh / en，对齐内核 AskLanguage 的 Zh/En）。
+  // 语言变化时由渲染端经 "bitbot:menu-relocalize" 通知主进程重建。
+  const MENU_I18N = {
+    zh: {
+      appName: "Bit Bot",
+      about: "关于 Bit Bot",
+      newChat: "新对话",
+      toggleSidebar: "折叠/展开侧边栏",
+      appearance: "外观",
+      light: "浅色", dark: "深色", system: "跟随系统",
+      settings: "设置…", checkUpdates: "检查更新…", quit: "退出 Bit Bot",
+      edit: "编辑", view: "视图", reload: "重新加载", devTools: "开发者工具",
+      resetZoom: "重置缩放", zoomIn: "放大", zoomOut: "缩小", fullscreen: "进入/退出全屏",
+      window: "窗口", help: "帮助", openDataDir: "打开用户数据目录",
     },
-    { role: "editMenu", label: "编辑" },
-    { role: "viewMenu", label: "视图" },
-  ]);
-  Menu.setApplicationMenu(appMenu);
+    en: {
+      appName: "Bit Bot",
+      about: "About Bit Bot",
+      newChat: "New Chat",
+      toggleSidebar: "Toggle Sidebar",
+      appearance: "Appearance",
+      light: "Light", dark: "Dark", system: "System",
+      settings: "Settings…", checkUpdates: "Check for Updates…", quit: "Quit Bit Bot",
+      edit: "Edit", view: "View", reload: "Reload", devTools: "Developer Tools",
+      resetZoom: "Reset Zoom", zoomIn: "Zoom In", zoomOut: "Zoom Out", fullscreen: "Toggle Full Screen",
+      window: "Window", help: "Help", openDataDir: "Open User Data Folder",
+    },
+  };
+  const menuLangOf = (lang) => (lang && /zh/i.test(String(lang)) ? "zh" : "en");
+
+  const buildAppMenu = (lang) => {
+    const t = MENU_I18N[menuLangOf(lang)] || MENU_I18N.zh;
+    return Menu.buildFromTemplate([
+      {
+        label: t.appName,
+        submenu: [
+          { label: t.about, role: "about" },
+          { type: "separator" },
+          { label: t.newChat, accelerator: "CmdOrCtrl+N", click: newChat },
+          { label: t.toggleSidebar, accelerator: "CmdOrCtrl+B", click: toggleSidebar },
+          { type: "separator" },
+          {
+            label: t.appearance,
+            submenu: [
+              { label: t.light, click: () => setAppearance("light") },
+              { label: t.dark, click: () => setAppearance("dark") },
+              { label: t.system, click: () => setAppearance("system") },
+            ],
+          },
+          { type: "separator" },
+          { label: t.settings, accelerator: "CmdOrCtrl+,", click: openSettings },
+          { label: t.checkUpdates, click: checkForUpdates },
+          { type: "separator" },
+          { role: "quit", label: t.quit },
+        ],
+      },
+      { role: "editMenu", label: t.edit },
+      {
+        label: t.view,
+        submenu: [
+          { role: "reload", label: t.reload },
+          { role: "toggleDevTools", label: t.devTools },
+          { type: "separator" },
+          { role: "resetZoom", label: t.resetZoom },
+          { role: "zoomIn", label: t.zoomIn },
+          { role: "zoomOut", label: t.zoomOut },
+          { type: "separator" },
+          { role: "togglefullscreen", label: t.fullscreen },
+        ],
+      },
+      { role: "windowMenu", label: t.window },
+      {
+        label: t.help,
+        submenu: [
+          {
+            label: t.openDataDir,
+            click: () => { try { shell.openPath(app.getPath("userData")); } catch (_) { /* ignore */ } },
+          },
+          { type: "separator" },
+          { label: t.about, role: "about" },
+        ],
+      },
+    ]);
+  };
+
+  let currentMenuLang = menuLangOf((() => {
+    try { return (surface.getSettings() || {}).language; } catch (_) { return null; }
+  })());
+  Menu.setApplicationMenu(buildAppMenu(currentMenuLang));
+  // 渲染端侦测到语言变化后发来；lang 不变则跳过重建（避免每次设置改动都重排菜单）。
+  ipcMain.on("bitbot:menu-relocalize", (_e, lang) => {
+    const next = menuLangOf(lang);
+    if (next === currentMenuLang) return;
+    currentMenuLang = next;
+    Menu.setApplicationMenu(buildAppMenu(next));
+  });
   if (AUTOSTART_ENABLED) {
     const login = applyLoginItem(true);
     process.stdout.write(
@@ -3858,6 +4251,13 @@ app.whenReady().then(async () => {
   const daemon = ensureRoutineDaemon();
   process.stdout.write(
     `[desktop] routine-daemon ok=${daemon.ok} pid=${daemon.pid || "n/a"} long_lived=${daemon.long_lived || false}\n`,
+  );
+  /* GP-170: 装了 App 的机器上没有 scripts/host_routine_daemon.sh（Windows 连
+     /bin/bash 都没有）。daemon 起不来时由主进程自己扫，保证「开着电脑」本身就是
+     唤醒源；daemon 真的在跑时让位，避免两个唤醒源争同一批到期任务。 */
+  const wake = syncWakeSource();
+  process.stdout.write(
+    `[desktop] wake-source ${wake && wake.wake_source} interval_ms=${(wake && wake.interval_ms) || 0}\n`,
   );
   try {
     const inbound = await ensureCnInbound();
@@ -3884,11 +4284,17 @@ app.whenReady().then(async () => {
  * createWindow 里面。 */
 app.on("before-quit", () => {
   quitRequested = true;
+  // GP-170: 定时器先停，免得退出过程中还在起新回合。
+  stopDesktopSweep();
   // 早点发 SIGTERM，给 daemon 收尾的时间；will-quit 里再兜底 SIGKILL。
   stopRoutineDaemon("SIGTERM");
+  // 常驻内核同理：先请它自己收摊（关 stdin），will-quit 再兜底。
+  stopResidentKernel();
 });
 
 app.on("will-quit", () => {
+  // 兜底：即使 before-quit 没走到，退出时也不留下定时器。
+  stopDesktopSweep();
   try {
     globalShortcut.unregisterAll();
   } catch (_) {
@@ -3898,6 +4304,7 @@ app.on("will-quit", () => {
   // 这里补一记 SIGKILL —— 否则主进程一退，daemon 就成了孤儿进程，
   // 下一次启动时还会撞上「旧实例没清干净」。
   stopRoutineDaemon("SIGKILL");
+  killResidentKernel();
   if (tray) {
     try {
       tray.destroy();

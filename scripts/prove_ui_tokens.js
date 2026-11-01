@@ -33,11 +33,11 @@ const HTML = path.join(REPO, "hosts/desktop/index.html");
    从 346 降到 198；hex 也从 141 降到 139（新色值全部用 color-mix 从 token
    混出来，没有新增字面色）。 */
 const BASE = {
-  cssImportant: 189,
+  cssImportant: 180,
   /* 2026-10-24 W0 落地后重锚：0a 调色去重 + 0b 折第二套家族，css hex 139 → 57（82 个预算槽供 W1-W5 消费） */
-  cssHex: 57,
-  htmlHex: 28,
-  htmlInlineFont: 24,
+  cssHex: 55,
+  htmlHex: 26,
+  htmlInlineFont: 13,
   cssAttrPatch: 5,
 };
 

@@ -11,9 +11,7 @@ test "acceptance_CM-1803_shopping_retail_playbooks_dispatch" {
   // Dispatch usable for Target / BestBuy / Costco.
   for
     url in [
-      "https://www.target.com/p/abc",
-      "https://www.bestbuy.com/site/xyz",
-      "https://www.costco.com/grocery",
+      "https://www.target.com/p/abc", "https://www.bestbuy.com/site/xyz", "https://www.costco.com/grocery",
     ] {
     match @skills.dispatch_shopping_playbook(url) {
       Err(e) => fail(e)
@@ -25,7 +23,9 @@ test "acceptance_CM-1803_shopping_retail_playbooks_dispatch" {
       }
     }
   }
-  assert_true(@skills.shopping_skill_trigger_hit("shop at Target for headphones"))
+  assert_true(
+    @skills.shopping_skill_trigger_hit("shop at Target for headphones"),
+  )
   assert_true(@skills.shopping_skill_trigger_hit("https://www.bestbuy.com/"))
   // Non-retail site must not dispatch as shopping.
   match @skills.dispatch_shopping_playbook("https://www.resy.com/") {

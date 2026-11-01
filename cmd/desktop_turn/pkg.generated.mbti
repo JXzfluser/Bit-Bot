@@ -166,6 +166,13 @@ pub(all) struct DesktopTurnResult {
 } derive(Eq, @debug.Debug)
 pub fn DesktopTurnResult::to_json_line(Self) -> String
 
+type ProductFfiHost
+pub fn ProductFfiHost::deliver(Self, String) -> Unit
+pub fn ProductFfiHost::exec_tool(Self, String, String) -> String
+pub fn ProductFfiHost::llm_chat(Self, Array[@runtime.LoopMessage]) -> @runtime.LlmChatReply
+pub fn ProductFfiHost::request_approval(Self, String, String) -> @runtime.ApprovalVerdict
+pub impl @runtime.AgentLoopHost for ProductFfiHost
+
 pub(all) enum ProductToolAction {
   DescribeSchedule(description~ : String)
   CreateTeammate(id~ : String, name~ : String, role~ : String)

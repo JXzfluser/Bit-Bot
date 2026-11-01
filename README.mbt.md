@@ -4,6 +4,14 @@
 
 See [docs/scaffold-status.md](docs/scaffold-status.md), [docs/capability-matrix.md](docs/capability-matrix.md), [docs/adr/0005-course-correct-moonbit-desktop.md](docs/adr/0005-course-correct-moonbit-desktop.md), [hosts/README.md](hosts/README.md).
 
+**用户向**：[快速上手](docs/user/quickstart.md) · [FAQ](docs/user/faq.md) · [故障排查](docs/user/troubleshooting.md)。
+**参与开发**：[CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md)。
+
+> `PASS` means **implemented with test evidence**, not "a user can reach it". The per-CM
+> reachability ledger is [docs/qa/product-readiness.md](docs/qa/product-readiness.md)
+> (`node scripts/prove_readiness_ledger.mjs`): 29 user / 10 partial / 64 test-only / 131 wired-unitemised.
+> Android is verified only for roster + one turn; do not reuse the desktop numbers there.
+
 ## Start Desktop (primary)
 
 ```bash

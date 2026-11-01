@@ -52,12 +52,7 @@ pub fn LiveHostConfig::with_display(
 pub fn LiveHostConfig::default_workspace(
   workspace_root~ : String = "/workspace",
 ) -> LiveHostConfig {
-  {
-    display: None,
-    workspace_root,
-    mcp_transport: None,
-    ui_automation: false,
-  }
+  { display: None, workspace_root, mcp_transport: None, ui_automation: false, }
 }
 
 ///|

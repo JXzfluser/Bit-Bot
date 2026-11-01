@@ -18,7 +18,7 @@ pub(all) struct JobSearchReadonlyResult {
   playbook_name : String
   /// Readonly: never mutates profile / applies / messages.
   readonly_ : Bool
-  hit_count : Int
+  hit_count : Int32
   snippets : Array[String]
 } derive(Eq, Debug)
 

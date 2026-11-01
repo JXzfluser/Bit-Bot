@@ -38,9 +38,7 @@ pub fn accommodation_site_ids() -> Array[SitePlaybookId] {
 
 ///|
 /// CM-1804: match utterance/URL to a travel vertical SKILL trigger.
-pub fn match_travel_skill_trigger(
-  utterance_or_url : String,
-) -> TravelVertical? {
+pub fn match_travel_skill_trigger(utterance_or_url : String) -> TravelVertical? {
   let lower = utterance_or_url.to_lower()
   // Rideshare keywords (no dedicated site-playbook in the 22-site family).
   if lower.contains("rideshare") ||
@@ -95,15 +93,17 @@ pub fn dispatch_travel_playbook(
     None => Err("no travel vertical trigger for: " + url_or_host)
     Some(Rideshare) =>
       // Rideshare is keyword SKILL hit; no site-playbook dispatch required.
-      Ok((
-        Rideshare,
-        {
-          playbook_name: "rideshare",
-          snippet: "RIDESHARE flow; STOP before payment confirm; REPORT outcome only",
-          read_first: true,
-          child_task_prompt: "[skill:rideshare]\nRIDESHARE flow; STOP before payment",
-        },
-      ))
+      Ok(
+        (
+          Rideshare,
+          {
+            playbook_name: "rideshare",
+            snippet: "RIDESHARE flow; STOP before payment confirm; REPORT outcome only",
+            read_first: true,
+            child_task_prompt: "[skill:rideshare]\nRIDESHARE flow; STOP before payment",
+          },
+        ),
+      )
     Some(v) => {
       let cat = SitePlaybookCatalog::seed_full_catalog()
       match cat.prepare_dispatch(url_or_host) {

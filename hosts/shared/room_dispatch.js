@@ -21,6 +21,38 @@
 
 const nowIso = () => new Date().toISOString();
 
+/**
+ * 总时限闸。
+ *
+ * 成员回合各自有超时（自决 30s / 成员 120s），但「自决 → 扇出 → 汇总 → 捡转交」
+ * 串起来仍可能拖很久（6 人群 = 6 次自决 + N 次成员回合 + 一次综合）。没有总闸时，
+ * 只要某一环不返回，桌面那侧的 IPC 就**永不回来**——用户看到的是「消息发出去了、
+ * 没人回、连报错都没有」，跟 Bot 故意不理他一模一样。
+ *
+ * 到闸即失败：如实报超时，并把这一轮写进群转录（由调用方补一条 final_report）。
+ */
+function withDeadline(promise, ms) {
+  const limit = Number(ms);
+  if (!Number.isFinite(limit) || limit <= 0) return Promise.resolve(promise);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error("room turn exceeded " + limit + "ms");
+      err.code = "room_turn_deadline";
+      reject(err);
+    }, limit);
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 /** 每次进入 = 一条新消息 = 一个新 id。渠道侧有稳定投递 id 时由调用方传入。 */
 function newMessageId(prefix) {
   const p = String(prefix || "msg");
@@ -36,6 +68,7 @@ function newMessageId(prefix) {
  *                               用户再发一遍 ⇒ 新 id ⇒ 新的任务
  * @param {object} [o.deps]       扇出依赖(runResponderTurn / selectResponders / synthesize …)
  * @param {boolean} [o.force]     显式重跑:忽略幂等命中
+ * @param {number}  [o.deadlineMs] 本轮总时限(默认 BITBOT_ROOM_TURN_DEADLINE_MS / 300s)
  * @param {string} [o.now]
  */
 async function dispatchRoomTurn(o) {
@@ -57,6 +90,12 @@ async function dispatchRoomTurn(o) {
 
   // 幂等键:投递 id 优先,没有就现生成一个(新的一次投递 = 新的任务)。
   const messageId = String(opts.messageId || "").trim() || newMessageId("room-msg");
+
+  // 总时限。Host 侧的总闸比渲染层的兜底略短：先由 Host 如实收口,
+  // 渲染层那份只是「Host 自己也卡住」时的最后一道防线。
+  const deadlineMs = Number(
+    (opts && opts.deadlineMs) || process.env.BITBOT_ROOM_TURN_DEADLINE_MS || 300000,
+  );
 
   // 1) 路由:谁该回、怎么回,由 roomTurn 决定(@点名 / 全员 / 成员自决)。
   let routed;
@@ -123,24 +162,53 @@ async function dispatchRoomTurn(o) {
 
   let res;
   try {
-    res = await surface.orchestrateRoom({
-      room: roomId,
-      task: text,
-      to: entry.responders || [],
-      policy: entry.responder_policy || "",
-      message_id: messageId,
-      force: Boolean(opts.force),
-      report: opts.report,
-      deps: opts.deps || {},
-    });
+    res = await withDeadline(
+      surface.orchestrateRoom({
+        room: roomId,
+        task: text,
+        to: entry.responders || [],
+        policy: entry.responder_policy || "",
+        message_id: messageId,
+        force: Boolean(opts.force),
+        report: opts.report,
+        deps: opts.deps || {},
+      }),
+      deadlineMs,
+    );
   } catch (e) {
+    // 到闸 = 这一轮没能在时限内收齐。**如实**说超时,并往群里落一条汇报：
+    // 否则群里只剩用户那一句，看起来就像「没人理」。
+    const timedOut = (e && e.code) === "room_turn_deadline";
+    if (timedOut && typeof surface.appendRoomTranscript === "function") {
+      try {
+        surface.appendRoomTranscript(roomId, {
+          kind: "final_report",
+          room_id: roomId,
+          responder_policy: entry.responder_policy || "",
+          task: String(text || "").slice(0, 200),
+          task_sig: roomId + "|" + messageId,
+          responders: [],
+          total: 0,
+          returned: 0,
+          partial: true,
+          skipped: true,
+          sections: [],
+          artifacts: [],
+          error: "room_turn_timeout",
+          at: now,
+        });
+      } catch (_) {
+        /* 汇报写不下去也不能把超时吞成成功 */
+      }
+    }
     return {
       ok: false,
-      error: "orchestrate_failed",
+      error: timedOut ? "room_turn_timeout" : "orchestrate_failed",
       detail: String((e && e.message) || e),
       mode: "host_room_dispatch",
       room_id: roomId,
       message_id: messageId,
+      deadline_ms: deadlineMs,
     };
   }
 
@@ -158,7 +226,25 @@ async function dispatchRoomTurn(o) {
     };
   }
 
-  // 4) 如实汇总:N/总,不是「成功」。
+  // 4) 顺手捡起「受理成立但这轮没答上」的转交凭据（GP-166）。
+  //    放在用户那句话已经落盘、本轮扇出已经跑完之后：捡起是搭同一班车，不是插队。
+  //    它失败不能把用户这轮的答案判成「没回」—— 但捡了几笔、有没有又卡住，
+  //    必须原样带在回包里（新增**可选**字段 handoff_retry，既有契约字段一个不动）。
+  let handoffRetry = null;
+  if (typeof surface.retryPendingHandoffs === "function") {
+    try {
+      handoffRetry = await surface.retryPendingHandoffs({ room: roomId, deps: opts.deps || {} });
+    } catch (e) {
+      handoffRetry = {
+        ok: false,
+        mode: "host_handoff_retry",
+        error: "handoff_retry_failed",
+        detail: String((e && e.message) || e),
+      };
+    }
+  }
+
+  // 5) 如实汇总:N/总,不是「成功」。
   const total = Number(res.total || 0);
   const returned = Number(res.returned || 0);
   return {
@@ -167,6 +253,10 @@ async function dispatchRoomTurn(o) {
     room_id: roomId,
     message_id: messageId,
     responder_policy: entry.responder_policy || "",
+    // GP-53 契约：审批/Secret 卡不进群 transcript，只进对应 Bot 私聊。
+    // roomTurn 把这个决定写在 escalations 上，扇出结果必须原样带出去——
+    // 否则桌面/CLI/移动端读到的路由信息里，唯独「升级去哪」没了，契约成了空话。
+    escalations: routed.escalations || "",
     responders: entry.responders || [],
     total,
     returned,
@@ -174,6 +264,7 @@ async function dispatchRoomTurn(o) {
     deduped: Boolean(res.deduped),
     skipped: Boolean(res.skipped),
     final_report: res.final_report || null,
+    handoff_retry: handoffRetry,
   };
 }
 

@@ -212,6 +212,8 @@ fun CapabilitiesSheet(
   enabled: Boolean,
   onPick: (String) -> Unit,
   onDismiss: () -> Unit,
+  templates: List<String> = emptyList(),
+  onPickTemplate: (String) -> Unit = {},
 ) {
   val state = rememberModalBottomSheetState()
   BitBotSheet(onDismiss = onDismiss, sheetState = state) {
@@ -223,6 +225,28 @@ fun CapabilitiesSheet(
     Column(Modifier.padding(horizontal = BitBotSpace.sm)) {
       actions.forEach { (label, turn) ->
         SheetActionRow(title = label, detail = turn, enabled = enabled, onClick = { onPick(turn) })
+      }
+      if (templates.isNotEmpty()) {
+        Spacer(Modifier.height(BitBotSpace.md))
+        Text(
+          "全部指令模板（${templates.size}）",
+          style = MaterialTheme.typography.titleMedium,
+          modifier = Modifier.padding(horizontal = BitBotSpace.lg, vertical = BitBotSpace.xs),
+        )
+        Text(
+          "点一条填进输入框；带 = 或空格的模板还要补参数，不直接发",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.padding(horizontal = BitBotSpace.lg, vertical = BitBotSpace.xs),
+        )
+        templates.forEach { template ->
+          SheetActionRow(
+            title = template,
+            detail = "填入输入框",
+            enabled = enabled,
+            onClick = { onPickTemplate(template) },
+          )
+        }
       }
     }
   }

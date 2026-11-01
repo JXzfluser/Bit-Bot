@@ -88,7 +88,7 @@
 
 | 命令 | exit | 摘要 |
 |------|------|------|
-| `bash scripts/host_matrix_i_sweep.sh all` | 0 | moon test ≥347；`live_host_ping=true`；artifacts `docs/qa/artifacts/h6-matrix-i/` ×193 + `SUMMARY.json`；`i_claimed=false`；`status=READY_FOR_I_REVIEW` |
+| `bash scripts/host_matrix_i_sweep.sh all` | 0 | moon test ≥452；`live_host_ping=true`；artifacts `docs/qa/artifacts/h6-matrix-i/` ×193 + `SUMMARY.json`；`i_claimed=false`；`status=READY_FOR_I_REVIEW` |
 
 ### 证据链
 

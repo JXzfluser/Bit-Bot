@@ -57,7 +57,7 @@ fn strip_markdown_links(text : String) -> String {
 
 ///|
 /// True when the single-unit slice at `i` terminates a URL token.
-fn url_terminator_at(text : String, i : Int) -> Bool {
+fn url_terminator_at(text : String, i : Int32) -> Bool {
   if i < 0 || i >= text.length() {
     return true
   }

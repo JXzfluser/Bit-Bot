@@ -3,9 +3,9 @@ import {
   "bitbot/bitbot/ui_protocol",
   "bitbot/bitbot/tools",
   "bitbot/bitbot/security",
-  "bitbot/bitbot/channels",
 }
 
 import {
+  "bitbot/bitbot/channels",
   "bitbot/bitbot/routines",
 } for "test"

@@ -953,6 +953,15 @@ def run_chrome_session(
         "--remote-allow-origins=*",
         f"--window-size=1100,800",
     ]
+    # 容器/CI 里以 root 跑时 Chrome 会直接退出（zygote_host: Running as root
+    # without --no-sandbox is not supported）。只给显式开启的 smoke 用，不改变
+    # 默认安全姿态；真实用户桌面（非 root）不会走到这里。
+    if os.environ.get("BITBOT_CU_CHROME_NO_SANDBOX", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        args.insert(1, "--no-sandbox")
     if gui_mode == "headless":
         args.insert(1, "--headless=new")
     else:

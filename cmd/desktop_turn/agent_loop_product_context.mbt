@@ -27,10 +27,7 @@
 /// 换个房间或换个 Bot 就不记得。
 ///
 /// 长期记忆(事实/偏好)是另一回事,那个是 per-Bot 的(`botMemorySlot`)。
-pub fn agent_context_slot(
-  bot_id : String,
-  session_id : String,
-) -> String {
+pub fn agent_context_slot(bot_id : String, session_id : String) -> String {
   let bot = bot_id.trim().to_owned()
   let session = session_id.trim().to_owned()
   let b = if bot == "" { "agent-bit" } else { bot }
@@ -74,6 +71,6 @@ pub fn agent_context_aligned(
   if decoded.session() == session_id {
     decoded
   } else {
-    { ..decoded, session_id: session_id, }
+    { ..decoded, session_id, }
   }
 }

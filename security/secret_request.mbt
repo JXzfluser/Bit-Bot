@@ -63,25 +63,17 @@ pub fn SecretRequestCard::assistant_sees_plaintext(
 
 ///|
 /// CM-1106: paste-token into chat is rejected.
+///
+/// The rule is `core/secret_shapes.mbt` — the same table the Host uses. This
+/// package used to carry its own, weaker copy: a substring list plus a
+/// blanket "32 characters with no spaces" rule that flagged every long
+/// opaque string (a bare UUID, a base64 blob, a git SHA) as a secret, while
+/// missing the shapes the Host actually catches (`API_KEY=…`, `api-key=…`,
+/// `xoxs-…`). One table, both sides.
 pub fn reject_paste_token_in_chat(text : String) -> Result[Unit, String] {
-  if looks_like_pasted_token(text) {
+  if @core.looks_like_secret(text) {
     Err("paste-token into chat rejected; use SecretRequest card")
   } else {
     Ok(())
-  }
-}
-
-///|
-fn looks_like_pasted_token(text : String) -> Bool {
-  let keys = [
-    "ghp_", "sk-", "xoxb-", "xoxp-", "AKIA", "BEGIN PRIVATE KEY", "api_key=", "Authorization: Bearer",
-  ]
-  for k in keys {
-    if text.contains(k) {
-      break true
-    }
-  } nobreak {
-    // Long opaque token-shaped string without spaces.
-    text.length() >= 32 && !text.contains(" ") && !text.contains("\n")
   }
 }

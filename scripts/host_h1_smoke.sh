@@ -10,6 +10,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "${ROOT}/scripts/lib/timeout_polyfill.sh"
 ART_ROOT="${ROOT}/docs/qa/artifacts"
 USER_IANA="${USER_IANA:-Asia/Shanghai}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"

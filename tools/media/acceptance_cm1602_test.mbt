@@ -45,7 +45,8 @@ test "acceptance_CM-1602_generate_video_queue_and_notify" {
     }
   }
   // Convenience generate_video still produces on-disk short.
-  match host.generate_video(prompt="sunset timelapse short", name="sunset.mp4") {
+  match
+    host.generate_video(prompt="sunset timelapse short", name="sunset.mp4") {
     Ok(art) => {
       assert_true(art.on_disk)
       assert_eq(art.mime, "video/mp4")

@@ -45,17 +45,8 @@ jobs:
         env:
           BITBOT_KERNEL_BUILD: debug
         run: |
-          # pack-desktop.sh also builds + smoke-runs the kernel and stages it
-          # into hosts/desktop/resources/kernel, which electron-builder ships
-          # via extraResources. The electron-builder step itself needs the
-          # Electron download, so we only assert the staging half here.
-          bash -c '
-            set -euo pipefail
-            export PATH="$HOME/.moon/bin:$PATH"
-            moon build --target native
-            mkdir -p hosts/desktop/resources/kernel/bin
-            cp _build/native/debug/build/cmd/desktop_turn/desktop_turn \
-               hosts/desktop/resources/kernel/bin/desktop_turn
-            test -x hosts/desktop/resources/kernel/bin/desktop_turn
-            echo "kernel staged into app resources"
-          '
+          # 只验「编译 + 暂存」这半段（electron-builder 那半要下载 Electron）。
+          # 解析产物名/拷贝/可执行位都在 scripts/stage_kernel.sh 一处：
+          # moon 的链接器在所有平台都给可执行文件加 .exe，这里以前写死
+          # `desktop_turn`，于是 Kernel Binary 红在一个产品代码根本不用的路径上。
+          bash scripts/stage_kernel.sh

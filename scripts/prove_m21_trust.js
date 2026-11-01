@@ -33,6 +33,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
+const { asarPathOf, fileSetFor } = require("./lib_pack_manifest.js");
 
 const REPO = path.resolve(__dirname, "..");
 const STUB_PORT = Number(process.env.BITBOT_M21_STUB_PORT || 8797);
@@ -398,12 +399,12 @@ async function main() {
     pkg = null;
   }
   const files = (pkg && pkg.build && pkg.build.files) || [];
-  files.includes("secret_protocol.js") && files.includes("secret_vault.js")
-    ? ok("打包清单包含 secret_protocol.js / secret_vault.js")
-    : bad("packaging", files.join(","));
+  const secretPacked = ["secret_protocol.js", "secret_vault.js"].map((m) => asarPathOf(files, m));
+  secretPacked.every((p) => p && /^desktop\/[^/]+$/.test(p))
+    ? ok("打包清单包含 secret_protocol.js / secret_vault.js（desktop/ 下）")
+    : bad("packaging", JSON.stringify(secretPacked));
 
-  const sharedFilter = files.find((f) => f && typeof f === "object" && f.to === "shared");
-  sharedFilter
+  fileSetFor(files, "shared")
     ? ok("共享目录随包发布（untrusted_fence.js / privacy_status.js 可达）")
     : bad("packaging shared", "shared dir not packaged");
 
