@@ -230,15 +230,27 @@ let app = null;
     /* ---------- LK-05 留空 = 不改动，界面上要说 ---------- */
     {
       const r = await pasteInto(win, "sec-llm-key", "");
+      /* 尺子为什么改成读两个地方（本轮实测，不是放宽断言）：
+         上游把「留空＝不改动」这句话从状态行**搬进了输入框的占位符**
+         （hosts/desktop/index.html:8349-8371：状态行现在是「已配置 ****xxxx · 要换就粘新的」，
+          占位符走 wavegT("credKeyPhSaved")，i18n :15752 / :16550 / :17348）。
+         文案搬位置是设计决定，用户仍然看得见；只盯 #sec-llm-mask 就是在测
+         「文案必须待在旧的那个元素里」——那跟上游怎么摆有关，跟用户能否走通无关。
+         所以三件事一件不减：留空不许报错、状态行要如实说已配置、
+         「留空＝不改动」必须在界面上（状态行或占位符，任一处都行，两处都空就红）。 */
       const headless = await win.evaluate(() => {
         const m = document.getElementById("sec-llm-mask");
-        return { mask: m ? String(m.textContent || "").trim() : "" };
+        const inp = document.getElementById("sec-llm-key");
+        return {
+          mask: m ? String(m.textContent || "").trim() : "",
+          placeholder: inp ? String(inp.placeholder || "").trim() : "",
+        };
       });
-      const saysKeep = /留空|不改|保持|不受影響|不受影响/.test(headless.mask);
+      const saysKeep = /留空|不改|保持|不受影響|不受影响|leave blank/i.test(headless.mask + " " + headless.placeholder);
       if (r.errShown) bad("LK-05 留空被当错了（留空就是不改动，不是错误）", JSON.stringify({ err: r.errText }));
       else if (!/已配置/.test(headless.mask)) bad("LK-05 状态行没有如实说已配置的密钥", JSON.stringify(headless));
       else if (!saysKeep) bad("LK-05 界面上没说清「留空＝不改动」——用户会以为留空能把旧 key 清掉，或者干脆不敢保存", JSON.stringify(headless));
-      else ok("LK-05 留空不报错，且状态行写明「留空＝不改动」：" + headless.mask.slice(0, 46));
+      else ok("LK-05 留空不报错，且界面写明「留空＝不改动」（状态行：" + headless.mask.slice(0, 30) + " / 占位：" + headless.placeholder.slice(0, 16) + "）");
     }
 
     /* ---------- LK-06 备用渠道与搜索 key 同规则 ---------- */

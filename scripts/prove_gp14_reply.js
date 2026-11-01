@@ -123,6 +123,18 @@ async function main() {
       return;
     }
     Object.assign(process.env, {
+      // GP-201：必须钉 provider。data/llm/active.json 停在 qwen 时，
+      // resolveLlmConfig()（hosts/shared/host_ffi.js:5289）用 qwen 的 scoped env
+      // 取值（scopedEnv :5322：provider 声明了自己的变量名而那个变量为空就返回空串，
+      // 不回落到全局 BITBOT_LLM_*），本门的 stub 于是被绕开。
+      // 复现原文（放 provider_id=qwen、api_key 空的 active.json，未钉桩）：
+      //   prove_gp14_reply: PASS=11 FAIL=5
+      //   ✗ GP-14 kernel 回显 — {"ok":false,…,"error":"当前供应商的密钥还没配置：
+      //     请在「设置 → 凭证」里填好密钥再试一次（本轮没有用本地兜底假装回答）"}
+      // 钉桩后同一份污染文件下：PASS=16 FAIL=0。
+      // deepseek 的 env_* 本来就是全局那组名字（:5188-5196），钉它等于
+      // 「stub 说的算」，不改任何被测行为。
+      BITBOT_LLM_PROVIDER: "deepseek",
       BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + STUB_PORT + "/v1",
       BITBOT_LLM_API_KEY: "gp14-probe-key",
       BITBOT_LLM_MODEL: "gp14-probe",
@@ -286,6 +298,7 @@ async function main() {
       } catch (_) {}
     }
     for (const k of [
+      "BITBOT_LLM_PROVIDER",
       "BITBOT_LLM_BASE_URL",
       "BITBOT_LLM_API_KEY",
       "BITBOT_LLM_MODEL",

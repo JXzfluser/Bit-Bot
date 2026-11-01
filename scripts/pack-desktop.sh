@@ -75,7 +75,10 @@ unset _v _val
 # 没配凭据时静默发出「未签名 / 未公证」包是自欺：Gatekeeper 会拦、electron-updater
 # 在 macOS 上会因 delta 签名校验失败拒绝安装 —— OTA 等于没闭环。所以 release 路径
 # 显式要求凭据；缺一项就在这里 fail（在内核编译之前，不浪费 7 分钟），绝不假装签过。
-# CI 仅在 v* tag 上置 BITBOT_REQUIRE_SIGN / BITBOT_REQUIRE_NOTARIZE。
+# CI 仅在发布 tag（v* 与 desktop-v*，见 .github/workflows/desktop-macos.yml 的
+# on.push.tags，A0-1 已把两处口径对齐）上置 BITBOT_REQUIRE_SIGN / BITBOT_REQUIRE_NOTARIZE。
+# 后果要说清楚：凭据未配时这一步是 exit 1 的**硬失败**，不再静默产出未签名包 ——
+# 发布路径上「红」比「绿但没签」诚实。
 # ---------------------------------------------------------------------------
 if [[ "${BITBOT_REQUIRE_SIGN:-0}" == "1" ]]; then
   if [[ -z "${CSC_LINK:-}" ]]; then

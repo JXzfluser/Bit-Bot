@@ -73,6 +73,54 @@ grid-template-areas:
 于是浏览器生成隐式 auto 列。480px 下实测 main 被挤到 380px、rail 74px、header 455px。
 窄视口规则必须同时写 `body, body.grok-ui`。
 
+### 3.2 窄窗口径变更（更正上面的 §3.1，2026-11-01）
+
+§3.1 的表格**保留原文**（它记录的是当时的合同），但从本轮实测起有两条不再成立。
+变更来自上游提交 `9d89d17`，不是门禁自己放宽标准，证据是代码里写明了设计意图：
+
+```
+hosts/desktop/index.html:18788-18791
+  // 侧栏收起改为「手动控制」：展开 ⇄ 完全隐藏。不再按窗口宽度强制收起
+  // （原 ≤768 自适应会与用户手动作反复对拉，已移除）。隐藏态下 #agents display:none，
+  // 左边缘浮一个细长重开条（#sidebar-reopen-tab）把侧栏再展开，避免「收起后找不到入口」。
+```
+
+同时窄窗的侧栏宽度在媒体查询里被压小：
+
+| 位置 | 事实 |
+|------|------|
+| `hosts/desktop/ui_chrome.css:134` | `--sidebar-w: 280px`（宽窗基准，`checkState` 仍按 280 断，未变） |
+| `hosts/desktop/index.html:2025-2047` | `@media (max-width: 900px)` 里 `--sidebar-w: 200px` + `"agents main" / "agents composer"` 两列 |
+
+于是 §3.1 里这两条要按下面读：
+
+1. **列**：窄窗不是「单列」，而是 `200px 紧凑文字侧栏 + 主列拿剩下的全部宽度`。
+   不变量从 `main.w == viewport` 改成 **`main.w == viewport − min(200, viewport)`**（折叠态 `== viewport`）。
+   用户最初抱怨的本质没变，也仍然被断着：**侧栏最多吃 200px，不许把聊天区挤没**。
+   `rail 必须覆盖而不是挤主列` 这条没删，它落在 rail 的宽度/右缘断言上（`min(340, vpW)`、右缘贴视口）。
+2. **sidebar**：「展开时占满整行」作废；折叠仍是 0 宽（`#agents display:none`），但**只能由用户手动进入**
+   （`#sidebar-toggle-btn` / `#sidebar-reopen-tab` / Cmd·Ctrl+B）。
+   按宽度自动收起/自动展开这条能力已经不存在，`e2e_desktop_sidebar_adapt` 原来的 R-02/R-03
+   测的是这个已删除的设计，继续留着只会红得没有意义。
+
+改成纯手动带来一个新风险，合同必须补一条，因为它正是「收起后找不到入口」的落点：
+
+> **D-L-14（新）** 窄窗与宽窗的**收起态**都必须有一个可见、可命中、能点回展开的重开条
+> （`#sidebar-reopen-tab`：`display != none`、宽高 > 0、`elementFromPoint(中心)` 命中的是它自己），
+> 点下去侧栏必须真的回来。自动收起时代「放宽窗口就回来了」这条兜底已经没有了。
+> 断言落在 `e2e_desktop_sidebar_adapt.mjs` 的 R-05（真实点击，不调内部函数）。
+
+对应门禁的改动（同一轮里做，红绿原文写在 `report.md`）：
+
+| 门 | 原来断什么 | 现在断什么 |
+|----|-----------|-----------|
+| `e2e_desktop_sidebar_adapt` | R-02 窄→自动收起、R-03 宽→自动展开 | R-02/R-03 `700`、`480` 档主列不被挤没（`main + agents == 视口`、无横向滚动、composer 完整在视口内）；R-04 手动收起后主列拿满视口；**R-05 收起态重开条可见可点、点得回来**；R-06 手动意图不被自动展开覆盖 |
+| `e2e_desktop_layout_target` | `narrow/*: main w ≠ viewport` | `main w == vpW − min(200, vpW)`（折叠 `== vpW`）、`agents w == min(200, vpW)`；另外两处的 `setPanel/applySidebarCollapse` **无条件内部函数调用**改成真实点击（那个符号已被上游删除，`ReferenceError` 一次就把整档 12 条断言全打成红） |
+
+这两处改动的判据是同一条：**尺子只能断用户看得见的事实**。
+引用一个不存在的内部函数不是断言，是坏的尺子；把「侧栏宽度」换写成「主列还剩多少」也不是放宽，
+因为抱怨的内容（聊天区被挤没）在原式子里根本没被量到。
+
 ## 4. 默认状态
 
 启动后（无用户操作、无 dev-mode）：`data-sidebar` 未设或 `expanded`、`data-panel="none"`、无调试面、无打开的 modal。MUST 由渲染门在 boot 后立即断言。
@@ -96,7 +144,12 @@ grid-template-areas:
 ## 7. 渲染门编号（`e2e_desktop_layout_target.mjs`）
 
 - **D-L-01..12** 几何：两档视口 × {none,bot,conv,computer,tools,collapsed} 的 §3 表断言 + §2 可见性/互斥 + §1 无第 4 列。
-- **D-L-13** 窄视口：900 / 700 / 480 三档 × 6 面板态的 §3.1 断言（单列、composer 在视口内且发送键不被 rail 盖住、rail 覆盖不挤主列、无横向滚动）。本门由 `smoke_grok_desktop_parity.sh` 的 G-46 聚合，CI 每次推送都真跑。
+- **D-L-13** 窄视口：900 / 700 / 480 三档 × 6 面板态的 §3.1 断言，**按 §3.2 更正后的口径执行**
+  （`main = 视口 − min(200, 视口)`、折叠态 `main = 视口`；composer 在视口内且发送键不被 rail 盖住、
+  rail 覆盖不挤主列、无横向滚动）。侧栏两态由真实点击（`#sidebar-toggle-btn` / `#sidebar-reopen-tab`）进入，
+  不再调用内部函数。本门由 `smoke_grok_desktop_parity.sh` 的 G-46 聚合，CI 每次推送都真跑。
+- **D-L-14** 收起态重开条（§3.2 新增）：`#sidebar-reopen-tab` 必须可见、宽高 > 0、中心命中自己，点下去侧栏真的回来。
+  断言在 `e2e_desktop_sidebar_adapt.mjs` R-05（同一档 G-46 聚合），因为改成纯手动后「放宽窗口自动回来」这条兜底已不存在。
 - **D-L-OVL**：区域矩形不重叠；交互元素不出区；无横向滚动。
 - **D-L-DIF**：前后截图逐区对比（掩码负面红）；误差红区 ≤2px 带宽外即 FAIL。
 - **D-C-01..03**：可见文案全量扫描（text/placeholder/title/aria-label）：zh-CN 无未豁免英文句、en 无汉字、三语键集合一致（`copy-contract.md` §4 口径）。

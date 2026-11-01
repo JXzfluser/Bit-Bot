@@ -72,6 +72,7 @@ const chatsBefore = fs.existsSync(CHATS) ? fs.readFileSync(CHATS, "utf8") : null
 const turnsBefore = fs.existsSync(TURNS_DIR) ? fs.readdirSync(TURNS_DIR) : [];
 const usageBefore = fs.existsSync(USAGE_STORE) ? fs.readFileSync(USAGE_STORE, "utf8") : null;
 const envBefore = {
+  provider: process.env.BITBOT_LLM_PROVIDER,
   base: process.env.BITBOT_LLM_BASE_URL,
   key: process.env.BITBOT_LLM_API_KEY,
   model: process.env.BITBOT_LLM_MODEL,
@@ -124,6 +125,11 @@ const sharedPath = require.resolve(path.join(REPO, "hosts/shared/host_ffi.js"));
 let ffi = require(sharedPath).createHostFfi(REPO);
 
 async function runLlmChat(port) {
+  // GP-201：钉 provider，理由同 prove_gp14_reply —— active.json 停在 qwen 时
+  // scopedEnv（hosts/shared/host_ffi.js:5322）不回落到全局 BITBOT_LLM_*，本门
+  // 打的就不是那个 stub。验证口径要如实：本轮只跑了「污染 fixture + 已钉桩」
+  // = PASS=14 FAIL=0，未对本门单独跑未钉桩对照（红的那两个是 gp14/gp93）。
+  process.env.BITBOT_LLM_PROVIDER = "deepseek";
   process.env.BITBOT_LLM_BASE_URL = "http://127.0.0.1:" + port + "/v1";
   process.env.BITBOT_LLM_API_KEY = "m28-probe-key";
   process.env.BITBOT_LLM_MODEL = "m28-probe-model";
@@ -212,6 +218,7 @@ function lastChatRow() {
       const ffi2 = require(sharedPath).createHostFfi(REPO);
       const s3 = await makeStub(true);
       try {
+        process.env.BITBOT_LLM_PROVIDER = "deepseek"; // GP-201，同 runLlmChat
         process.env.BITBOT_LLM_BASE_URL = "http://127.0.0.1:" + s3.port + "/v1";
         process.env.BITBOT_LLM_API_KEY = "m28-probe-key";
         process.env.BITBOT_LLM_MODEL = "m28-probe-model";
@@ -254,6 +261,7 @@ process.on("exit", (code) => {
     else fs.writeFileSync(USAGE_STORE, usageBefore);
   } catch (_) {}
   try {
+    if (envBefore.provider === undefined) delete process.env.BITBOT_LLM_PROVIDER; else process.env.BITBOT_LLM_PROVIDER = envBefore.provider;
     if (envBefore.base === undefined) delete process.env.BITBOT_LLM_BASE_URL; else process.env.BITBOT_LLM_BASE_URL = envBefore.base;
     if (envBefore.key === undefined) delete process.env.BITBOT_LLM_API_KEY; else process.env.BITBOT_LLM_API_KEY = envBefore.key;
     if (envBefore.model === undefined) delete process.env.BITBOT_LLM_MODEL; else process.env.BITBOT_LLM_MODEL = envBefore.model;

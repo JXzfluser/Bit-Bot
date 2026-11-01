@@ -1,17 +1,21 @@
 /* e2e_desktop_layout_target.mjs — Layout Contract v1 real-render gates.
  *
  * Launches the REAL app (hosts/desktop/main.js) through Electron under xvfb
- * at fixed 1440x900 and 1280x800 content-viewport windows, drives the single
- * panel state source (setPanel via evaluate), and asserts:
+ * at fixed 1440x900 and 1280x800 content-viewport windows, drives the panels
+ * through the documented state source (setPanel, typeof-guarded) and the
+ * sidebar through REAL USER ACTIONS (clicks on the product's own buttons —
+ * see the setSidebar comment below), and asserts:
  *   D-L-xx  geometry vs contract (header 56 / sidebar 280 / rail 340 /
  *           stream column <=760 / main = viewport - sidebar - rail, ±2px),
  *           region-rect non-overlap, no horizontal scroll, <=1 visible rail,
  *           panel=none contributes 0 rail width (no empty rail),
  *           default state at boot (sidebar expanded, panel none, no modal).
  *   D-L-13  narrow viewports (900 / 700 / 480 — the product minWidth): the
- *           shell is a single column, main = viewport, composer fully inside
- *           the viewport, rails become overlay drawers (never squeeze main),
- *           no horizontal scroll, regions still don't overlap.
+ *           sidebar is a compact 200px rail (index.html:2025-2047), main takes
+ *           everything left (main = viewport - min(200, viewport); collapsed =
+ *           viewport), composer fully inside the viewport, rails become overlay
+ *           drawers (never squeeze main), no horizontal scroll, regions still
+ *           don't overlap. Caliber change and its evidence: layout-contract.md §3.2.
  *   D-D-xx  debug surfaces absent by default; present with dev-mode.
  *   D-C-xx  visible-copy scan (zh-CN no unlisted English; keys 3-lang parity).
  * Skips honestly (and prints SKIP with the reason) when electron/xvfb are
@@ -21,6 +25,7 @@
  */
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { execSync } from "child_process";
@@ -31,7 +36,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
-const OUT = path.join(REPO, "docs/design/desktop-target/reference");
+/* 证据落点（本轮实测的病）：这两张 live-*.png 是**已跟踪文件**，而本门每次跑都往
+   reference/ 重写它们 —— 后果不是难看，是**门禁会把工作树弄脏**，于是「本轮真的改
+   了什么」混在一堆无害的字节差异里看不见（同一轮里 report.md 被截成 182 行就是这么
+   漏掉的）。默认改写到 /tmp；要刷新入仓的那两张，必须显式 BITBOT_LAYOUT_SHOT_COMMIT=1，
+   让「更新对外证据」成为一次有意识的动作。仓里已提交的那份仍是真跑产物，不是占位。 */
+const OUT = process.env.BITBOT_LAYOUT_SHOT_COMMIT === "1"
+  ? path.join(REPO, "docs/design/desktop-target/reference")
+  : (process.env.BITBOT_LAYOUT_SHOT_DIR ||
+     path.join(os.tmpdir(), "bitbot-layout-target-live"));
 let PASS = 0, FAIL = 0, SKIP = 0;
 const ok = (m) => { PASS++; console.log("  ✓ " + m); };
 const bad = (m, d) => { FAIL++; console.log("  ✗ " + m + (d ? " — " + String(d).slice(0, 240) : "")); };
@@ -65,6 +78,9 @@ const require = createRequire(path.join(REPO, "hosts/desktop/package.json"));
 const { _electron } = require("playwright-core");
 
 const BAND = 2;
+/* 窄窗侧栏宽度上限（layout-contract.md §3.2）：≤900 时产品把 --sidebar-w 压到 200px
+   （index.html:2025 媒体查询、:2040 变量），主列拿剩下的。D-L-13 的成功文案也引用它。 */
+const NARROW_SIDEBAR_MAX = 200;
 const near = (a, b) => Math.abs(a - b) <= BAND;
 
 /* The shell hides to tray on window close (main.js win.on("close")); a bare
@@ -173,16 +189,26 @@ function checkState(g, vpW, state) {
   if (g.msgMax > 760 + 0.5) bad(`${state}: msg column ${g.msgMax} > 760`);
 }
 
-/* Narrow widths use a different contract (§1 single column, rails overlay).
- * The product window minWidth is 480, so 480 is the floor, not a hypothetical.
- * 900 is the breakpoint itself — included so a specificity regression (the
- * old `body.grok-ui` areas beat the media query) cannot silently return. */
+/* Narrow widths use a different contract (§3.2: 200px compact sidebar + main,
+ * rails overlay). The product window minWidth is 480, so 480 is the floor, not
+ * a hypothetical. 900 is the breakpoint itself — included so a specificity
+ * regression (the old `body.grok-ui` areas beat the media query) cannot
+ * silently return. */
 function checkNarrowState(g, vpW, state) {
   const collapsed = g.sidebar === "collapsed";
+  /* §3.1 更正后的窄窗口径（本轮实测 + 上游 9d89d17，不是门禁想放宽）：
+     ≤900 时侧栏不再「甩到顶部占一整行」，而是收成 200px 紧凑文字侧栏
+     （index.html:2025 媒体查询里的 `--sidebar-w: 200px`，:2040），主列拿剩下的宽度；
+     抽屉（rail）仍是覆盖层，右缘贴视口、宽 min(340, vpW)，不占列。
+     原来断的是 `main.w == vpW`（单列时代的合同）。这条没有消失，它变成了
+     同一个不变量的另一面：**侧栏最多吃掉 200px，主列必须恰好等于视口减去它**。
+     「rail 覆盖而不是挤主列」这句也还在，只是挪到下面的 rail 右缘/宽度断言上。 */
+  const expAgents = collapsed ? 0 : Math.min(NARROW_SIDEBAR_MAX, vpW);
+  const expMain = vpW - expAgents;
   const tag = `narrow/${state}@${vpW}`;
   if (!near(g.header.h, 56)) bad(`${tag}: header h=${g.header.h} ≠ 56±${BAND}`);
   if (!near(g.header.w, vpW)) bad(`${tag}: header w=${g.header.w} ≠ viewport ${vpW}`);
-  if (!near(g.main.w, vpW)) bad(`${tag}: main w=${g.main.w} ≠ viewport ${vpW} (rail must overlay, not squeeze)`);
+  if (!near(g.main.w, expMain)) bad(`${tag}: main w=${g.main.w} ≠ ${expMain}（视口 ${vpW} − 侧栏 ${expAgents}；rail must overlay, not squeeze）`);
   if (g.hscroll > 0) bad(`${tag}: horizontal scroll ${g.hscroll}px`);
   /* composer must be fully inside the viewport: no clipping off the bottom or
      right edge (the old implicit-column layout put it at y=654 in a 720 window
@@ -205,8 +231,10 @@ function checkNarrowState(g, vpW, state) {
     bad(`${tag}: region rects overlap`);
   if (collapsed) {
     if (g.agents.w > 0.5) bad(`${tag}: collapsed sidebar still ${g.agents.w}px wide`);
-  } else if (!near(g.agents.w, vpW)) {
-    bad(`${tag}: agents w=${g.agents.w} ≠ viewport ${vpW} (single column)`);
+  } else if (!near(g.agents.w, expAgents)) {
+    bad(`${tag}: agents w=${g.agents.w} ≠ ${expAgents}（窄窗紧凑侧栏上限 ${NARROW_SIDEBAR_MAX}px，再多就是在挤主列）`);
+  } else if (g.agents.x > 0.5 || g.agents.x + g.agents.w > expAgents + 0.5) {
+    bad(`${tag}: 紧凑侧栏没贴左边缘`, JSON.stringify({ x: g.agents.x, w: g.agents.w }));
   }
   const visibleRails = g.railEls.filter((r) => r.visible);
   const expectRail = state !== "none" && state !== "collapsed";
@@ -277,19 +305,40 @@ const realLeak = () => {
 const STATES = ["none", "bot", "conv", "computer", "tools", "collapsed"];
 const NARROW_VIEWPORTS = [[900, 700], [700, 700], [480, 720]];
 
+/* 侧栏两态改用**真实用户动作**进入：点 #sidebar-toggle-btn 收起、点 #sidebar-reopen-tab 展开。
+   上游 9d89d17 把 `applySidebarCollapse` 整条删了（现在叫 `setSidebarHidden`，且只剩手动入口，
+   见 index.html:18788-18791 的设计说明）。本门原来有两处**无条件**调用它
+   （旧 :316 / :344），于是 `ReferenceError: applySidebarCollapse is not defined`
+   一次就把整档视口的 12 条断言全打成红 —— 看起来像布局坏了，其实是尺子引用了不存在的名字。
+   尺子不该比产品更清楚内部函数叫什么：这里断的是「点得到，状态就真的变」。 */
+async function setSidebar(win, collapsed) {
+  const now = await win.evaluate(() => document.body.dataset.sidebar || "expanded");
+  if ((now === "collapsed") === collapsed) return true;
+  const sel = collapsed ? "#sidebar-toggle-btn" : "#sidebar-reopen-tab";
+  try {
+    await win.click(sel, { timeout: 8000 });
+  } catch (e) {
+    bad(`侧栏入口点不到（${sel}）`, e.message);
+    return false;
+  }
+  await win.waitForTimeout(320);
+  const after = await win.evaluate(() => document.body.dataset.sidebar || "expanded");
+  if ((after === "collapsed") !== collapsed) {
+    bad(`点了侧栏开关但状态没变：请求 ${collapsed ? "collapsed" : "expanded"}，实际 ${after}`, sel);
+    return false;
+  }
+  return true;
+}
+
 async function runViewport(win, vpW, vpH, { devmode = true } = {}) {
   await win.waitForTimeout(150);
   let measured = null;
   for (const st of STATES) {
+    const wantCollapsed = st === "collapsed";
     await win.evaluate((s) => {
-      if (s === "collapsed") {
-        if (typeof setPanel === "function") setPanel("none");
-        if (typeof applySidebarCollapse === "function") applySidebarCollapse(true);
-      } else {
-        if (typeof applySidebarCollapse === "function") applySidebarCollapse(false);
-        if (typeof setPanel === "function") setPanel(s);
-      }
-    }, st);
+      if (typeof setPanel === "function") setPanel(s);
+    }, wantCollapsed ? "none" : st);
+    await setSidebar(win, wantCollapsed);
     await win.waitForTimeout(320); // transition settles
     const g = await win.evaluate(GEOMETRY_PROBE);
     const vw = g.viewport.w;
@@ -304,7 +353,8 @@ async function runViewport(win, vpW, vpH, { devmode = true } = {}) {
     if (g.viewport.h && Math.abs(g.viewport.h - vpH) > 8) skip(`${st} @${vpW}`, `viewport h=${g.viewport.h} ≠ ${vpH}`);
   }
   // reset to none/expanded
-  await win.evaluate(() => { setPanel("none"); applySidebarCollapse(false); });
+  await win.evaluate(() => { if (typeof setPanel === "function") setPanel("none"); });
+  await setSidebar(win, false);
   await win.waitForTimeout(250);
   const shot = await win.screenshot({ type: "png" });
   fs.writeFileSync(path.join(OUT, `live-${vpW}x${vpH}-none.png`), shot);
@@ -318,21 +368,18 @@ async function runNarrowViewport(win, vpW, vpH) {
   await win.waitForTimeout(150);
   let measured = null;
   for (const st of STATES) {
+    const wantCollapsed = st === "collapsed";
     await win.evaluate((s) => {
-      if (s === "collapsed") {
-        if (typeof setPanel === "function") setPanel("none");
-        if (typeof applySidebarCollapse === "function") applySidebarCollapse(true);
-      } else {
-        if (typeof applySidebarCollapse === "function") applySidebarCollapse(false);
-        if (typeof setPanel === "function") setPanel(s);
-      }
-    }, st);
+      if (typeof setPanel === "function") setPanel(s);
+    }, wantCollapsed ? "none" : st);
+    await setSidebar(win, wantCollapsed);
     await win.waitForTimeout(320);
     const g = await win.evaluate(GEOMETRY_PROBE);
     measured = measured || { w: g.viewport.w, h: g.viewport.h };
     checkNarrowState(g, g.viewport.w, st);
   }
-  await win.evaluate(() => { setPanel("none"); applySidebarCollapse(false); });
+  await win.evaluate(() => { if (typeof setPanel === "function") setPanel("none"); });
+  await setSidebar(win, false);
   await win.waitForTimeout(250);
   const shot = await win.screenshot({ type: "png" });
   fs.writeFileSync(path.join(OUT, `live-${vpW}x${vpH}-none.png`), shot);
@@ -517,7 +564,7 @@ const COPY_PROBE = `(() => {
       measured.push(`${m.w}x${m.h}`);
     }
     if (FAIL === failsBefore) {
-      ok(`D-L-13: narrow viewports ${measured.join(", ")} — single column, no hscroll, rail overlays, composer in view`);
+      ok(`D-L-13: narrow viewports ${measured.join(", ")} — sidebar capped at ${NARROW_SIDEBAR_MAX}px (collapsed = 0), main takes the rest, no hscroll, rails overlay, composer in view`);
     } else {
       bad(`D-L-13: narrow viewports ${measured.join(", ")} — ${FAIL - failsBefore} assertion(s) failed`);
     }

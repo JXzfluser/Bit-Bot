@@ -10,6 +10,66 @@ PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "  ✓ $1"; }
 bad() { FAIL=$((FAIL+1)); echo "  ✗ $1"; }
 
+# ---- A0-4：门禁不许改写已跟踪文件 -------------------------------------------
+# 本轮实测事故：跑完整矩阵后 `report.md` 从 3738 行被写成 182 行、
+# `parity-gaps-next.md` 从 361 行被写成 95 行（内容是更旧的副本，还带着已被刻意去掉的
+# 硬编码计数）。这种损坏靠人眼发现不了 —— 因为门禁自己就会把仓里几个 PNG 重写一遍，
+# 「脏」是常态，谁也不会去看第二眼。
+#
+# 做法：开局记下「本轮开始前就已经脏的已跟踪文件」，收尾时再记一次，
+# **只报新冒出来的那批**。基线里原有的（比如本轮真正在改的文档）不算违规。
+# 白名单为空：现在没有任何「门禁必须改已跟踪文件」的合法理由，将来若出现，
+# 要在这里写死一条并附为什么，而不是把整条检查关掉。
+GATE_DIRTY_BASELINE=/tmp/gate-dirty-baseline.txt
+gate_dirty_tracked() {
+  git status --porcelain=v1 2>/dev/null | grep -v '^??' | awk '{print $2}' | sort
+}
+if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+  gate_dirty_tracked > "$GATE_DIRTY_BASELINE"
+else
+  : > "$GATE_DIRTY_BASELINE"
+fi
+
+# ---- A0-6：门禁不许把「当前用哪个模型 provider」留在用户数据里 -----------------
+# 本轮实测的病：`data/llm/active.json` 里留着上一轮**被中途打断**的journeys门写进去的
+# `provider_id: qwen`。`host_ffi.js:5289 resolveLlmConfig()` 的优先级是
+# 「provider 自己的 env > active.json > 全局 BITBOT_LLM_*」，而大部分门只 stub 全局那组
+# —— 于是 qwen 的 scoped env 为空、回落到 active.json 里的**真实公网地址**，
+# 拿着一个测试用键去敲阿里云：G-16/G-18/G-19/G-28/G-64 一共六条门因此变红，
+# 红因写得像产品坏了（Incorrect API key provided），其实是上一轮的门禁漏了收尾。
+# 更难看的一点：一次门禁跑会**替用户把模型渠道切走**，跑完不还原，用户下次自己用的时候
+# 大脑就已经不是他选的那个了。这是「不许污染用户数据」那条硬约束的正面对撞。
+GATE_LLM_ACTIVE="data/llm/active.json"
+GATE_LLM_ACTIVE_SNAP=/tmp/gate-llm-active-snap.json
+GATE_LLM_ACTIVE_PARK=/tmp/gate-llm-active-created-by-gate.json
+gate_llm_snapshot() {
+  if [ -f "$GATE_LLM_ACTIVE" ]; then
+    cp "$GATE_LLM_ACTIVE" "$GATE_LLM_ACTIVE_SNAP" && echo present
+  else
+    rm -f "$GATE_LLM_ACTIVE_SNAP" && echo absent
+  fi
+}
+gate_llm_restore() {
+  # 三种情况都要有明确说法：内容有变（还原）、开局没有而现在有（挪走备份，不删）、没变（不动）。
+  if [ -f "$GATE_LLM_ACTIVE_SNAP" ]; then
+    if [ -f "$GATE_LLM_ACTIVE" ] && ! cmp -s "$GATE_LLM_ACTIVE_SNAP" "$GATE_LLM_ACTIVE"; then
+      cp "$GATE_LLM_ACTIVE" "$GATE_LLM_ACTIVE_PARK"
+      cp "$GATE_LLM_ACTIVE_SNAP" "$GATE_LLM_ACTIVE"
+      echo "已还原（被门改写过，改写前的值备份在 $GATE_LLM_ACTIVE_PARK）"
+    elif [ -f "$GATE_LLM_ACTIVE" ]; then
+      echo "未变动"
+    else
+      cp "$GATE_LLM_ACTIVE_SNAP" "$GATE_LLM_ACTIVE"; echo "门把文件删了 → 从快照补回"
+    fi
+  elif [ -f "$GATE_LLM_ACTIVE" ]; then
+    mv "$GATE_LLM_ACTIVE" "$GATE_LLM_ACTIVE_PARK"
+    echo "开局没有、门跑出来了 → 挪走（不是删除，备份在 $GATE_LLM_ACTIVE_PARK）"
+  else
+    echo "开局没有、现在也没有"
+  fi
+}
+GATE_LLM_STATE_BEFORE=$(gate_llm_snapshot)
+
 DATA=data/desktop
 turn_json() { # $1 = user phrase, optional env BITBOT_APPROVED=1
   local extra=()
@@ -96,7 +156,7 @@ console.log("夹具 Bot "+drop(bp,"bots",(s)=>FIXTURE_BOT.test(s))+"、夹具群
 }
 # 不只靠末尾那一次调用：矩阵被 set -u 或 timeout 打断时（本轮整合前就死在 G-59 的
 # 空数组上）收尾根本不会执行，夹具照样留在用户侧栏里。挂 EXIT trap 兜住异常退出。
-trap 'purge_gate_fixtures >/dev/null 2>&1' EXIT
+trap 'purge_gate_fixtures >/dev/null 2>&1; gate_llm_restore >/dev/null 2>&1' EXIT
 
 echo "== G-1/G-2 Bot lifecycle =="
 echo "  · 前置自清：$(purge_gate_fixtures)（只认 Smoke 前缀，用户 Bot 不动）"
@@ -1833,8 +1893,16 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     || bad "G-46 command-channel contract missing"
   grep -q "R-02 窄窗" /tmp/g46-sidebar_adapt.log 2>/dev/null \
     && grep -q "R-04 手动收起后" /tmp/g46-sidebar_adapt.log 2>/dev/null \
-    && ok "G-46 侧栏自适应：≤768 自动收起、放宽自动展开、手动收起后尊重用户意图" \
+    && grep -q "R-05 收起态的重开条" /tmp/g46-sidebar_adapt.log 2>/dev/null \
+    && ok "G-46 侧栏自适应：窄窗侧栏最多 200px、主列拿剩下的（480 也走通）；手动收起后主列拿满视口、重开条可见可点、放宽不会被自动展开" \
     || bad "G-46 sidebar adaptation missing"
+  echo "  · G-46 侧栏尺子更正（本轮）：上游 9d89d17 删掉「按窗口宽度自动收起」（index.html:18788-18791 写明设计意图），"
+  echo "    R-02/R-03 原来断的「窄→自动收起、宽→自动展开」测的是已不存在的设计（实测 ✗ R-02 窄窗下左侧栏未自动收起）；"
+  echo "    现在钉 700/480 档「侧栏 ≤200px 且 main+agents==视口、无横向滚动」，并补 D-L-14：收起态重开条必须可见可点可回（layout-contract.md §3.2）"
+  echo "    同一轮 e2e_desktop_layout_target 的 15 条红（PASS=7 FAIL=15）全来自同一把坏尺子："
+  echo "    ✗ gate block — page.evaluate: ReferenceError: applySidebarCollapse is not defined（符号已被上游删除，"
+  echo "    两处无条件调用一次就把整档 12 条断言打成红）+ narrow/*: main w=700 ≠ viewport 900（旧的 main==视口 合同）。"
+  echo "    改成真实点击进两态、按 §3.2 重算期望后本轮实测 PASS=14 FAIL=0"
   # 负向对照：关掉单实例锁，门禁必须翻红（否则这一组是恒真的装饰品）
   log=/tmp/g46-neg-single.log
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
@@ -1886,8 +1954,8 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
-  if timeout 900 ${g47_xvfb[@]+"${g47_xvfb[@]}"} node scripts/e2e_android_roster.mjs > /tmp/g47-roster.log 2>&1; then
-    ok "G-47 e2e_android_roster 全绿（$(grep -c '✓' /tmp/g47-roster.log) 项，$(tail -1 /tmp/g47-roster.log)）"
+  if timeout 900 ${g47_xvfb[@]+"${g47_xvfb[@]}"} node scripts/e2e_android_roster.v2.mjs > /tmp/g47-roster.log 2>&1; then
+    ok "G-47 e2e_android_roster.v2 全绿（$(grep -c '✓' /tmp/g47-roster.log) 项，$(tail -1 /tmp/g47-roster.log)）"
   else
     bad "G-47 e2e_android_roster（见 /tmp/g47-roster.log；$(tail -1 /tmp/g47-roster.log)）"
   fi
@@ -1900,16 +1968,23 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     && grep -q "AR-07 手机在真 app 里点设备工具" /tmp/g47-roster.log \
     && ok "G-47 桌面 app 自己的 /v1/turn 也把手机挂到 phone-android（共享模块修好 ≠ 产品修好）" \
     || bad "G-47 app-path anchors missing"
-  grep -q "AR-09 用户可以自己把令牌抄进手机" /tmp/g47-roster.log \
+  grep -q "AR-09 令牌原文不外泄" /tmp/g47-roster.log \
     && grep -q "AR-11 开关是真的" /tmp/g47-roster.log \
-    && ok "G-47 手机配对：地址与令牌在「手机」页签拿得到，「允许手机连接」是真开关（放开能打通、收回打不通）" \
+    && ok "G-47 手机配对：令牌原文不落到页面上，「允许手机连接」是真开关（放开能打通、收回打不通，桌面自己照常）" \
     || bad "G-47 pairing anchors missing"
-  grep -q "AR-12 配对地址与完整端点分开了" /tmp/g47-roster.log \
+  grep -q "AR-12 用户抄的就是 base" /tmp/g47-roster.log \
     && grep -q "AR-13 配对地址如实标注来源" /tmp/g47-roster.log \
     && grep -q "AR-14 复制地址按钮" /tmp/g47-roster.log \
     && grep -q "AR-15 配对新增两行都落在类型阶上" /tmp/g47-roster.log \
-    && ok "G-47 配对地址契约：那一行是手机要填的 base（不带 /v1/turn），网卡来源如实标注，复制按钮跟随真实内容，说明行字号走类型阶" \
+    && ok "G-47 配对地址契约：用户抄的那一行是手机要填的 base（不带 /v1/turn），网卡来源如实标注，复制按钮跟随真实内容，说明行字号走类型阶" \
     || bad "G-47 pairing-address anchors missing"
+  # 尺子变更记录（本轮）：旧那份 e2e_android_roster.mjs 的导航 .settings-tab-btn[data-stab="phone"]
+  # 已被上游 29e1725 删除，实测停在 AR-08（page.click Timeout 30000ms，PASS=8 FAIL=1），
+  # AR-09..17 一条没跑到。v2 把配对系列接到「账户 → 移动端远程控制」弹窗；
+  # AR-09/AR-12 改成钉各自真正保护的用户事实（理由与代码证据在 v2 注释里），
+  # 被有意移除的「掩码令牌那一行 / dev-only 完整端点那一行」登记为 GP-203，不当绿也不当红。
+  echo "  · G-47 尺子重接（本轮实测）：旧门停在 ✗ page.click: Timeout 30000ms（waiting for .settings-tab-btn[data-stab=\"phone\"]）"
+  echo "    → v2 走 #account-avatar-btn → #ap-remote → #mobile-control-modal（本轮 $(grep -c '✓' /tmp/g47-roster.log) 项全绿）；旧门留在仓里作历史尺子，G-47 不再跑它"
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
 else
   echo "  · skip：playwright-core / electron dist 缺失，G-47 花名册真实渲染门禁未跑（SKIP ≠ PASS）"
@@ -2280,6 +2355,10 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   echo "    当时唯一两条绿（LK-04/LK-07）是空断言（根本没有校验，当然不报红）"
   echo "  · G-54 负向对照（两个方向都试）：摘掉校验（任何值都放行）→ LK-02/03/06 翻红 PASS=4 FAIL=3；"
   echo "    反过来让任何值都报错 → LK-04/05/07 翻红 PASS=2 FAIL=5（LK-02/03 也红，因为它们要的是说对原因）"
+  echo "  · G-54 尺子更正（本轮）：上游把「留空＝不改动」从状态行移进输入框 placeholder"
+  echo "    （index.html:8349-8371 写占位，i18n credKeyPhSaved :15752/:16550/:17348），"
+  echo "    LK-05 原来只读 #sec-llm-mask 因此判红 —— 那是尺子在要求文案待在旧元素里。"
+  echo "    现在状态行与占位符都读，「留空＝不改动」必须在其中一处出现，缺了照样红（三件事一件没减）"
   echo "  · G-54 残留（诚实）：本门不点真保存（.env.local 是固定路径，门禁不许碰用户真文件），"
   echo "    所以「归一化后的 key 真的写进去了」这一跳不在这里断；校验只拦本 app 说得清的形状"
   echo "    （掩码 / 内部空白 / 中文 / 过短），厂商格式与「这把 key 能不能用」仍要靠试连那一步；"
@@ -3030,6 +3109,126 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
 else
   echo "  · skip：缺 playwright-core 或 electron，G-68 未跑（SKIP ≠ PASS）"
 fi
+
+echo "== G-69 发布链路的 tag 门禁与触发条件必须一致（路线 A · W1 / A0-1）=="
+# 病不是「发布没做」，而是「做了但一辈子打不亮」：workflow 触发 `desktop-v*` 与 `v*`，
+# 三处门禁却只认 startsWith(github.ref_name, 'v')，而远端唯一的真实 tag 是 desktop-v0.1.0
+# —— 以 d 开头 ⇒ BITBOT_PUBLISH / REQUIRE_SIGN / REQUIRE_NOTARIZE 全为空，
+# `--publish always` 那条已接好的路一次都没跑过，而 CI 显示是绿的（红被藏成了「没触发」）。
+if timeout 120 node scripts/prove_release_tag_gate.mjs > /tmp/g69-releasetag.log 2>&1; then
+  ok "G-69 发布 tag 门禁全绿（$(grep -c '^ok RT' /tmp/g69-releasetag.log) 项，$(tail -1 /tmp/g69-releasetag.log)）"
+else
+  bad "G-69 发布 tag 门禁（见 /tmp/g69-releasetag.log；$(tail -1 /tmp/g69-releasetag.log)）"
+  grep '^FAIL' /tmp/g69-releasetag.log 2>/dev/null | head -5 | while IFS= read -r line; do echo "    ${line}"; done
+fi
+grep -q '^ok RT-03' /tmp/g69-releasetag.log 2>/dev/null \
+  && grep -q '^ok RT-05' /tmp/g69-releasetag.log 2>/dev/null \
+  && ok "G-69 一致性两条在：每个触发前缀都点亮三处门禁、真实 tag 名匹配自己声明的前缀" \
+  || bad "G-69 一致性锚点缺失（RT-03/RT-05 没被断言到）"
+grep -q '^ok RT-04' /tmp/g69-releasetag.log 2>/dev/null \
+  && ok "G-69 尺子有牙：RT-04 负向对照（故意做坏的副本必须红）在" \
+  || bad "G-69 负向对照缺失（这道门恒绿就没有意义）"
+echo "  · G-69 修复前红（HEAD 29e1725 的 workflow 真实输出）：prove_release_tag_gate PASS=4 FAIL=1 ——"
+echo "    FAIL RT-03 — desktop-v0.1.0: 只点亮 0/3 处门禁（PUBLISH=false, SIGN=false, NOTARIZE=false）"
+echo "  · G-69 修的是判定不是尺子：把三处 startsWith 扩到同时认 'v' 与 'desktop-v'，"
+echo "    没有靠改 tag 名绕病（那等于偷偷换约定）"
+echo "  · G-69 后果写进注释：发布 tag 上现在凭据缺失就是 exit 1 硬失败（pack-desktop.sh:80-96），"
+echo "    「绿但没签」不再可能；这时 CI 变红是对的，别为过门去掉那两个开关"
+echo "  · G-69 残留（诚实）：真实 Release 从未跑过（secrets 未配）、OTA 未在真环境闭环、"
+echo "    Windows/Linux 签名未接入 —— 这道门只钉「口径一致」，不声称发布已经通"
+
+echo "== G-70 装机运行时真跑双写对账（路线 A · W1 / A0-3 · T1-03 的装机版证据）=="
+# 这条以前**不在矩阵里**，所以「双写到底在真 Electron 里跑没跑」这件事 CI 从来看不见：
+# G-62/G-65/G-66 跑的是宿主 node（v22 有 node:sqlite），而装机运行时是 Electron 内置 node。
+# 33.4.11 时代真机门是 6/4（主进程自己报「已降级为不写」），这条红一直没人接。
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g70_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g70_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  timeout 900 ${g70_xvfb[@]+"${g70_xvfb[@]}"} node scripts/e2e_desktop_event_dualwrite_live.mjs > /tmp/g70-dualwrite-live.log 2>&1
+  # 这个脚本的 SKIP 走 exit 0（PASS=0 FAIL=0 SKIP=1），所以**不能拿退出码当绿** ——
+  # 只认汇总行里的数字：SKIP 必须为 0 且 FAIL 必须为 0。
+  g70_sum=$(grep -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g70-dualwrite-live.log | tail -1)
+  if [ -z "$g70_sum" ]; then
+    bad "G-70 真机双写对账没有汇总行（见 /tmp/g70-dualwrite-live.log；无汇总 = 中途死掉，不算跑过）"
+    tail -8 /tmp/g70-dualwrite-live.log 2>/dev/null | while IFS= read -r line; do echo "    | ${line}"; done
+  elif ! echo "$g70_sum" | grep -q 'FAIL=0 SKIP=0'; then
+    bad "G-70 真机双写对账未达成（$g70_sum；SKIP ≠ PASS）"
+    grep -E '✗|SKIP' /tmp/g70-dualwrite-live.log 2>/dev/null | head -6 | while IFS= read -r line; do echo "    ${line}"; done
+  else
+    ok "G-70 真机双写对账全绿（$g70_sum，$(grep -c '✓' /tmp/g70-dualwrite-live.log) 项打勾）"
+  fi
+  grep -q '✓ L-01' /tmp/g70-dualwrite-live.log 2>/dev/null \
+    && grep -q '✓ L-02' /tmp/g70-dualwrite-live.log 2>/dev/null \
+    && ok "G-70 装机运行时两条在：事件库真生成、主进程没报「已降级为不写」" \
+    || bad "G-70 L-01/L-02 锚点缺失（装机运行时是否真写库没被断言到）"
+  grep -q '✓ L-04' /tmp/g70-dualwrite-live.log 2>/dev/null \
+    && grep -q '✓ L-05' /tmp/g70-dualwrite-live.log 2>/dev/null \
+    && ok "G-70 对账两条在：fold(sessions)==快照、fold(rooms)==快照（真 Electron 写的库，不是宿主 node）" \
+    || bad "G-70 fold 对账锚点缺失"
+  echo "  · G-70 修复前红（Electron 33.4.11 实装，同一条命令真实输出）：PASS=6 FAIL=4 ——"
+  echo "    ✗ L-02 主进程降级成了不写 —— [event-mirror] 已降级为不写：当前运行时没有内置"
+  echo "      SQLite（node:sqlite，Node v20.18.3），而 BITBOT_EVENT_DUAL_WRITE 是开着的"
+  echo "    ✗ L-01 事件库不存在 / ✗ L-03 事件库是空的 / ✗ L-04 fold 不等（长度 3 ≠ 0）"
+  echo "  · G-70 修复动作只有一件：把实装对齐到 lockfile 已声明的 37.10.3（npm install，"
+  echo "    未加 --ignore-scripts，二进制 113,835,126 字节真下载），**没改任何断言口径**"
+  echo "  · G-70 修复后绿：PASS=10 FAIL=0 SKIP=0 —— 事件行数 14、L-03b 无重复投递、"
+  echo "    L-04/L-05/L-06 三面逐字段相等、L-07 每个快照变化都有人认领"
+  echo "  · G-70 残留（诚实，脚本自己在输出里说的）：审批面这次是**空对空**验证 ——"
+  echo "    「delete bot」30 s 内没亮审批卡 → L-06 只证明「没写事件也没写快照」，不证明真审批能双写；"
+  echo "    T1-03 的审批这条仍要另做（不是已交付）"
+  echo "  · G-70 已知边界：宿主 node 22 有 node:sqlite ≠ 装机运行时也有；G-62/65/66 三条不能"
+  echo "    代替这条，这条也不代替那三条"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-70 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-71 门禁不许改写已跟踪文件（路线 A · W1 / A0-4 自检）=="
+# 白名单（空格分隔）：留空。加一条就要在旁边写清为什么非改不可。
+GATE_DIRTY_ALLOW=""
+if ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
+  echo "  · skip：本机没有可用 git 仓库，G-71 未跑（SKIP ≠ PASS）"
+else
+  gate_dirty_tracked > /tmp/gate-dirty-now.txt
+  g71_new=$(comm -13 "$GATE_DIRTY_BASELINE" /tmp/gate-dirty-now.txt)
+  for f in $GATE_DIRTY_ALLOW; do g71_new=$(echo "$g71_new" | grep -v -x "$f" || true); done
+  if [ -z "$(echo "$g71_new" | tr -d '[:space:]')" ]; then
+    ok "G-71 跑完整套门之后没有新的已跟踪文件被改动（基线 $(wc -l < "$GATE_DIRTY_BASELINE" | tr -d ' ') 项，收尾 $(wc -l < /tmp/gate-dirty-now.txt | tr -d ' ') 项）"
+  else
+    bad "G-71 有已跟踪文件被本轮门禁改动了 —— 逐个看是「谁写的、该不该写」："
+    echo "$g71_new" | while IFS= read -r f; do
+      [ -n "$f" ] && echo "      · $f ($(git diff --numstat -- "$f" 2>/dev/null | awk '{print "+"$1" -"$2}'))"
+    done
+    echo "  · 为什么要判红不判黄：矩阵里的门应当只往 /tmp 和 data/ 写证据；"
+    echo "    能改文档/图片的门 = 能把一次文件损坏（本轮 report.md 被截断）伪装成「跑过门的正常脏」。"
+  fi
+fi
+
+echo "== G-72 跑完整套门之后，用户选的模型渠道还是他自己选的那个（A0-6）=="
+g72_after=$(gate_llm_restore)
+# 判据只看事实，不比对人类可读的说法：上一版把「开局没有、现在也没有」这一支漏在了
+# 白名单外，于是矩阵自己造了一条假红（本轮 493/9 里就有它）。
+# 收尾状态 == 开局状态 才算过：absent→absent，present→内容与快照逐字节相同。
+if [ "$GATE_LLM_STATE_BEFORE" = "absent" ] && [ ! -f "$GATE_LLM_ACTIVE" ]; then
+  ok "G-72 provider 状态归还：开局 absent → 收尾「$g72_after」（用户没有 active.json，跑完也没有）"
+elif [ "$GATE_LLM_STATE_BEFORE" = "present" ] && [ -f "$GATE_LLM_ACTIVE" ] \
+  && cmp -s "$GATE_LLM_ACTIVE_SNAP" "$GATE_LLM_ACTIVE"; then
+  ok "G-72 provider 状态归还：开局 present → 收尾「$g72_after」（内容与开局快照逐字节一致）"
+else
+  bad "G-72 provider 状态没回到开局值（开局 $GATE_LLM_STATE_BEFORE → 收尾「$g72_after」）——去看 $GATE_LLM_ACTIVE"
+fi
+echo "  · G-72 为什么必须有一道门：本轮上一轮跑被打断后，data/llm/active.json 留在 qwen，"
+echo "    而 resolveLlmConfig()（host_ffi.js:5289）的优先级是「provider 自己的 env >"
+echo "    active.json > 全局 BITBOT_LLM_*」—— 只 stub 全局那组的门于是敲向**真实公网**"
+echo "    （Incorrect API key provided），G-16/18/19/28/64 六条门红得像产品坏了。"
+echo "  · G-72 另一半意义：门禁不该替用户改大脑渠道。跑一次验收，用户下次打开 app 发现"
+echo "    模型变了，这比红更糟。"
+echo "  · G-72 残留（诚实）：这道门兜的是矩阵自己进出的一段；门被 SIGKILL 时靠 EXIT trap，"
+echo "    kill -9 则连 trap 都没有 —— 那种情况下仍会留脏，需要下次开局读快照才能发现，"
+echo "    而快照在 /tmp（重启即失）。真正把 stub 钉死要在各门里显式 pin provider，已记进 GP-201"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 

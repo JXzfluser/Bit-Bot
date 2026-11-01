@@ -123,6 +123,15 @@ export function electronLaunchEnv(extra) {
    * 真要测这条链的门（e2e_desktop_sweep_timer / e2e_desktop_packaged）自己显式
    * 设 BITBOT_DESKTOP_SWEEP_MS，不受这里影响。 */
   if (env.BITBOT_DESKTOP_SWEEP_MS === undefined) env.BITBOT_DESKTOP_SWEEP_MS = "0";
+  /* GP-201 试过在这里做**统一**的 provider 钉子（stub 了全局 BITBOT_LLM_* 就自动
+   * 钉 deepseek），结论是**不能这么做**，留着这段免得下次再试一遍：
+   * resolveLlmConfig()（hosts/shared/host_ffi.js:5289）里
+   * process.env.BITBOT_LLM_PROVIDER（:5293）的优先级**高于** data/llm/active.json，
+   * 而 e2e_desktop_user_journeys.mjs 正是靠「env 里给 stub 地址、运行时用界面切
+   * provider（写 active.json）」验证 provider 级密钥跟着切（:951-1001）。
+   * 统一钉子会把 env 顶到最前，那个门立刻变成假绿——用改被测行为换绿是禁止的。
+   * 所以钉子只放在**确认不测 provider 切换**的门里（见 e2e_grok_desktop_boot.mjs），
+   * 跨轮残留由 smoke_grok_desktop_parity.sh 的 G-72 快照/还原兜住。 */
   return env;
 }
 

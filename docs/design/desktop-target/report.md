@@ -2997,6 +2997,9 @@ sqlite MISSING
 ```
 
 （`electron` 33.4.11，`hosts/desktop/package.json:121` 钉的是 `^33.2.0`。）
+　**更正（2026-11-01，见 §8.56）**：这一段记的是当时实装的运行时，保留不改；现在的事实是
+`package.json:123` 声明 `^37.10.3`、`node_modules` 实装 **37.10.3**（内置 Node 22.21.1，
+`node:sqlite` 实测可用），所以「装机运行时撑不起双写」这条限制已经不成立。
 也就是说：**`BITBOT_EVENT_DUAL_WRITE` 还没被读到，主进程已经在 require 阶段死了。**
 「默认关就不改行为」这条设计在语义上守住了，在**加载路径**上完全没守住。
 
@@ -3106,6 +3109,9 @@ prove_box_routine_sweep crashed — TypeError: Cannot read properties of undefin
   开关在装机版里开着也只会走 ⑤ 那行「已降级为不写」。要它真写库，得先让宿主运行时升到
   内置 SQLite 的版本（`hosts/desktop/package.json:121` 现在钉 `^33.2.0`），或者换一个后端。
   本轮刻意不为此改打包策略。
+  **这条残留已于 2026-11-01 销账（§8.56）**：实装升到 Electron 37.10.3 后，真 Electron 进程里
+  `node:sqlite` 可用，`e2e_desktop_event_dualwrite_live` 从 6 通过 / 4 失败变成 10 通过 / 0 失败，
+  事件库真生成、`fold` 与三份快照逐字段相等。原文保留是为了说清「当时为什么只能这么判」。
 - **可用性探测只看 `node:sqlite` 在不在**：如果哪天 `event_log` 因为**别的原因**加载即抛，
   这条探测会一并判成「撑不起来」→ 静默降级（开关开着还有一行说明）。目前可接受，
   但 T1-04 把读路径接上去之前要重新看这个口径。
@@ -3472,6 +3478,9 @@ gh 未登录（第 2 条 SKIP）与 §8.49.5 的其余三条残留不变。
   会被读成「备用渠道的按钮」。
 
 **⑤ 一个 Chromium 事实，值得记下来免得下次再猜**：本机 Electron 33 = Chromium 130，闭合的
+　*（2026-11-01 补：实装已升到 Electron 37.10.3，本段是 Chromium 130 下的实测行为，Chromium
+　版本差异可能改变 `content-visibility` 的表现 —— 同一断言要在 37 上重跑一遍才算现行事实；
+　本轮未单独复核 37 的 Chromium 号，不写没量过的数字。）*
 `<details>` 用 `content-visibility` 隐藏子树，所以 `offsetParent` 仍非 null、
 `getBoundingClientRect()` 仍报 39px 高、computed `display` 仍是 `block` —— 只有
 `checkVisibility({contentVisibilityAutoStateProperty:true})` 说实话。这解释了两件事：
@@ -3801,3 +3810,294 @@ runner 无 KVM 起不了 emulator，所以「真机必崩」是推断，不是�
 - release 包仍是 debug 签名（没配 `BITBOT_ANDROID_STORE_*`），能侧载自测，不等于能上架。
 - 自动发现之外的那条路（手动填桌面地址 + 配对令牌）在 UI 里存在，但本轮没有真机走通，
   不能因为它存在就把扫描的崩溃说成「只是不便」。
+
+## 8.56 路线 A 开工第一波（W1 止血与诚实）：四片，两片是「红被藏起来」的病
+
+规划落在 `docs/design/desktop-target/cross-end-roadmap-a.md`（为什么是 A 不是 B、四波拆分、
+依赖顺序、交付判据都在那份里）。本节只记 W1 四片的红与绿。W1 的口径是：**不加新能力，
+只把「看起来绿、其实看不见」的几处假象拆掉**，因此一片功能文案都没有。
+
+### 8.56.1 A0-1 发布链路的 tag 门禁与触发条件不一致（G-69）
+
+**病不是「发布没做」，而是「做了但一辈子打不亮」。** `desktop-macos.yml` 的触发是
+`desktop-v*` 与 `v*` 两个前缀，而 `BITBOT_PUBLISH` / `BITBOT_REQUIRE_SIGN` /
+`BITBOT_REQUIRE_NOTARIZE` 三处都只认 `startsWith(github.ref_name, 'v')`。远端唯一的真实
+tag 是 `desktop-v0.1.0` —— 以 `d` 开头 ⇒ 三处全为空 ⇒ `pack-desktop.sh:256-267` 里
+`--publish always` 那条（`14d12a3` 接的）、`package.json:76` 的 github provider、
+job 级 `contents: write`（`:74-75`）**三件就位的东西一次都没执行过，而 CI 显示是绿的**：
+红被藏成了「没触发」。
+
+- 修复前红（在未改 workflow 的代码上真跑新门 `scripts/prove_release_tag_gate.mjs`）：
+  `FAIL RT-03 — desktop-v0.1.0: 只点亮 0/3 处门禁 (PUBLISH=false, SIGN=false, NOTARIZE=false)`，
+  汇总 `prove_release_tag_gate: PASS=4 FAIL=1`（exit 1）。
+- 修的是判定不是尺子：三处扩成同时认 `v` 与 `desktop-v`。**没有**靠改 tag 名绕病。
+- 修复后绿：`PASS=5 FAIL=0`。
+- 尺子有牙：RT-04 是负向对照 —— 造一份「前缀只写 `v*` 而判定只认 `v`」的坏副本，
+  真实 tag 代入必须判红（`triggered=false, lit=0/3`），跑完清干净不污染源码。
+- **顺带把后果写进注释**：发布 tag 上现在凭据缺失就是 `pack-desktop.sh:80-96` 的 exit 1
+  硬失败，不再静默产出未签名包 —— 这时 CI 变红是对的，注释里明确写了「别为了让门绿
+  而去掉那两个开关」。workflow 头注释原来写着「发布链路仍未做」，与代码已不同步，改成
+  按现状描述并保留「secrets 未配 ⇒ 未验证」。
+- 残留（不粉饰）：真实 Release **从未跑过**；OTA 未在真实环境闭环；Windows/Linux 签名未接入。
+  这道门只钉「两处口径一致」这一件事。
+
+### 8.56.2 A0-2 本地实装对齐 lockfile：T1-03 第一次在**装机运行时**上证实（G-70 的前半）
+
+`package.json:123` 声明 `^37.10.3`（`f2ee113` 写明「内置 Node 22.21.1，node:sqlite 可用 ——
+T1-04/T1-05 解锁」），但 `node_modules` 实装停在 **33.4.11**（内置 Node 20.18.3，无
+`node:sqlite`）。这就是为什么 §8.47 那几行会写下「装机版跑不起双写」——那句当时是真的。
+
+- 修复前红（`e2e_desktop_event_dualwrite_live`，真 Electron 33）：`PASS=6 FAIL=4`，其中
+  `✗ L-02 主进程降级成了不写 —— [event-mirror] 已降级为不写：当前运行时没有内置 SQLite
+  （node:sqlite，Node v20.18.3），而 BITBOT_EVENT_DUAL_WRITE 是开着的`，另有
+  `✗ L-01 事件库不存在`、`✗ L-03 事件库是空的`、`✗ L-04 fold 不等（长度 3 ≠ 0）`。
+- 修复动作只有一件：`npm install` 把实装对齐到已声明版本（`electron-v37.10.3-linux-x64.zip`
+  113,835,126 字节真下载，**未加 `--ignore-scripts`**，`package-lock.json` 零差异）。
+  没改任何断言口径。
+- 用真 Electron 进程实测而非推断：`ELECTRON_VERSION=37.10.3`、`NODE_VERSION=22.21.1`、
+  `node:sqlite` 暴露 `DatabaseSync/StatementSync/constants/backup` 且建表插入查询都通。
+- 修复后绿（同一条命令复跑）：`PASS=10 FAIL=0 SKIP=0` —— 事件行数 14、`L-03b` 无重复投递、
+  `L-04/L-05/L-06` 三面逐字段相等、`L-07` 每个快照变化都有人认领。
+- **一条必须自己指出来的残留**：这次审批面是**空对空**验证 —— 输出里那行
+  `「delete bot」30s 内没亮审批卡 → approvals 面按空对账` 说得很清楚：`L-06` 只证明
+  「没写事件也没写快照」，**不证明真审批能双写**。T1-03 的审批这条仍要另做，不算已交付。
+- 同时更正 §8.47 三处过期口径（保留原文 + 标注更正，不改写历史），并给 `Chromium 130`
+  那段实测行为补一句「37 上需重测」——本轮没有单独复核 37 的 Chromium 号，就不写没量过的数字。
+
+### 8.56.3 A0-3 真机双写门接进矩阵（G-70）
+
+这条以前**不在矩阵里**，所以「双写到底在真 Electron 里跑没跑」CI 永远看不见：
+G-62/G-65/G-66 跑的是宿主 node（v22 自带 `node:sqlite`），装机运行时用的是 Electron 内置 node ——
+**宿主有 ≠ 装机有**，两边互相不能代替，而当时只有前者是绿的。
+
+接线时踩到一个真陷阱并当场钉死：`e2e_desktop_event_dualwrite_live.mjs` 的 SKIP 走的是
+`process.exit(0)`（汇总行 `PASS=0 FAIL=0 SKIP=1`），**拿退出码当绿就会把「压根没跑」记成通过**。
+所以 G-70 不认退出码，只认汇总行里的三个数字，要求 `FAIL=0 SKIP=0`；没有汇总行按「中途死掉」判红。
+这样三条路径都各有归属：真跑绿 → ok；真跑红 → bad 并贴 `✗`；没跑/SKIP → bad 或显式 skip，
+绝不当绿。
+
+### 8.56.4 A0-4 门禁不许改写已跟踪文件（G-71，本轮事故驱动）
+
+**这是本轮最难看的一条，必须写清。** 同步时发现 `report.md` 从 3738 行被写成 **182 行**、
+`parity-gaps-next.md` 从 361 行被写成 **95 行**，内容是**更旧**的副本（还带着仓里已刻意去掉的
+硬编码计数 `313 parity 断言 + boot 124`）。逐行比对确认工作树那份没有任何独有成果后才从
+HEAD 还原；仓库内容没丢，但一次文件损坏差点被当成「跑过门的正常脏」——因为矩阵里的布局门
+每次跑都会重写 `reference/live-*.png` 这两个**已跟踪**文件，脏是常态，没人看第二眼。
+
+两处一起修：
+
+1. `e2e_desktop_layout_target.mjs` 的证据默认落点从 `docs/.../reference/` 改到 `/tmp`；
+   要刷新入仓那两张必须显式 `BITBOT_LAYOUT_SHOT_COMMIT=1`，让「更新对外证据」成为有意识的
+   动作而不是跑门的副作用。全仓 grep 确认这两张 PNG **没有读取方**（纯证据），改写点只有
+   `:319/:347` 两处，因此默认改道不破坏任何断言。
+2. 矩阵开头记「本轮开始前就已脏的已跟踪文件」基线，结尾 G-71 只报**新冒出来**的那批，
+   白名单当前为空 —— 现在没有任何「门禁必须改已跟踪文件」的合法理由。
+3. 负向对照（在 /tmp 的临时 git 仓里复刻同一套逻辑真跑）：把一份三行文档截成一行 →
+   `✗ 有已跟踪文件被改动: doc.md`（这正是 report.md 事故的形状）；`git checkout --` 复原后 →
+   `✓ 干净时恒绿（不误报）`。`PASS=1 FAIL=1` 那一次是**对照生效**的证据，不是门禁坏了。
+
+### 8.56.5 W1 之后的下一步
+
+W1 不动任何 store/IPC/内核 JSON 契约，四片都只碰发布链路、门禁与文档。按计划顺序进
+**W2：`GET /v1/events?from_seq=` 走 SSE**，复用已有的 `event_log.js:230 readAfter`，
+只加路由不改既有响应体 —— 目标是让手机在一轮执行的几十秒里第一次「看得见」，
+对应 ADR 0014 §7 的跨网成功率那条指标从 0 起步。
+
+---
+
+## 8.57 门禁自己会「造状态」：`data/llm/active.json` 跨轮残留（A0-6 / GP-201）
+
+上一轮矩阵 **478 PASS / 19 FAIL**，其中一整类红看着像产品坏了，实际是门禁互相留地雷。
+这一节把机理、复现和修法写清楚，因为**这类红比产品缺陷更难查**：它的现场在别的门的日志里。
+
+### 8.57.1 机理：provider 解析的优先级不是「全局兜底」
+
+`hosts/shared/host_ffi.js:5289 resolveLlmConfig()` 选 provider 的顺序是
+
+1. `process.env.BITBOT_LLM_PROVIDER`（`:5293`，最高）
+2. `data/llm/active.json` 的 `provider_id`（用户在「设置 → 模型」里切的就写这里）
+3. catalog 默认（`providers.json`，出厂 `deepseek`）
+
+拿到 provider 之后，`base_url / api_key / model` 走 `scopedEnv()`（`:5322`）：
+**provider 只要声明了自己的变量名**（qwen = `BITBOT_LLM_QWEN_BASE_URL/_API_KEY/_MODEL`，
+见 `:5198-5205`），而那个变量为空，就直接返回空串 —— **不会**回落到全局 `BITBOT_LLM_*`。
+这是 GP-148（P1-6）故意做的：否则「界面上切到 qwen，请求体的 Base URL 和 Authorization
+还是全局 DeepSeek」。`deepseek` 这一行的 `env_*` 本来就是全局那组名字（`:5188-5196`），
+所以老行为不变。
+
+后果：`data/llm/active.json` 停在 `qwen` 时，**所有只 stub 全局 `BITBOT_LLM_*` 的门**
+打的都不是自己的 stub。
+
+### 8.57.2 复现与红绿原文
+
+上一轮被中途打断的 `e2e_desktop_user_journeys.mjs` 把 active.json 留在了 `qwen`
+（它本来在 `:1230` 有 `restore(LLM_ACTIVE, snap.llmActive)`，中途 SIGKILL 就轮不到还原）。
+本轮先按同形状做了一份 fixture（`provider_id=qwen`、`base_url` 指真实 dashscope、`api_key` 空），
+把脚本退回未钉桩版本（`git stash push -- <file>` → 跑 → `git stash pop`，跑完 `diff -q` 确认还原一致）：
+
+```
+prove_gp14_reply: PASS=11 FAIL=5
+  ✗ GP-14 kernel 回显 — {"ok":false,"reply_to":"msg-gp14probe-q1","error":"当前供应商的密钥还没配置：
+    请在「设置 → 凭证」里填好密钥再试一次（本轮没有用本地兜底假装回答）"}
+  ✗ GP-14 llm 调用缺引用证据 — {"legacy":null,"loop":1,"art":{}}
+  ✗ GP-14 provider 请求体 — "GP14-PROBE 针对引用作答 "
+
+prove_gp93_links: PASS=20 FAIL=1
+  ✗ GP-93 kernel deliver — {"ok":false,"error":"当前供应商的密钥还没配置…","delivered":"GP19-PROBE 给我文档链接\n"}
+```
+
+同一份污染文件、脚本加上 `BITBOT_LLM_PROVIDER=deepseek` 钉子之后：
+
+```
+prove_gp14_reply: PASS=16 FAIL=0
+prove_gp93_links: PASS=21 FAIL=0
+prove_m28_usage:  PASS=14 FAIL=0   ← 只跑了钉桩侧，未对本门单独跑未钉桩对照
+```
+
+上一轮那份污染文件带着一个能用的 key（否则请求会被本机守卫拦下，就是上面复现的那个形状），
+于是请求真的发到阿里云，同一位置表现为 401 `Incorrect API key provided`。
+两种脸是同一个病：**门没在测 stub**。
+
+### 8.57.3 修法与刻意没做的事
+
+1. **矩阵侧（管跨轮残留）**：`smoke_grok_desktop_parity.sh` 开局快照
+   `data/llm/active.json`，trap EXIT 还原，末尾 **G-72** 报告三种结果
+   （已还原 / 未变动 / 开局没有而门跑出来了 ⇒ 挪走并 park 内容）。
+   两个负向对照真跑通过（present→改 qwen→已还原；absent→门创建→挪走并 park）。
+2. **门内侧（管当轮被外部状态带跑）**：只在**确认不测 provider 切换**的门里显式钉桩 ——
+   `e2e_grok_desktop_boot.mjs` 的 `launchOnce()` 按「这一轮给了 `BITBOT_LLM_BASE_URL`
+   且没给 provider」条件注入，`prove_gp14_reply.js` / `prove_gp93_links.js` /
+   `prove_m28_usage.js` 直接钉并纳入自清/还原列表。
+3. **没有做统一钉子**，这是本节最重要的决定。一开始想把钉子放进
+   `electronLaunchEnv`（一处管 19 个真 Electron 门），实测口径一查就不能做：
+   `env.BITBOT_LLM_PROVIDER` 优先级**高于** `active.json`，而
+   `e2e_desktop_user_journeys.mjs:951-1001` 正是靠「env 给 stub 地址 + 运行时用界面切
+   provider」验证 provider 级密钥跟着切。统一钉子会让那条门永远停在 deepseek，
+   变成**假绿** —— 用改被测行为换绿是禁止的。理由已写进 `scripts/electron_env.mjs`
+   的 GP-201 段，免得下次再试一遍。
+
+### 8.57.4 诚实残留
+
+- 污染面不止这四条：`grep -rl BITBOT_LLM_BASE_URL scripts/` 命中 **40 个文件**（含 README 与
+  `import_injected_secrets.sh` / `start-bitbot.sh` 两个壳）。本轮只钉了**实测红过的四处**，
+  其余等矩阵复跑点名再钉 —— 一次性改二十多个门去「预防」同样是风险，而且没法逐条给红绿。
+- GP-201 行已写进 `docs/grok-desktop-parity/parity-gaps-next.md`，含未钉名单。
+- 污染来源不止 provider：`data/desktop/*.json`、`data/llm/chats.jsonl` 也是跨轮状态。
+  G-71 管「已跟踪文件被写脏」，管不到这些未跟踪的用户数据；真正的解法是 T1 事件日志
+  （W2 起）而不是继续加快照。
+- A0-5 另记：G-70 的审批面这一轮是**空对空**（`delete bot` 30 s 内没亮审批卡），
+  已写进 GP-197 残留列，不能算 T1-03 审批完成。
+
+## 8.58 复跑全量矩阵：19 条红变 9 条，剩下的 9 条里 7 条是尺子读到了被删掉的东西
+
+这轮把矩阵**完整重跑**（产品代码一行没动，只补 §8.57 的 provider 钉子），同一台机器、
+同一份代码、同一套门。两份日志的汇总行是：
+
+```
+上一轮  smoke_grok_desktop_parity: PASS=478 FAIL=19
+这一轮  smoke_grok_desktop_parity: PASS=493 FAIL=9
+```
+
+矩阵级 ✗ 逐条对齐（`grep -E '^  ✗ G-'`，两边各自数到 19 / 9）：
+
+| 红 | 上一轮 | 这一轮 | 归因 |
+|----|--------|--------|------|
+| G-16（1 条） | ✗ | ✓ **130/0** | provider 污染，§8.57 钉子 |
+| G-18（2 条） | ✗ | ✓ **16/0** | 同上 |
+| G-19（2 条） | ✗ | ✓ **21/0** | 同上 |
+| G-28（3 条） | ✗ | ✓ **14/0** | 同上 |
+| G-53（2 条） | ✗ | ✓ **72/0** | 同上 |
+| G-64（1 条） | ✗ | ✓ 跑完且零断言失败 | 上一轮 ✗ 的原文是 `run_turn.js --approved` 命令失败（provider 没配），不是超时；provider 钉上后这轮第一次跑到尾 |
+| G-71（1 条） | ✗ | ✗（随后已修，A0-7） | 门禁自己把 `README.mbt.md` 写脏 |
+| G-72（1 条） | —（本轮新加） | ✗（随后已修） | 门禁判定自己的 bug，见 8.58.4 |
+| G-46 ×2、G-47 ×3、G-54 ×2（7 条） | ✗ | ✗ | **尺子在读已经不存在的 UI / 内部函数** |
+
+合计自消 11 条（G-16/18/19/28/53 十条 + G-64 一条）。剩下 9 条里 7 条同属一类，
+两条是本轮新增/暴露的门禁自身 bug。
+
+**这一节最重要的一条口径**：G-53 从 47/18 跳到 72/0 不是「产品被修好了」。产品一行没动；
+是那 18 条断言在上一轮根本没在测自己的 stub（provider 停在 qwen，请求去了公网）。
+这类红最坏的地方是它会指挥人去改错东西 —— 拿着「A 私聊未达 provider」的现场去 debug
+`room_runtime`，方向从第一步就错了。
+
+### 8.58.1 那 7 条红的根子：三个被上游删掉/改掉的东西，全部有代码与提交为证
+
+1. **侧栏「按窗口宽度自动收起」这条能力被整条移除**（`9d89d17`，
+   `hosts/desktop/index.html:18788-18791` 的设计说明原文写着「不再按窗口宽度强制收起
+   （原 ≤768 自适应会与用户手动作反复对拉，已移除）」）。窄窗侧栏同时从 280px 压成
+   200px 紧凑文字侧栏（宽窗基准 `ui_chrome.css:134`，媒体查询 `index.html:2025`、变量 `:2040`）。
+   - `e2e_desktop_sidebar_adapt` **4/1**：`✗ R-02 窄窗下左侧栏未自动收起` —— 测的是已不存在的设计。
+   - `e2e_desktop_layout_target` **7/15**：15 条红的根子是两处 **ReferenceError**
+     （`✗ gate block — page.evaluate: ReferenceError: applySidebarCollapse is not defined`）：
+     门在旧 `:316`/`:344` **无条件**调用这个被删掉的内部函数，一次抛错把整档视口 12 条断言一起打死；
+     剩下那批 `narrow/none@900: main w=700 ≠ viewport 900` 是合同 §3.1「单列、main == 视口」
+     与新的「200px 紧凑侧栏 + 主列拿剩余」之间的口径差。
+2. **设置里的 Phone 页签与整套 `sec-pairing-*` / `pairing-*` 元素被搬进「移动端远程控制」sheet**
+   （`29e1725`；已核实 `sec-pairing-line` / `pairing-lan-btn` / `pairing-code-digits` /
+   `.settings-tab-btn[data-stab="phone"]` 在 `index.html` 里 0 命中，`ui_chrome.css:1488`
+   还留着一条没有主人的死样式）。
+   - `e2e_android_roster` **8/1**：AR-01..08 全绿，门在旧 `:404` 点不到那个页签、30 s 超时抛错
+     （`✗ unexpected error — page.click: Timeout 30000ms exceeded. / waiting for locator('.settings-tab-btn[data-stab="phone"]')`），
+     **AR-09..AR-17 一条都没跑到**；矩阵因此连报 `G-47 pairing anchors missing` 与
+     `G-47 pairing-address anchors missing` —— 一个根因报三条红。
+3. **「留空＝不改动」从状态行挪进了输入框占位符**（`index.html:8349-8371`：已配置时
+   `inp.placeholder = wavegT("credKeyPhSaved")`，三语 `:15752` / `:16550` / `:17348` =
+   「留空＝不改动」/「留空＝不改動」/「leave blank to keep」）。
+   - `e2e_desktop_llm_key_paste_guard` **6/1**：LK-05 只读 `#sec-llm-mask` 的文本，于是报
+     `✗ LK-05 界面上没说清「留空＝不改动」 — {"mask":"已配置 ****3k7q · 要换就粘新的"}`。
+     产品并没有少说这句话，只是说在另一个用户看得见的地方。
+
+### 8.58.2 修法：按「尺子只能断用户看得见的事实」重写，不删断言、不放宽、不改产品换绿
+
+| 门 | 改法 | 钉住的用户不变量 | 本轮实测 |
+|----|------|------------------|----------|
+| `e2e_desktop_sidebar_adapt` | R-02/R-03 改成「700 / 480 档主列不被挤没：`main + agents == 视口`、侧栏 ≤200px、无横向滚动、composer 完整在视口内」；R-04 用真实按钮 `#sidebar-toggle-btn` 收起；**新增 R-05**：收起态重开条 `#sidebar-reopen-tab` 必须可见、`elementFromPoint(中心)` 命中自己、点下去侧栏真回来；R-06 保留「手动意图不被自动展开覆盖」 | 用户最初抱怨的是「聊天区被挤得几乎没有」，不是「侧栏必须自己收起」。改成纯手动后新增的死路风险（收起后找不到入口）由 R-05 盯住 | **PASS=6 FAIL=0**：`✓ R-02 窄窗（700）主列不被挤没：agents=200px + main=500px = 视口宽，无横向滚动`、`✓ R-03 480 档仍然走通：agents=200px、main=280px`、`✓ R-05 收起态的重开条可见可点（24×64 @(12,380) 命中自己），点一下侧栏回来了` |
+| `e2e_desktop_layout_target` | 两处 `applySidebarCollapse` 无条件调用换成 `setSidebar()` 真实点击（点不到或状态没变就 `bad()`）；`main.w` 期望从 `== vpW` 改成 `== vpW − min(200, vpW)`（折叠 `== vpW`），`agents.w` 同步，并加「侧栏贴左边缘」 | rail 覆盖不挤主列、无横向滚动、composer 与发送键真实命中、区域不重叠、msg ≤760 —— 一条没减 | **PASS=14 FAIL=0**：`✓ D-L-13: narrow viewports 900x700, 700x700, 480x720 — sidebar capped at 200px (collapsed = 0), main takes the rest, no hscroll, rails overlay, composer in view` |
+| `e2e_android_roster.v2`（新，G-47 从本轮起跑这份；旧那份留仓作历史尺子） | AR-09..AR-17 逐条接到 `#mc-*`（入口 `#account-avatar-btn → #ap-remote → #mobile-control-modal`）。接不动的两条没有删：AR-09 改钉「令牌原文不落进渲染进程」（整页 `innerText` + 状态行都搜不到真令牌），AR-12 改钉「用户抄的那一行必须是 base、不带 `/v1/turn`」 | 两条断言各自真正保护的用户事实：密钥不外泄；用户抄的地址必须是他能填的那个（手机 `TurnBridge.kt:67-70` 自己拼 `/v1/turn`，桌面多给路径就是让人填错） | **PASS=18 FAIL=0**：`✓ AR-09 令牌原文不外泄：整页 innerText 与状态行都搜不到真令牌`、`✓ AR-12 用户抄的就是 base（不带 /v1/turn）：http://127.0.0.1:46591`、`✓ AR-11 放开后，手机用界面上那个局域网地址真的连上了桌面大脑` |
+| `e2e_desktop_llm_key_paste_guard` | LK-05 同时读 `#sec-llm-mask` 与该 input 的 `placeholder` | 三件事一件没减：留空不许报错、状态行要如实说已配置、「留空＝不改动」必须在界面上（两处都空照样红） | **PASS=7 FAIL=0** |
+
+合同与门禁文档同步更正：`docs/design/desktop-target/layout-contract.md` 新增 **§3.2**
+（§3.1 表格**保留原文** + 逐条更正说明），并补一条 **D-L-14 收起态重开条**、§7 里 D-L-13 的口径同步；
+`scripts/smoke_grok_desktop_parity.sh` 的 G-46 侧栏成功文案不再宣称「≤768 自动收起」，
+G-47 起跑 v2 并把 AR-09/AR-12 锚点换成新文案，两处各加一行「尺子更正（本轮）」的留痕 echo。
+
+同一批漂移还留下第三处**用户会照着找的文档**：`hosts/android/README.md` 的
+「桌面侧怎么拿到配对地址与令牌」一节整段写的是旧界面（「设置 → 凭证 → 手机配对」、
+「掩码 + 点『显示配对令牌』 + 复制按钮」、「完整端点降到开发态单独一行」、
+账户弹层的「获取移动版」）。这些控件都不在了，照着找就是白跑一趟 —— 本轮在该节顶部加了
+**带日期的更正块**（新位置、AR-09/AR-12 现在的口径、以及「界面上读不出 bearer」这件事登记为
+GP-203），原文用删除线保留可读，不改写成「看起来一直如此」。
+
+### 8.58.3 两条门禁自身 bug（A0-7 与 G-72）
+
+- **G-71 抓到的是真留痕**：`smoke_desktop_turn.sh` 里的 code_changes 产品测把 `README.mbt.md`
+  尾部留了 4 行空行 → 本轮 ✗。修法是让**门自己收尾复原**：stub 起来前快照
+  `README.mbt.md`，EXIT trap 里 `cmp -s` 不一致就还原（开局没有则把产物挪进 /tmp 再删），
+  并 `git checkout -- README.mbt.md` 清掉现场。**没有**走「把 README.mbt.md 加进 G-71 白名单」
+  那条路 —— 白名单继续为空，任何已跟踪文件被门禁改了都仍然要点名。这条记为 **A0-7**。
+- **G-72 造了一条假红**：判定只接受「未变动 / 已还原」两种说法，把「开局没有、现在也没有」
+  漏在白名单外，于是本轮 493/9 里有一条纯门禁 bug。改法是不再比对人类可读的说法，
+  只看事实：`absent → 文件仍不存在` 或 `present → 文件存在且 cmp -s 与快照相同`。
+
+### 8.58.4 残留（不写成已解决）
+
+- `G-64 smoke_desktop_turn.sh` 本轮**跑完且绿**，但矩阵没给它打时间戳，`timeout 2400` 的上限
+  是否真的用得上仍未验证；「慢在哪一段」这个答案还没有，不能因为绿了就当作已解决。
+- 机器上有 6 个 `run_turn.js tick routines` 孤儿进程（ppid=1）与若干 `<defunct>` java/chrome，
+  是上一轮被 SIGKILL 的门禁留下的；它们不参与断言，但会影响所有耗时解释。清理要用户点头。
+- `ui_chrome.css:1488` 的 `data-stab="phone"` 死样式仍在（无功能影响）。
+- roster v2 的两条「设计已被移除」半边没有变成绿，也没有变成红，登记为 **GP-203**：
+  手动兜底路径（`index.html:3211` 那行 `mcManualNote`）要的 bearer 现在 UI 里读不出来，
+  且旧渲染代码留在原地不执行（`refreshPairingStrip()` 在 `:12680` 直接 return、
+  `pairing-token-btn` 监听 `:12815-12840` 取不到元素、英文 `pairingModalHint`（`:17449`）
+  仍写着「this card keeps ... the pairing token」）。这属于 W3「设备花名册 / 凭据登记」的正题，
+  不在本轮止血里顺手改产品。
+- 旧的 `scripts/e2e_android_roster.mjs` 仍在仓里（已加「被 v2 取代」说明，G-47 不再跑它）。
+  删掉它要单独拍板：AR 系列最初为什么存在只在那份注释里写全过。
+- Electron 从 33 跳到 37 之后，布局类断言的实测数值只重跑、未逐档重记；本轮没动产品 CSS。
+- **G-71 有一条已知的归因盲区，本轮就撞上了一次**：它比对的是「已跟踪脏文件名」在矩阵开局/收尾
+  的增减，分不清「门把文件改了」还是「人在跑门的同时改了文件」。我这轮在矩阵跑到一半时更新了
+  `hosts/android/README.md`（干净 → 脏），按它的判据会被报成「本轮门禁改动了」—— 那是**误归因**。
+  处理方式不是加白名单（白名单仍为空），而是**冻结改动后再提交**，让被测内容与提交内容完全一致；
+  真正的修法（把「谁改的」变成可证据，比如门前后各留一份 `git status` 快照 + 记录 mtime 区间）
+  留到 W2 一起做，写在这里是为了下次不再用「红就是红」糊过去。

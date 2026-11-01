@@ -263,6 +263,26 @@ function newestLlmTurnArtifact() {
 }
 
 async function launchOnce(extraEnv) {
+  /* GP-201：凡是这一轮给了本地 stub 地址的启动，必须同时钉死 provider。
+     resolveLlmConfig()（hosts/shared/host_ffi.js:5289）选 provider 的顺序是
+     process.env.BITBOT_LLM_PROVIDER > data/llm/active.json > catalog 默认，
+     取 base_url/key/model 走 scopedEnv（:5322）——provider 声明了自己的变量名
+     （qwen 是 BITBOT_LLM_QWEN_*）而那个变量为空时返回**空串**，不回落到全局
+     BITBOT_LLM_*。后果：只要 active.json 停在 qwen，本门那 5 处只 stub 全局那组的
+     请求就再也不会打到 stub。复现跑过（放 provider_id=qwen、api_key 空的
+     active.json）：prove_gp14_reply 11/5、prove_gp93_links 20/1，失败原文是
+     「当前供应商的密钥还没配置：请在「设置 → 凭证」里填好密钥再试一次
+     （本轮没有用本地兜底假装回答）」；上一轮那份污染文件把请求放到了真实
+     dashscope，同一位置表现为 401 "Incorrect API key provided"。两种脸都说明
+     「门没在测 stub」，红得像产品坏了。
+     钉 deepseek 不改变被测行为：它的 env_base/env_key/env_model 本来就是全局那组
+     名字（:5188-5196），所以等价于「stub 说的算」；本门没有切 provider 的旅程
+     （除这段注释外，grep qwen / BITBOT_LLM_PROVIDER 在本文件无命中），可以放心钉。
+     为什么不统一放进 electronLaunchEnv：见 scripts/electron_env.mjs 里的 GP-201 段。 */
+  const llmPin =
+    extraEnv && extraEnv.BITBOT_LLM_BASE_URL && !extraEnv.BITBOT_LLM_PROVIDER
+      ? { BITBOT_LLM_PROVIDER: "deepseek" }
+      : {};
   const electronBinary = resolveElectronBinary(path.join(REPO, "hosts/desktop"));
   const app = await _electron.launch({
     executablePath: electronBinary,
@@ -285,6 +305,7 @@ async function launchOnce(extraEnv) {
       BITBOT_DESKTOP_AUTOSTART: "0",
       BITBOT_NO_SECRET_SYNC: "1",
       ...(extraEnv || {}),
+      ...llmPin,
     }),
     timeout: 60000,
   });

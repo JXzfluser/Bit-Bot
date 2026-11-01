@@ -32,7 +32,30 @@ trap 'st=$?; if [ "$ERR_ONCE" = 0 ]; then ERR_ONCE=1; echo "---- ERR(exit=$st) a
 LLM_STUB_PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
 BITBOT_STUB_PORT="$LLM_STUB_PORT" node "$ROOT/scripts/dev_stubs/openai_compat_stub.js" >/tmp/bitbot-smoke-llm-stub.log 2>&1 &
 LLM_STUB_PID=$!
-trap 'kill "$LLM_STUB_PID" ${WM_PID:+"$WM_PID"} >/dev/null 2>&1 || true' EXIT
+
+# A0-7 / G-71：本脚本把仓库里的 README.mbt.md 当作 code_changes 的**真目标文件**
+# （:100 触发、:1621-1633 断言 applied / target_mutated / sidecar）。不写真文件就验不到
+# 这条产品能力，所以「碰已跟踪文件」本身是对的；错的是**留痕**：上一轮跑完
+# README.mbt.md 尾部多出 4 行空行，矩阵的 G-71 把它抓成了红（那正是 G-71 存在的理由）。
+# 现在：开局快照 → 无论成败逐字节还原（与 prove_m28_usage 还原 host_ffi.js 同一口径）。
+# 中途被打断（SIGKILL）时快照仍在 /tmp，需要人从 git 恢复 —— 已记进 report.md 残留。
+G64_README_TARGET="$ROOT/README.mbt.md"
+G64_README_SNAP="/tmp/g64-readme-baseline.md"
+if [ -f "$G64_README_TARGET" ]; then
+  cp "$G64_README_TARGET" "$G64_README_SNAP"
+else
+  rm -f "$G64_README_SNAP"
+fi
+g64_restore_readme() {
+  if [ -f "$G64_README_SNAP" ]; then
+    cmp -s "$G64_README_SNAP" "$G64_README_TARGET" || cp "$G64_README_SNAP" "$G64_README_TARGET"
+  elif [ -f "$G64_README_TARGET" ]; then
+    # 开局没有、门跑出来了：不删，挪到 /tmp 再让仓库回到开局状态
+    cp "$G64_README_TARGET" "/tmp/g64-readme-created-by-gate.md" 2>/dev/null || true
+    rm -f "$G64_README_TARGET"
+  fi
+}
+trap 'kill "$LLM_STUB_PID" ${WM_PID:+"$WM_PID"} >/dev/null 2>&1 || true; g64_restore_readme || true' EXIT
 for _ in $(seq 1 50); do
   if (exec 3<>"/dev/tcp/127.0.0.1/$LLM_STUB_PORT") 2>/dev/null; then exec 3>&-; break; fi
   sleep 0.1

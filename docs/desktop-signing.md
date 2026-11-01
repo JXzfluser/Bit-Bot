@@ -49,16 +49,24 @@ BITBOT_DESKTOP_SIGN=1 bash scripts/pack-desktop.sh
 
 ## CI 发布（签名 + 公证 + 发到 GitHub Releases）
 
+> **现状（A0-1 修复后）**：发布链路已接——`hosts/desktop/package.json` 配了 github provider
+> （owner `JXzfluser` / repo `Bit-Bot`），`desktop-macos.yml` 的 `package` job 有
+> `contents: write` 权限，tag 门禁已修（同时接受 `v*` 与 `desktop-v*`）。但 **secrets 未配 ⇒
+> dmg 不签名**，且**没有真跑过一次真实 Release**（未验证）。
+
 1. 在仓库 **Settings → Secrets** 里配齐上面 5 个 secret。
 2. 把 `hosts/desktop/package.json` 的 `version` 改成目标版本（如 `0.1.0`）。
-3. 打 tag 并推送：**tag 名必须是 `v<version>`**（如 `v0.1.0`）——
-   electron-builder 的 github provider 据此建 Release，且 `BITBOT_PUBLISH`、
-   `BITBOT_REQUIRE_SIGN`、`BITBOT_REQUIRE_NOTARIZE` 仅在 `v*` tag 上打开。
+3. 打 tag 并推送：**tag 名必须是 `v<version>` 或 `desktop-v<version>`**（如 `v0.1.0`
+   或 `desktop-v0.1.0`）——electron-builder 的 github provider 据此建 Release，且
+   `BITBOT_PUBLISH`、`BITBOT_REQUIRE_SIGN`、`BITBOT_REQUIRE_NOTARIZE` 在这两类 tag 上
+   同时打开（A0-1 修复：门禁判定与触发前缀一致）。
    ```bash
    git tag v0.1.0 && git push origin v0.1.0
+   # 或
+   git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
    ```
-4. `desktop-macos.yml` 在 `v*` tag 上：`package` job 用 `CSC_LINK` 签名 →
-   `afterSign` 公证并钉章 → `electron-builder --publish` 把 dmg/zip/`latest-mac.yml`
+4. `desktop-macos.yml` 在 `v*` 或 `desktop-v*` tag 上：`package` job 用 `CSC_LINK` 签名 →
+   `afterSign` 公证并钉章 → `electron-builder --publish always` 把 dmg/zip/`latest-mac.yml`
    推到 GitHub Releases（feed）。
 5. 用户在已安装的 app 里触发「检查更新」（`bitbot:ota:check`），`electron-updater`
    从 GitHub Releases 拉 `latest-mac.yml` 与签名 delta，校验通过后安装。
@@ -67,8 +75,9 @@ BITBOT_DESKTOP_SIGN=1 bash scripts/pack-desktop.sh
 
 `scripts/pack-desktop.sh` 在内核编译**之前**检查：若 `BITBOT_REQUIRE_SIGN=1` 但
 `CSC_LINK` 缺失，或 `BITBOT_REQUIRE_NOTARIZE=1` 但缺 `APPLE_*`，**直接 fail**，绝不
-产出未签名/未公证包。CI 只在 `v*` tag 上置这两个开关——所以正式发布缺凭据会当场红，
-而测试构建（`workflow_dispatch` / `desktop-v*`）保持宽松（诚实跳过）。
+产出未签名/未公证包。CI 只在 `v*` 与 `desktop-v*` tag 上置这两个开关（A0-1 修复：门禁
+判定与触发前缀一致）——所以正式发布缺凭据会当场红，而测试构建（`workflow_dispatch` /
+非发布 tag）保持宽松（诚实跳过）。
 
 ## 范围外（本期不做）
 

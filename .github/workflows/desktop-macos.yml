@@ -3,10 +3,15 @@ name: Desktop macOS
 # 把 macOS 桌面端打成**可分发物**（dmg + zip + latest-mac.yml），并且把 MoonBit
 # 内核编译成原生二进制一起塞进 app 里 —— 用户机器上不需要工具链、也不需要源码。
 #
-# 这一条 workflow 只做「打包」，不做「发布」：
+# 发布与签名的关系要说清楚（A0-1 之后口径统一）：
 #   - 没有 `MAC_CSC_LINK` → 不签名（Gatekeeper 会拦，这是已知残留，不假装已签）；
 #   - 没有 `APPLE_*`     → 不公证（`hosts/desktop/build/notarize.js` 会如实跳过）；
-#   - tag 触发也只上传 artifact，不自己去发 Release（发布链路仍未做）。
+#   - 非发布构建（手动 dispatch、普通分支）以上两项**诚实跳过**，产物只上传 artifact；
+#   - 发布 tag（`v*` / `desktop-v*`）上 `BITBOT_REQUIRE_SIGN|NOTARIZE=1`，凭据缺失时
+#     `scripts/pack-desktop.sh` 直接 exit 1 拒产未签名包 —— 这时**运行变红是对的**，
+#     别为了让 CI 绿而去掉这两个开关；
+#   - `--publish always` 这条路已接（github provider 见 `hosts/desktop/package.json`，
+#     job 有 `contents: write`），但**没有真跑过一次真实 Release**，secrets 未配 ⇒ 未验证。
 #
 # 触发方式：
 #   - 手动：Actions → Desktop macOS → Run workflow（可选 debug/release、可选 Intel）
@@ -130,13 +135,14 @@ jobs:
           BITBOT_PACK_TARGET: dist
           BITBOT_PACK_ARCH: ${{ matrix.arch }}
           BITBOT_PACK_PLATFORM: mac
-          # 仅在 v<appVersion> tag 上发布到 GitHub Releases；其余构建只产出不发布。
+          # 仅在 v<appVersion> 或 desktop-v<appVersion> tag 上发布到 GitHub Releases；
+          # 其余构建只产出不发布。门禁判定必须与触发前缀一致（A0-1）。
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BITBOT_PUBLISH: ${{ startsWith(github.ref_name, 'v') && '1' || '' }}
+          BITBOT_PUBLISH: ${{ (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v')) && '1' || '' }}
           # 发布路径强制签名 + 公证：凭据缺失则打包脚本拒产未签名/未公证包
           #（详见 docs/desktop-signing.md）。非发布构建保持宽松（诚实跳过）。
-          BITBOT_REQUIRE_SIGN: ${{ startsWith(github.ref_name, 'v') && '1' || '' }}
-          BITBOT_REQUIRE_NOTARIZE: ${{ startsWith(github.ref_name, 'v') && '1' || '' }}
+          BITBOT_REQUIRE_SIGN: ${{ (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v')) && '1' || '' }}
+          BITBOT_REQUIRE_NOTARIZE: ${{ (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v')) && '1' || '' }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

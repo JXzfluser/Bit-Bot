@@ -258,6 +258,13 @@ async function main() {
       throw new Error("stub unavailable");
     }
     Object.assign(process.env, {
+      // GP-201：同 prove_gp14_reply —— active.json 停在 qwen 时 scopedEnv
+      // （hosts/shared/host_ffi.js:5322）不回落到全局 BITBOT_LLM_*，本门 stub 被绕开。
+      // 复现原文（未钉桩 + provider_id=qwen 的 active.json）：
+      //   ✗ GP-93 kernel deliver — {"ok":false,"error":"当前供应商的密钥还没配置…",…}
+      //   prove_gp93_links: PASS=20 FAIL=1
+      // 钉桩后同一份污染文件下：PASS=21 FAIL=0。钉 deepseek 等于「stub 说的算」。
+      BITBOT_LLM_PROVIDER: "deepseek",
       BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + STUB_PORT + "/v1",
       BITBOT_LLM_API_KEY: "gp19-probe-key",
       BITBOT_LLM_MODEL: "gp19-probe",
@@ -372,6 +379,7 @@ async function main() {
       } catch (_) {}
     }
     for (const k of [
+      "BITBOT_LLM_PROVIDER",
       "BITBOT_LLM_BASE_URL",
       "BITBOT_LLM_API_KEY",
       "BITBOT_LLM_MODEL",
