@@ -4272,3 +4272,36 @@ node 3 秒内自退 —— 确认不会把 `data/routines/*.json` 写坏，才�
   只剩 `{"daemon": true, "long_lived": true}`）：那是 FFI 侧 `routine_tick` 的写与 daemon 侧
   python 写之间的正常先后关系被强杀打断的结果，下一轮 sweep 已把它写回完整（绿那次 `sweeps 2 ok 2`）。
   这个文件不是用户历史（`data/desktop/*.json` 一条没动）。
+
+### 8.59.9 复跑全量矩阵取证（本轮 20:26 收尾，整轮 43:50）
+
+`smoke_grok_desktop_parity: PASS=503 FAIL=0`（上一轮 502/0；多的那 1 项就是 G-58 新增的 KR-11 锚点），
+日志里 **0 条 `· skip`**。三条关键原文：
+
+```
+✓ G-58 常驻内核契约全绿（12 项，pass=12 fail=0）
+✓ G-58 CLI 收尾锚点在：CLI 宿主开常驻跑完一轮：96ms 自己退出，serve 进程 0→0；反向对照（同型进程删掉关池那一步）仍被量到不退
+✓ G-64 …（smoke_desktop_turn.sh 里新加的那段）→ host_routine_daemon long-lived under desktop resident default ok sweeps 2 ok 2
+```
+
+**A0-9 的判据是可数的 before/after，不是「看起来好了」**：
+
+| 收尾盘点 | 上一轮（修复前） | 本轮（修复后） |
+|---|---|---|
+| `run_turn.js` 存活 | 9 个（每轮 +3，ppid=1） | **0** |
+| `desktop_turn --serve` | 18 个 | **0** |
+| `moon run … --serve` | 9 个 | **0** |
+| `host_routine_daemon.sh` bash | 0（早被杀） | **0** |
+
+中途（20:10）抓到过一个活着的 `node hosts/cli_host/run_turn.js shop target.com headphones`：
+ppid 正常、env 里没有 `BITBOT_KERNEL_RESIDENT`、随后自己退出 —— 把这条写下来，
+是为了不把「收尾计数 0」说成「矩阵里从来没有并发 CLI」。
+
+另两条卫生判据同轮都绿：`G-71 没有新的已跟踪文件被改动（基线 0 项，收尾 0 项）`、
+`G-72 provider 状态归还：开局 absent → 收尾也没有`。
+
+§8.59.8 的残留**一条都没被这次绿冲销**：真开机量「daemon 连续 sweeps>1」仍未做、
+8s 兜底强杀分支仍未实测。还有一个新问题值得记：本轮矩阵自己那个 bash 现在也是
+`Z`（defunct）挂在 ppid=1 —— 沙箱 PID 1（`sandbox-runtime`）不收割孩子，
+所以「427 个 electron 僵尸」这条底噪每跑一轮还会 +1。它不影响 0 残留的结论（那四项数的是**活着的**进程），
+但任何按 `pgrep` 全盘计数的判据都要把 defunct 排掉，否则读数会一路涨。
