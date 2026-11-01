@@ -1476,7 +1476,7 @@ grep -q "update-status / usage / profile 三个锚点在 SETTINGS_ANCHOR_TAB 已
   && ok "G-34 GP-M34：锚点在 SETTINGS_ANCHOR_TAB 已注册" \
   || bad "G-34 anchor registry missing"
 grep -q "移动版：不再只报「内测」" /tmp/g34-probe.log 2>/dev/null \
-  && ok "G-34 GP-M34：移动版入口落到「凭证 → 手机配对」（不是占位）" \
+  && ok "G-34 GP-M34：移动版入口落到「设置 → 手机」页签（GP-189，不是占位）" \
   || bad "G-34 mobile landing missing"
 grep -q "支持 / 退出登录 两项：中文占位文案" /tmp/g34-probe.log 2>/dev/null \
   && ok "G-34 GP-M34：两项走本地化 callout（非静默 no-op）" \

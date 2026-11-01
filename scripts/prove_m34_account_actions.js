@@ -7,15 +7,16 @@
  * 静态层：
  *   1) ap-usage / ap-add-account 通过 open settings anchor=... 短语进入对应的
  *      设置 tab（usage / profile 锚点在 SETTINGS_ANCHOR_TAB 里已注册）；
- *   1b) ap-mobile 不再是占位：文案 + 真的落到「凭证」页（anchor=security-keys），
- *       因为手机配对地址与令牌现在只有那一屏给得出来；
+ *   1b) ap-mobile 不再是占位：文案 + 真的落到「手机」页签（anchor=pairing），
+ *       GP-189 起配对从「凭证」搬出来单独成页，地址与令牌只有那一屏给得出来；
  *   2) ap-support / ap-signout 走 accountPlaceholder → addMsg，
  *      不再是空 click handler；文案中文化。
  *   3) 每个 handler 都会关闭 popup（.hidden = true），不会让菜单挡在设置页上。
  *
  * 负向对照：把 ap-usage 的 anchor=usage 短语替换成 "no-op" 后，第 1 项断言
  *          应变红（说明该断言不是恒真，是锚定在真实短语上的）。
- *          把 ap-mobile 的 anchor=security-keys 抹掉后，第 1b 项同样应变红。
+ *          把 ap-mobile 的 anchor=pairing 抹掉、或把锚点表里的 pairing 指回
+ *          凭证页，第 1b 项的落地 / 注册断言同样应变红。
  */
 
 const fs = require("fs");
@@ -52,13 +53,20 @@ if (/SETTINGS_ANCHOR_TAB = \{[\s\S]*?"update-status":\s*"updates"/.test(html)
   bad("anchor registry", "one of the anchors is missing");
 }
 
-/* ---------- 1b) 移动版：文案 + 真的落到「凭证」页 ---------- */
-const mobileRe = /getElementById\("ap-mobile"\)[\s\S]{0,900}anchor=security-keys[\s\S]{0,200}skipSession/;
-const mobileCopy = /getElementById\("ap-mobile"\)[\s\S]{0,900}配对令牌[\s\S]{0,120}允许手机连接/;
-if (mobileRe.test(html) && mobileCopy.test(html)) {
-  ok("移动版：不再只报「内测」—— 说清配对令牌 / 允许手机连接，并落到凭证页");
+/* ---------- 1b) 移动版：文案 + 真的落到「手机」页签 ---------- */
+/* 一次跳转要钉住三件事：短语里是 anchor=pairing、这个锚点在 SETTINGS_ANCHOR_TAB
+   确实映射到 phone（不是寄在凭证下的死锚点）、文案说清 6 位配对码与「不在同一
+   Wi-Fi 就先点允许手机连接」。锚点表用有界 [\s\S]{0,900} —— 不封顶的话正则能
+   越过对象末尾撞上别处的同名短语，断言就恒真了。 */
+const mobileRe = /getElementById\("ap-mobile"\)[\s\S]{0,900}anchor=pairing[\s\S]{0,200}skipSession/;
+const mobileCopy = /getElementById\("ap-mobile"\)[\s\S]{0,900}6 位配对码[\s\S]{0,220}允许手机连接/;
+const mobileRegistry = /SETTINGS_ANCHOR_TAB = \{[\s\S]{0,900}?"pairing":\s*"phone"/.test(html);
+if (mobileRe.test(html) && mobileCopy.test(html) && mobileRegistry) {
+  ok("移动版：不再只报「内测」—— 说清 6 位配对码 / 允许手机连接，并落到「设置 → 手机」");
 } else {
-  bad("mobile landing", JSON.stringify({ anchor: mobileRe.test(html), copy: mobileCopy.test(html) }));
+  bad("mobile landing", JSON.stringify({
+    anchor: mobileRe.test(html), copy: mobileCopy.test(html), registry: mobileRegistry,
+  }));
 }
 
 /* ---------- 2) 两项 → 中文占位 callout（非静默 no-op） ---------- */
@@ -85,15 +93,29 @@ const survived = /\["ap-usage",\s*"open settings[^"]*anchor=usage/.test(broken);
 if (!survived) ok("负向对照：抹掉 anchor=usage 短语 → 断言翻假（非恒真）");
 else bad("negative control", "anchor=usage assertion survives strip");
 
-// 把 ap-mobile 的 anchor=security-keys 换成 "no-op"，第 1b 项同样应变红。
+// 把 ap-mobile 的 anchor=pairing 换成 "no-op"，第 1b 项的落地断言同样应变红。
+// 先确认这次 replace 真的动到了文件：短语一旦被改名而 replace 落空，
+// 「断言翻假」会变成恒真——那就不叫负向对照了。
 const brokenMobile = html.replace(
-  '"open settings entry=account anchor=security-keys"',
+  '"open settings entry=account anchor=pairing"',
   '"no-op"',
 );
-if (!/getElementById\("ap-mobile"\)[\s\S]{0,900}anchor=security-keys/.test(brokenMobile)) {
-  ok("负向对照：抹掉移动版 anchor=security-keys → 落地断言翻假（非恒真）");
+if (brokenMobile === html) {
+  bad("negative control mobile", "anchor=pairing 短语找不到，对照失效");
+} else if (!/getElementById\("ap-mobile"\)[\s\S]{0,900}anchor=pairing/.test(brokenMobile)) {
+  ok("负向对照：抹掉移动版 anchor=pairing → 落地断言翻假（非恒真）");
 } else {
   bad("negative control mobile", "mobile anchor assertion survives strip");
+}
+
+// 把锚点表里的 pairing 指回凭证页（回到搬页签之前的形状），注册断言应变红。
+const brokenRegistry = html.replace('"pairing": "phone"', '"pairing": "credentials"');
+if (brokenRegistry === html) {
+  bad("negative control mobile registry", "锚点表里没有 pairing 键，对照失效");
+} else if (!/SETTINGS_ANCHOR_TAB = \{[\s\S]{0,900}?"pairing":\s*"phone"/.test(brokenRegistry)) {
+  ok("负向对照：锚点表把 pairing 指回凭证 → 注册断言翻假（非恒真）");
+} else {
+  bad("negative control mobile registry", "registry assertion survives retarget");
 }
 
 console.log("\nprove_m34_account_actions: PASS=" + pass + " FAIL=" + fail);

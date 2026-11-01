@@ -26,11 +26,13 @@ pub fn SettingsEntry::label(self : SettingsEntry) -> String {
 }
 
 ///|
-/// Ordered Settings tabs (CM-1902).
+/// Ordered Settings tabs (CM-1902). GP-189 adds Phone: 手机配对以前寄在「凭证」里，
+/// 用户要找的是「手机」，不是「密钥」—— 页签名就是入口，入口不该让人猜。
 pub(all) enum SettingsTab {
   General
   Computer
   Vault
+  Phone
   UsageBilling
   Updates
 } derive(Eq, Debug)
@@ -47,6 +49,7 @@ pub fn SettingsTab::label(self : SettingsTab) -> String {
     General => "General"
     Computer => "Computer"
     Vault => "Vault"
+    Phone => "Phone"
     UsageBilling => "Usage & Billing"
     Updates => "Updates"
   }
@@ -76,6 +79,8 @@ pub(all) enum SettingsAnchor {
   Computers
   UpdateComputer
   ResetComputer
+  // Phone
+  Pairing
   // Usage & Billing
   Usage
   Plan
@@ -117,6 +122,7 @@ pub fn SettingsAnchor::id(self : SettingsAnchor) -> String {
     Computers => "computers"
     UpdateComputer => "update-computer"
     ResetComputer => "reset-computer"
+    Pairing => "pairing"
     Usage => "usage"
     Plan => "plan"
     CancelTrial => "cancel-trial"
@@ -148,6 +154,7 @@ pub fn SettingsAnchor::tab(self : SettingsAnchor) -> SettingsTab {
     | AutoReviewRules
     | SecurityKeys => General
     LocalExecution | Computers | UpdateComputer | ResetComputer => Computer
+    Pairing => Phone
     Usage | Plan | CancelTrial | OnDemand | Billing => UsageBilling
     UpdateStatus | UpdateChannel | AutomaticUpdates => Updates
   }
@@ -176,6 +183,7 @@ pub fn settings_anchors_closed_set() -> Array[SettingsAnchor] {
     Computers,
     UpdateComputer,
     ResetComputer,
+    Pairing,
     Usage,
     Plan,
     CancelTrial,

@@ -543,6 +543,7 @@ pub(all) enum SettingsAnchor {
   Computers
   UpdateComputer
   ResetComputer
+  Pairing
   Usage
   Plan
   CancelTrial
@@ -572,6 +573,7 @@ pub(all) enum SettingsTab {
   General
   Computer
   Vault
+  Phone
   UsageBilling
   Updates
 } derive(Eq, @debug.Debug)

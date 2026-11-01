@@ -2217,6 +2217,7 @@
         <button type="button" class="settings-tab-btn" data-stab="general" data-i18n="tabGeneral">常规</button>
         <button type="button" class="settings-tab-btn" data-stab="computer" data-i18n="tabComputer">电脑</button>
         <button type="button" class="settings-tab-btn" data-stab="credentials" data-i18n="tabCredentials">凭证</button>
+        <button type="button" class="settings-tab-btn" data-stab="phone" data-i18n="tabPhone">手机</button>
         <button type="button" class="settings-tab-btn" data-stab="usage" data-i18n="tabUsage">用量与账单</button>
         <button type="button" class="settings-tab-btn" data-stab="updates" data-i18n="tabUpdates">更新</button>
       </div>
@@ -2423,47 +2424,11 @@
           </div>
           <div class="st-note" data-i18n="credCapNote">不填也能用，只是不会联网：回答里不会出现编造的来源。</div>
         </div>
-        <div class="st-card" id="sec-zone-devices">
-          <div class="st-card-title"><span data-i18n="credZoneDevices">手机与入站</span></div>
-          <!-- 主路已经挪到独立弹窗；这张卡留作手动兜底。不写这一行的话，
-               两处入口会变成两处真相 —— 用户不知道哪个才是正门。 -->
-          <div class="pairing-modal-hint" id="sec-pairing-modal-hint" data-i18n="pairingModalHint">主路在「账户 → 移动端远程控制」；这里保留手动填写与配对令牌，读的是同一份配对状态。</div>
-          <!-- 安卓 / iOS 端连的就是这台大脑。地址与令牌以前只在 README 里，
-               用户点不开这一屏就走不到「手机说话 → 桌面记得」。 -->
-          <div id="sec-pairing-line" class="st-readout">配对状态：读取中…</div>
-          <!-- 手机敲不到地址时，光给一个「像地址的东西」等于骗人：这一行如实说明
-               这个地址从哪类网卡来、大概率连不通的原因。 -->
-          <div id="sec-pairing-note" class="pairing-note" style="display:none;margin-top:6px"></div>
-          <!-- 完整 /v1/turn 端点只在开发态给；普通用户要填的是上面那行配对地址。 -->
-          <div id="sec-pairing-turn" class="pairing-endpoint" style="display:none;margin-top:6px"></div>
-          <!-- Pairing-v1: 6-digit code block (让手机自己找).
-               放在手动按钮之前：一键配对是主路，抄 64 位令牌是兜底。
-               顺序本身就是产品态度 —— 先给用户看的东西就是希望他用的东西。 -->
-          <div id="pairing-code-block" class="pc-block">
-            <div class="pc-head">
-              <span class="pc-head-title">让手机自己找</span>
-              <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
-            </div>
-            <div id="pairing-code-display" class="pc-display" hidden>
-              <span id="pairing-code-digits" class="pc-digits"></span>
-              <span id="pairing-code-countdown" class="pc-countdown"></span>
-            </div>
-            <div id="pairing-code-actions" class="pc-actions" hidden>
-              <button type="button" id="pairing-revoke-btn" class="bb-btn bb-btn-sm">立即作废</button>
-            </div>
-            <p id="pairing-code-hint" class="pc-hint">手机只需点「连接 Desktop」并输入这 6 位数字</p>
-          </div>
-          <p id="pairing-manual-label" class="pc-hint">手动填写（同一 Wi-Fi 连不上时才用）</p>
-          <div class="gp-row">
-            <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
-            <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
-            <button type="button" id="pairing-copy-url" class="bb-btn bb-btn-sm" disabled>复制地址</button>
-            <button type="button" id="pairing-copy-token" class="bb-btn bb-btn-sm" disabled>复制令牌</button>
-          </div>
-          <div id="sec-pairing-token" class="st-readout" style="display:none;margin-top:8px"></div>
-          <div id="sec-pairing-status" class="st-readout" style="margin-top:8px"></div>
+        <div class="st-card" id="sec-zone-inbound">
+          <div class="st-card-title"><span data-i18n="credZoneInbound">入站地址</span> <span class="st-tag" data-i18n="credTagOptional">选填</span></div>
           <!-- 入站公网地址：连接应用（钉钉/飞书/企微）回调要填的地方。
-               以前自己占一张卡，其实只是这一屏的第二条只读地址，收到同一张卡里。 -->
+               手机配对搬去「手机」页之后，这一屏留下的就是这条只读地址；
+               它不属于手机，属于「这台电脑对公网暴露的入口」，所以留在凭证页。 -->
           <div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">入站公网地址（连接应用回调要用）</span>
             <div id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
           </div>
@@ -2494,6 +2459,86 @@
         </div>
         <pre id="sec-gate-out" class="bb-meta bb-control" data-lab style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
         <div class="st-note"><span data-i18n="credApplyLead">申请 DeepSeek</span>：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link">platform.deepseek.com/api_keys</a></div>
+      </div>
+      <!-- GP-189：手机配对以前寄在「凭证」页最下面那张卡里，和 API Key 混在一屏；
+           用户要找的是「手机」，不是「密钥」。页签即入口，配对在这一步有顺序。 -->
+      <div id="st-phone" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="st-title" data-i18n="phoneTitle">手机</div>
+        <div class="st-note" data-i18n="phoneLead">手机连的就是这台电脑上的大脑。三步：打开局域网入口 → 生成 6 位配对码 → 在手机里输入。</div>
+        <div class="st-card" id="sec-zone-devices">
+          <div class="st-card-title"><span data-i18n="credZoneDevices">手机配对</span> <span class="st-tag st-tag-req" data-i18n="credTagRequired">必做</span></div>
+          <div class="st-step" id="phone-step-1">
+            <span class="st-step-no" aria-hidden="true">1</span>
+            <div class="st-step-body">
+              <div class="st-step-name" data-i18n="phoneStepName1">打开局域网入口</div>
+              <!-- 这句是机制说明，不是装饰：不点这一步，桌面只绑 127.0.0.1，手机怎么扫都是空结果。 -->
+              <div class="st-step-desc" data-i18n="phoneStepDesc1">默认只听本机 127.0.0.1，手机扫不到；点一下才把地址让给局域网。</div>
+              <div class="gp-row">
+                <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
+                <button type="button" id="pairing-copy-url" class="bb-btn bb-btn-sm" disabled>复制地址</button>
+              </div>
+              <div id="sec-pairing-line" class="st-readout">配对状态：读取中…</div>
+              <!-- 手机敲不到地址时，光给一个「像地址的东西」等于骗人：这一行如实说明
+                   这个地址从哪类网卡来、大概率连不通的原因。 -->
+              <div id="sec-pairing-note" class="pairing-note" style="display:none;margin-top:6px"></div>
+            </div>
+          </div>
+          <div class="st-step" id="phone-step-2">
+            <span class="st-step-no" aria-hidden="true">2</span>
+            <div class="st-step-body">
+              <div class="st-step-name" data-i18n="phoneStepName2">生成 6 位配对码</div>
+              <div class="st-step-desc" data-i18n="phoneStepDesc2">5 分钟内有效、只能用一次；不想要了就当场作废。</div>
+              <div id="pairing-code-block" class="pc-block">
+                <div class="pc-head">
+                  <span class="pc-head-title">让手机自己找</span>
+                  <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
+                </div>
+                <div id="pairing-code-display" class="pc-display" hidden>
+                  <span id="pairing-code-digits" class="pc-digits"></span>
+                  <span id="pairing-code-countdown" class="pc-countdown"></span>
+                </div>
+                <div id="pairing-code-actions" class="pc-actions" hidden>
+                  <button type="button" id="pairing-revoke-btn" class="bb-btn bb-btn-sm">立即作废</button>
+                </div>
+                <p id="pairing-code-hint" class="pc-hint">手机只需点「连接 Desktop」并输入这 6 位数字</p>
+              </div>
+            </div>
+          </div>
+          <div class="st-step" id="phone-step-3">
+            <span class="st-step-no" aria-hidden="true">3</span>
+            <div class="st-step-body">
+              <div class="st-step-name" data-i18n="phoneStepName3">在手机里输入这 6 位</div>
+              <div class="st-step-desc" data-i18n="phoneStepDesc3">手机 App（BitBotHost）点「连接 Desktop」，它只在这台桌面所在的网段里找。</div>
+            </div>
+          </div>
+          <details class="st-adv" id="phone-adv">
+            <summary class="st-adv-sum"><span data-i18n="phoneAdvTitle">手动填地址与令牌（连不上时才用）</span><span class="st-adv-mark" aria-hidden="true"></span></summary>
+            <p id="pairing-manual-label" class="pc-hint">抄 64 位令牌是兜底：一键配对走不通时才需要。</p>
+            <div class="gp-row">
+              <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
+              <button type="button" id="pairing-copy-token" class="bb-btn bb-btn-sm" disabled>复制令牌</button>
+            </div>
+            <div id="sec-pairing-token" class="st-readout" style="display:none;margin-top:8px"></div>
+            <div id="sec-pairing-status" class="st-readout" style="margin-top:8px"></div>
+            <!-- 完整 /v1/turn 端点只在开发态给；普通用户要填的是上面那行配对地址。 -->
+            <div id="sec-pairing-turn" class="pairing-endpoint" style="display:none;margin-top:6px"></div>
+          </details>
+        </div>
+        <div class="st-card" id="phone-zone-scope">
+          <div class="st-card-title"><span data-i18n="phoneZoneScope">一定要在同一个局域网吗？</span></div>
+          <div class="st-scope" id="phone-scope-same">
+            <span class="st-scope-yes" data-i18n="phoneScopeYes">同一 Wi-Fi / 同网段</span>
+            <span class="st-scope-desc" data-i18n="phoneScopeSame">直接可用：上面三步就够，不用填任何地址。</span>
+          </div>
+          <div class="st-scope" id="phone-scope-other">
+            <span class="st-scope-warn" data-i18n="phoneScopeWarn1">访客网络 / 公司隔离 / 手机热点</span>
+            <span class="st-scope-desc" data-i18n="phoneScopeOther">这些网络禁止设备互访，扫不到很正常。在上方「手动」里填这台桌面的地址和端口 —— 只要手机能打通那个地址就行，不限网段。</span>
+          </div>
+          <div class="st-scope" id="phone-scope-public">
+            <span class="st-scope-no" data-i18n="phoneScopeWarn2">公网 / 跨网段</span>
+            <span class="st-scope-desc" data-i18n="phoneScopePublic">本版没有内置内网穿透：要么自己组网（如 Tailscale）后按上一条手填，要么走有公网地址的服务器。地址不是私有网段时，手机会如实提示「大概率连不通」。</span>
+          </div>
+        </div>
       </div>
       </div>
     </div>
@@ -3458,12 +3503,13 @@
         "reset-computer",
       ],
       Vault: [],
+      Phone: ["pairing"],
       "Usage & Billing": ["usage", "plan", "billing"],
       Updates: ["update-status", "update-channel", "automatic-updates"],
     };
 
-    // M7: Grok-spec tabbed settings (General / Computer / Credentials / Usage & Billing / Updates).
-    const SETTINGS_TAB_KEYS = ["general", "computer", "credentials", "usage", "updates"];
+    // M7: Grok-spec tabbed settings (General / Computer / Credentials / Phone / Usage & Billing / Updates).
+    const SETTINGS_TAB_KEYS = ["general", "computer", "credentials", "phone", "usage", "updates"];
     // Kernel anchor → UI tab (deep links from any entry land on the right tab).
     const SETTINGS_ANCHOR_TAB = {
       "appearance": "general", "language": "general", "accent": "general",
@@ -3471,6 +3517,7 @@
       "local-execution": "computer", "computers": "computer",
       "update-computer": "computer", "reset-computer": "computer",
       "route-traffic": "computer", "security-keys": "credentials",
+      "pairing": "phone",
       "usage": "usage", "plan": "usage", "billing": "usage",
       "update-status": "updates", "update-channel": "updates", "automatic-updates": "updates",
     };
@@ -3486,7 +3533,7 @@
       // #settings-meta 是开发诊断行：产品态必须留空，否则「tab=凭证」这种内部
       // 字串会直接印在用户看得见的屏幕上（GP-185 真开机截图抓到的）。
       if (metaEl && typeof devModeOn === "function" && devModeOn()) {
-        const label = { general: "常规", computer: "电脑", credentials: "凭证", usage: "用量与账单", updates: "更新" }[key];
+        const label = { general: "常规", computer: "电脑", credentials: "凭证", phone: "手机", usage: "用量与账单", updates: "更新" }[key];
         metaEl.textContent = metaEl.textContent.replace(/tab=[^·]*(·|$)/, "tab=" + label + " $1").trim() || "tab=" + label;
       } else if (metaEl) {
         metaEl.textContent = "";
@@ -3500,8 +3547,10 @@
       if (key === "credentials") {
         refreshSecretsForm().catch(() => {});
         refreshInboundUrlStrip().catch(() => {});
-        refreshPairingStrip().catch(() => {});
       }
+      // GP-189：配对搬去「手机」页后，状态刷新跟着界面走 —— 留在凭证页刷新，
+      // 切到手机页就会看到上一站的旧地址（读起来像「没连上」）。
+      if (key === "phone") refreshPairingStrip().catch(() => {});
       if (key === "updates") refreshUpdatesTabState();
     }
     document.querySelectorAll("#settings-tabs .settings-tab-btn").forEach((b) => {
@@ -3787,6 +3836,8 @@
         if (low.startsWith("usage")) key = "usage";
         else if (low === "updates") key = "updates";
         else if (low === "computer") key = "computer";
+        else if (low === "vault" || low === "credentials") key = "credentials";
+        else if (low === "phone") key = "phone";
         else key = "general";
       }
       showSettingsTab(key || settingsActiveTab || "general");
@@ -11217,7 +11268,6 @@
       if (secStatus && hint) secStatus.textContent = hint;
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
-      refreshPairingStrip().catch(() => {});
     }
 
     async function refreshConfigGate() {
@@ -11347,19 +11397,20 @@
       setAccountPopup(false);
     };
     /* 移动版不再是占位：APK 已经能构建（hosts/android/BitBotHost），用户点这一项
-       就该落到能真办事的地方 —— 「凭证 → 手机配对」给得出地址与令牌。
+       就该落到能真办事的地方。GP-189 起配对有自己的页签，这一跳走内核深链
+       anchor=pairing → tab=Phone，不再是「落到凭证页里翻手机卡」。
        商店安装包链接仍是后续波次，这句话也照样如实说。 */
     const apMobile = document.getElementById("ap-mobile");
     if (apMobile) {
       apMobile.addEventListener("click", () => {
         addMsg(
           "assistant",
-          "Bit Bot 安卓版已经可用：装好 APK 后在手机端「凭证」里填这台桌面的配对地址与配对令牌 —— 已为你打开「设置 → 凭证 → 手机配对」（同一 Wi-Fi 下先点「允许手机连接」）。应用商店安装包链接仍是后续波次。",
+          "Bit Bot 安卓版已经可用：装好 APK 后在手机端点「连接 Desktop」，输入这里生成的 6 位配对码 —— 已为你打开「设置 → 手机」（不在同一 Wi-Fi 就先点「允许手机连接」）。应用商店安装包链接仍是后续波次。",
           { debugOnly: false },
         );
         setAccountPopup(false);
         window.__bbPendingSettingsTrigger = apMobile;
-        runUserTurn("open settings entry=account anchor=security-keys", {
+        runUserTurn("open settings entry=account anchor=pairing", {
           skipSession: true,
           silentUser: true,
         });
@@ -14539,8 +14590,26 @@
         credAdvTitle: "备用渠道与 provider 标签",
         credZoneCapability: "能力扩展",
         credCapNote: "不填也能用，只是不会联网：回答里不会出现编造的来源。",
-        credZoneDevices: "手机与入站",
+        credZoneDevices: "手机配对",
         credInboundLabel: "入站公网地址（连接应用回调要用）",
+        credZoneInbound: "入站地址",
+        phoneTitle: "手机",
+        phoneLead: "手机连的就是这台电脑上的大脑。三步：打开局域网入口 → 生成 6 位配对码 → 在手机里输入。",
+        phoneTagMust: "必做",
+        phoneStepName1: "打开局域网入口",
+        phoneStepDesc1: "默认只听本机 127.0.0.1，手机扫不到；点一下才把地址让给局域网。",
+        phoneStepName2: "生成 6 位配对码",
+        phoneStepDesc2: "5 分钟内有效、只能用一次；不想要了就当场作废。",
+        phoneStepName3: "在手机里输入这 6 位",
+        phoneStepDesc3: "手机 App（BitBotHost）点「连接 Desktop」，它只在这台桌面所在的网段里找。",
+        phoneAdvTitle: "手动填地址与令牌（连不上时才用）",
+        phoneZoneScope: "一定要在同一个局域网吗？",
+        phoneScopeYes: "同一 Wi-Fi / 同网段",
+        phoneScopeSame: "直接可用：上面三步就够，不用填任何地址。",
+        phoneScopeWarn1: "访客网络 / 公司隔离 / 手机热点",
+        phoneScopeOther: "这些网络禁止设备互访，扫不到很正常。在上方「手动」里填这台桌面的地址和端口 —— 只要手机能打通那个地址就行，不限网段。",
+        phoneScopeWarn2: "公网 / 跨网段",
+        phoneScopePublic: "本版没有内置内网穿透：要么自己组网（如 Tailscale）后按上一条手填，要么走有公网地址的服务器。地址不是私有网段时，手机会如实提示「大概率连不通」。",
         credZoneCompliance: "合规",
         credApplyLead: "申请 DeepSeek",
         takeover: "接管",
@@ -14899,6 +14968,7 @@
         tabGeneral: "通用",
         tabComputer: "电脑",
         tabCredentials: "凭证",
+        tabPhone: "手机",
         tabUsage: "用量与账单",
         tabUpdates: "更新",
         botComputer: "Bot 的云端电脑",
@@ -15276,8 +15346,26 @@
         credAdvTitle: "備用渠道與 provider 標籤",
         credZoneCapability: "能力擴充",
         credCapNote: "不填也能用，只是不會聯網：回答裡不會出現編造的來源。",
-        credZoneDevices: "手機與入站",
+        credZoneDevices: "手機配對",
         credInboundLabel: "入站公網地址（連接應用回調要用）",
+        credZoneInbound: "入站地址",
+        phoneTitle: "手機",
+        phoneLead: "手機連的就是這台電腦上的大腦。三步：開啟區域網入口 → 產生 6 位配對碼 → 在手機裡輸入。",
+        phoneTagMust: "必做",
+        phoneStepName1: "開啟區域網入口",
+        phoneStepDesc1: "預設只聽本機 127.0.0.1，手機掃不到；點一下才把位址讓給區域網。",
+        phoneStepName2: "產生 6 位配對碼",
+        phoneStepDesc2: "5 分鐘內有效、只能用一次；不想要了就當場作廢。",
+        phoneStepName3: "在手機裡輸入這 6 位",
+        phoneStepDesc3: "手機 App（BitBotHost）點「連接 Desktop」，它只在這台桌面所在的網段裡找。",
+        phoneAdvTitle: "手動填位址與令牌（連不上時才用）",
+        phoneZoneScope: "一定要在同一個區域網嗎？",
+        phoneScopeYes: "同一 Wi-Fi / 同網段",
+        phoneScopeSame: "直接可用：上面三步就夠，不用填任何位址。",
+        phoneScopeWarn1: "訪客網路 / 公司隔離 / 手機熱點",
+        phoneScopeOther: "這些網路禁止裝置互訪，掃不到很正常。在上方「手動」裡填這台桌面的位址和連接埠 —— 只要手機能打通那個位址就行，不限網段。",
+        phoneScopeWarn2: "公網 / 跨網段",
+        phoneScopePublic: "本版沒有內建內網穿透：要嘛自己組網（如 Tailscale）後按上一條手填，要嘛走有公網位址的伺服器。位址不是私有網段時，手機會如實提示「大概率連不通」。",
         credZoneCompliance: "合規",
         credApplyLead: "申請 DeepSeek",
         takeover: "接管",
@@ -15636,6 +15724,7 @@
         tabGeneral: "一般",
         tabComputer: "電腦",
         tabCredentials: "憑證",
+        tabPhone: "手機",
         tabUsage: "用量與帳單",
         tabUpdates: "更新",
         botComputer: "Bot 的雲端電腦",
@@ -16013,8 +16102,26 @@
         credAdvTitle: "Backup keys & provider tag",
         credZoneCapability: "Capabilities",
         credCapNote: "Works without this: no web search, and no invented sources in answers.",
-        credZoneDevices: "Phone & inbound",
+        credZoneDevices: "Phone pairing",
         credInboundLabel: "Public inbound URL (needed by app callbacks)",
+        credZoneInbound: "Inbound URL",
+        phoneTitle: "Phone",
+        phoneLead: "Your phone talks to the brain on this computer. Three steps: open the LAN endpoint, generate a 6-digit code, then type it on the phone.",
+        phoneTagMust: "Required",
+        phoneStepName1: "Open the LAN endpoint",
+        phoneStepDesc1: "By default the desktop only listens on 127.0.0.1, so the phone cannot see it. One click publishes the address to your LAN.",
+        phoneStepName2: "Generate a 6-digit code",
+        phoneStepDesc2: "Valid for 5 minutes and single-use; revoke it any time.",
+        phoneStepName3: "Type the 6 digits on the phone",
+        phoneStepDesc3: "In the BitBotHost app tap Connect Desktop — it only searches the subnet this desktop lives on.",
+        phoneAdvTitle: "Manual address & token (only when pairing fails)",
+        phoneZoneScope: "Does it have to be the same LAN?",
+        phoneScopeYes: "Same Wi-Fi / subnet",
+        phoneScopeSame: "Works as-is: the three steps above are enough, nothing to type.",
+        phoneScopeWarn1: "Guest Wi-Fi / corporate isolation / hotspot",
+        phoneScopeOther: "Those networks block device-to-device traffic, so an empty scan is normal. Type this desktop's address and port under Manual above — any reachable address works, on any subnet.",
+        phoneScopeWarn2: "Public internet / different subnet",
+        phoneScopePublic: "This build ships no tunnel: bring your own mesh (e.g. Tailscale) or a server with a public address, then fill it in manually. When the address is not private, the phone warns that it probably will not connect.",
         credZoneCompliance: "Compliance",
         credApplyLead: "Get a DeepSeek key",
         takeover: "Take over",
@@ -16373,6 +16480,7 @@
         tabGeneral: "General",
         tabComputer: "Computer",
         tabCredentials: "Credentials",
+        tabPhone: "Phone",
         tabUsage: "Usage & Billing",
         tabUpdates: "Updates",
         botComputer: "Bot's Computer (cloud box)",
