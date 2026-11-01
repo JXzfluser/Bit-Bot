@@ -985,9 +985,12 @@ body.force-light {
 /* Geometry unified to layout-contract §3 (sidebar 280 / header 56).
    No per-mode override: --sidebar-w/--header-h have a single source in :root. */
 
-/* header → minimal top bar (drop the wordmark / bot pill / dev badge) */
+/* header → minimal top bar.
+   注意：#bot-pill **不**在这条名单里。它原来是跟着 brand / 开发徽章一起被
+   摘掉的，但 header 的高度（--header-h: 56，合同 §3 钉死）和拖拽区都还在，
+   于是聊天列顶上留下一条 56px 的纯空白带 —— 窄窗口下就是「顶部那块大留白」。
+   现在把它当成顶栏的唯一内容：当前聊的是谁（Bot / 群），样式收到最轻。 */
 body.grok-ui #brand-block,
-body.grok-ui #bot-pill,
 body.grok-ui #devmode-badge,
 body.grok-ui #vc-sb-indicator { display: none !important; }
 /* header chrome is defined once in the consolidated `body.grok-ui header`
@@ -1082,7 +1085,10 @@ body.grok-ui #sidebar-settings-btn:hover { background: var(--accent-soft) !impor
 /* No-key warning: slim neutral inline notice instead of a big tan callout. */
 body.grok-ui #cfg-strip {
   margin: 0 auto 10px !important; max-width: 760px !important;
-  background: #f8f8f8 !important; border: 1px solid var(--line) !important;
+  /* 原来是写死的 #f8f8f8：暗色下这块仍然是浅底，而文字走 --muted（暗色里是
+     浅灰），浅字压浅底 → 整行看不见，只剩「去配置」按钮浮在一条白块上。
+     换 --fill（浅色下≈#f4f4f5，几乎同值；暗色下跟着主题变深）。 */
+  background: var(--fill) !important; border: 1px solid var(--line) !important;
   border-radius: 10px !important; color: var(--muted) !important;
   font-size: 12.5px !important; padding: 8px 12px !important; text-align: center !important;
 }
@@ -1134,6 +1140,28 @@ body.grok-ui {
 body.grok-ui header button,
 body.grok-ui header a,
 body.grok-ui header input { -webkit-app-region: no-drag; }
+/* 顶栏唯一的内容：当前对话对象（DM 是 Bot 名，群聊是群名）。
+   刻意做成「无边框、无阴影、灰色小字」——它只是给这 56px 一个交代，
+   不该抢对话的注意力。头像 22px、字 13px，居中，最长 60% 宽。
+   颜色仍然只走根上的 --bot-avatar（见 updateBotPill 的注释），
+   元素级不写字面色值，token-parity 的运行时预算不会被打穿。 */
+body.grok-ui #bot-pill {
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  max-width: min(60%, 420px);
+  -webkit-app-region: drag;
+}
+body.grok-ui #bot-pill .bot-pill-avatar {
+  width: 22px; height: 22px; flex-basis: 22px; font-size: 11px; box-shadow: none;
+}
 body.grok-ui #header-actions { margin-left: auto !important; display: flex !important; align-items: center !important; }
 
 /* Chat column: ONE 760px reading column, centred. Layout contract §3 and the
@@ -1475,7 +1503,7 @@ body.grok-ui #settings-anchors { display: none !important; }
 body.grok-ui .settings-tab {
   grid-area: content;
   margin: 0 !important;
-  padding: 4px 36px 32px 6px !important;
+  padding: 4px 20px 20px 6px !important;
   border-top: 0 !important;
   overflow-y: auto !important;
 }
@@ -1484,7 +1512,7 @@ body.grok-ui .settings-tab .st-title {
   font-weight: 600 !important;
   letter-spacing: -0.01em !important;
   color: var(--g-ink) !important;
-  margin: 0 0 18px !important;
+  margin: 0 0 14px !important;
 }
 body.grok-ui .settings-tab .st-note {
   font-size: 13px !important;
@@ -1502,9 +1530,87 @@ body.grok-ui .settings-tab .st-note {
 body.grok-ui .gp-label,
 body.grok-ui .bf-label {
   font-size: 13px !important;
-  color: var(--g-sub) !important;
 }
-body.grok-ui .bb-sheet .gp-label { margin: 18px 0 8px !important; }
+/* 标签是这一行的「名字」，不是注释：用正文色 + 500 字重；解释性的小字走
+   .gp-hint（次级色）。原来两者都是 --g-sub，一屏下来全是灰字。
+   这里必须把 id 带上 —— 上面 `#settings-panel .gp-label` 带 id，特异性高过
+   body.grok-ui 的类选择器，否则颜色压不动，只能靠 !important（T-1 棘轮不许涨）。
+   去掉了原来的 !important：.gp-label 上没有行内 color，不需要硬顶。 */
+body.grok-ui #settings-panel .gp-label { color: var(--g-ink); font-weight: 500; }
+body.grok-ui .bf-label { color: var(--g-sub); }
+/* 没有别的规则给 .gp-label 设 margin，去掉 !important 也能生效（T-1 棘轮只许降） */
+body.grok-ui .bb-sheet .gp-label { margin: 18px 0 8px; }
+
+/* -- 10.3b 设置页的「表格化」节奏（常规 / 电脑 / 凭证 … 共用） -------------
+   症状：每项设置都是一行灰标签 + 一个控件，六组之间只靠 18px 空隙区分，
+   扫过去像串没有关系的字段；四条标签还各带一句括注，整列读起来像说明书。
+   改法只用 CSS，不动 DOM 结构（id 与 data-i18n 都在门禁里）：
+     1. 组间发丝线 → 每组自成一段，眼睛有落点；
+     2. 标签用正文色 + 500 字重，解释性括注降级成 .gp-hint（12px 次级色）；
+     3. 控件给最小宽度，别让 90px 的下拉挂在 560px 空白里。 */
+body.grok-ui .settings-tab > .gp-label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  margin: 12px 0 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--g-line);
+}
+/* 第一组紧跟大标题：既不要那条顶线，也不要再垫空隙 */
+body.grok-ui .settings-tab > .st-title + .gp-label {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+/* data-lab 的标签必须跟着产品态一起消失：上面那条 `display:flex` 的选择器
+   比 index.html 里的 `body:not([data-devmode="on"]) [data-lab]{display:none}`
+   更高，不补这一条就会出现「开发选项」标题孤零零站着、下面是空行。 */
+body:not([data-devmode="on"]) .settings-tab > .gp-label[data-lab] { display: none; }
+body.grok-ui .settings-tab .gp-label > .gp-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--g-sub);
+}
+body.grok-ui .settings-tab .gp-row { gap: 8px 8px; }
+/* 「电脑与权限」这一页有 4 个分组 + 7 行档位，比别的页重。分组节奏收紧一点，
+   760 高的小窗口里就不用为最后两行滚动。 */
+body.grok-ui #st-computer > .gp-label {
+  margin: 10px 0 4px;
+  padding-top: 6px;
+}
+body.grok-ui .settings-tab .gp-select { min-width: 220px; }
+body.grok-ui .settings-tab #gp-account-label { min-width: 180px; }
+/* 状态行不是控制台：去掉等宽字体与键值堆叠感，只留一句话。
+   这三行原来带行内 font:12px/1.5 ui-monospace，行内样式只有 !important 能压；
+   改成把行内 font 从 DOM 里摘掉（只剩 margin），这里用普通声明就够。 */
+body.grok-ui .settings-tab #gp-privacy-state,
+body.grok-ui .settings-tab #gp-account-state,
+body.grok-ui .settings-tab #waveg-settings-status {
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--g-sub);
+  max-width: 42em;
+}
+/* 隐私模式是账户的只读属性：跟「账户」那一组同高的一行，state 是取值（ink），
+   解释单独一行（sub）。以前它自己占一个分组、解释只藏在 title 里，看起来像
+   一个坏掉的控件。 */
+body.grok-ui .settings-tab .gp-lorule-state { margin-top: 12px; }
+/* 状态行是「键 值」一句话，不是控件行：不要给标签留 88px 的固定列宽，
+   否则中间空出一大块，读起来像两个不相干的东西。 */
+body.grok-ui .settings-tab .gp-lorule-state .gp-lorule-name { min-width: 0; }
+body.grok-ui .settings-tab .gp-lorule-state #gp-privacy-state {
+  font-size: 12.5px;
+  color: var(--g-ink);
+}
+body.grok-ui .settings-tab #gp-privacy-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--g-sub);
+  max-width: 42em;
+  margin-top: 2px;
+}
 body.grok-ui .bf-label > span {
   font-weight: 500 !important;
   font-size: 13px !important;
@@ -1549,6 +1655,25 @@ body.grok-ui .gp-chip.active {
   background: var(--g-ink) !important;
   border-color: var(--g-ink) !important;
   color: var(--g-card) !important;
+}
+/* 「本地执行」的单项例外（执行命令 / 操作电脑）：跟总开关摆在同一块。
+   这两行原来在「通用 → 自动复核规则」里又出现一次，同一个决定两个入口，
+   用户设了「始终允许」还被弹审批。现在只在这里设。 */
+body.grok-ui .gp-lorule {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 5px;
+}
+body.grok-ui .gp-lorule-name {
+  min-width: 88px;
+  font-size: 12.5px;
+  color: var(--g-sub);
+}
+/* 总开关选「禁止」时这两行没有意义（never 是硬闸），置灰而不是假装还能设。 */
+body.grok-ui #gp-locexec-rules.is-disabled {
+  opacity: 0.45;
 }
 /* category chips (connect apps): h28, borderless, ink-6% wash; active = ink */
 body.grok-ui .ca-chip {
@@ -1697,8 +1822,135 @@ body.grok-ui .st-check {
   font-weight: 500;
   color: var(--g-ink);
 }
+/* 字段名下面那一行小字：掩码状态 / 开关说明。以前塞在 .st-field-name 里，
+   长句会把标签本体淹掉（「API Key（已配置 sk-…f3a9；留空＝不改动，要换就粘新的）」）。 */
+body.grok-ui .st-field-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--g-sub);
+}
+/* 勾选项下面的说明：缩进到文字起始位置，否则它会和复选框左边对齐，
+   读起来像另一段的开头，而不是这一项的解释。 */
+body.grok-ui .st-check + .st-field-hint { padding-left: 21px; }
+/* 「当前连接」结论区（GP-186）：这一屏的第一个块。
+   原来的问题不是栏位多，是没有结论 —— 五个等重的技术字段铺下来，看完不知道
+   「现在接的是什么、通不通」。竖排两行 + 一颗「换模型」，跟 Cursor / Cline 的
+   模型设置同一个思路：先给结论，再给「改它」的入口。
+   状态点只用墨色/描边两态，不引入新色值（M-1 棘轮）。 */
+body.grok-ui .st-conn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 12px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--g-line);
+}
+body.grok-ui .st-conn-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--g-sub);
+  border-radius: 999px;
+  background: transparent;
+}
+body.grok-ui .st-conn-dot[data-state="ok"] { border-color: var(--g-ink); background: var(--g-ink); }
+body.grok-ui .st-conn-body { flex: 1 1 auto; min-width: 0; }
+body.grok-ui .st-conn-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--g-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.grok-ui .st-conn-sub {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--g-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.grok-ui .st-conn .bb-btn { flex: 0 0 auto; }
+/* 卡内的横向分隔：把「接上大脑的步骤」和「接上之后的其它开关」分开。
+   以前这两类东西混在一条竖列里，用户分不清哪几栏是必须填的。 */
+body.grok-ui .st-rule {
+  height: 0;
+  margin: 14px 0 12px;
+  border-top: 1px solid var(--g-line);
+}
+/* 设置行：左标签 / 右控件。竖排表单（.st-field）一屏只放得下三栏，
+   行式一屏能扫完六行，且控件左边缘成一条线、标签成一列 —— 这是 macOS 系统设置、
+   VS Code、Cursor Settings、ChatGPT 设置共用的形态。
+   不动 .st-field：全站还有别的页在用它，这里只是凭证页内的第二种排法。 */
+body.grok-ui .st-form {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 11px 14px;
+  align-items: start;
+}
+body.grok-ui .st-form-label {
+  padding-top: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--g-ink);
+  white-space: nowrap;
+}
+body.grok-ui .st-form-ctl { min-width: 0; }
+@media (max-width: 720px) {
+  body.grok-ui .st-form { grid-template-columns: 1fr; gap: 4px; }
+  body.grok-ui .st-form-label { padding-top: 0; }
+  body.grok-ui .st-form-ctl { margin-bottom: 10px; }
+}
+/* 模型候选：主流 agent 都不让用户凭记忆手打模型名。输入框仍然保留，
+   点一下芯片就填进去，自建端点照样能写任意 model id。 */
+body.grok-ui .st-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 7px 0 0;
+}
+body.grok-ui .st-chips:empty { display: none; }
+body.grok-ui .st-chip {
+  font-size: var(--text-xs);
+  line-height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--g-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--g-sub);
+  cursor: pointer;
+}
+body.grok-ui .st-chip:hover { border-color: var(--g-ink); color: var(--g-ink); }
+body.grok-ui .st-chip.is-on {
+  border-color: var(--g-ink);
+  color: var(--g-ink);
+  background: var(--g-soft);
+}
+/* 一张卡里的第二个可选分组：细线隔开，不再另起一张卡（少一层边框 + 一层留白） */
+body.grok-ui .st-sub-title {
+  margin: 18px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--g-line);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-ink);
+}
+/* 紧跟卡片标题的那一个分组：标题本身就是分隔，再加一条线会变成「两条线夹一个标题」 */
+body.grok-ui .st-card-title + .st-sub-title {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
 /* 保存条贴在滚动区底边：点「保存」的结果就在按钮左边，不用滚到页尾找。
-   左右负 margin 抵掉 .settings-tab 的内边距（4px 36px 32px 6px），让这条横跨整列。 */
+   左右负 margin 抵掉 .settings-tab 的内边距（现在是 4px 20px 20px 6px），让这条横跨整列。
+   这里以前写的是 36/32 —— 内边距早改成 20/20 了，多出来的 16px 让保存条横向溢出
+   （shot_settings_credentials 的 overflowX 当场抓到：sec-foot 右缘比容器多 16px）。 */
 body.grok-ui .st-foot {
   position: sticky;
   bottom: 0;
@@ -1707,10 +1959,23 @@ body.grok-ui .st-foot {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 14px -36px -32px -6px;
-  padding: 10px 36px 14px 12px;
+  margin: 14px -20px -20px -6px;
+  padding: 9px 20px 11px 12px;
   background: var(--g-card);
   border-top: 1px solid var(--g-line);
+}
+/* 吸底保存条永远压在内容上。加一层 16px 的渐隐，让下面滚过去的东西「淡出」
+   而不是被一刀切断 —— 不然中间的复选框/折叠行看着像被裁掉了。
+   颜色全部走令牌，暗色下同样成立（--g-card 本身就是深色）。 */
+body.grok-ui .st-foot::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -17px;
+  height: 16px;
+  background: linear-gradient(to top, var(--g-card), transparent);
+  pointer-events: none;
 }
 body.grok-ui .st-foot-status {
   flex: 1 1 220px;

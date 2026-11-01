@@ -1964,9 +1964,9 @@ async function main() {
       groups.length >= 1 && rowsNow >= 1
         ? ok("E2E GP-123：会话列表按 今天/昨天/更早 分组（" + groups.join(" / ") + "）")
         : bad("E2E GP-123 groups", JSON.stringify(groups));
-      // #session-search is hidden until the sidebar search toggle reveals it
-      // (matches the real product: the search button or Cmd/Ctrl+K).
-      await win.click("#sidebar-search-toggle");
+      // #session-search 属于会话弹层：侧栏放大镜已改为搜 Bot / 群组，
+      // 所以这里从账户条的会话入口打开弹层，会话过滤本身仍要过同样的断言。
+      await win.click("#ab-sessions-btn");
       await win.waitForSelector("#session-search:not([hidden])", { timeout: 5000 });
       await win.fill("#session-search", "zzz-no-such-session-xyz");
       await win.waitForTimeout(250);

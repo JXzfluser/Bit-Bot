@@ -39,12 +39,27 @@ if (/else if \(ev\.key === "k" \|\| ev\.key === "K"\) \{[\s\S]{0,200}toggleSessi
   bad("accelerators", "K or / branch missing");
 }
 
-/* ---------- 2) 共享搜索入口，不造第二份状态 ---------- */
-/* P2/M45 + G-28: the search row lives behind one helper
-   (setSessionSearchOpen) so the grok-ui body class, the #sessions-popup fold
-   and the input's hidden flag can never diverge; the button, Cmd/Ctrl+K and
-   Escape all go through it. 先按函数体切片再断言，避免窗口宽度把新增的
-   弹层展开逻辑挤出去（旧窗口 160 字，G-28 之后必然越界）。 */
+/* ---------- 2) 两处搜索各自只有一个入口，不造第二份状态 ---------- */
+/* 变更（Bot + 群 Bot 产品模型）：侧栏放大镜与 Cmd/Ctrl+K 现在打开的是
+   setSidebarSearchOpen —— 过滤 #bot-list / #room-list，而不是会话。
+   会话搜索仍留在 #sessions-popup 自己的输入框，由 setSessionSearchOpen 揭出
+   （弹层打开时调用），保证它不是死代码。
+   两个入口各自只有一个函数在改 hidden / body class / focus。 */
+const sbSearchFn =
+  (html.match(/function setSidebarSearchOpen\(open\) \{[\s\S]*?\n    \}/) || [""])[0];
+const sbSearchOk =
+  /sb-search-open/.test(sbSearchFn) &&
+  /sbSearchRow\.hidden = !open/.test(sbSearchFn) &&
+  /getElementById\("sb-search-row"\)/.test(html) &&
+  /function applySidebarFilter\(raw\)/.test(html) &&
+  /function toggleSessionSearchFromShortcut\(\)[\s\S]{0,200}setSidebarSearchOpen\(/.test(html) &&
+  /sidebarSearchToggle\.addEventListener\("click"[\s\S]{0,240}setSidebarSearchOpen\(/.test(html);
+if (sbSearchOk) {
+  ok("侧栏搜索单一入口 setSidebarSearchOpen：放大镜与 Cmd/Ctrl+K 同源，过滤 Bot / 群组");
+} else {
+  bad("sidebar search", "search row not reached through the single setSidebarSearchOpen entry");
+}
+
 const searchFn =
   (html.match(/function setSessionSearchOpen\(open\) \{[\s\S]*?\n    \}/) || [""])[0];
 const searchOk =
@@ -52,12 +67,11 @@ const searchOk =
   /getElementById\("session-search"\)/.test(searchFn) &&
   /sessions-popup/.test(searchFn) &&
   /el\.hidden = !open/.test(searchFn) &&
-  /function toggleSessionSearchFromShortcut\(\)[\s\S]{0,200}setSessionSearchOpen\(/.test(html) &&
-  /sidebarSearchToggle\.addEventListener\("click"[\s\S]{0,240}setSessionSearchOpen\(/.test(html);
+  /abSessions\.addEventListener[\s\S]{0,600}setSessionSearchOpen\(true\)/.test(html);
 if (searchOk) {
-  ok("Cmd/Ctrl+K 走既有 #session-search 输入（setSessionSearchOpen 单一入口：hidden/body class/弹层/focus 同源），无重复状态");
+  ok("会话搜索仍由 setSessionSearchOpen 单一入口揭出（账户条弹层打开时），不是死代码");
 } else {
-  bad("shared search", "search row not reached through the single setSessionSearchOpen entry");
+  bad("session search", "session search row not reached through setSessionSearchOpen");
 }
 
 /* ---------- 3) openHotkeysSheet 用 DOM 节点，走 bb-modal / bb-sheet ---------- */

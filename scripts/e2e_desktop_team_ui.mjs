@@ -101,7 +101,12 @@ const realSnap = () =>
    直接比"运行前后字节一致"会被别的并发门禁误伤（仓库里另有几个门禁按真实
    REPO_ROOT 跑，会写 data/desktop）—— 那不是本门禁的锅，也不该由本门禁报警。
    夹具的哨兵值（群 id / bot 名）出现在用户数据里，才是真泄漏。 */
-const FIXTURE_SENTINELS = ["room-e2e", "情报侦察员", "内容主笔", "内容生产战队"];
+/* 哨兵只能是**夹具独有**的字符串。原来这里用 bot 的显示名（情报侦察员 /
+   内容主笔）当哨兵，用户自己在应用里建了同名 Bot 之后，这一条就永远红了 ——
+   它量的是「夹具有没有漏进用户数据」，不是「用户有没有用过这几个名字」。
+   id 也不能随手用：用户真实 bot id 是 bot-<6hex>，`bot-c` 这种短串会撞上
+   bot-c0e815。所以夹具 id 统一带 e2e- 前缀，哨兵就用这个前缀。 */
+const FIXTURE_SENTINELS = ["room-e2e", "bot-e2e", "内容生产战队"];
 const fixtureLeak = () => {
   for (const f of [REAL_BOTS, REAL_ROOMS]) {
     if (!fs.existsSync(f)) continue;
@@ -126,12 +131,12 @@ const bot = (id, name, job, pinned) => ({
 const FIXTURE_FILES = {
   "bots.json": {
     version: 1,
-    primary_id: "bot-a",
+    primary_id: "bot-e2e-a",
     bots: [
-      bot("bot-a", "情报侦察员", "搜集素材", true),
-      bot("bot-b", "内容主笔", "写稿", false),
+      bot("bot-e2e-a", "情报侦察员", "搜集素材", true),
+      bot("bot-e2e-b", "内容主笔", "写稿", false),
       /* bot-c 故意不在群里 —— G-28 #4 的「从 Bot 库添加」需要一个真的可加对象。 */
-      bot("bot-c", "视觉设计师", "配图", false),
+      bot("bot-e2e-c", "视觉设计师", "配图", false),
     ],
   },
   "rooms.json": {
@@ -140,7 +145,7 @@ const FIXTURE_FILES = {
       {
         id: "room-e2e",
         title: "内容生产战队",
-        members: ["bot-a", "bot-b"],
+        members: ["bot-e2e-a", "bot-e2e-b"],
         created_at: NOW,
         transcript: [],
         library: [
@@ -284,15 +289,15 @@ async function shutdown(app) {
       }));
       return { hidden: p.hidden, items };
     });
-    const pickC = picker.items.find((i) => i.id === "bot-c");
+    const pickC = picker.items.find((i) => i.id === "bot-e2e-c");
     !picker.hidden &&
     pickC &&
     pickC.name === "视觉设计师" &&
-    !picker.items.some((i) => i.id === "bot-a" || i.id === "bot-b")
+    !picker.items.some((i) => i.id === "bot-e2e-a" || i.id === "bot-e2e-b")
       ? ok("T-10b 「＋ 添加成员」只列出不在群里的 Bot（" + picker.items.map((i) => i.name).join(" / ") + "）")
       : bad("T-10b 选人表不对", JSON.stringify(picker));
 
-    await win.click('#ri-member-picker .ri-pick[data-bot-id="bot-c"]');
+    await win.click('#ri-member-picker .ri-pick[data-bot-id="bot-e2e-c"]');
     await win.waitForTimeout(900);
     const afterAdd = await win.evaluate(() => ({
       rows: document.querySelectorAll("#ri-member-list .ri-member").length,
@@ -308,7 +313,7 @@ async function shutdown(app) {
       ? ok("T-10d 3 人时移除按钮全部可用")
       : bad("T-10d 移除按钮状态没跟着人数变", JSON.stringify(afterAdd.delDisabled));
 
-    await win.click('#ri-member-list .ri-member[data-bot-id="bot-c"] .ri-member-del');
+    await win.click('#ri-member-list .ri-member[data-bot-id="bot-e2e-c"] .ri-member-del');
     await win.waitForTimeout(900);
     const afterRemove = await win.evaluate(() => ({
       rows: document.querySelectorAll("#ri-member-list .ri-member").length,
@@ -330,7 +335,7 @@ async function shutdown(app) {
     const storeRoom = roomStore && (roomStore.rooms || []).find((r) => r.id === "room-e2e");
     const sysLines = storeRoom ? (storeRoom.transcript || []).filter((e) => e.kind === "system") : [];
     storeRoom &&
-    JSON.stringify(storeRoom.members) === JSON.stringify(["bot-a", "bot-b"]) &&
+    JSON.stringify(storeRoom.members) === JSON.stringify(["bot-e2e-a", "bot-e2e-b"]) &&
     sysLines.some((e) => /视觉设计师.*加入/.test(e.text)) &&
     sysLines.some((e) => /视觉设计师.*离开/.test(e.text))
       ? ok("T-10f 改动真落了 rooms.json（成员回到 2 人，进/出各留一条 system 行）")

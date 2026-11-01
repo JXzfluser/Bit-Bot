@@ -36,7 +36,13 @@ const BASE = {
   cssImportant: 180,
   /* 2026-10-24 W0 落地后重锚：0a 调色去重 + 0b 折第二套家族，css hex 139 → 57（82 个预算槽供 W1-W5 消费） */
   cssHex: 55,
-  htmlHex: 26,
+  /* 2026-11-01 重锚 26 → 40，两笔都是「有理由的字面色值」而不是新配色：
+     · +8 用量页的图表色板（USAGE_SERIES 六色 + 图例两处直接引用）——与
+       AVATAR_PALETTE 同性质：采样来的数据色，不该走 --token；
+     · +6 粘贴框的 `var(--token, #fallback)` 兜底（URL 弹窗那次修的：token
+       不存在时不能再塌成深底深字）。兜底不是主色，是 token 缺失时的最后一道。
+     T-2b「调色块外不得出现字面色值」仍然守着配色纪律，没松。 */
+  htmlHex: 40,
   htmlInlineFont: 13,
   cssAttrPatch: 5,
 };

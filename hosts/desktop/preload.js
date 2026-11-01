@@ -45,6 +45,12 @@ contextBridge.exposeInMainWorld("bitbot", {
     get: () => ipcRenderer.invoke("bitbot:settings:get"),
     set: (patch) => ipcRenderer.invoke("bitbot:settings:set", patch),
   },
+  // 麦克风：问宿主一遍 TCC 真实状态（not-determined 时才会弹系统授权框），
+  // 并允许把用户送到「系统设置 → 隐私与安全性 → 麦克风」。渲染端不猜状态。
+  media: {
+    mic: () => ipcRenderer.invoke("bitbot:media:mic"),
+    micSettings: () => ipcRenderer.invoke("bitbot:media:micSettings"),
+  },
   attachments: {
     pick: (existing) => ipcRenderer.invoke("bitbot:attachments:pick", { existing: existing || 0 }),
     // GP-11: paste / drag-drop carry File objects only in the renderer; the
@@ -62,6 +68,14 @@ contextBridge.exposeInMainWorld("bitbot", {
     },
     // GP-M30: pre-send preview for the composer chips (real bytes, read-only).
     preview: (p) => ipcRenderer.invoke("bitbot:attachments:preview", { path: p }),
+    // 已经有真实磁盘路径的附件（截图落地的那一张）走同一条校验通道：
+    // 数量 / 大小 / 真图片头都还在 Host 侧判，渲染层不自己放行。
+    attachPaths: (paths, existing = 0) =>
+      ipcRenderer.invoke("bitbot:attachments:stage", { paths: paths || [], existing }),
+  },
+  // 输入框的相机键：Host 藏窗口 → 系统抓屏 → 回来当附件。
+  screenshot: {
+    capture: (opts) => ipcRenderer.invoke("bitbot:screenshot:capture", opts || {}),
   },
   skills: {
     list: () => ipcRenderer.invoke("bitbot:skills:list"),
@@ -352,7 +366,11 @@ contextBridge.exposeInMainWorld("bitbot", {
   // G-31: build-team-from-URL — fetch a page, extract a team via live LLM, scaffold workspace.
   webfetch: (url) => ipcRenderer.invoke("bitbot:webfetch", { url }),
   llmExtractTeam: (text) => ipcRenderer.invoke("bitbot:llm:extractTeam", { text }),
-  teamCreateWorkspace: (title, rules) => ipcRenderer.invoke("bitbot:team:workspace", { title, rules }),
+  teamCreateWorkspace: (title, rules, roles) => ipcRenderer.invoke("bitbot:team:workspace", { title, rules, roles }),
+  // G-31 follow-up: read a staged attachment's text for local team extraction.
+  file: {
+    readText: (p) => ipcRenderer.invoke("bitbot:file:readText", { path: p }),
+  },
   cnStatus: () => ipcRenderer.invoke("bitbot:cn:status"),
   cnInboundStatus: () => ipcRenderer.invoke("bitbot:cn:inbound:status"),
   pairing: {

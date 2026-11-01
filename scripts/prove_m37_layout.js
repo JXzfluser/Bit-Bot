@@ -93,7 +93,7 @@ function lineHas(attr, zh) {
 }
 const cnChecks = [
   ['data-i18n="gpQueueNote"', '「已过期」'],
-  ['data-i18n="autoReview"', '自动复核规则'],
+  ['data-i18n="approvalRulesTitle"', '其它动作的审批'],
   ['data-i18n="accountSection"', '账户（本地 profile'],
   ['data-i18n-ph="accountLabelPlaceholder"', '配置名（如「个人」「工作」）'],
 ];
@@ -110,8 +110,12 @@ if (/aria-label="新对话"/.test(html)) {
 }
 
 /* ---------- 8) settings-tab label map ---------- */
-if (/general:\s*"常规"[\s\S]{0,200}computer:\s*"电脑"[\s\S]{0,200}credentials:\s*"凭证"[\s\S]{0,200}phone:\s*"手机"/.test(html)) {
-  ok("settings-tab 动态标签 map 已中文化（常规 / 电脑 / 凭证 / 手机）");
+/* 断言跟着产品走：设置页早已没有 phone 段（全仓无 data-tab="phone" 元素），
+   现在这一段是 常规 / 电脑 / 凭证 / 用量与账单 / 更新。原来还要求
+   `phone: "手机"`，等于让门禁去守一个不存在的 tab —— 那条断言会一直假红，
+   真回归反而看不出来。 */
+if (/general:\s*"常规"[\s\S]{0,200}computer:\s*"电脑"[\s\S]{0,200}credentials:\s*"凭证"[\s\S]{0,200}usage:\s*"用量与账单"/.test(html)) {
+  ok("settings-tab 动态标签 map 已中文化（常规 / 电脑 / 凭证 / 用量与账单 / 更新）");
 } else {
   bad("settings-tab map", "still English");
 }

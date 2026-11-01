@@ -42,6 +42,18 @@ function roomSafeText(raw, secretProtocol) {
 }
 
 /**
+ * 从编排 prompt 里取出「用户那一句」。
+ *
+ * 群里的 prompt 是编排器拼的（【群任务】+【你的分工】+【共享任务板】…），但
+ * 定时任务要存的是用户原话，不是脚手架。所有 responder / synthesis prompt
+ * 都以 `【群任务】<原话>` 开头，所以这一行就是权威来源。
+ */
+function taskLineOf(prompt) {
+  const m = /(?:【群任务】|群任务[：:])\s*([^\n]*)/.exec(String(prompt || ""));
+  return m ? String(m[1]).trim() : "";
+}
+
+/**
  * @param {object} o
  * @param {Function} o.runTurn        (text, ctx) => Promise<result>
  * @param {object} o.surface
@@ -127,6 +139,11 @@ function createRoomRuntime(o) {
         botId: id,
         // 群里说出来的排程要归这个群管。
         roomId: room,
+        /* 排程要存的是「用户那句话」。传下去的是编排后的 prompt（含【共享任务板】
+           和别人的发言），模型会把它整块抄进 routine 的 prompt —— 到点触发时等于
+           每天重做一次编排。ctx.userText 是用户原话；调用方没给就从 prompt 的
+           【群任务】行里取（所有 responder prompt 都有这一行）。 */
+        userText: String((ctx && ctx.userText) || taskLineOf(task) || ""),
         roomContext: buildRoomContext(room, id, ctx, task),
         cancelPromise: (ctx && ctx.cancelPromise) || undefined,
         onProgress: (ev) => {
@@ -192,6 +209,10 @@ function createRoomRuntime(o) {
         approved: false,
         botId: id,
         roomId,
+        /* 自决回合只该产出 YES/NO。它原来是个完整内核回合，工具全套可用 ——
+           实测它替用户建了定时任务（prompt 里明明写着「不要调用工具」）。
+           判定环节只放行 llm_chat：不靠提示词自觉，靠执行层不给。 */
+        sideEffectPolicy: "text_only",
         roomContext: buildRoomContext(roomId, id, decisionCtx, task),
       });
       if (!result || result.ok === false) {

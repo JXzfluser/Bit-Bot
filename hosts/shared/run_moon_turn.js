@@ -65,6 +65,68 @@ function defaultResolveReplyForRoot(repoRoot) {
   };
 }
 
+/* 会改动状态的 effect 分两类，群聊里按回合的职责收口。
+   实测事故：一句「每天 7 点发邮件」在群里落下 13 条定时任务 —— 自决回合、
+   每个成员回合、lead 综合回合各自建了一条。 */
+const SCHEDULE_EFFECT_KINDS = new Set([
+  "routine_schedule",
+  "routine_fire",
+  "routine_pause",
+  "routine_resume",
+  "routine_remove",
+]);
+/* 自决回合（只回 YES/NO）连同别的写操作也不该做：它本就没有"做事"的资格。
+   这里是「已知会写盘」的清单，宁可少列也别把 llm_chat 列进来。 */
+const MUTATING_EFFECT_KINDS = new Set([
+  ...SCHEDULE_EFFECT_KINDS,
+  "teammate_create",
+  "secret_store",
+  "memory_update",
+  "hide_agent",
+  "install_plugin",
+  "uninstall_plugin",
+  "disable_plugin",
+]);
+/* 自决回合真正需要的只有「把 YES/NO 说出来」。这是白名单：除了 llm_chat
+   一律不执行 —— 判定环节不该有任何副作用的可能，也不该指望提示词自觉
+   （room_discretion.js 第 23 行早就写着「不要调用工具」，实测无效）。 */
+const TEXT_ONLY_EFFECT_KINDS = new Set(["llm_chat"]);
+
+/**
+ * 按回合职责裁掉不该执行的效果。
+ *
+ * @param {Array} effects  内核产出的效果清单
+ * @param {string} policy  "" | "text_only" | "no_side_effects" | "no_schedule"
+ * @returns {{ effects: Array, withheld: Array }}
+ */
+function applySideEffectPolicy(effects, policy) {
+  const list = Array.isArray(effects) ? effects : [];
+  const pol = String(policy || "");
+  let keep = null;
+  if (pol === "text_only") {
+    keep = (e) => TEXT_ONLY_EFFECT_KINDS.has(String((e && e.kind) || ""));
+  } else if (pol === "no_side_effects") {
+    keep = (e) => !MUTATING_EFFECT_KINDS.has(String((e && e.kind) || ""));
+  } else if (pol === "no_schedule") {
+    keep = (e) => !SCHEDULE_EFFECT_KINDS.has(String((e && e.kind) || ""));
+  }
+  if (!keep) return { effects: list, withheld: [] };
+  const passed = list.filter(keep);
+  const REASON = {
+    text_only: "discretion_turn_text_only",
+    no_side_effects: "discretion_turn_no_side_effects",
+    no_schedule: "member_turn_no_schedule",
+  };
+  const withheld = list
+    .filter((e) => passed.indexOf(e) < 0)
+    .map((e) => ({
+      kind: String((e && e.kind) || ""),
+      command: String((e && e.command) || "").slice(0, 200),
+      reason: REASON[pol] || "policy_denied",
+    }));
+  return { effects: passed, withheld };
+}
+
 function createTurnRunner(repoRoot, opts = {}) {
   const ffi = createHostFfi(repoRoot, { dataRoot: opts.dataRoot });
   const defaultResolveReply = defaultResolveReplyForRoot(repoRoot);
@@ -523,7 +585,21 @@ function createTurnRunner(repoRoot, opts = {}) {
         }
         if (searchPayload) parsed.search = searchPayload;
       }
-      const host_results = await ffi.executeHostEffects(parsed.effects, {
+      /* ---- 副作用闸：群聊三条腿的职责边界 --------------------------------
+       * 群任务会扇出成「自决 → 成员 → lead 综合」多次**完整内核回合**，
+       * 每一次都带着全套工具。于是同一句「每天 7 点发邮件」被每一腿各建了
+       * 一条定时任务（实测一次请求落下 13 条，用户看到的是「配置了那么多个」）。
+       * 边界：
+       *   · 自决回合（policy="text_only"）→ 除了把 YES/NO 说出来，什么都不做；
+       *   · 成员回合 → 可以做自己的事；同名排程在 Host 侧并按（见 host_ffi
+       *     executeRoutineEffect 的去重），所以不会一条变 N 条；
+       *   · no_side_effects / no_schedule 留给需要更紧约束的调用方。
+       * 被拦下的效果**不静默吞掉**：写进 parsed.withheld_effects，转录可以如实说。 */
+      const policy = String(ctx.sideEffectPolicy || "");
+      const governed = applySideEffectPolicy(parsed.effects, policy);
+      if (governed.withheld.length) parsed.withheld_effects = governed.withheld;
+      const effectsToRun = governed.effects;
+      const host_results = await ffi.executeHostEffects(effectsToRun, {
         approved: Boolean(ctx.approved),
         botId: ctx.botId,
         // GP-96/97: §5.7 progress events stream out of the real effect
@@ -537,6 +613,9 @@ function createTurnRunner(repoRoot, opts = {}) {
         // GP-154「定时任务在群内部」：回合来自哪个群就归给哪个群（可选，
         // DM 不传 → 空串，效果与改之前完全一致）。
         roomId: String(ctx.roomId || ""),
+        // 群里的排程要存「用户那句话」，不是编排脚手架。调用方没给就算了 ——
+        // 缺省时 host 侧退回内核给的原 prompt，行为与改之前一致。
+        userText: String(ctx.userText || ""),
         // Q-5: 投递 id —— 同一次投递重试 ⇒ 同一个 id ⇒ 幂等;用户再发一遍 ⇒
         // 新 id ⇒ 新的任务。没有它就现生成(每次进入 = 一条新消息)。
         messageId: String(ctx.messageId || ""),
@@ -847,4 +926,4 @@ function createTurnRunner(repoRoot, opts = {}) {
   };
 }
 
-module.exports = { createTurnRunner, moonProcessEnv };
+module.exports = { createTurnRunner, moonProcessEnv, applySideEffectPolicy };

@@ -2,20 +2,29 @@
 "use strict";
 
 /**
- * prove_settings_credentials_zones — GP-185「设置 → 凭证」分区 + GP-189「设置 → 手机」独立页
+ * prove_settings_credentials_zones — 「设置 → 凭证（模型与密钥）」的分区与形状
  *
  * 为什么要有这把尺子：这一屏的门禁以前只断「某个 id 在不在」，从不断「它在第几层、
- * 折叠起来没有」。结果是布局可以烂到 6 张等大卡 + 4 颗粒色相同按钮，仍然全绿。
+ * 折叠起来没有」。结果是布局可以烂到「每样东西一张等大卡」，仍然全绿。
  * 本门把重排后的形状钉成契约，并且把真机门（Playwright）依赖的可见性底线钉住 ——
  * 否则下一次"再精简一点"会把 #sec-llm-key 收进折叠里，真机门当场红。
  *
- * GP-189 起还管「手机」页：配对以前寄在凭证页最后一张卡里，现在有自己的页签。
- * PH 系列钉三件事：① 配对控件真搬过来了（凭证页里一份都不许剩）；
- * ② 主路（局域网开关 / 配对码）在明面上，抄令牌这种兜底才进折叠；
- * ③ 内核 SettingsTab、host_ffi、渲染器三张路由表说的是同一件事 ——
- *   上一节 §8.50 记录的正是这类跨语言漂移没人管，所以这里当场比。
+ * 现状（2026-11）：这一屏只剩两张卡 —— 必填（本机大脑）/ 选填（可选接线：
+ * 联网搜索 + 入站地址）。原来的第三张「合规」卡已删：里面的 ICP 备案号 / 算法备案号
+ * 是「对外提供生成式 AI 服务」的主体才要填的，本机自用不存在这件事；唯一真有功能的
+ * 内容审核门（LLM 输出前按本地词表拦）随大脑搬进第一张卡，不再自称「合规」。
  *
- * 每条断言写成纯函数（吃屏文本，吐布尔），CL-10/PH-90 用同一个函数跑真实改坏的文本，
+ * 历史：GP-189 曾把手机配对搬成独立「手机」页签，本门随之长了 PH-01..PH-10 十条。
+ * 那一页后来被整体删除，PH 系列的锚点（id="st-phone"）不再存在 —— 结果整把门
+ * 因为取不到屏文本而**一条断言都没跑**，却只报 FAIL=1，看着像"小问题"。
+ * 现在把锚点重新挂到 #secrets-panel → 面板尾，PH 系列连同它的负向对照一并删除，
+ * 取代它的是 CT-01（页签条 = 渲染器路由表），那正是 PH-07 想守的那类漂移。
+ *
+ * 已知未修的漂移（不属这一屏，写在这里免得下次又忘）：内核 ui_protocol/settings_ui.mbt
+ * 的 SettingsTab 仍含 Phone、host_ffi 的 deep link 仍把 pairing 映射到 "Phone"，
+ * 而渲染器已无 phone 页签 —— 点「移动端远程控制」会落到常规页。
+ *
+ * 每条断言写成纯函数（吃屏文本，吐布尔），CL-10 用同一个函数跑真实改坏的文本，
  * 证明它们不是恒真。
  */
 
@@ -27,12 +36,10 @@ let pass = 0, fail = 0;
 const ok = (m) => { pass++; console.log("  ✓ " + m); };
 const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String(d).slice(0, 260) : "")); };
 
-console.log("GP-185/GP-189 settings credentials+phone zones proof");
+console.log("settings credentials zones proof（两张卡：必填 / 选填）");
 
 const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
 const css = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
-const kernel = fs.readFileSync(path.join(REPO, "ui_protocol/settings_ui.mbt"), "utf8");
-const ffi = fs.readFileSync(path.join(REPO, "hosts/shared/host_ffi.js"), "utf8");
 
 /* ---------- 解析助手 ---------- */
 /* 取某一屏：从容器 id 到下一个容器的 id（屏与屏之间不重叠，防止「搬过去了但原件没删」） */
@@ -89,43 +96,28 @@ function dictSegments(doc) {
 }
 
 const CRED_START = 'id="secrets-panel"';
-const PHONE_START = 'id="st-phone"';
 const PANEL_END = "<!-- GP-92: fullscreen artifact viewer";
 
-const ZONES = ["sec-zone-brain", "sec-zone-capability", "sec-zone-inbound", "sec-zone-compliance"];
-/* 手机页只有两张卡：怎么做（三步）+ 一个诚实的边界说明 */
-const PHONE_ZONES = ["sec-zone-devices", "phone-zone-scope"];
-const STEPS = ["phone-step-1", "phone-step-2", "phone-step-3"];
+const ZONES = ["sec-zone-brain", "sec-zone-capability"];
 const MAIN = ["sec-llm-preset", "sec-llm-model", "sec-llm-base", "sec-llm-key"];
 const EXPECT_OUTSIDE = MAIN.concat([
-  "sec-search-provider", "sec-search-key", "sec-search-base", "sec-icp", "sec-algo", "sec-moderation",
+  "sec-search-provider", "sec-search-key", "sec-search-base", "sec-moderation",
 ]);
 const ADV = ["sec-llm-provider", "sec-qwen-key", "sec-moon-key"];
 /* 真机门按 visible 点或按盒子高度量的控件：e2e_desktop_llm_key_paste_guard /
-   cn_channel_guard / user_journeys / shell_v2 都在这几颗上。GP-189 起配对三颗
-   移交手机页，由 PH-03 用同一套「明面」标准盯。 */
+   cn_channel_guard / user_journeys / shell_v2 都在这几颗上。 */
 const MUST_SEE = ["sec-llm-key", "sec-save", "sec-probe-cn", "sec-model-open", "sec-moderation"];
-const PAIR_MAIN = ["pairing-lan-btn", "pairing-copy-url", "pairing-gen-btn", "pairing-revoke-btn", "sec-pairing-line", "sec-pairing-note"];
-const PAIR_MANUAL = ["pairing-token-btn", "pairing-copy-token", "sec-pairing-token", "sec-pairing-status", "sec-pairing-turn"];
-/* 这些 id 只许在手机页出现一次：搬完必须把原件删掉，否则「保存」写哪一份没人说得清。
-   GP-189 兜底：门禁 MC-10 要求凭证旧卡保留一个一键配对手动兜底（#pairing-gen-btn），
-   与手机页共用同一份 pairing.state()，index.html 已用 querySelectorAll 把两份按钮都绑上。
-   它是「无状态触发按钮」，两份并存不会像状态行那样让 getElementById 拿错副本，
-   故从「搬走后必须删干净」的清单里摘掉它（其余状态型 id 仍然一份都不许留）。 */
-const MOVED_OUT_OF_CRED = PAIR_MAIN.filter((id) => id !== "pairing-gen-btn").concat(PAIR_MANUAL).concat([
-  "pairing-code-block", "pairing-code-display", "pairing-code-digits", "pairing-code-countdown",
-  "pairing-code-actions", "pairing-code-hint", "pairing-manual-label", "sec-zone-devices",
-]);
+/* 渲染器路由表与页签条按钮必须说同一件事（PH-07 的继任者）。
+   手机页下线后这里是 5 个；再加页签就得两处一起改，否则深链落回常规页。 */
+const TABS_EXPECTED = ["general", "computer", "credentials", "usage", "updates"];
 const NEW_KEYS = [
-  "credLead", "credZoneBrain", "credTagRequired", "credTagOptional", "credBrainNote",
-  "credAdvTitle", "credZoneCapability", "credCapNote", "credZoneDevices", "credInboundLabel",
-  "credZoneCompliance", "credApplyLead",
-  /* GP-189 手机页 */
-  "credZoneInbound", "tabPhone", "phoneTitle", "phoneLead", "phoneTagMust",
-  "phoneStepName1", "phoneStepDesc1", "phoneStepName2", "phoneStepDesc2",
-  "phoneStepName3", "phoneStepDesc3", "phoneAdvTitle", "phoneZoneScope",
-  "phoneScopeYes", "phoneScopeSame", "phoneScopeWarn1", "phoneScopeOther",
-  "phoneScopeWarn2", "phoneScopePublic",
+  "credLead", "credZoneBrain", "credTagRequired", "credTagOptional",
+  "credFieldProvider", "credFieldModel",
+  "credConnNone", "credConnNoneHint", "credConnNoKey", "credConnNoBase",
+  "credKeyPhSaved", "credSearchBaseHint",
+  "credAdvTitle", "credZoneCapability", "credSubSearch", "credModeration",
+  "credModerationNote", "credCapNote", "credInboundLabel", "credZoneInbound",
+  "credApplyLead",
 ];
 
 /* ---------- 断言：纯函数，正向与反向对照共用 ---------- */
@@ -210,88 +202,43 @@ const cl13 = (p) => {
   return btn >= 0 && fold >= 0 && btn < fold;
 };
 
-/* ---------- GP-189 手机页断言（同样是纯函数，正向与反向对照共用） ---------- */
-const ph01 = (p) =>
-  [...p.matchAll(/<div class="st-card" id="((?:sec-zone|phone-zone)-[a-z]+)"/g)].map((m) => m[1]).join(",") === PHONE_ZONES.join(",") &&
-  p.indexOf('id="st-phone"') === 0;
-
-const ph02 = (p) => {
-  const pos = STEPS.map((id) => p.indexOf('id="' + id + '"'));
-  if (pos.some((i) => i < 0)) return false;
-  for (let i = 1; i < pos.length; i++) if (pos[i] <= pos[i - 1]) return false;
-  return STEPS.every((id) => new RegExp('id="' + id + '"[^>]*>\\s*<span class="st-step-no" aria-hidden="true">' + id.slice(-1)).test(p));
+/* CL-14 结论区：这一屏第一块必须是「当前接的是什么」，而且在表单之前。
+   之前的问题是五个等重字段一路铺下来没有结论 —— 这条把它钉住，别再退回去。 */
+const cl14 = (p) => {
+  const conn = p.indexOf('id="sec-conn"');
+  const dot = p.indexOf('id="sec-conn-dot"');
+  const title = p.indexOf('id="sec-conn-title"');
+  const form = p.indexOf('id="sec-llm-preset"');
+  const model = p.indexOf('id="sec-llm-model"');
+  const chips = p.indexOf('id="sec-llm-models"');
+  return conn > 0 && dot > conn && title > conn && form > conn && model > 0 && chips > model;
 };
 
-const ph03 = (p) => {
-  const r = detailsRanges(p);
-  return PAIR_MAIN.every((id) => insideDetails(p, r, id) === false) && PAIR_MANUAL.every((id) => insideDetails(p, r, id) === true);
-};
-
-/* 搬走的 id 在凭证屏里一份都不许留（两份同时存在时，JS 按 getElementById 拿第一份，
-   用户看到的和保存的是不同的东西 —— 这是上一节 §8.50 说的「门问 id 在不在」问不出来的） */
-const ph04 = (cred, phone) =>
-  MOVED_OUT_OF_CRED.every((id) => cred.indexOf('id="' + id + '"') < 0) &&
-  MOVED_OUT_OF_CRED.every((id) => phone.indexOf('id="' + id + '"') >= 0);
-
-const ph05 = (p) => {
-  const scope = /id="phone-zone-scope"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/.exec(p);
-  const seg = scope ? scope[0] : p.slice(p.indexOf('id="phone-zone-scope"'));
-  return ["phoneScopeYes", "phoneScopeWarn1", "phoneScopeWarn2"].every((k) => seg.indexOf('data-i18n="' + k + '"') >= 0) &&
-    ["phoneScopeSame", "phoneScopeOther", "phoneScopePublic"].every((k) => seg.indexOf('data-i18n="' + k + '"') >= 0);
-};
-
-/* 三张路由表必须说同一件事：内核有第 6 个页签 + pairing 归它，Host FFI 认这个锚点，
-   渲染器把 pairing 落到 phone 页、并且切到 phone 页才刷配对状态 */
-const ph06 = (doc, ker, hostFfi) => {
+/* ---------- 页签路由一致性（PH-07 的继任者） ---------- */
+/* 渲染器 SETTINGS_TAB_KEYS 与页签条按钮必须一一对应且同序：只要一处加了另一处没加，
+   深链 showSettingsTab(key) 就会 key 不认、悄悄落回常规页 —— 手机页当年就是这样
+   在删掉之后还留在内核与 Host FFI 里，点「移动端远程控制」落到常规页没人发现。 */
+const ct01 = (doc) => {
   const keys = /const SETTINGS_TAB_KEYS = \[([^\]]*)\]/.exec(doc);
-  if (!keys) return false;
-  const list = keys[1].split(",").map((s) => s.trim().replace(/^"|"$/g, ""));
-  /* 刷新要跟界面走：切到凭证页还在刷配对状态，说明代码没跟着搬家，手机页会显示上一站的旧值 */
-  const credBlock = /if \(key === "credentials"\) \{([\s\S]*?)\n      \}/.exec(doc);
-  return list.join(",") === "general,computer,credentials,phone,usage,updates" &&
-    /"pairing":\s*"phone"/.test(doc) &&
-    /if \(key === "phone"\) refreshPairingStrip\(\)/.test(doc) &&
-    !!credBlock && !/refreshPairingStrip/.test(credBlock[1]) &&
-    /enum SettingsTab \{[^}]*Vault\s+Phone\s+UsageBilling/.test(ker) &&
-    /Pairing => Phone/.test(ker) &&
-    /Pairing => "pairing"/.test(ker) &&
-    /pairing: "Phone"/.test(hostFfi);
-};
-
-/* 页签条的按钮顺序 = 用户看到的顺序（渲染器数组对了但按钮没多一个，等于没有这页） */
-const ph07 = (doc) => {
   const bar = /<div id="settings-tabs">([\s\S]*?)<\/div>/.exec(doc);
-  if (!bar) return false;
+  if (!keys || !bar) return false;
+  const list = keys[1].split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean);
   const tabs = [...bar[1].matchAll(/data-stab="([a-z]+)"/g)].map((m) => m[1]);
-  return tabs.join(",") === "general,computer,credentials,phone,usage,updates";
+  return list.join(",") === TABS_EXPECTED.join(",") && tabs.join(",") === TABS_EXPECTED.join(",");
 };
-
-/* 账户弹层「手机」这一项要走内核深链落到手机页，不能再假装落到凭证页找卡 */
-const ph08 = (doc) => {
-  const at = doc.indexOf('getElementById("ap-mobile")');
-  if (at < 0) return false;
-  const seg = doc.slice(at, at + 1200);
-  return /anchor=pairing/.test(seg) && !/anchor=security-keys/.test(seg) && /设置 → 手机/.test(seg);
-};
-
-/* 手机页要有一条真的会随网络形态变红的说明区（不是把提示写死成「同一 Wi-Fi 即可」）：
-   界面里必须同时存在「私有网段可用」和「非私有 / 跨网段」两类说法 */
-const ph09 = (p) =>
-  /同一 Wi-Fi/.test(p) && /公网|跨网段/.test(p) && /没有内置内网穿透|内网穿透/.test(p);
 
 /* ---------- 正向 ---------- */
-const panel = sliceOf(html, CRED_START, PHONE_START);
-const phone = sliceOf(html, PHONE_START, PANEL_END);
-if (!panel || !phone) {
-  bad("取不到凭证屏或手机屏", JSON.stringify({ cred: !!panel, phone: !!phone }));
+const panel = sliceOf(html, CRED_START, PANEL_END);
+if (!panel) {
+  bad("取不到凭证屏（锚点 id=\"secrets-panel\" 或面板尾注释漂了）", JSON.stringify({ cred: !!panel }));
 } else {
-  if (cl01(panel)) ok("CL-01 恰好 4 张分区卡，顺序 = 大脑 → 能力 → 入站 → 合规");
+  if (cl01(panel)) ok("CL-01 恰好 " + ZONES.length + " 张分区卡，顺序 = 本机大脑 → 可选接线");
   else bad("CL-01 分区卡形状漂了", JSON.stringify([...panel.matchAll(/<div class="st-card" id="(sec-zone-[a-z]+)"/g)].map((m) => m[1])));
 
-  if (cl01b(panel)) ok("CL-01b 四个分区 id 都在（真机门与文档按 id 找，不靠标题文本）");
+  if (cl01b(panel)) ok("CL-01b " + ZONES.length + " 个分区 id 都在（真机门与文档按 id 找，不靠标题文本）");
   else bad("CL-01b 缺分区 id", JSON.stringify(ZONES.filter((z) => panel.indexOf('id="' + z + '"') < 0)));
 
-  if (cl02(panel)) ok("CL-02 折叠外输入 = " + EXPECT_OUTSIDE.length + " 个，主流程仍是「接入方式/模型/Base URL/Key」四栏");
+  if (cl02(panel)) ok("CL-02 折叠外输入 = " + EXPECT_OUTSIDE.length + " 个，主流程仍是「服务商/模型/Base URL/Key」四栏 + 过滤开关");
   else bad("CL-02 折叠外的栏位变了", JSON.stringify({ got: controlsOutsideDetails(panel), want: EXPECT_OUTSIDE }));
 
   if (cl03(panel)) ok("CL-03 provider_id 与备用渠道两颗 key 都在 #sec-alt-channels 折叠里（且只有一个折叠，不套娃）");
@@ -324,48 +271,28 @@ if (!panel || !phone) {
   if (cl12(panel, css)) ok("CL-12 折叠自带指示器（默认 marker 抹掉后仍有箭头，且展开时翻转）");
   else bad("CL-12 折叠看不出可以点", "summary 里没有指示器或 CSS 缺规则");
 
-  if (cl13(panel)) ok("CL-13「模型与供应商」在折叠之前（属于大脑那一步，不会被读成备用渠道的按钮）");
+  if (cl13(panel)) ok("CL-13「换模型」在折叠之前（属于大脑那一步，不会被读成备用渠道的按钮）");
   else bad("CL-13 模型入口压回折叠下面");
 
-  /* ---------- GP-189：手机页 ---------- */
-  if (ph01(phone)) ok("PH-01 手机屏恰好 " + PHONE_ZONES.length + " 张卡，顺序 = 三步配对 → 局域网边界");
-  else bad("PH-01 手机屏形状漂了", JSON.stringify([...phone.matchAll(/<div class="st-card" id="((?:sec-zone|phone-zone)-[a-z]+)"/g)].map((m) => m[1])));
+  if (cl14(panel)) ok("CL-14 卡内第一块是「当前连接」结论区，且排在服务商/模型/Key 之前；模型候选在输入框之后");
+  else bad("CL-14 结论区不见了或又被埋到表单后面", "五个等重字段一路铺 = 用户看完不知道现在接的是什么");
 
-  if (ph02(phone)) ok("PH-02 三步按 1 → 2 → 3 排在界面上（序号就是「先做哪个」的答案）");
-  else bad("PH-02 步骤顺序或序号对不上", JSON.stringify(STEPS.map((id) => phone.indexOf('id="' + id + '"'))));
-
-  if (ph03(phone)) ok("PH-03 主路 " + PAIR_MAIN.length + " 颗在明面上、兜底 " + PAIR_MANUAL.length + " 颗进折叠（抄令牌不再是第一步）");
-  else bad("PH-03 配对控件的层次错了", JSON.stringify({ main: PAIR_MAIN.map((id) => insideDetails(phone, detailsRanges(phone), id)), manual: PAIR_MANUAL.map((id) => insideDetails(phone, detailsRanges(phone), id)) }));
-
-  if (ph04(panel, phone)) ok("PH-04 配对 " + MOVED_OUT_OF_CRED.length + " 个 id 只在手机页有一份（凭证页里一份都不剩）");
-  else bad("PH-04 搬完没删原件，或手机页缺件", JSON.stringify({ still_in_cred: MOVED_OUT_OF_CRED.filter((id) => panel.indexOf('id="' + id + '"') >= 0), missing_in_phone: MOVED_OUT_OF_CRED.filter((id) => phone.indexOf('id="' + id + '"') < 0) }));
-
-  if (ph05(phone)) ok("PH-05 边界说明有 3 行（能用 / 看网络 / 本版不支持），每行都走字典");
-  else bad("PH-05 局域网边界说明缺行或缺 data-i18n");
-
-  if (ph06(html, kernel, ffi)) ok("PH-06 内核 / Host FFI / 渲染器三张路由表都认 phone 页与 pairing 锚点");
-  else bad("PH-06 三张路由表不一致", "第 6 个页签只在一处存在 = 深链会落回常规页");
-
-  if (ph07(html)) ok("PH-07 页签条真有 6 个按钮，顺序 = 通用 → 电脑 → 凭证 → 手机 → 用量与账单 → 更新");
+  /* ---------- 页签路由 ---------- */
+  if (ct01(html)) ok("CT-01 页签条 " + TABS_EXPECTED.length + " 个按钮 = 渲染器 SETTINGS_TAB_KEYS，同序（少一处 = 深链落回常规页）");
   else {
+    const keys = /const SETTINGS_TAB_KEYS = \[([^\]]*)\]/.exec(html);
     const bar = /<div id="settings-tabs">([\s\S]*?)<\/div>/.exec(html);
-    bad("PH-07 页签条形状不对", JSON.stringify(bar ? [...bar[1].matchAll(/data-stab="([a-z]+)"/g)].map((m) => m[1]) : null));
+    bad("CT-01 页签条与路由表不一致", JSON.stringify({
+      keys: keys ? keys[1].replace(/\s/g, "") : null,
+      tabs: bar ? [...bar[1].matchAll(/data-stab="([a-z]+)"/g)].map((m) => m[1]).join(",") : null,
+    }));
   }
 
-  if (ph08(html)) ok("PH-08 账户弹层「手机」走内核深链 anchor=pairing，落点是「设置 → 手机」");
-  else bad("PH-08 移动版入口还落在凭证页", "文案和落点不一致 = 用户按提示找不到东西");
-
-  if (ph09(phone)) ok("PH-09 界面里同时写明「同一 Wi-Fi 可用」和「公网/跨网段没有内置穿透」（不是一句「连同一 Wi-Fi」糊过去）");
-  else bad("PH-09 边界说明退化成一句口号");
-
-  if (cl08(phone)) ok("PH-10 手机屏 0 处行内字面字号/色（新加的每一步都走 .st-step / .st-readout）");
-  else bad("PH-10 手机屏又写回行内字面量了", JSON.stringify([...phone.matchAll(/style="([^"]*)"/g)].filter((m) => /(font\s*:|font-size|#[0-9a-fA-F]{3,8})/.test(m[1])).map((m) => m[1].slice(0, 40))));
-
-  /* ---------- 负向对照：每条都能被一次真实改动打翻（CL 与 PH 同一张表） ---------- */
+  /* ---------- 负向对照：每条都能被一次真实改动打翻（CL 与 CT 同一张表） ---------- */
   const NEG = [
-    ["CL-01", "把能力卡改名成第五张区", cl01, panel.replace('id="sec-zone-capability"', 'id="sec-zone-extra"')],
-    ["CL-01b", "删掉合规卡 id", cl01b, panel.replace('id="sec-zone-compliance"', 'class="gone"')],
-    ["CL-02", "把主流程的 API Key 挪进折叠", cl02, panel.replace('<label class="st-field"><span class="st-field-name">API Key', '<details id="t10a"><label class="st-field"><span class="st-field-name">API Key').replace('<div id="sec-llm-key-note"', '</details><div id="sec-llm-key-note"')],
+    ["CL-01", "把能力卡改名成第三张区", cl01, panel.replace('id="sec-zone-capability"', 'id="sec-zone-extra"')],
+    ["CL-01b", "删掉一张卡的 id（真机门与文档按 id 找）", cl01b, panel.replace('id="sec-zone-brain"', 'class="gone"')],
+    ["CL-02", "把主流程的 API Key 挪进折叠", cl02, panel.replace('<input id="sec-llm-key"', '<details id="t10a"><input id="sec-llm-key"').replace('<span id="sec-llm-mask" class="st-field-hint"></span>', '</details><span id="sec-llm-mask" class="st-field-hint"></span>')],
     ["CL-03", "把备用渠道摊平（去掉折叠）", cl03, panel.replace('<details class="st-adv" id="sec-alt-channels">', '<div class="st-adv" id="sec-alt-channels">').replace('</details>', '</div>')],
     ["CL-04", "把 #sec-save 塞进折叠", cl04, panel.replace('<details class="st-adv" id="sec-alt-channels">', '<details open class="st-adv" id="sec-alt-channels"><button id="sec-save">')],
     ["CL-05", "状态行搬出保存条", cl05, panel.replace('<div id="sec-status" class="st-foot-status">…</div>', '')],
@@ -376,17 +303,9 @@ if (!panel || !phone) {
     ["CL-09", "验收门禁按钮去掉 data-lab", cl09, panel.replace('<button type="button" id="sec-gate" class="bb-btn bb-btn-sm" data-lab>', '<button type="button" id="sec-gate" class="bb-btn bb-btn-sm">')],
     ["CL-11", "切页签时无条件写诊断行（回到改动前）", cl11, html.replace('if (metaEl && typeof devModeOn === "function" && devModeOn()) {', "if (metaEl) {")],
     ["CL-12", "抹掉折叠指示器", (x) => cl12(x, css), panel.replace('<span class="st-adv-mark" aria-hidden="true"></span>', "")],
-    ["CL-13", "把模型入口挪回折叠后面", cl13, panel.replace(/<div class="gp-row" style="margin-top:10px">\s*<button type="button" class="bb-btn bb-btn-sm" id="sec-model-open"[\s\S]*?<\/div>\s*(<!-- provider_id)/, "$1").replace("</details>", '</details><div class="gp-row"><button type="button" id="sec-model-open">模型与供应商</button></div>')],
-    ["PH-01", "把边界卡改名（手机屏变成一张卡）", ph01, phone.replace('id="phone-zone-scope"', 'id="phone-zone-notes"')],
-    ["PH-02", "步骤序号写重（第三步标成 2）", ph02, phone.replace(/(id="phone-step-3"[\s\S]{0,160}?aria-hidden="true">)3/, "$12")],
-    ["PH-03", "把兜底摊平到明面（去掉手动折叠）", ph03, phone.replace('<details class="st-adv" id="phone-adv">', '<div class="st-adv" id="phone-adv">').replace("</details>", "</div>")],
-    ["PH-04", "搬完没删原件（凭证页留了一份配对状态行）", (x) => ph04(x, phone), panel.replace('<div class="st-card" id="sec-zone-inbound">', '<div id="sec-pairing-line" class="st-readout">旧副本</div>\n        <div class="st-card" id="sec-zone-inbound">')],
-    ["PH-05", "删掉「公网/跨网段」那一行的键", (x) => ph05(x), phone.replace('<span class="st-scope-no" data-i18n="phoneScopeWarn2">公网 / 跨网段</span>', "")],
-    ["PH-06", "只改渲染器、内核把 pairing 记在 Vault 下", (x) => ph06(html, x, ffi), kernel.replace("Pairing => Phone", "Pairing => Vault")],
-    ["PH-07", "页签数组加了但按钮没加（用户看不见这页）", (x) => ph07(x), html.replace('        <button type="button" class="settings-tab-btn" data-stab="phone" data-i18n="tabPhone">手机</button>\n', "")],
-    ["PH-08", "移动版入口落点改回 anchor=security-keys", (x) => ph08(x), html.replace('open settings entry=account anchor=pairing', 'open settings entry=account anchor=security-keys')],
-    ["PH-09", "边界说明退化成「连同一 Wi-Fi 即可」", (x) => ph09(x), phone.replace('<span class="st-scope-no" data-i18n="phoneScopeWarn2">公网 / 跨网段</span>', '<span class="st-scope-no" data-i18n="phoneScopeWarn2">同一 Wi-Fi</span>').replace(/<span class="st-scope-desc" data-i18n="phoneScopePublic">[\s\S]*?<\/span>/, '<span class="st-scope-desc" data-i18n="phoneScopePublic">连同一 Wi-Fi 即可。</span>')],
-    ["PH-10", "给步骤标题写回行内字号", (x) => cl08(x), phone.replace('<div class="st-step-name" data-i18n="phoneStepName1">', '<div class="st-step-name" data-i18n="phoneStepName1" style="font-size:15px">')],
+    ["CL-13", "把换模型入口挪到折叠后面", cl13, panel.replace('<button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">换模型</button>', '').replace("</details>", '</details><div class="gp-row"><button type="button" id="sec-model-open">换模型</button></div>')],
+    ["CL-14", "把结论区从卡头删掉（回到「五个字段一路铺」）", cl14, panel.replace('<div class="st-conn" id="sec-conn">', '<div id="sec-conn">').replace('id="sec-conn-dot"', 'data-x="dot"').replace('id="sec-conn-title"', 'data-x="title"').replace('id="sec-conn-sub"', 'data-x="sub"')],
+    ["CT-01", "页签条多一个按钮但路由表没加", ct01, html.replace('<button type="button" class="settings-tab-btn" data-stab="updates"', '<button type="button" class="settings-tab-btn" data-stab="phone">手机</button>\n        <button type="button" class="settings-tab-btn" data-stab="updates"')],
   ];
   const red = [];
   for (const [key, what, fn, mutated] of NEG) {

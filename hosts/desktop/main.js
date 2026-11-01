@@ -13,11 +13,21 @@ const {
   nativeTheme,
   Notification,
   clipboard,
+  session,
+  systemPreferences,
 } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
+
+// GP-A1: 应用名必须在 app ready **之前** 设定。
+// macOS 的菜单栏第一项（以及「关于本应用」「退出 Bit Bot」等条目）读的是
+// 进程启动时就定下的 app.name，等到 whenReady 之后再 setName() 已经晚了 ——
+// 菜单栏会一直显示开发壳的 "Electron"。放在文件顶层是唯一可靠的位置。
+try {
+  app.setName("Bit Bot");
+} catch (_) { /* no-op */ }
 
 // 单实例锁：同一个 user-data-dir 只允许一个 Electron 进程常驻。
 // 没有这把锁时，双击第二次会起一个全新进程，于是出现「两个应用同时跑」。
@@ -1029,6 +1039,99 @@ function requestQuit() {
   app.quit();
 }
 
+/* ---------------- 麦克风 / 媒体权限（NotAllowedError 的三层成因） ----------
+ * 症状：点麦克风立刻收到 NotAllowedError，渲染端只能打出「麦克风被拒绝」。
+ * 这不是渲染端的问题，缺任何一层都还是拒：
+ *   1. 会话层 —— Electron 默认不替页面回答 media 权限请求，必须装
+ *      setPermissionRequestHandler + setPermissionCheckHandler，否则
+ *      getUserMedia 直接失败；
+ *   2. 系统层 —— macOS 的 TCC 只有 askForMediaAccess('microphone') 才会真正
+ *      弹授权框。用户以前点过「不允许」时状态就是 'denied'，代码再问也不会
+ *      再弹，只能引导去系统设置改；
+ *   3. 打包层 —— 壳的 Info.plist 必须有 NSMicrophoneUsageDescription（见
+ *      package.json build.mac.extendInfo），否则系统静默拒绝。
+ * 这里只放行白名单里的权限，其余一律拒：不把 handler 写成恒 true。 */
+const ALLOWED_PERMISSIONS = new Set([
+  "media",                    // getUserMedia({audio:true})
+  "display-capture",          // 电脑操作面板的屏幕共享
+  "notifications",
+  "clipboard-sanitized-write",
+  "fullscreen",
+  "pointerLock",
+]);
+
+function logPerm(line) {
+  try { process.stdout.write("[perm] " + line + "\n"); } catch (_) { /* no-op */ }
+}
+
+function installMediaPermissionPolicy() {
+  try {
+    const ses = session.defaultSession;
+    ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+      const mediaTypes = (details && details.mediaTypes) || [];
+      const known = ALLOWED_PERMISSIONS.has(permission);
+      const ok = known && (permission !== "media" || mediaTypes.length === 0 ||
+        mediaTypes.includes("audio"));
+      logPerm("request " + permission + " media=" + JSON.stringify(mediaTypes) +
+        " -> " + (ok ? "allow" : "deny"));
+      callback(ok);
+    });
+    ses.setPermissionCheckHandler((_wc, permission, _origin, details) => {
+      if (!ALLOWED_PERMISSIONS.has(permission)) return false;
+      if (permission !== "media") return true;
+      const t = String((details && details.mediaType) || "");
+      return t === "" || t === "audio" || t === "unknown";
+    });
+    logPerm("policy installed（白名单 " + ALLOWED_PERMISSIONS.size + " 项）");
+  } catch (e) {
+    logPerm("policy install failed: " + (e && e.message));
+  }
+}
+
+/* 返回 TCC 的真实状态；只有 not-determined 时才弹系统授权框。
+ * 'denied' 不再追问 —— 追问不会弹，只会让用户以为按钮坏了。 */
+async function ensureMicrophoneAccess() {
+  const platform = process.platform;
+  if (platform !== "darwin") return { status: "not-required", platform, canPrompt: false };
+  let status = "unknown";
+  try {
+    status = systemPreferences.getMediaAccessStatus("microphone");
+    if (status === "not-determined") {
+      const granted = await systemPreferences.askForMediaAccess("microphone");
+      status = granted ? "granted" : "denied";
+      logPerm("askForMediaAccess -> " + status);
+    } else {
+      logPerm("microphone status=" + status);
+    }
+  } catch (e) {
+    logPerm("getMediaAccessStatus failed: " + (e && e.message));
+    return { status: "unknown", platform, canPrompt: false, error: String(e && e.message) };
+  }
+  /* canPrompt 的语义要窄：只有 not-determined 才可能弹出系统授权框。
+     denied / restricted 再问也不会弹，渲染端的指引必须是「去系统设置」。 */
+  return {
+    status,
+    platform,
+    canPrompt: status === "not-determined",
+    needsSettings: status === "denied" || status === "restricted",
+  };
+}
+
+function openMicSettingsPane() {
+  try {
+    shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) };
+  }
+}
+
+ipcMain.handle("bitbot:media:mic", async () => {
+  const r = await ensureMicrophoneAccess();
+  return { ok: r.status === "granted" || r.status === "not-required", ...r };
+});
+ipcMain.handle("bitbot:media:micSettings", async () => openMicSettingsPane());
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100,
@@ -1571,7 +1674,47 @@ ipcMain.handle("bitbot:team:workspace", async (_e, opts) => {
         "utf8",
       );
     }
+    // G-31 follow-up: land each role's FULL prompt next to the skeleton, so the
+    // team is faithful to the source tutorial without cramming a multi-line
+    // prompt into the `create bot … description=` one-liner. Bots are told to
+    // read these files (matching the tutorial's own "read shared dirs" design).
+    if (Array.isArray(opts.roles) && opts.roles.length) {
+      const index = ["# 角色岗位 Prompt（由教程反推生成）", ""];
+      for (const r of opts.roles) {
+        const name = String((r && r.name) || "").trim();
+        const prompt = String((r && r.prompt) || (r && r.description) || "").trim();
+        if (!name || !prompt) continue;
+        const safeName = name.replace(/[\\/:*?"<>|]+/g, "_").slice(0, 40) || "role";
+        fs.writeFileSync(
+          path.join(root, "00-profile", safeName + ".md"),
+          "# " + name + "\n\n" + prompt + "\n",
+          "utf8",
+        );
+        index.push("- " + name + " → 00-profile/" + safeName + ".md");
+      }
+      if (index.length > 2) {
+        fs.writeFileSync(path.join(root, "00-profile", "ROLES.md"), index.join("\n") + "\n", "utf8");
+      }
+    }
     return { ok: true, path: root, title: safe, dirs: sub };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
+/** G-31 follow-up: let the renderer read a staged attachment's text so a team can
+    be extracted from a local tutorial/article file without an LLM key. Hard limits:
+    regular file only, ≤ 512KB, utf8. Paths are user-staged attachment paths (already
+    validated by attachments.stagePaths), never arbitrary filesystem reads. */
+ipcMain.handle("bitbot:file:readText", async (_e, opts) => {
+  const p = String((opts && opts.path) || "").trim();
+  if (!p) return { ok: false, error: "empty_path" };
+  try {
+    const st = fs.statSync(p);
+    if (!st.isFile()) return { ok: false, error: "not_a_file" };
+    if (st.size > 512 * 1024) return { ok: false, error: "too_large", size: st.size };
+    const text = fs.readFileSync(p, "utf8");
+    return { ok: true, text, bytes: Buffer.byteLength(text, "utf8") };
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };
   }
@@ -1650,6 +1793,147 @@ ipcMain.handle("bitbot:attachments:stage", async (_e, payload) => {
     );
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err), paths: [] };
+  }
+});
+
+/* ---------- 输入框截图（composer 的相机键） ----------
+
+   为什么这件事在 Host 侧做，而不是渲染层用 canvas 截自己：
+   用户要的是「屏幕上看见的东西」，包括别的应用的窗口；渲染层只能截到自己那一块。
+   所以流程是 藏窗口 → 系统级抓屏 → 回来当附件。
+
+   macOS 走 /usr/sbin/screencapture -i：和 ⌘⇧4 是同一个交互（框选、空格切窗口、
+   Esc 取消），用户不需要学第二套。其它平台没有统一的选择器，退化为整屏一帧
+   （desktopCapturer，不引入外部依赖，也不 shell 出去赌某个工具装没装）。
+
+   两条路最后的落点一样：stageAttachments 的同一套限额与类型校验（≤6 个 / 25MB /
+   真 PNG 头），所以「截图」不会成为绕过附件规则的旁门。 */
+
+const SHOT_TMP_PREFIX = "bitbot-shot-";
+
+/* 用 spawn 而不是 execFileSync：screencapture -i 会一直等到用户框完，
+   同步调用会把主进程（连带 IPC）冻住，取消期间的任何反馈都排不上。
+   resolve 只带「命令说过什么」，「文件有没有」由调用方判定 —— 取消时
+   screencapture 退出码是 0 但不会落文件，只看退出码会误判成成功。 */
+function runShotCmd(cmd, args, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    let child = null;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      try { clearTimeout(timer); } catch (_) { /* noop */ }
+      resolve(v);
+    };
+    const timer = setTimeout(() => {
+      try { if (child) child.kill(); } catch (_) { /* noop */ }
+      finish({ ok: false, error: "timeout" });
+    }, timeoutMs);
+    try {
+      child = spawn(cmd, args, { stdio: "ignore" });
+    } catch (err) {
+      finish({ ok: false, error: String((err && err.message) || err) });
+      return;
+    }
+    child.on("error", (err) => finish({ ok: false, error: String((err && err.message) || err) }));
+    child.on("close", (code) => finish({ ok: code === 0, code }));
+  });
+}
+
+async function grabScreenToFile(target, mode) {
+  if (mode === "screen") return captureWholeScreen(target); // 明确要整屏：别弹框选
+  const plat = process.platform;
+  if (plat === "darwin") {
+    const r = await runShotCmd("/usr/sbin/screencapture", ["-x", "-i", "-t", "png", target], 120000);
+    if (fs.existsSync(target)) return { ok: true };
+    // 没有文件 = 用户按了 Esc，或系统没给屏幕录制权限（macOS 这时不落文件）。
+    return { ok: false, canceled: true, error: r && r.error ? r.error : "canceled" };
+  }
+  if (plat === "linux") {
+    const tools = [
+      ["scrot", ["-s", "-o", target]],
+      ["gnome-screenshot", ["-a", "-f", target]],
+    ];
+    for (const [cmd, args] of tools) {
+      const r = await runShotCmd(cmd, args, 120000);
+      if (fs.existsSync(target)) return { ok: true };
+      if (!r || !r.error) break; // 工具在，但用户取消了 —— 不要再换一个再问一遍
+    }
+  }
+  return captureWholeScreen(target);
+}
+
+async function captureWholeScreen(target) {
+  try {
+    // screen / desktopCapturer 只能在 app ready 之后取，所以在这里 require 而不是顶部
+    // 解构 —— 顶部取会在冷启动时就把 main.js 拽进「ready 之前用 screen」的坑里。
+    const { desktopCapturer, screen } = require("electron");
+    const disp = screen.getPrimaryDisplay();
+    const scale = disp.scaleFactor || 1;
+    const sources = await desktopCapturer.getSources({
+      types: ["screen"],
+      thumbnailSize: {
+        width: Math.round(disp.size.width * scale),
+        height: Math.round(disp.size.height * scale),
+      },
+    });
+    if (!sources || !sources.length) return { ok: false, error: "no_screen_source" };
+    const src = sources.find((s) => String(s.display_id) === String(disp.id)) || sources[0];
+    const png = src.thumbnail.toPNG();
+    if (!png || !png.length) return { ok: false, error: "empty_capture" };
+    fs.writeFileSync(target, png);
+    return { ok: true, mode: "screen" };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+}
+
+ipcMain.handle("bitbot:screenshot:capture", async (_e, payload) => {
+  const existing = Number(payload && payload.existing) || 0;
+  const mode = payload && payload.mode === "screen" ? "screen" : "region";
+  const tmp = path.join(app.getPath("temp"), SHOT_TMP_PREFIX + Date.now() + ".png");
+  const win = BrowserWindow.getFocusedWindow() || mainWindow;
+  const wasVisible = !!(win && win.isVisible());
+  try {
+    // macOS 没给屏幕录制权限时，screencapture 不会报错 —— 它会安安静静地只拍到
+    // 一张壁纸。那比失败更糟：用户以为截到了，发出去的是空桌面。所以先说清楚。
+    // 「还没问过」（not-determined）不算拒绝：那一次抓屏本身就会弹系统授权框。
+    if (process.platform === "darwin") {
+      let status = "unknown";
+      try { status = systemPreferences.getMediaAccessStatus("screen"); } catch (_) { status = "unknown"; }
+      if (status === "denied" || status === "restricted") {
+        return { ok: false, error: "screen_permission_denied", permission: status };
+      }
+    }
+    // 先把自己藏起来：不藏的话，抓到的第一屏就是「正在截图的这个应用」。
+    if (win && wasVisible) win.hide();
+    await new Promise((r) => setTimeout(r, 220));
+    let cap = { ok: false, error: "capture_failed" };
+    try {
+      cap = await grabScreenToFile(tmp, mode);
+    } finally {
+      if (win && wasVisible) {
+        win.show();
+        try { win.focus(); } catch (_) { /* noop */ }
+      }
+    }
+    if (!cap || !cap.ok) {
+      return {
+        ok: false,
+        canceled: !!(cap && cap.canceled),
+        error: (cap && cap.error) || "capture_failed",
+      };
+    }
+    let bytes = 0;
+    try { bytes = fs.statSync(tmp).size; } catch (_) { bytes = 0; }
+    if (!bytes) return { ok: false, error: "empty_capture" };
+    const staged = surface.stageAttachments([tmp], sessions.activeId() || "desktop", existing);
+    return Object.assign({ shot_bytes: bytes, mode: (cap && cap.mode) || "region" }, staged);
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  } finally {
+    // 临时帧不留：真正被引用的那份在 uploads 里，tmp 只是过路。
+    try { fs.unlinkSync(tmp); } catch (_) { /* noop */ }
   }
 });
 
@@ -2164,6 +2448,8 @@ async function runRoomSynthesisTurn(botId, prompt, ctx) {
       approved: false,
       botId: id,
       roomId,
+      // 排程落盘要用用户原话，不是这段综合 prompt（它会带着【成员结果】整块）。
+      userText: String((ctx && ctx.userText) || ""),
       roomContext: buildRoomContext(roomId, id, ctx, String(prompt || "")),
       cancelPromise: (ctx && ctx.cancelPromise) || undefined,
     });
@@ -4078,6 +4364,9 @@ ipcMain.handle("bitbot:pairing:lan", async (_e, enabled) => {
 app.whenReady().then(async () => {
   // GP-77: install state on disk for the shared Host `update_status` reader.
   persistAppInstallState();
+  // 启动自检：把真实的 app 名字打出来。macOS 菜单栏标题、关于面板、
+  // 退出项都吃这个名字，出问题（显示 Electron / bitbot-desktop）一眼可查。
+  process.stdout.write(`[desktop] app="${app.getName()}" version=${app.getVersion()}\n`);
   if (process.platform === "darwin" && app.dock) {
     try {
       app.dock.setIcon(path.join(__dirname, "build", "icon.png"));
@@ -4091,9 +4380,8 @@ app.whenReady().then(async () => {
     const stBoot = surface.settingsGet();
     if (stBoot && stBoot.appearance) applyAppearance(String(stBoot.appearance));
   } catch (_) { /* keep OS default */ }
-  // GP-A1 (revised): 完整产品菜单。应用名统一为 "Bit Bot"（避免 macOS 菜单栏
-  // 显示默认的 "Electron"），并补齐 关于 / 外观 / 设置 / 检查更新 / 窗口 / 帮助。
-  try { app.setName("Bit Bot"); } catch (_) { /* no-op */ }
+  // GP-A1 (revised): 完整产品菜单。应用名已在文件顶层 set 过（ready 前），
+  // 这里只补 About 面板信息。补齐 关于 / 外观 / 设置 / 检查更新 / 窗口 / 帮助。
   try {
     app.setAboutPanelOptions({
       applicationName: "Bit Bot",
@@ -4245,6 +4533,8 @@ app.whenReady().then(async () => {
       `[desktop] openAtLogin=${login.openAtLogin} ok=${login.ok}\n`,
     );
   }
+  // 媒体权限必须在第一个窗口加载页面之前装好，否则首次 getUserMedia 就撞默认拒绝。
+  installMediaPermissionPolicy();
   createWindow();
   createTray();
   registerHotkey();

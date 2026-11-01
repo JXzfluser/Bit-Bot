@@ -2321,6 +2321,9 @@ function createProductSurface(repoRoot, opts = {}) {
             : selected.map((x) => String((x && x.name) || "")).filter(Boolean),
           // ---- 真编排需要的执行面 ----
           role: "member",
+          // 用户原话。排程落盘要用它，不能用上面这段编排 prompt（见 host_ffi
+          // executeRoutineEffect 的注释：prompt 污染会让定时任务每天重做一次编排）。
+          userText: String(task || ""),
           subtask: subtask ? { id: subtask.id, title: subtask.title } : null,
           subtasks: subs.map(s => ({ id: s.id, title: s.title })),
           shared_board: boardText,
@@ -2458,6 +2461,7 @@ function createProductSurface(repoRoot, opts = {}) {
           const ctx = {
             room: room.id, bot_id: lead.id, name: lead.name, job: lead.job, description: lead.description,
             mentioned_names: [], role: "synthesis", lead: true,
+            userText: String(task || ""),
             shared_board: boardText, board_group_id: room.id,
             cancelPromise: scope.promise,
             isCancelled: () => scope.isCancelled(),

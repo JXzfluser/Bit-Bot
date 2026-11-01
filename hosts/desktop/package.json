@@ -1,5 +1,6 @@
 {
   "name": "bitbot-desktop",
+  "productName": "Bit Bot",
   "version": "0.1.0",
   "private": true,
   "description": "Bit Bot Desktop host — MoonBit product brain via Electron",
@@ -99,7 +100,10 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": false
+      "notarize": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Bit Bot 用麦克风把你的口述转成输入框里的文字（语音输入与语音对话）。录音只在本机处理，不上传。"
+      }
     },
     "win": {
       "target": [

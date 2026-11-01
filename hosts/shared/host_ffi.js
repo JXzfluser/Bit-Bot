@@ -15375,6 +15375,17 @@ function createHostFfi(repoRoot, opts = {}) {
     if (kind === "routine_schedule") {
       const parts = String(command || "").split("|");
       const parsed = nextDueFromCron(parts[1] || "@daily");
+      /* 群里的排程，prompt 必须是**用户那句话本身**。
+       *
+       * 扇出编排里，三条腿（自决 / 成员 / lead 综合）各自的 prompt 都是编排
+       * 脚手架（【群任务】【共享任务板】【成员结果】），模型会把整块抄进
+       * routine 的 prompt。到点触发时，等于每天让 bot 重新做一次编排 ——
+       * 实测存下来的 prompt 里甚至带着别人的发言和「你是这个群的 lead」。
+       * 排程要的是「把用户那句话每天重放一遍」，所以群回合优先用原始请求。
+       * DM / CLI 没有 userText，行为与改之前完全一致。 */
+      const kernelPrompt = stripEnvQuotes(parts.slice(2).join("|") || "");
+      const userText = String((effectOpts && effectOpts.userText) || "").trim();
+      const promptText = roomId && userText ? userText : kernelPrompt;
       // GP-138 (§6.2): official Routines enforce an interval of at least
       // 5 minutes. The kernel validates cron shape; this is the durable
       // persistence point, so reject sub-5-minute recurrence honestly instead
@@ -15450,7 +15461,36 @@ function createHostFfi(repoRoot, opts = {}) {
       // 同一个群重排 = 改自己的任务（允许）；别的群来排 = 不能静默把归属抢走，
       // 否则前一个群的用户只会看到自己的定时任务凭空消失，连条删除记录都没有。
       // 还没有归属的行（DM / CLI / daemon 建的）谁先来话就归谁 —— 认领不是抢。
-      const prior = loadRoutines().find((r) => r && String(r.id) === (stripEnvQuotes(parts[0]) || "routine-1"));
+      //
+      // 扇出补齐（实测事故）：一句话在群里会被**多条腿各说一遍**（自决 / 每个
+      // 成员 / lead 综合都是完整内核回合），内核给每条腿生成的是**不同的** id，
+      // 于是同一句「每天 7 点发邮件」落了 13 行。它们的 cron 与目标其实是同一个，
+      // 所以这里按「群 + cron + prompt」认作同一条，落回已有那一行 —— 先说的那
+      // 条留下，后来的并上去，不再长出第 2 行。
+      const kernelId = stripEnvQuotes(parts[0]) || "routine-1";
+      let plantId = kernelId;
+      if (roomId) {
+        const norm = (s) => String(s || "").replace(/\s+/g, " ").trim();
+        /* 比的是「这条任务要干什么」，不是 prompt 的字面。
+           历史行里存的是编排 prompt（【群任务】+ 一大坨），比字面永远比不上；
+           抽出【群任务】那一行再比，旧行和新行就能认成同一条 —— 用户重复说
+           同一句话时，并进原来那行（而不是又长一行）。 */
+        const claimOf = (p) => {
+          // 历史行有两种写法：编排器拼的「【群任务】xxx」和模型复述的
+          // 「群任务：xxx」。两种都算。
+          const m = /(?:【群任务】|群任务[：:])\s*([^\n]*)/.exec(String(p || ""));
+          return norm(m ? m[1] : p);
+        };
+        const want = norm(promptText);
+        const twin = loadRoutines().find(
+          (r) => r &&
+            String(r.room_id || "") === roomId &&
+            String(r.cron || "") === cron &&
+            claimOf(r.prompt) === want,
+        );
+        if (twin && twin.id) plantId = String(twin.id);
+      }
+      const prior = loadRoutines().find((r) => r && String(r.id) === plantId);
       const priorRoom = prior ? String(prior.room_id || "") : "";
       if (roomId && prior && priorRoom && priorRoom !== roomId) {
         const refuseDir = path.join(DATA_ROOT, "routines");
@@ -15486,9 +15526,9 @@ function createHostFfi(repoRoot, opts = {}) {
       // **模型没有任何路径能打开它** —— 它只影响这条行,不构成绕过。
       const routineAutoExecute = process.env.BITBOT_ROUTINE_AUTO_EXECUTE === "1";
       const row = upsertRoutine({
-        id: stripEnvQuotes(parts[0]) || "routine-1",
+        id: plantId,
         cron,
-        prompt: stripEnvQuotes(parts.slice(2).join("|") || ""),
+        prompt: promptText,
         enabled: true,
         lifecycle: "active",
         next_due: nextDue,
@@ -15545,6 +15585,10 @@ function createHostFfi(repoRoot, opts = {}) {
       const artifact = {
         stored: true,
         id: row.id,
+        // 同一条请求在群里被多条腿各说一遍时，后面那些并到先说的那一行 ——
+        // 如实标出来，免得「已建任务」的回执看着像建了好几个。
+        deduped: plantId !== kernelId || undefined,
+        kernel_id: plantId !== kernelId ? kernelId : undefined,
         cron: row.cron,
         prompt: row.prompt || "",
         next_due: row.next_due || nextDue,
@@ -24757,6 +24801,9 @@ function createHostFfi(repoRoot, opts = {}) {
       // 不传（DM / 无群）时行为与原来完全一致。
       const routineRes = executeRoutineEffect(kind, cmd, {
         roomId: (ffiOpts && ffiOpts.roomId) || "",
+        // 用户在群里说的那一句。排程存的是它，不是编排 prompt —— 见
+        // executeRoutineEffect 里 promptText 的注释。不传时行为不变。
+        userText: (ffiOpts && ffiOpts.userText) || "",
         // GP-170：桌面主进程自己的定时器在扫。这个标记只影响 tick 的可选字段
         // （desktop_sweep/note），不改变任何既有 payload 的形状与含义。
         desktopSweep: Boolean(ffiOpts && ffiOpts.desktopSweep),

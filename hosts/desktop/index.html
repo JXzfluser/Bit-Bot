@@ -35,7 +35,9 @@
     transition: grid-template-columns 0.2s ease;
   }
   /* Contract sizes: sidebar 280, rail 340, header 56, stream column 760. */
-  body { --panel-w: 0px; }
+  /* --room-w 是「群资料」浮层的宽度单源：#room-rail 的 width 和主列的
+     margin-right 都读它，两边一旦各写一个字面量就会错位半个字。 */
+  body { --panel-w: 0px; --room-w: 460px; }
   body[data-panel="bot"],
   body[data-panel="conv"],
   body[data-panel="computer"],
@@ -80,6 +82,38 @@
      specific as the base rule and wins by source order. */
   body[data-sidebar="collapsed"] { grid-template-columns: 0px minmax(0, 1fr) var(--panel-w); }
   body[data-sidebar="collapsed"] #agents { display: none; }
+  /* Collapsed (fully hidden) state. The sidebar is display:none (see the
+     body[data-sidebar="collapsed"] rules above); a slim vertical tab floats on
+     the left edge so it can be reopened without an in-sidebar control. */
+  #sidebar-reopen-tab {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 70;
+    width: 24px;
+    height: 64px;
+    border: 1px solid var(--line);
+    border-left: 0;
+    border-radius: 0 12px 12px 0;
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    pointer-events: auto;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+  body[data-sidebar="collapsed"] #sidebar-reopen-tab { display: flex; }
+  /* 只写 hover。原来把 :focus-visible 并进这条规则、再 outline:none，等于给
+     一个 tab 可达的按钮摘掉焦点环——M40 门禁的负向对照还会因为「文件里
+     第一处 :focus-visible 不是末尾那条全局规则」而翻假。 */
+  #sidebar-reopen-tab:hover {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
+  #sidebar-reopen-tab svg { width: 16px; height: 16px; }
   #computer-rail {
     display: none;
     padding: var(--space-6);
@@ -94,20 +128,23 @@
     position: fixed;
     top: var(--header-h);
     right: 0;
-    bottom: 0;
-    width: 460px;
+    /* 抽屉的**下沿停在 composer 上边框**，不再一路铺到窗口底部。
+       原来 bottom:0 + padding-bottom:96px：composer 是 58 层、整块铺了
+       page-bg 底色，于是抽屉右下方被切出一块空白，最后一条内容在 composer
+       后面凭空消失 —— 看上去就是「浮层坏了」。--composer-h 由脚本量出
+       （见 index.html 的 watchComposerHeight），这里的 132px 只是首帧兜底。 */
+    bottom: var(--composer-h, 132px);
+    width: var(--room-w, 460px);
     max-width: 92vw;
     /* 57 < composer 58 < modal 60：抽屉可以在 composer 下面穿过，
        但不能压过任何弹层（--z-modal 就是 60）。 */
     z-index: 57;
     padding: var(--space-6);
-    /* 抽屉从 header 铺到窗口底部，收起前会压住 composer 右侧的发送键。
-       composer 本身抬到 58 层（见 #composer），这里留出它的单行高度，
-       让最后一条内容仍能滚到抽屉可视区里，而不是永远藏在 composer 后面。 */
-    padding-bottom: 96px;
     overflow: auto;
     background: var(--surface);
-    box-shadow: -20px 0 48px rgba(0, 0, 0, 0.12);
+    /* 左边一条实边 + 一层向右收的阴影：浮层边界必须看得见，
+       否则它读起来就只是「对话被截断」而不是「另有一层」。 */
+    box-shadow: -18px 0 40px rgba(0, 0, 0, 0.10);
   }
   body[data-panel="room"] #room-rail {
     display: block;
@@ -119,6 +156,19 @@
   }
   @media (prefers-reduced-motion: reduce) {
     body[data-panel="room"] #room-rail { animation: none; }
+  }
+  /* 群资料抽屉开在右侧时，transcript 仍按 760 居中排版，右半边被浮层整块盖住
+     —— 截图里就是「一句话被切在半个字上」。这里让主列整体让出抽屉宽度，
+     文字重新排版进可见区，而不是继续在抽屉底下流。
+     用 margin 不用 padding：ui_chrome.css 里有
+     `body.grok-ui #main { padding: 0 !important }`（主区与输入区同一张纸），
+     padding 会被那条 !important 清掉。 */
+  #main { transition: margin-right 0.2s ease; }
+  body[data-panel="room"] #main { margin-right: var(--room-w, 460px); }
+  @media (max-width: 900px) {
+    /* 窄窗口下 200 侧栏 + 460 抽屉就只剩一条缝：退回「浮层盖住主列」，
+       让主列保住全部宽度（此时抽屉是刻意压在内容上的）。 */
+    body[data-panel="room"] #main { margin-right: 0; }
   }
   .ri-limit {
     color: var(--muted);
@@ -135,8 +185,10 @@
     z-index: 60;
     min-width: 200px;
     max-width: 320px;
-    max-height: 240px;
-    overflow: auto;
+    /* 滚动交给里面的 .mention-list：底部提示行必须始终完整可见，
+       不能像之前那样 sticky 盖住最后一行（看起来像列表被切断了）。 */
+    max-height: 300px;
+    overflow: hidden;
     background: var(--surface);
     color: var(--text);
     border: 1px solid var(--line);
@@ -145,6 +197,7 @@
     padding: var(--space-2);
     display: none;
   }
+  .mention-list { max-height: 252px; overflow-y: auto; overflow-x: hidden; }
   .mention-item {
     display: flex; align-items: center; gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
@@ -153,6 +206,34 @@
   }
   .mention-item.active, .mention-item:hover { background: var(--accent-soft); }
   .mention-item .m-at { color: var(--accent); font-weight: 700; }
+  /* 候选行带身份：认人靠头像，不靠读一遍名字（名字前面那个 @ 又抢注意力）。
+     尺寸压到 18px —— 这是列表里的第二等元素，不该比正文醒目。 */
+  .mention-item .mention-av {
+    width: 18px; height: 18px; font-size: 10px; font-weight: 700;
+  }
+  .mention-item .mention-av svg { width: 11px; height: 11px; }
+  .mention-item .m-name {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--ink);
+  }
+  .mention-item .m-meta {
+    margin-left: auto; padding-left: 8px; flex: 0 0 auto;
+    font-size: var(--text-2xs); color: var(--muted);
+  }
+  /* 键盘提示常驻：上下键到底能不能用，用户不该靠猜。它在滚动区之外，
+     候选再多也不会被滚走、也不会盖住最后一行。 */
+  .mention-hint {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: var(--space-2) calc(-1 * var(--space-2)) calc(-1 * var(--space-2));
+    padding: 5px var(--space-3);
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+    font-size: var(--text-2xs); color: var(--muted);
+  }
+  .mention-hint kbd {
+    font: inherit; padding: 0 3px; border: 1px solid var(--line);
+    border-radius: 3px; background: var(--surface-2, transparent);
+  }
   .ri-item {
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
@@ -193,10 +274,13 @@
   .ri-member .ri-main .ri-job { text-align: left; font-size: var(--text-xs); }
   .ri-member-del {
     flex: 0 0 auto; border: 0; background: transparent; color: var(--muted); cursor: pointer;
-    font: 400 15px/1 var(--font-ui, inherit); padding: 4px 6px; border-radius: 6px; opacity: 0.5;
+    font: 400 15px/1 var(--font-ui, inherit); border-radius: 6px;
+    /* 28px 见方的点击区：原来的 4/6px 内边距 + 0.5 透明度，在 460 宽的抽屉里
+       离正文 300 多像素，看起来像渲染残留而不是按钮。 */
+    width: 28px; height: 28px; padding: 0; display: grid; place-items: center; opacity: 0.75;
   }
   .ri-member-del:hover:not([disabled]) { background: var(--fill); color: var(--danger); opacity: 1; }
-  .ri-member-del[disabled] { opacity: 0.18; cursor: not-allowed; }
+  .ri-member-del[disabled] { opacity: 0.25; cursor: not-allowed; }
   .ri-add-member {
     width: 100%; margin-top: var(--space-3); padding: 8px; border: 1px dashed var(--line);
     border-radius: var(--radius-md, 10px); background: transparent; color: var(--muted);
@@ -1444,12 +1528,12 @@
     max-height: 160px;
   }
   #composer input:focus, #composer textarea:focus { outline: none; }
-  #composer #attach-btn, #composer #voice-btn {
+  #composer #attach-btn, #composer #voice-btn, #composer #shot-btn {
     background: transparent; color: var(--muted); border: 0;
     width: 28px; height: 28px; border-radius: var(--radius-pill); font-size: var(--text-lg);
     display: flex; align-items: center; justify-content: center;
   }
-  #composer #attach-btn:hover, #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
+  #composer #attach-btn:hover, #composer #voice-btn:hover, #composer #shot-btn:hover { background: var(--accent-soft); color: var(--ink); }
   #composer #voicechat-btn {
     background: var(--surface); color: var(--ink); border: 1px solid var(--line);
     height: 36px; border-radius: var(--radius-pill); padding: 0 14px; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
@@ -1479,7 +1563,14 @@
   #composer #send:hover { background: #333; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
   #composer #send:active { transform: scale(0.94); box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
   #composer #send:disabled { opacity: 0.4; box-shadow: none; }
-  #composer #attach-btn:active, #composer #voice-btn:active { transform: scale(0.94); }
+  #composer #attach-btn:active, #composer #voice-btn:active, #composer #shot-btn:active { transform: scale(0.94); }
+  /* 截图进行中：主进程正等着用户框选，按钮要说是「在等你」而不是「坏了」。 */
+  #composer #shot-btn.is-busy { color: var(--muted); cursor: progress; opacity: 0.6; }
+  #composer #shot-btn.is-busy svg { animation: shotPulse 1.1s ease-in-out infinite; }
+  @keyframes shotPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) {
+    #composer #shot-btn.is-busy svg { animation: none; }
+  }
   .attach-strip { display: flex; flex-wrap: wrap; gap: 8px; }
   .attach-strip .attach-chip {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
@@ -1570,10 +1661,58 @@
     /* 群资料 / 窄屏右栏都是 position:fixed 的抽屉（z-index 57），一路铺到
        窗口底部。composer 不抬高就会被盖住发送键——面板打开时消息发不出去。
        抬到 58 层并铺同色底，抽屉从 composer 下方穿过；modal 在 60 层，
-       所以不能抬到 61（会反过来盖住弹层底部的按钮，G-51 在 CI 抓到过）。 */
+       所以不能抬到 61（会反过来盖住弹层底部的按钮，G-51 在 CI 抓到过）。
+       （群资料抽屉现在停在 composer 上沿，不再需要从它底下穿过，但其它
+       窄屏抽屉仍走这条路径，层级不动。） */
     z-index: 58;
     background: var(--page-bg);
   }
+  /* 输入框拖拽调高：composer 顶沿一条 10px 的抓取带，中间一颗 36×4 的药丸。
+     不用 textarea 原生的 resize 把手 —— 它长在右下角，正好压在发送键底下，
+     而且和 autoGrow 抢高度（原生把手改的是同一套 inline 高度）。 */
+  #composer-grip {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 10px;
+    margin: -6px 0 -2px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: ns-resize;
+    touch-action: none;
+    background: transparent;
+  }
+  #composer-grip::after {
+    content: "";
+    width: 36px; height: 4px; border-radius: 999px;
+    background: var(--line);
+    transition: background 0.12s ease, width 0.12s ease;
+  }
+  #composer-grip:hover::after,
+  #composer-grip:focus-visible::after { background: var(--muted); width: 48px; }
+  /* 刻意不写 outline:none —— 抓取带是 tab 可达的，全站焦点环必须留着
+     （prove_m40_a11y 的负向对照会抹掉文件里第一处 focus-visible 规则块
+     来验证断言非恒真，所以这里也不留同样的选择器文本）。 */
+  body.composer-resizing { cursor: ns-resize; user-select: none; }
+  body.composer-resizing #composer-grip::after { background: var(--accent); width: 48px; }
+  /* 群身份的「输入卡表头」。
+     结构上它排在 #composer-grip 与 .row 之间（见 index.html 的注释），
+     视觉上和下面的输入卡是同一张纸：同宽、同边框、只留上圆角，中间一条
+     细线分界。这样「群资料 / 退出群聊」永远贴着输入框，不会被进度行 /
+     回复条挤到对话中间去。 */
+  #room-banner {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    /* gap 是 8px，负 margin 抵消掉，让表头与输入卡真正贴合 */
+    margin: 0 0 -8px;
+    /* 左内边距对齐输入卡的内容边（.row 的 padding 左 16px），标题和「＋」
+       才不会一个缩进 14 一个缩进 16。 */
+    padding: 6px 8px 6px 16px;
+    border-radius: var(--radius-composer) var(--radius-composer) 0 0;
+    border-bottom: 0;
+    box-shadow: none;
+  }
+  #room-banner .bb-btn { padding: 4px 10px; font-size: var(--text-sm); }
+  #room-banner #room-banner-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #composer.has-room .row { border-top-left-radius: 0; border-top-right-radius: 0; }
   #composer #send:disabled { cursor: wait; }
   #json-out {
     padding: 8px 10px;
@@ -1892,38 +2031,32 @@
        areas still named 3, producing implicit auto columns (measured at 480:
        rail squeezed to 74px, main to 380px, header to 455px). Both selectors
        are restated here so the narrow layout actually applies. */
+    /* GP-?: 窄窗不再把侧栏甩到顶部横条——改为「左侧紧凑文字侧栏」：
+       ≤900 时侧栏收到 200px（图标+名字都显示，能看清谁是谁），主区与 composer 在右列，
+       rails 仍是下方浮层抽屉（见后）。账户/会话弹层改成 fixed 浮在左下，
+       逃出 #agents 的 overflow-x:hidden 裁切（侧栏仅 200px，228px 弹层原会被砍）。 */
     body,
     body.grok-ui {
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: var(--header-h) auto minmax(0, 1fr) auto;
+      --sidebar-w: 200px;
+      grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+      grid-template-rows: var(--header-h) minmax(0, 1fr) auto;
       grid-template-areas:
-        "header"
-        "agents"
-        "main"
-        "composer";
+        "header header"
+        "agents main"
+        "agents composer";
     }
     body[data-sidebar="collapsed"],
-    body.grok-ui[data-sidebar="collapsed"] { grid-template-columns: minmax(0, 1fr); }
-    #agents { max-height: 140px; border-right: 0; border-bottom: 1px solid var(--line); }
-    /* 账户弹层在横带里必须换个开法（G-67 MC-11 修复前红，480×693 实测）：
-       平时 #account-popup 用 bottom: calc(100% + 2px) 向上开 —— 宽桌面下账户条
-       贴在侧栏底部，向上开正好浮在正文上，没问题。但 ≤900 的 140px 横带把账户条
-       抬到 y≈143，向上开 309px 的菜单整片跑出屏外：
-         ap-usage y=-161 / ap-mobile y=-129 / ap-remote y=-97 / ap-settings y=-33 /
-         ap-connect y=1，elementFromPoint 命中 null —— 用户看得见「账户」，
-         点不到里面的任何一项（不只是新加的移动端远程控制，设置/连接应用同样死）。
-       往下方开也不行：#agents 是 overflow 容器，绝对定位的子元素会被 140px 裁掉。
-       所以这里让弹层脱离侧栏滚动面改 fixed，贴着横带下缘开，水平跟着账户条左缘，
-       高度受视口约束自己滚。层号 59 = 抽屉 57 < composer 58 < 菜单 59 < modal 60，
-       菜单浮在正文与已开抽屉之上，但压不过任何弹层。 */
-    #account-popup {
+    body.grok-ui[data-sidebar="collapsed"] { grid-template-columns: 0px minmax(0, 1fr); }
+    /* 弹层 fixed，不被侧栏 overflow 裁切；锚在左下、向上开，浮在账户条上方 */
+    #account-popup,
+    #sessions-popup {
       position: fixed;
-      top: calc(var(--header-h) + 140px + 2px);
-      left: 16px;
-      bottom: auto;
-      max-height: calc(100vh - var(--header-h) - 148px);
+      left: 8px;
+      bottom: 56px;
+      top: auto;
+      max-height: calc(100vh - 64px);
       overflow-y: auto;
-      z-index: 59;
+      z-index: 60;
     }
     /* Rails stop being a grid column and become overlay drawers under the
        header. A 340px third column at 480px would leave a 140px chat column;
@@ -1989,6 +2122,192 @@
     /* 列表行不做位移（参考图只有背景色带），减弱动效时连色带渐变也去掉 */
     .sess-row { transition: none; }
   }
+
+  /* ===== 用量与账单：图示化面板 =====
+     三张 KPI 卡 + 一条 token 构成分解条 + 按型号的横向条形榜。
+     所有长度都由真实数字算出来，没有数据就不画（空态只有文字 + 图标）。 */
+  #gp-usage { color: var(--ink); }
+  .usage-skeleton {
+    padding: 18px 0;
+    color: var(--muted);
+    font: var(--text-xs) / 1.5 var(--font-mono);
+  }
+  .usage-panel { display: flex; flex-direction: column; gap: 12px; }
+
+  .usage-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; flex-wrap: wrap;
+  }
+  .usage-week-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--ink);
+    font: 600 var(--text-xs) / 1 var(--font-mono);
+    letter-spacing: 0.02em;
+  }
+  .usage-week-chip::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .usage-src { color: var(--muted); font: var(--text-2xs) / 1.4 var(--font-mono); }
+
+  .usage-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 8px;
+  }
+  .usage-kpi {
+    display: flex; flex-direction: column; gap: 7px;
+    padding: 11px 12px 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+  }
+  .usage-kpi-top {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.2;
+  }
+  .usage-kpi-ic { display: inline-flex; flex: none; }
+  .usage-kpi-ic svg { width: 14px; height: 14px; display: block; }
+  .usage-kpi-val {
+    color: var(--ink);
+    font: 600 21px / 1.1 var(--font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .usage-kpi-unit {
+    margin-left: 4px;
+    color: var(--muted);
+    font: 400 var(--text-2xs) / 1 var(--font-ui);
+    letter-spacing: 0;
+  }
+
+  .usage-card {
+    padding: 12px 12px 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+  }
+  .usage-card-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; margin-bottom: 9px;
+  }
+  .usage-card-title { color: var(--ink); font-size: var(--text-sm); font-weight: 600; }
+  .usage-card-sub {
+    color: var(--muted);
+    font: var(--text-2xs) / 1.3 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .usage-mix-bar {
+    display: flex; height: 10px;
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+    background: var(--fill);
+  }
+  .usage-mix-in  { background: #4c8dff; }
+  .usage-mix-out { background: #22a06b; }
+  .usage-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 9px; }
+  .usage-legend-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+  .usage-legend-item b {
+    color: var(--ink); font-weight: 600;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .usage-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
+  .usage-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .usage-group:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+  .usage-group-head { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; }
+  .usage-group-name {
+    color: var(--ink);
+    font: 600 var(--text-xs) / 1.2 var(--font-mono);
+    letter-spacing: 0.01em;
+  }
+  .usage-group-stat {
+    margin-left: auto;
+    color: var(--muted);
+    font: var(--text-2xs) / 1.2 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .usage-model-row {
+    display: flex; flex-direction: column; gap: 5px;
+    padding: 6px 0;
+  }
+  .usage-model-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .usage-model-name {
+    flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--ink);
+    font: var(--text-md) / 1.3 var(--font-mono);
+  }
+  .usage-model-count {
+    flex: none;
+    color: var(--ink);
+    font: 600 var(--text-xs) / 1 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .usage-model-count em {
+    margin-left: 3px;
+    color: var(--muted);
+    font-style: normal;
+    font-weight: 400;
+  }
+  .usage-track {
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: var(--fill);
+    overflow: hidden;
+  }
+  .usage-fill {
+    height: 100%;
+    border-radius: var(--radius-pill);
+    transition: width 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  .usage-model-meta {
+    color: var(--muted);
+    font: var(--text-2xs) / 1.4 var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .usage-note {
+    margin-top: 2px;
+    color: var(--muted);
+    font: var(--text-2xs) / 1.5 var(--font-ui);
+  }
+
+  .usage-empty {
+    display: flex; flex-direction: column; align-items: center; gap: 9px;
+    padding: 28px 14px;
+    text-align: center;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.6;
+    background: var(--surface);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius-lg);
+  }
+  .usage-empty svg { width: 28px; height: 28px; opacity: 0.6; }
+
+  /* ===== 侧栏搜索（Bot / 群组） ===== */
+  #sb-search-row { padding: 0 12px 8px; }
+  #sb-search-row .bb-field { width: 100%; box-sizing: border-box; }
+  #sb-search-row #sb-search-empty { padding: 6px 2px 0; }
+  /* 侧栏收起时没有可过滤的行，搜索框跟着收起，不留半截输入框 */
+  body[data-sidebar="collapsed"] #sb-search-row { display: none; }
+  body.grok-ui.sb-search-open #sidebar-toolbar #sidebar-search-toggle {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
 </style>
 </head>
 <body class="grok-ui">
@@ -2011,13 +2330,24 @@
       <button type="button" id="gp-panel-btn" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer">电脑</button>
     </div>
   </header>
+  <button type="button" id="sidebar-reopen-tab" title="展开侧栏" aria-label="展开侧栏"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   <aside id="agents">
     <!-- Grok parity: two 32px circular ghost buttons, right-aligned. Search is
          an icon, not a full-width field — the real input row (#session-search)
          is revealed below when the icon is pressed. -->
     <div id="sidebar-toolbar">
-      <button type="button" id="sidebar-search-toggle" title="搜索会话 (Ctrl/Cmd+K)" aria-label="Search" data-i18n-aria="searchAria"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
+      <button type="button" id="sidebar-toggle-btn" title="收起侧栏" aria-label="收起或展开侧栏" aria-expanded="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+      <button type="button" id="sidebar-search-toggle" title="搜索 Bot / 群组 (Ctrl/Cmd+K)" aria-label="搜索 Bot 或群组" data-i18n-aria="searchAria"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
       <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话">+</button>
+    </div>
+    <!-- 侧栏搜索：搜的是「Bot」和「群组」。产品模型就是 Bot + 群 Bot——会话
+         属于某个 Bot、收在账户条弹层里，不在这颗放大镜的搜索范围里。
+         过滤直接作用在已渲染的行上（不重渲染、不重拉接口），输入即生效。 -->
+    <div id="sb-search-row" hidden>
+      <input id="sb-search" class="bb-field" type="search" autocomplete="off"
+             placeholder="搜索 Bot / 群组" data-i18n-ph="sbSearchPh"
+             aria-label="搜索 Bot 或群组" />
+      <div id="sb-search-empty" class="sess-empty" hidden data-i18n="sbSearchEmpty">没有匹配的 Bot 或群组</div>
     </div>
     <!-- GP-60: sidebar in-call indicator -->
     <div id="vc-sb-indicator" class="bb-callout">
@@ -2215,9 +2545,8 @@
       </div>
       <div id="settings-tabs">
         <button type="button" class="settings-tab-btn" data-stab="general" data-i18n="tabGeneral">常规</button>
-        <button type="button" class="settings-tab-btn" data-stab="computer" data-i18n="tabComputer">电脑</button>
+        <button type="button" class="settings-tab-btn" data-stab="computer" data-i18n="tabComputer">电脑与权限</button>
         <button type="button" class="settings-tab-btn" data-stab="credentials" data-i18n="tabCredentials">凭证</button>
-        <button type="button" class="settings-tab-btn" data-stab="phone" data-i18n="tabPhone">手机</button>
         <button type="button" class="settings-tab-btn" data-stab="usage" data-i18n="tabUsage">用量与账单</button>
         <button type="button" class="settings-tab-btn" data-stab="updates" data-i18n="tabUpdates">更新</button>
       </div>
@@ -2242,7 +2571,7 @@
             <option value="en">English</option>
           </select>
         </div>
-        <div class="gp-label" data-i18n="timezone">Bot Timezone（Routines 按此区计算）</div>
+        <div class="gp-label"><span data-i18n="timezone">Bot 时区</span><span class="gp-hint" data-i18n="timezoneHint">定时任务按这个时区计算</span></div>
         <div class="gp-row">
           <select id="gp-timezone" class="gp-select">
             <option value="Asia/Shanghai">Asia/Shanghai</option>
@@ -2258,45 +2587,92 @@
           <button type="button" class="gp-chip" data-devmode="on" data-i18n="devOn">开</button>
           <button type="button" class="gp-chip" data-devmode="off" data-i18n="devOff">关</button>
         </div>
-        <div class="gp-label" data-i18n="autoReview">自动复核规则（「先询问」优先于「自动允许」）</div>
-        <div class="gp-row">
-          <!-- GP-148 §1-J4：这些选项原来是硬编码简体，切到繁體后设置页里就混进
-               简体词。改成走 i18n（三语各一份），和页面其它文案同一套合同。 -->
-          <select id="gp-rule-kind" class="gp-select">
-            <option value="shell" data-i18n="ruleShell">执行命令</option>
-            <option value="channel_send" data-i18n="ruleChannelSend">发送消息</option>
-            <option value="mail_send" data-i18n="ruleMailSend">发送邮件</option>
-            <option value="purchase_item" data-i18n="rulePurchase">发起购买</option>
-            <option value="mcp_call" data-i18n="ruleMcpCall">调用工具</option>
-            <option value="computer_use" data-i18n="ruleComputerUse">操作电脑</option>
-            <option value="delegate_task" data-i18n="ruleDelegate">委派任务</option>
-          </select>
-          <button type="button" class="bb-btn bb-btn-sm" id="gp-rule-allow" data-i18n="allowAuto">自动允许</button>
-          <button type="button" class="bb-btn bb-btn-sm" id="gp-rule-ask" data-i18n="askFirst">先询问</button>
-        </div>
-        <div id="gp-rules-list" style="margin-top:6px"></div>
-        <div class="gp-label" data-i18n="privacyTitle">隐私模式（账户侧管理，本机只读）</div>
-        <div class="gp-row">
-          <div id="gp-privacy-state" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">…</div>
-        </div>
-        <div class="gp-label" data-i18n="accountSection">账户（本地 profile · 不伪造远端登录）</div>
+        <div class="gp-label"><span data-i18n="accountSection">账户（本地 profile）</span></div>
         <div class="gp-row" style="align-items:center">
-          <input class="bb-control" id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="配置名（如「个人」「工作」）" style="width:160px" />
+          <input class="bb-control" id="gp-account-label" type="text" data-i18n-ph="accountLabelPlaceholder" placeholder="配置名（如「个人」「工作」）" />
           <button type="button" class="bb-btn bb-btn-sm" id="gp-account-signin" data-i18n="accountSignInBtn">登录</button>
           <button type="button" class="bb-btn bb-btn-sm" id="gp-account-signout" data-i18n="accountSignOutBtn">退出登录</button>
           <select id="gp-account-switch" class="gp-select" style="max-width:180px"></select>
         </div>
-        <div id="gp-account-state" style="margin-top:4px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
-        <div id="waveg-settings-status" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
+        <div id="gp-account-state" style="margin-top:6px"></div>
+        <!-- 隐私模式属于**账户**，不属于本机设置：开关在账户侧，这里只能如实说
+             状态和原因。原来它自己占一个分组、解释只塞在 title 里（悬停才看得
+             到），看起来像一个坏掉的控件；现在收进账户组，解释直接写出来。 -->
+        <div class="gp-lorule gp-lorule-state">
+          <span class="gp-lorule-name" data-i18n="privacyTitle">隐私模式</span>
+          <span id="gp-privacy-state">…</span>
+        </div>
+        <div id="gp-privacy-note"></div>
+        <div id="waveg-settings-status" style="margin-top:8px"></div>
       </div>
       <div id="st-computer" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div class="st-title" data-i18n="tabComputer">电脑</div>
-        <div class="gp-label" data-i18n="locExec">本地执行（电脑权限）</div>
+        <div class="st-title" data-i18n="tabComputer">电脑与权限</div>
+        <div class="gp-label"><span data-i18n="locExec">本地执行（电脑权限）</span><span class="gp-hint" data-i18n="locExecHint">总开关 · 管「执行命令」和「操作电脑」</span></div>
         <div class="gp-row" id="gp-locexec-row">
           <button type="button" class="gp-chip" data-locexec="ask" data-i18n="askEveryTime">每次询问</button>
-          <button type="button" class="gp-chip" data-locexec="always" data-i18n="alwaysAllowBtn">始终允许</button>
-          <button type="button" class="gp-chip" data-locexec="never" data-i18n="neverAllow">禁止</button>
+          <button type="button" class="gp-chip" data-locexec="always" data-i18n="alwaysAllowBtn">总是允许</button>
+          <button type="button" class="gp-chip" data-locexec="never" data-i18n="neverAllow">从不允许</button>
         </div>
+        <!-- 单项例外：「执行命令」「操作电脑」是本地执行唯一管的两项（host_ffi 的
+             WAVEG_LOCAL_KINDS 就这两个）。同一个决定只给一个入口 —— 想单独放宽或
+             收紧就在这里设，不用再去「通用 → 自动复核规则」找第二遍。
+             「跟随」= 没有个人规则，听上面那三档；另两档落一条 <kind>:* 规则，
+             规则优先于总开关（但「禁止」是硬闸，规则盖不过）。 -->
+        <div id="gp-locexec-rules">
+          <div class="gp-lorule">
+            <span class="gp-lorule-name" data-i18n="ruleShell">执行命令</span>
+            <button type="button" class="gp-chip" data-lokind="shell" data-lodecision="follow" data-i18n="followMaster">跟随</button>
+            <button type="button" class="gp-chip" data-lokind="shell" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
+            <button type="button" class="gp-chip" data-lokind="shell" data-lodecision="ask" data-i18n="askFirst">先询问</button>
+          </div>
+          <div class="gp-lorule">
+            <span class="gp-lorule-name" data-i18n="ruleComputerUse">操作电脑</span>
+            <button type="button" class="gp-chip" data-lokind="computer_use" data-lodecision="follow" data-i18n="followMaster">跟随</button>
+            <button type="button" class="gp-chip" data-lokind="computer_use" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
+            <button type="button" class="gp-chip" data-lokind="computer_use" data-lodecision="ask" data-i18n="askFirst">先询问</button>
+          </div>
+        </div>
+        <!-- 其它动作的审批：和上面同一件事（Bot 做事前问不问），只是不碰本机。
+             原来它挂在「通用」页，一个有 5 个选项的下拉 + 两颗按钮 + 一张规则
+             列表，跟外观/语言挤在一起，看着像开发面板。现在形状统一成逐项三档，
+             跟「本地执行」摆在同一页 —— 审批只有一个地方。 -->
+        <div class="gp-label"><span data-i18n="approvalRulesTitle">其它动作的审批</span><span class="gp-hint" data-i18n="approvalRulesHint">发送消息、发邮件、购买这类动作要不要先问</span></div>
+        <div id="gp-approval-rules">
+          <div class="gp-lorule">
+            <span class="gp-lorule-name" data-i18n="ruleChannelSend">发送消息</span>
+            <button type="button" class="gp-chip" data-lokind="channel_send" data-lodecision="follow" data-i18n="followMaster">跟随</button>
+            <button type="button" class="gp-chip" data-lokind="channel_send" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
+            <button type="button" class="gp-chip" data-lokind="channel_send" data-lodecision="ask" data-i18n="askFirst">先询问</button>
+          </div>
+          <div class="gp-lorule">
+            <span class="gp-lorule-name" data-i18n="ruleMailSend">发送邮件</span>
+            <button type="button" class="gp-chip" data-lokind="mail_send" data-lodecision="follow" data-i18n="followMaster">跟随</button>
+            <button type="button" class="gp-chip" data-lokind="mail_send" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
+            <button type="button" class="gp-chip" data-lokind="mail_send" data-lodecision="ask" data-i18n="askFirst">先询问</button>
+          </div>
+          <div class="gp-lorule">
+            <span class="gp-lorule-name" data-i18n="rulePurchase">发起购买</span>
+            <button type="button" class="gp-chip" data-lokind="purchase_item" data-lodecision="follow" data-i18n="followMaster">跟随</button>
+            <button type="button" class="gp-chip" data-lokind="purchase_item" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
+            <button type="button" class="gp-chip" data-lokind="purchase_item" data-lodecision="ask" data-i18n="askFirst">先询问</button>
+          </div>
+          <div class="gp-lorule">
+            <span class="gp-lorule-name" data-i18n="ruleMcpCall">调用工具</span>
+            <button type="button" class="gp-chip" data-lokind="mcp_call" data-lodecision="follow" data-i18n="followMaster">跟随</button>
+            <button type="button" class="gp-chip" data-lokind="mcp_call" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
+            <button type="button" class="gp-chip" data-lokind="mcp_call" data-lodecision="ask" data-i18n="askFirst">先询问</button>
+          </div>
+          <div class="gp-lorule">
+            <span class="gp-lorule-name" data-i18n="ruleDelegate">委派任务</span>
+            <button type="button" class="gp-chip" data-lokind="delegate_task" data-lodecision="follow" data-i18n="followMaster">跟随</button>
+            <button type="button" class="gp-chip" data-lokind="delegate_task" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
+            <button type="button" class="gp-chip" data-lokind="delegate_task" data-lodecision="ask" data-i18n="askFirst">先询问</button>
+          </div>
+        </div>
+        <!-- 更细的规则：三档 chip 只能表达 `<kind>:*`。别的 pattern（更细的匹配、
+             团队锁定的条目）没法用 chip 表示，就在这一行如实列出来，能删的给删除
+             按钮。没有这类规则时整块不占位。 -->
+        <div id="gp-rules-list" style="margin-top:8px"></div>
         <div class="gp-label" data-i18n="routeTraffic">让 Bot 的云端流量经本机路由</div>
         <div class="gp-row">
           <button type="button" class="bb-btn bb-btn-sm" id="gp-route-toggle">—</button>
@@ -2306,12 +2682,16 @@
           <button type="button" class="bb-btn bb-btn-sm" id="gp-update-computer" data-i18n="updateComputerBtn">更新云端电脑</button>
           <button type="button" class="bb-btn bb-btn-sm" id="gp-reset-computer" data-i18n="resetComputerBtn">重置云端电脑</button>
         </div>
+        <!-- 更新是宿主的「两次确认」协议：第一次只是把方案摆出来，第二三次才真执行。
+             结果写在这一行里，不再往对话里塞 "Update Computer · awaiting_confirm_1"
+             这种英文协议串（用户看不懂，还会误以为已经更新完了）。 -->
+        <div id="st-computer-action" class="st-note" hidden></div>
         <div id="st-computer-state" style="margin-top:8px;color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
       </div>
       <div id="st-usage" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="tabUsage">用量与账单</div>
-        <div class="st-note">本周真实 LLM 用量；无数据即空态，不造假</div>
-        <div id="gp-usage" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace">读取中…</div>
+        <div class="st-note">本周真实 LLM 用量；数字全部来自 llm-usage.json，无数据即空态，不造假</div>
+        <div id="gp-usage"><div class="usage-skeleton">读取中…</div></div>
       </div>
       <div id="st-updates" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="tabUpdates">更新</div>
@@ -2335,125 +2715,172 @@
           <div class="st-note">留空走默认更新源；企业内网/私有分发填自己的目录。</div>
         </div>
       </div>
-      <div id="secrets-panel" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+      <div id="secrets-panel" class="settings-tab" style="display:none">
         <div class="st-title" data-i18n="credentials">模型与密钥</div>
-        <div class="st-note" data-i18n="credLead">只有第一张卡是必须的：接上本机大脑就能用，其余都能先跳过。</div>
-        <!-- 分区不按「有什么字段」排，按「非做不可 → 可选 → 一次性」排：
-             大脑（必填）/ 能力（选填）/ 手机与入站 / 合规。
+        <div class="st-note" data-i18n="credLead">必填的只有本机大脑；联网搜索和入站地址随时可以再补。</div>
+        <!-- 两张卡：必填（接上大脑）/ 选填（别的接线）。
+             以前还有第三张「合规」（ICP 备案号 / 算法备案号 / 内容审核门）。
+             前两栏是「对外提供生成式 AI 服务」的主体才要填的东西，本机自用根本不存在
+             这件事，摆在设置里只会让人以为自己漏填了什么。内容审核门是真开关
+             （host_ffi 在 LLM 输出前按本地词表拦），随大脑放进第一张卡，不再自称合规。
              Key 与凭证写入本机 gitignored .env.local 并热加载；仓库与安装包不含真实密钥。 -->
         <div class="st-card" id="sec-zone-brain">
-          <div class="st-card-title"><span data-i18n="credZoneBrain">本机大脑</span> <span class="st-tag st-tag-req" data-i18n="credTagRequired">必填</span></div>
-          <!-- 不再把渠道写死成「DeepSeek / 通义 / Kimi 三个 key 框」。
-               本机大脑走 OpenAI 兼容协议，所以任何兼容端点都能接：官方渠道、
-               自建推理服务（vLLM / Ollama / LM Studio）、或企业网关。
-               接入方式只负责预填 base/model/provider，用户随时可以改。 -->
-          <div class="st-note" data-i18n="credBrainNote">走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填下面几栏，之后可以随意改。</div>
-          <label class="st-field"><span class="st-field-name">接入方式</span>
-            <select id="sec-llm-preset" class="bb-field">
-              <option value="deepseek">DeepSeek（官方）</option>
-              <option value="qwen">通义千问（DashScope 兼容模式）</option>
-              <option value="moonshot">Moonshot / Kimi</option>
-              <option value="openrouter">OpenRouter（聚合网关）</option>
-              <option value="custom">自定义 · OpenAI 兼容端点</option>
-              <option value="gateway">企业网关 / 代理转发</option>
-            </select>
-            <!-- 预填了什么要在选完那一行说清，否则用户不知道下面三栏被改了没有 -->
-            <div id="sec-llm-hint" class="st-note">…</div>
-          </label>
-          <div class="st-grid">
-            <label class="st-field"><span class="st-field-name">模型 ID</span>
+          <div class="st-card-title">
+            <span data-i18n="credZoneBrain">本机大脑</span>
+            <span class="st-tag st-tag-req" data-i18n="credTagRequired">必填</span>
+          </div>
+          <!-- 结论区：这一屏原来的问题不是「栏位多」，是**没有结论**——五个等重的
+               技术字段一路铺下来，用户看完不知道「我现在到底接的是什么、通不通」。
+               主流 agent（Cursor / Cline / Continue）的模型设置都是先给一条「当前
+               生效的连接」，再给「改它」的入口。所以这里把状态提到最上面一行。 -->
+          <div class="st-conn" id="sec-conn">
+            <span class="st-conn-dot" id="sec-conn-dot" aria-hidden="true"></span>
+            <div class="st-conn-body">
+              <div class="st-conn-title" id="sec-conn-title">…</div>
+              <div class="st-conn-sub" id="sec-conn-sub"></div>
+            </div>
+            <button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">换模型</button>
+          </div>
+          <!-- 表单从「标签在上、控件在下」的竖排改成**左标签 / 右控件**的行式：
+               这是设置页的主流形态（macOS 系统设置、VS Code、Cursor Settings、
+               ChatGPT 设置都是这样）。竖排一屏只放得下三栏，行式一屏能扫完六行，
+               而且控件左边缘对齐、标签成一列，扫读路径是一条直线。
+               这里不改 .st-field（全站很多页在用），只在大脑这张卡用 .st-form。 -->
+          <div class="st-form">
+            <!-- 服务商决定下面露什么：官方渠道预填好端点，自建/网关才需要改 Base URL。
+                 选项名里带「OpenAI 兼容端点」「代理转发」，说明不必再单独写一段话。 -->
+            <label class="st-form-label" for="sec-llm-preset" data-i18n="credFieldProvider">服务商</label>
+            <div class="st-form-ctl">
+              <select id="sec-llm-preset" class="bb-field">
+                <option value="deepseek">DeepSeek（官方）</option>
+                <option value="qwen">通义千问（DashScope 兼容模式）</option>
+                <option value="moonshot">Moonshot / Kimi</option>
+                <option value="openrouter">OpenRouter（聚合网关）</option>
+                <option value="custom">自定义 · OpenAI 兼容端点</option>
+                <option value="gateway">企业网关 / 代理转发</option>
+              </select>
+              <!-- 选完要说清「预填了什么」，否则用户不知道下面几栏被改了没有 -->
+              <span id="sec-llm-hint" class="st-field-hint">…</span>
+            </div>
+
+            <label class="st-form-label" for="sec-llm-model" data-i18n="credFieldModel">模型</label>
+            <div class="st-form-ctl">
               <input id="sec-llm-model" type="text" placeholder="deepseek-chat" class="bb-field" />
-            </label>
-            <label class="st-field"><span class="st-field-name">Base URL</span>
+              <!-- 模型名不该让用户凭记忆手打：主流 agent 都给候选（Cursor 的模型列表、
+                   Cline 的 Model 下拉）。这里给一排可点的候选，随服务商变；输入框
+                   仍可自由写，自建端点照样能填任意 model id。 -->
+              <div class="st-chips" id="sec-llm-models"></div>
+            </div>
+
+            <label class="st-form-label" for="sec-llm-base">Base URL</label>
+            <div class="st-form-ctl">
               <input id="sec-llm-base" type="text" placeholder="https://api.deepseek.com/v1" class="bb-field" />
-            </label>
+            </div>
+
+            <label class="st-form-label" for="sec-llm-key">API Key</label>
+            <div class="st-form-ctl">
+              <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
+              <!-- 掩码状态以前塞在字段名后面（「API Key（已配置 sk-…f3a9；留空＝不改动，
+                   要换就粘新的）」），标签本体被这句话淹掉。现在它在控件下面一行；
+                   而「留空＝不改动」写进 placeholder —— 空框最容易被读成「还没配」，
+                   得让框里自己说出来。两处不再说同一句话。 -->
+              <span id="sec-llm-mask" class="st-field-hint"></span>
+              <!-- 粘错了要在这一栏下面当场说清楚，而不是等模型 401 之后再让人猜 -->
+              <span id="sec-llm-key-err" class="st-field-error" hidden></span>
+              <div id="sec-llm-key-note" class="st-note" hidden></div>
+            </div>
           </div>
-          <label class="st-field"><span class="st-field-name">API Key <span id="sec-llm-mask"></span></span>
-            <input id="sec-llm-key" type="password" autocomplete="off" placeholder="sk-…" class="bb-field" />
-            <!-- 粘错了要在这一栏下面当场说清楚，而不是等模型 401 之后再让人猜 -->
-            <span id="sec-llm-key-err" class="st-field-error" hidden></span>
-            <div id="sec-llm-key-note" class="st-note" hidden></div>
+          <!-- 线以下都不是「接上大脑」的步骤：一个输出过滤开关、一个切渠道才用的折叠。
+               放在分隔线下面，主表单就只剩服务商 / 模型 / Base / Key 四栏。 -->
+          <div class="st-rule" aria-hidden="true"></div>
+          <!-- 内容审核门：原「合规」卡里唯一真有功能的开关（host_ffi 在 LLM 输出前
+               按本地词表拦）。它管的是「大脑说的话要不要过滤」，所以留在大脑这张卡，
+               只是不再叫「合规」——那名字下另外两栏（ICP / 算法备案）是另一回事，
+               本机自用不存在，已删。 -->
+          <label class="st-check" id="sec-filter-row">
+            <input id="sec-moderation" type="checkbox" />
+            <span data-i18n="credModeration">回复前过滤敏感词</span>
           </label>
-          <!-- GP-148 §1-J4：产品态的模型/供应商面板入口。表头那颗芯片在精简外壳里
-               是隐藏的（shell_v2 S-HEADER 要求），所以这里给一个正经入口，和密钥表单
-               读同一个 Host 数据源（llmCatalog + secrets）。
-               放在折叠之前：它属于「本机大脑」这一步，压在折叠下面会被读成
-               「备用渠道的按钮」（GP-185 真开机截图抓到的歧义）。 -->
-          <div class="gp-row" style="margin-top:10px">
-            <button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">模型与供应商</button>
-          </div>
+          <div class="st-field-hint" data-i18n="credModerationNote">按本地词表拦；词表放 data/compliance/content-blocklist.txt，没放就用内置的几条。</div>
           <!-- provider_id 和备用渠道 key 都是「切渠道时才要」的东西，收到同一个折叠里：
-               主流程只剩接入方式 / 模型 / Base URL / Key 四栏。 -->
+               主流程只剩服务商 / 模型 / Base URL / Key 四栏。 -->
           <details class="st-adv" id="sec-alt-channels">
             <summary class="st-adv-sum"><span data-i18n="credAdvTitle">备用渠道与 provider 标签</span> <span class="st-tag" data-i18n="credTagOptional">选填</span><span class="st-adv-mark" aria-hidden="true"></span></summary>
             <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
-            <label class="st-field"><span class="st-field-name">提供商标签（provider_id）</span>
-              <input id="sec-llm-provider" type="text" autocomplete="off" placeholder="deepseek / my-gateway" class="bb-field" />
-            </label>
-            <label class="st-field"><span class="st-field-name">通义千问 API Key <span id="sec-qwen-mask"></span></span>
-              <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
-              <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
-              <div id="sec-qwen-key-note" class="st-note" hidden></div>
-            </label>
-            <label class="st-field"><span class="st-field-name">Moonshot / Kimi API Key <span id="sec-moon-mask"></span></span>
-              <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
-              <span id="sec-moon-key-err" class="st-field-error" hidden></span>
-              <div id="sec-moon-key-note" class="st-note" hidden></div>
-            </label>
+            <!-- 折叠里也用同一套行式排法：展开后突然换回竖排表单，会让人以为
+                 这不是同一张卡的延续。 -->
+            <div class="st-form">
+              <label class="st-form-label" for="sec-llm-provider">provider 标签</label>
+              <div class="st-form-ctl">
+                <input id="sec-llm-provider" type="text" autocomplete="off" placeholder="deepseek / my-gateway" class="bb-field" />
+                <span class="st-field-hint">写进配置里的 provider_id；留空就跟着上面选的服务商。</span>
+              </div>
+
+              <label class="st-form-label" for="sec-qwen-key">通义千问</label>
+              <div class="st-form-ctl">
+                <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+                <span id="sec-qwen-mask" class="st-field-hint"></span>
+                <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
+                <div id="sec-qwen-key-note" class="st-note" hidden></div>
+              </div>
+
+              <label class="st-form-label" for="sec-moon-key">Moonshot / Kimi</label>
+              <div class="st-form-ctl">
+                <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+                <span id="sec-moon-mask" class="st-field-hint"></span>
+                <span id="sec-moon-key-err" class="st-field-error" hidden></span>
+                <div id="sec-moon-key-note" class="st-note" hidden></div>
+              </div>
+            </div>
           </details>
         </div>
         <div class="st-card" id="sec-zone-capability">
-          <div class="st-card-title"><span data-i18n="credZoneCapability">能力扩展</span> <span class="st-tag" data-i18n="credTagOptional">选填</span></div>
+          <div class="st-card-title"><span data-i18n="credZoneCapability">可选接线</span> <span class="st-tag" data-i18n="credTagOptional">选填</span></div>
+          <div class="st-sub-title"><span data-i18n="credSubSearch">联网搜索</span></div>
           <!-- Replica C6：真实搜索 + 引用。key 走和大脑 key 同一条开放配置链路
                （写进 gitignored .env.local 并热加载），不内置、不写死。 -->
-          <label class="st-field"><span class="st-field-name">联网搜索</span>
-            <select id="sec-search-provider" class="bb-field">
-              <option value="tavily">Tavily（有免费额度）</option>
-              <option value="brave">Brave Search</option>
-            </select>
-          </label>
-          <div class="st-grid">
-            <label class="st-field"><span class="st-field-name">搜索 API Key <span id="sec-search-mask"></span></span>
+          <!-- 和大脑那张卡同一套行式排法：一页里两种表单形态会让人以为不是同一个设置页 -->
+          <div class="st-form">
+            <label class="st-form-label" for="sec-search-provider" data-i18n="credFieldProvider">服务商</label>
+            <div class="st-form-ctl">
+              <select id="sec-search-provider" class="bb-field">
+                <option value="tavily">Tavily（有免费额度）</option>
+                <option value="brave">Brave Search</option>
+              </select>
+            </div>
+
+            <label class="st-form-label" for="sec-search-key">API Key</label>
+            <div class="st-form-ctl">
               <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
+              <span id="sec-search-mask" class="st-field-hint"></span>
               <span id="sec-search-key-err" class="st-field-error" hidden></span>
               <div id="sec-search-key-note" class="st-note" hidden></div>
-            </label>
-            <label class="st-field"><span class="st-field-name">API Base（自建或代理）</span>
+            </div>
+
+            <label class="st-form-label" for="sec-search-base">API Base</label>
+            <div class="st-form-ctl">
               <input id="sec-search-base" type="text" placeholder="留空走官方" class="bb-field" />
-            </label>
+              <span class="st-field-hint" data-i18n="credSearchBaseHint">自建或走代理时填；留空就用官方地址。</span>
+            </div>
           </div>
           <div class="st-note" data-i18n="credCapNote">不填也能用，只是不会联网：回答里不会出现编造的来源。</div>
-        </div>
-        <div class="st-card" id="sec-zone-inbound">
-          <div class="st-card-title"><span data-i18n="credZoneInbound">入站地址</span> <span class="st-tag" data-i18n="credTagOptional">选填</span></div>
+          <!-- 入站地址以前是单独一张卡，整张卡只装一条只读地址 + 一颗按钮，
+               边框和留白比内容还重。它和联网搜索同属「可选接线」，收进同一张卡，
+               用「卡片内的第二个分组」表达，不再多一层卡片。 -->
+          <div class="st-sub-title"><span data-i18n="credZoneInbound">入站地址</span></div>
           <!-- 入站公网地址：连接应用（钉钉/飞书/企微）回调要填的地方。
-               手机配对搬去「手机」页之后，这一屏留下的就是这条只读地址；
                它不属于手机，属于「这台电脑对公网暴露的入口」，所以留在凭证页。 -->
           <div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">入站公网地址（连接应用回调要用）</span>
             <div id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
           </div>
-          <!-- GP-189 兜底：配对主路已搬去「手机」页，但门禁 MC-10 要求凭证旧卡保留
-               一个指向新弹窗的说明 + 一个一键配对手动兜底（读同一份 pairing.state()）。
-               文字带「移动端远程控制」是 MC-10 硬断言，故不复用 data-i18n 覆盖。 -->
+          <!-- GP-189 兜底：配对主路已搬去「账户 → 移动端远程控制」，但门禁 MC-10
+               要求凭证旧卡保留一个指向该弹窗的说明 + 一个一键配对手动兜底
+               （读同一份 pairing.state()）。文字带「移动端远程控制」是 MC-10 硬断言，
+               故不复用 data-i18n 覆盖。 -->
           <div class="pairing-modal-hint" id="sec-pairing-modal-hint">主路在「账户 → 移动端远程控制」；这里保留一键配对作为兜底，读的是同一份配对状态。</div>
           <div class="gp-row" style="margin-top:8px">
             <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
           </div>
-        </div>
-        <div class="st-card" id="sec-zone-compliance">
-          <div class="st-card-title"><span data-i18n="credZoneCompliance">合规</span></div>
-          <div class="st-grid">
-            <label class="st-field"><span class="st-field-name">AI 备案号</span>
-              <input class="bb-control" id="sec-icp" type="text" placeholder="ICP 备案号" />
-            </label>
-            <label class="st-field"><span class="st-field-name">算法备案号</span>
-              <input class="bb-control" id="sec-algo" type="text" placeholder="算法备案号" />
-            </label>
-          </div>
-          <label class="st-check">
-            <input id="sec-moderation" type="checkbox" />
-            <span>内容审核门（拦截违禁词输出）</span>
-          </label>
         </div>
         <!-- 保存条：状态就在按钮左边，点完不用滚到页尾去找「存上了没有」。
              跑验收门禁是开发动作，跟着 data-lab 收起，产品态不占这颗按钮位。 -->
@@ -2467,86 +2894,7 @@
         <pre id="sec-gate-out" class="bb-meta bb-control" data-lab style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
         <div class="st-note"><span data-i18n="credApplyLead">申请 DeepSeek</span>：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link">platform.deepseek.com/api_keys</a></div>
       </div>
-      <!-- GP-189：手机配对以前寄在「凭证」页最下面那张卡里，和 API Key 混在一屏；
-           用户要找的是「手机」，不是「密钥」。页签即入口，配对在这一步有顺序。 -->
-      <div id="st-phone" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
-        <div class="st-title" data-i18n="phoneTitle">手机</div>
-        <div class="st-note" data-i18n="phoneLead">手机连的就是这台电脑上的大脑。三步：打开局域网入口 → 生成 6 位配对码 → 在手机里输入。</div>
-        <div class="st-card" id="sec-zone-devices">
-          <div class="st-card-title"><span data-i18n="credZoneDevices">手机配对</span> <span class="st-tag st-tag-req" data-i18n="credTagRequired">必做</span></div>
-          <div class="st-step" id="phone-step-1">
-            <span class="st-step-no" aria-hidden="true">1</span>
-            <div class="st-step-body">
-              <div class="st-step-name" data-i18n="phoneStepName1">打开局域网入口</div>
-              <!-- 这句是机制说明，不是装饰：不点这一步，桌面只绑 127.0.0.1，手机怎么扫都是空结果。 -->
-              <div class="st-step-desc" data-i18n="phoneStepDesc1">默认只听本机 127.0.0.1，手机扫不到；点一下才把地址让给局域网。</div>
-              <div class="gp-row">
-                <button type="button" id="pairing-lan-btn" class="bb-btn bb-btn-sm">允许手机连接</button>
-                <button type="button" id="pairing-copy-url" class="bb-btn bb-btn-sm" disabled>复制地址</button>
-              </div>
-              <div id="sec-pairing-line" class="st-readout">配对状态：读取中…</div>
-              <!-- 手机敲不到地址时，光给一个「像地址的东西」等于骗人：这一行如实说明
-                   这个地址从哪类网卡来、大概率连不通的原因。 -->
-              <div id="sec-pairing-note" class="pairing-note" style="display:none;margin-top:6px"></div>
-            </div>
-          </div>
-          <div class="st-step" id="phone-step-2">
-            <span class="st-step-no" aria-hidden="true">2</span>
-            <div class="st-step-body">
-              <div class="st-step-name" data-i18n="phoneStepName2">生成 6 位配对码</div>
-              <div class="st-step-desc" data-i18n="phoneStepDesc2">5 分钟内有效、只能用一次；不想要了就当场作废。</div>
-              <div id="pairing-code-block" class="pc-block">
-                <div class="pc-head">
-                  <span class="pc-head-title">让手机自己找</span>
-                  <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
-                </div>
-                <div id="pairing-code-display" class="pc-display" hidden>
-                  <span id="pairing-code-digits" class="pc-digits"></span>
-                  <span id="pairing-code-countdown" class="pc-countdown"></span>
-                </div>
-                <div id="pairing-code-actions" class="pc-actions" hidden>
-                  <button type="button" id="pairing-revoke-btn" class="bb-btn bb-btn-sm">立即作废</button>
-                </div>
-                <p id="pairing-code-hint" class="pc-hint">手机只需点「连接 Desktop」并输入这 6 位数字</p>
-              </div>
-            </div>
-          </div>
-          <div class="st-step" id="phone-step-3">
-            <span class="st-step-no" aria-hidden="true">3</span>
-            <div class="st-step-body">
-              <div class="st-step-name" data-i18n="phoneStepName3">在手机里输入这 6 位</div>
-              <div class="st-step-desc" data-i18n="phoneStepDesc3">手机 App（BitBotHost）点「连接 Desktop」，它只在这台桌面所在的网段里找。</div>
-            </div>
-          </div>
-          <details class="st-adv" id="phone-adv">
-            <summary class="st-adv-sum"><span data-i18n="phoneAdvTitle">手动填地址与令牌（连不上时才用）</span><span class="st-adv-mark" aria-hidden="true"></span></summary>
-            <p id="pairing-manual-label" class="pc-hint">抄 64 位令牌是兜底：一键配对走不通时才需要。</p>
-            <div class="gp-row">
-              <button type="button" id="pairing-token-btn" class="bb-btn bb-btn-sm">显示配对令牌</button>
-              <button type="button" id="pairing-copy-token" class="bb-btn bb-btn-sm" disabled>复制令牌</button>
-            </div>
-            <div id="sec-pairing-token" class="st-readout" style="display:none;margin-top:8px"></div>
-            <div id="sec-pairing-status" class="st-readout" style="margin-top:8px"></div>
-            <!-- 完整 /v1/turn 端点只在开发态给；普通用户要填的是上面那行配对地址。 -->
-            <div id="sec-pairing-turn" class="pairing-endpoint" style="display:none;margin-top:6px"></div>
-          </details>
-        </div>
-        <div class="st-card" id="phone-zone-scope">
-          <div class="st-card-title"><span data-i18n="phoneZoneScope">一定要在同一个局域网吗？</span></div>
-          <div class="st-scope" id="phone-scope-same">
-            <span class="st-scope-yes" data-i18n="phoneScopeYes">同一 Wi-Fi / 同网段</span>
-            <span class="st-scope-desc" data-i18n="phoneScopeSame">直接可用：上面三步就够，不用填任何地址。</span>
-          </div>
-          <div class="st-scope" id="phone-scope-other">
-            <span class="st-scope-warn" data-i18n="phoneScopeWarn1">访客网络 / 公司隔离 / 手机热点</span>
-            <span class="st-scope-desc" data-i18n="phoneScopeOther">这些网络禁止设备互访，扫不到很正常。在上方「手动」里填这台桌面的地址和端口 —— 只要手机能打通那个地址就行，不限网段。</span>
-          </div>
-          <div class="st-scope" id="phone-scope-public">
-            <span class="st-scope-no" data-i18n="phoneScopeWarn2">公网 / 跨网段</span>
-            <span class="st-scope-desc" data-i18n="phoneScopePublic">本版没有内置内网穿透：要么自己组网（如 Tailscale）后按上一条手填，要么走有公网地址的服务器。地址不是私有网段时，手机会如实提示「大概率连不通」。</span>
-          </div>
-        </div>
-      </div>
+
       </div>
     </div>
     <!-- GP-92: fullscreen artifact viewer (image/video/audio/text) -->
@@ -3309,16 +3657,6 @@
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
-    <!-- M29 (§2.4): sidebar group row → real group chat in the same #log.
-         The banner shows which room the composer is aimed at; Exit returns
-         to the previous conversation. -->
-    <div id="room-banner" class="bb-banner">
-      <span id="room-banner-title" style="font-weight:700;font-size:var(--text-md)"></span>
-      <span id="room-banner-meta" class="bb-note"></span>
-      <span style="flex:1"></span>
-      <button type="button" id="room-banner-info" class="bb-btn" data-i18n="roomInfo">群资料</button>
-      <button type="button" id="room-banner-exit" class="bb-btn" data-i18n="roomExit">退出群聊</button>
-    </div>
     <div id="attachment-strip" class="attach-strip" aria-label="待发送附件"></div>
     <!-- GP-60: in-call control (composer 为空时启动；结束留 Voice chat 卡) -->
     <div id="voicechat-bar" class="bb-banner" style="display:none;align-items:stretch;flex-direction:column">
@@ -3354,9 +3692,25 @@
       <button type="button" id="loop-approval-allow">Allow</button>
       <button type="button" id="loop-approval-deny">Deny</button>
     </div>
+    <!-- M29 (§2.4): sidebar group row → real group chat in the same #log.
+         The banner shows which room the composer is aimed at; Exit returns
+         to the previous conversation.
+         位置：贴着输入卡的**上沿**，读作「这张输入框属于这个群」。
+         它原来是 composer 的第一个子元素，一旦有进度行 / 回复条插到它和
+         输入框中间，「群资料 / 退出群聊」就飘在对话中间，离输入框一屏远。 -->
+    <div id="composer-grip" role="separator" aria-orientation="horizontal" tabindex="0"
+         title="拖拽调整输入框高度（双击复位）" aria-label="拖拽调整输入框高度：上下拖拽改变高度，双击复位"></div>
+    <div id="room-banner" class="bb-banner">
+      <span id="room-banner-title" style="font-weight:700;font-size:var(--text-md)"></span>
+      <span id="room-banner-meta" class="bb-note"></span>
+      <span style="flex:1"></span>
+      <button type="button" id="room-banner-info" class="bb-btn" data-i18n="roomInfo">群资料</button>
+      <button type="button" id="room-banner-exit" class="bb-btn" data-i18n="roomExit">退出群聊</button>
+    </div>
     <div class="row">
       <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…" title="Enter 发送 · Shift+Enter 换行 · ↑ 调出上一条" autocomplete="off" autofocus></textarea>
       <button type="button" id="attach-btn" title="更多：附件 / 联网搜索 / 模型 / 语音对话"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button type="button" id="shot-btn" title="截图（框选区域 · Esc 取消）" aria-label="截图并作为附件"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2l1-1.6A1.4 1.4 0 0 1 8.9 3.7h6.2c.5 0 .9.2 1.2.7l1 1.6h1.2A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="12" cy="12.5" r="3.4"/></svg></button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/><path d="M8 22h8"/></svg></button>
       <button type="button" id="turn-cancel" class="bb-btn" hidden aria-label="取消">取消</button>
       <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 19.5V5"/><path d="M5.8 11.2 12 5l6.2 6.2"/></svg></button>
@@ -3366,6 +3720,8 @@
          三个控件保留原 id，原有 click 处理逻辑不变，只是从行内搬进菜单。 -->
     <div id="composer-more" class="composer-more" hidden>
       <button type="button" id="add-attachment-btn">📎 添加附件</button>
+      <button type="button" id="shot-more-btn">📷 截图（框选）</button>
+      <button type="button" id="shot-screen-btn">🖥 整屏截图</button>
       <button type="button" class="bb-chip bb-chip--toggle" id="web-search-toggle" aria-pressed="false" title="联网搜索（本轮是否会真的检索网页）"><span data-i18n="webSearch">联网搜索</span></button>
       <button type="button" class="bb-chip" id="model-switch-chip" aria-haspopup="listbox" title="切换模型" aria-label="切换模型"><span id="active-model-label">默认</span></button>
       <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn">🎧 语音对话</button>
@@ -3516,7 +3872,7 @@
     };
 
     // M7: Grok-spec tabbed settings (General / Computer / Credentials / Phone / Usage & Billing / Updates).
-    const SETTINGS_TAB_KEYS = ["general", "computer", "credentials", "phone", "usage", "updates"];
+    const SETTINGS_TAB_KEYS = ["general", "computer", "credentials", "usage", "updates"];
     // Kernel anchor → UI tab (deep links from any entry land on the right tab).
     const SETTINGS_ANCHOR_TAB = {
       "appearance": "general", "language": "general", "accent": "general",
@@ -3540,7 +3896,7 @@
       // #settings-meta 是开发诊断行：产品态必须留空，否则「tab=凭证」这种内部
       // 字串会直接印在用户看得见的屏幕上（GP-185 真开机截图抓到的）。
       if (metaEl && typeof devModeOn === "function" && devModeOn()) {
-        const label = { general: "常规", computer: "电脑", credentials: "凭证", phone: "手机", usage: "用量与账单", updates: "更新" }[key];
+        const label = { general: "常规", computer: "电脑", credentials: "凭证", usage: "用量与账单", updates: "更新" }[key];
         metaEl.textContent = metaEl.textContent.replace(/tab=[^·]*(·|$)/, "tab=" + label + " $1").trim() || "tab=" + label;
       } else if (metaEl) {
         metaEl.textContent = "";
@@ -3555,27 +3911,71 @@
         refreshSecretsForm().catch(() => {});
         refreshInboundUrlStrip().catch(() => {});
       }
-      // GP-189：配对搬去「手机」页后，状态刷新跟着界面走 —— 留在凭证页刷新，
-      // 切到手机页就会看到上一站的旧地址（读起来像「没连上」）。
-      if (key === "phone") refreshPairingStrip().catch(() => {});
       if (key === "updates") refreshUpdatesTabState();
     }
     document.querySelectorAll("#settings-tabs .settings-tab-btn").forEach((b) => {
       b.addEventListener("click", () => showSettingsTab(b.dataset.stab));
     });
     // GP-70 (M7): Computer tab actions go through the real kernel chain.
+    // 但**不写进对话**：这些是设置面板里的操作，结果回显在本面板里
+    // （runUserTurn 的 settingsAction 分支负责接管）。
+    function setComputerAction(text) {
+      const el = document.getElementById("st-computer-action");
+      if (!el) return;
+      el.hidden = !text;
+      el.textContent = text || "";
+    }
+    /* 宿主是「两步确认」协议：第一次调用只是摆出方案（awaiting_confirm_1），
+       之后每 confirm 一次推进一格，凑满两次才真执行。
+       按钮状态只由宿主返回的 phase 驱动，不靠本地猜测 —— 否则界面说「已确认」
+       而宿主还在等，就又是一次「假装做完」。 */
+    let updateConfirmStep = 0;
+    function syncUpdateComputerButton() {
+      const btn = document.getElementById("gp-update-computer");
+      if (!btn) return;
+      btn.textContent =
+        updateConfirmStep === 1 ? wavegT("crUpdateArmed1")
+          : updateConfirmStep === 2 ? wavegT("crUpdateArmed2")
+            : wavegT("updateComputerBtn");
+      btn.classList.toggle("bb-btn-primary", updateConfirmStep > 0);
+    }
+    async function runComputerAction(text) {
+      const btn = document.getElementById("gp-update-computer");
+      if (btn) btn.disabled = true;
+      try {
+        await runUserTurn(text, {
+          skipSession: true,
+          silentUser: true,
+          settingsAction: true,
+        });
+      } catch (_) {
+        setComputerAction(wavegT("crActionFailed"));
+      } finally {
+        if (btn) btn.disabled = false;
+        refreshComputerTabState().catch(() => {});
+      }
+    }
     const gpUpdateComputer = document.getElementById("gp-update-computer");
     if (gpUpdateComputer) {
       gpUpdateComputer.addEventListener("click", () => {
-        runUserTurn("update computer", { skipSession: true }).then(() => refreshComputerTabState());
+        if (updateConfirmStep === 1) runComputerAction("update computer confirm=1");
+        else if (updateConfirmStep === 2) runComputerAction("update computer confirm=2");
+        else runComputerAction("update computer");
       });
     }
     const gpResetComputer = document.getElementById("gp-reset-computer");
     if (gpResetComputer) {
       gpResetComputer.addEventListener("click", () => {
-        runUserTurn("reset computer", { skipSession: true });
+        updateConfirmStep = 0;
+        syncUpdateComputerButton();
+        runComputerAction("reset computer");
       });
     }
+    /* 这里**不要**在脚本求值阶段调 syncUpdateComputerButton()：它读 wavegT()，
+       而 WAVEG_I18N 是文件后半段才初始化的 const —— 提前调用会抛 TDZ
+       ReferenceError，整个脚本就停在那一行，boot() 永不执行，界面于是永远
+       停在「正在启动 MoonBit…」。按钮文案那会儿本来就已经是 markup 里的默认值，
+       真正需要同步的时机是打开「电脑」页/操作之后，交给 refreshComputerTabState。 */
     // GP-71 (M7): Updates tab — kernel opens Updates anchor, then real OTA check.
     const gpCheckUpdates = document.getElementById("gp-check-updates");
     const gpRestartUpdate = document.getElementById("gp-restart-update");
@@ -3688,16 +4088,17 @@
       const p = (r && r.payload) || {};
       const srcs = p.credential_sources || [];
       const on = srcs.filter(s => s.configured).map(s => s.name);
-      const off = srcs.filter(s => !s.configured).map(s => s.name);
       if (p.signed_in && p.active) {
         state.textContent =
           wavegT("accountSignedIn")
             .replace("{n}", p.active.label)
             .replace("{src}", on.length ? on.join(", ") : wavegT("accountNoCred"));
       } else {
+        // 只报「已配置过什么」。以前还把「未配置：slack, gmail, outlook,
+        // dingtalk, feishu, wecom」整串堆在行里 —— 那是开发自检输出，
+        // 用户看完既不知道要不要处理，也不知道从哪处理。
         state.textContent = wavegT("accountNotSigned") +
-          (on.length ? " · " + wavegT("accountCredOn") + ": " + on.join(", ") : "") +
-          (off.length ? " · " + wavegT("accountCredOff") + ": " + off.join(", ") : "");
+          (on.length ? " · " + wavegT("accountCredOn") + "：" + on.join(", ") : "");
       }
       const accounts = p.accounts || [];
       sel.innerHTML = "";
@@ -3760,68 +4161,218 @@
     }
     async function refreshComputerTabState() {
       const el = document.getElementById("st-computer-state");
+      // 打开这一页/每次操作之后都让按钮与宿主确认进度对齐（安全时机：
+      // 此时 WAVEG_I18N 已初始化；脚本求值阶段调用会撞 TDZ）。
+      syncUpdateComputerButton();
       if (!el || !window.bitbot.computer) return;
       try {
         const st = await window.bitbot.computer.state();
         const c = (st && st.computer) || null;
         if (!c) { el.textContent = wavegT("crNoComputer"); return; }
+        // 状态行也用产品语言写：以前是 state=running · takeover=idle · updated=…
+        // 一串英文键值，看起来像调试输出。取值本身照抄宿主（不猜枚举）。
         const bits = [
-          "state=" + (c.state || "?"),
-          "takeover=" + (c.takeover && c.takeover.active ? "active" : "idle"),
+          wavegT("crStateLabel") + "：" + (c.state || "?"),
+          (c.takeover && c.takeover.active ? wavegT("crTakeoverActive") : wavegT("crTakeoverIdle")),
         ];
-        if (c.last_update_at) bits.push("updated=" + String(c.last_update_at).slice(0, 16).replace("T", " "));
-        if (c.last_reset_at) bits.push("reset=" + String(c.last_reset_at).slice(0, 16).replace("T", " "));
+        if (c.last_update_at) bits.push(wavegT("crLastUpdate") + "：" + String(c.last_update_at).slice(0, 16).replace("T", " "));
+        if (c.last_reset_at) bits.push(wavegT("crLastReset") + "：" + String(c.last_reset_at).slice(0, 16).replace("T", " "));
         el.textContent = bits.join(" · ");
       } catch (_) {
         el.textContent = wavegT("crNoComputer");
       }
     }
+    /* ===== 用量与账单：图示化渲染 =====
+       数据源唯一：Host 的 llm-usage.json（week / rows / totals）。
+       画出来的每一段长度都由真实数字算出来；某一行没上报 tokens 就明确标注，
+       绝不把「未上报」画成 0 —— 这是 GP-131 的诚实口径。 */
+    const USAGE_SERIES = ["#4c8dff", "#22a06b", "#b476e5", "#e5a23b", "#e5645c", "#3db8c4"];
+    const USAGE_ICONS = {
+      req: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5l5-5 4 3 8-8.5"/><path d="M4 20h16"/></svg>',
+      in: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v9.5"/><path d="M8.5 9.5L12 13l3.5-3.5"/><path d="M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/></svg>',
+      out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13V3.5"/><path d="M8.5 7L12 3.5 15.5 7"/><path d="M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/></svg>',
+      empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M4.5 19V10"/><path d="M10 19V5"/><path d="M15.5 19v-6"/><path d="M21 19V8"/><path d="M2.5 21.5h19"/></svg>',
+    };
+    const usageNum = (n) =>
+      String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    const usageEl = (tag, cls, text) => {
+      const node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text !== undefined && text !== null) node.textContent = text;
+      return node;
+    };
+    function usageKpi(iconKey, label, value, unit) {
+      const card = usageEl("div", "usage-kpi");
+      const top = usageEl("div", "usage-kpi-top");
+      const ic = usageEl("span", "usage-kpi-ic");
+      ic.innerHTML = USAGE_ICONS[iconKey] || "";
+      top.appendChild(ic);
+      top.appendChild(usageEl("span", null, label));
+      card.appendChild(top);
+      const val = usageEl("div", "usage-kpi-val");
+      val.appendChild(document.createTextNode(value));
+      if (unit) val.appendChild(usageEl("span", "usage-kpi-unit", unit));
+      card.appendChild(val);
+      return card;
+    }
+    function usageLegendItem(color, label, value, share) {
+      const item = usageEl("span", "usage-legend-item");
+      const dot = usageEl("span", "usage-dot");
+      dot.style.background = color;
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(label));
+      item.appendChild(usageEl("b", null, value));
+      item.appendChild(usageEl("span", null, "· " + share));
+      return item;
+    }
+    function usageEmptyNode(kind, text) {
+      const box = usageEl("div", "usage-empty");
+      const ic = usageEl("span");
+      ic.innerHTML = kind === "warn" ? USAGE_ICONS.empty : USAGE_ICONS.empty;
+      box.appendChild(ic);
+      box.appendChild(usageEl("span", null, text));
+      return box;
+    }
     async function refreshWaveGUsage() {
       if (!window.bitbot.usage) return;
+      const box = document.getElementById("gp-usage");
+      if (!box) return;
+      let payload = null;
+      let rows = [];
       try {
         const u = await window.bitbot.usage.week();
-        const box = document.getElementById("gp-usage");
-        if (!box) return;
         const usage = (u && u.usage) || {};
-        const payload = usage.usage ? usage.usage : usage;
-        const rows = payload.rows || [];
-        if (!rows.length) {
-          box.textContent = wavegT("usageEmpty");
-        } else {
-          // GP-131 (§7.1): per-provider/model rows from the real weekly
-          // store, then the week total. Tokens the provider never reported
-          // are labeled as such instead of being shown as a real 0.
-          const t = rows.reduce(
-            (acc, r) => {
-              acc.p += r.prompt_tokens || 0;
-              acc.c += r.completion_tokens || 0;
-              acc.q += r.requests || 0;
-              return acc;
-            },
-            { p: 0, c: 0, q: 0 },
-          );
-          const head = document.createElement("div");
-          head.textContent =
-            wavegT("usageWeek") + " " + (payload.week || "?") + " · " + wavegT("usageReq") + " " + t.q +
-            " · prompt " + t.p + " tokens · completion " + t.c + " tokens · " + wavegT("usageSource");
-          box.textContent = "";
-          box.appendChild(head);
-          for (const r of rows) {
-            const line = document.createElement("div");
-            const unreported = !r.prompt_tokens && !r.completion_tokens;
-            line.textContent =
-              "· " + String(r.provider || "?") + "/" + String(r.model || "?") + ": " +
-              wavegT("usageReq") + " " + (r.requests || 0) +
-              " · prompt " + (r.prompt_tokens || 0) + " · completion " + (r.completion_tokens || 0) +
-              (unreported ? " (" + wavegT("usageTokensUnreported") + ")" : "");
-            line.style.opacity = "0.85";
-            box.appendChild(line);
-          }
-        }
+        payload = usage.usage ? usage.usage : usage;
+        rows = (payload && payload.rows) || [];
       } catch (_) {
-        const box = document.getElementById("gp-usage");
-        if (box) box.textContent = wavegT("usageFail");
+        box.textContent = "";
+        box.appendChild(usageEmptyNode("warn", wavegT("usageFail")));
+        return;
       }
+      box.textContent = "";
+      if (!rows.length) {
+        box.appendChild(usageEmptyNode("empty", wavegT("usageEmpty")));
+        return;
+      }
+
+      const totals = (payload && payload.totals) || rows.reduce((acc, r) => ({
+        requests: acc.requests + (r.requests || 0),
+        prompt_tokens: acc.prompt_tokens + (r.prompt_tokens || 0),
+        completion_tokens: acc.completion_tokens + (r.completion_tokens || 0),
+      }), { requests: 0, prompt_tokens: 0, completion_tokens: 0 });
+
+      const panel = usageEl("div", "usage-panel");
+
+      // ① 头部：周次 + 数据来源（永远标出来源，避免看起来像估算）
+      const head = usageEl("div", "usage-head");
+      head.appendChild(usageEl("span", "usage-week-chip", wavegT("usageWeek") + " " + (payload.week || "?")));
+      head.appendChild(usageEl("span", "usage-src", wavegT("usageSource")));
+      panel.appendChild(head);
+
+      // ② 三张 KPI 卡
+      const kpis = usageEl("div", "usage-kpis");
+      kpis.appendChild(usageKpi("req", wavegT("usageKpiReq"), usageNum(totals.requests), wavegT("usageUnitReq")));
+      kpis.appendChild(usageKpi("in", wavegT("usageKpiIn"), usageNum(totals.prompt_tokens), wavegT("usageUnitTok")));
+      kpis.appendChild(usageKpi("out", wavegT("usageKpiOut"), usageNum(totals.completion_tokens), wavegT("usageUnitTok")));
+      panel.appendChild(kpis);
+
+      // ③ token 构成分解条（输入 / 输出占比）
+      const totalTok = (totals.prompt_tokens || 0) + (totals.completion_tokens || 0);
+      if (totalTok > 0) {
+        let pIn = (totals.prompt_tokens / totalTok) * 100;
+        let pOut = 100 - pIn;
+        if (pIn > 0 && pIn < 1.5) { pIn = 1.5; pOut = 98.5; }
+        if (pOut > 0 && pOut < 1.5) { pOut = 1.5; pIn = 98.5; }
+        const card = usageEl("div", "usage-card");
+        const ch = usageEl("div", "usage-card-head");
+        ch.appendChild(usageEl("div", "usage-card-title", wavegT("usageMixTitle")));
+        ch.appendChild(usageEl("div", "usage-card-sub", usageNum(totalTok) + " tokens"));
+        card.appendChild(ch);
+        const bar = usageEl("div", "usage-mix-bar");
+        const segIn = usageEl("div", "usage-mix-in");
+        segIn.style.width = pIn + "%";
+        const segOut = usageEl("div", "usage-mix-out");
+        segOut.style.width = pOut + "%";
+        bar.appendChild(segIn);
+        bar.appendChild(segOut);
+        card.appendChild(bar);
+        const legend = usageEl("div", "usage-legend");
+        legend.appendChild(usageLegendItem("#4c8dff", wavegT("usageKpiIn"), usageNum(totals.prompt_tokens), Math.round(pIn) + "%"));
+        legend.appendChild(usageLegendItem("#22a06b", wavegT("usageKpiOut"), usageNum(totals.completion_tokens), Math.round(pOut) + "%"));
+        card.appendChild(legend);
+        panel.appendChild(card);
+      }
+
+      // ④ 按型号的横向条形榜（条长 = 该型号请求数占全局峰值的比例）
+      // 按 provider 分组：provider 只出现一次（色点 + 名称 + 小计），
+      // 下面挂它的型号。这样型号再多也不会重复刷同一排徽章。
+      const mcard = usageEl("div", "usage-card");
+      const mh = usageEl("div", "usage-card-head");
+      mh.appendChild(usageEl("div", "usage-card-title", wavegT("usageByModel")));
+      mh.appendChild(usageEl("div", "usage-card-sub", rows.length + " " + wavegT("usageModelsCount")));
+      mcard.appendChild(mh);
+      const groups = [];
+      for (const r of rows) {
+        const p = String(r.provider || "?");
+        let g = groups.find((x) => x.name === p);
+        if (!g) { g = { name: p, rows: [], requests: 0 }; groups.push(g); }
+        g.rows.push(r);
+        g.requests += r.requests || 0;
+      }
+      groups.sort((a, b) => b.requests - a.requests);
+      const colorOf = (p) => USAGE_SERIES[Math.max(0, groups.findIndex((g) => g.name === p)) % USAGE_SERIES.length];
+      const maxReq = rows.reduce((m, r) => Math.max(m, r.requests || 0), 0) || 1;
+      for (const g of groups) {
+        const gEl = usageEl("div", "usage-group");
+        const gHead = usageEl("div", "usage-group-head");
+        const gDot = usageEl("span", "usage-dot");
+        gDot.style.background = colorOf(g.name);
+        gHead.appendChild(gDot);
+        gHead.appendChild(usageEl("span", "usage-group-name", g.name));
+        gHead.appendChild(usageEl(
+          "span",
+          "usage-group-stat",
+          g.rows.length + " " + wavegT("usageModelsCount") + " · " + usageNum(g.requests) + " " + wavegT("usageReq"),
+        ));
+        gEl.appendChild(gHead);
+        g.rows.sort((a, b) => (b.requests || 0) - (a.requests || 0));
+        for (const r of g.rows) {
+          const rowEl = usageEl("div", "usage-model-row");
+          const headEl = usageEl("div", "usage-model-head");
+          headEl.appendChild(usageEl("span", "usage-model-name", String(r.model || "?")));
+          const count = usageEl("span", "usage-model-count", usageNum(r.requests || 0));
+          count.appendChild(usageEl("em", null, wavegT("usageReq")));
+          headEl.appendChild(count);
+          rowEl.appendChild(headEl);
+          const track = usageEl("div", "usage-track");
+          const fill = usageEl("div", "usage-fill");
+          const req = r.requests || 0;
+          fill.style.width = (req > 0 ? Math.max(4, Math.round((req / maxReq) * 100)) : 0) + "%";
+          fill.style.background = colorOf(g.name);
+          track.appendChild(fill);
+          rowEl.appendChild(track);
+          const unreported = !r.prompt_tokens && !r.completion_tokens;
+          rowEl.appendChild(usageEl(
+            "div",
+            "usage-model-meta",
+            unreported
+              ? wavegT("usageTokensUnreported")
+              : wavegT("usageInShort") + " " + usageNum(r.prompt_tokens) +
+                " · " + wavegT("usageOutShort") + " " + usageNum(r.completion_tokens),
+          ));
+          gEl.appendChild(rowEl);
+        }
+        mcard.appendChild(gEl);
+      }
+      panel.appendChild(mcard);
+
+      // ⑤ 未上报行的脚注：把「汇总里缺了谁」说清楚
+      const missing = rows.filter((r) => !r.prompt_tokens && !r.completion_tokens).length;
+      if (missing > 0) {
+        panel.appendChild(usageEl("div", "usage-note", wavegT("usageUnreportedRows").replace(/\{n\}/g, String(missing))));
+      }
+
+      box.appendChild(panel);
     }
     function renderSettingsPanel(payload) {
       const panel = document.getElementById("settings-panel");
@@ -5840,6 +6391,9 @@
 
     let activeSessionId = null;
     let streamEl = null;
+    /* 设置面板操作专用的静音开关：为 true 时流式片段不进对话。
+       只由 runUserTurn 在 settingsAction 回合里翻转，回合结束即复位。 */
+    let muteLlmStream = false;
 
     /* GP-123: local-date bucket for the sidebar. "今天 / 昨天 / 更早" is derived
        from the Host's real updated_at — never from a synthetic index. */
@@ -6088,16 +6642,102 @@
       }
     }
     window.__bbSetSessionSearchOpen = setSessionSearchOpen;
+
+    /* ===== 侧栏搜索：搜 Bot 和 群组（不是会话） =====
+       产品模型是「Bot + 群 Bot」：会话属于某个 Bot，收在账户条弹层里，
+       所以侧栏这颗放大镜过滤的是 #bot-list / #room-list / #bot-strip。
+       会话搜索仍旧留在 #sessions-popup 自己的输入框里（那是会话的家）。
+       实现上直接对已渲染的行做显隐，不重渲染、不重拉接口 —— 否则每敲一个字
+       就会把 Bot 的「最近一条对话摘要」重取一遍。 */
+    const sbSearchRow = document.getElementById("sb-search-row");
+    const sbSearchInput = document.getElementById("sb-search");
+    const sbSearchEmpty = document.getElementById("sb-search-empty");
+    function sbRowText(el) {
+      return (
+        String(el.textContent || "") + " " + String(el.getAttribute("title") || "")
+      ).toLowerCase();
+    }
+    function applySidebarFilter(raw) {
+      const q = String(raw || "").trim().toLowerCase();
+      let hits = 0;
+      // Bot 列表：分组标题跟着「组内有没有命中」一起显隐，不留空标题
+      const botBox = document.getElementById("bot-list");
+      if (botBox) {
+        let head = null;
+        let headHit = false;
+        for (const el of Array.from(botBox.children)) {
+          if (el.classList.contains("bot-group-head")) {
+            if (head) head.hidden = !headHit;
+            head = el;
+            headHit = false;
+            continue;
+          }
+          if (!el.classList.contains("agent-item")) continue;
+          const hit = !q || sbRowText(el).includes(q);
+          el.hidden = !hit;
+          if (hit) {
+            headHit = true;
+            hits++;
+          }
+        }
+        if (head) head.hidden = !headHit;
+      }
+      const roomBox = document.getElementById("room-list");
+      if (roomBox) {
+        for (const el of Array.from(roomBox.children)) {
+          if (!el.classList.contains("agent-item")) continue;
+          const hit = !q || sbRowText(el).includes(q);
+          el.hidden = !hit;
+          if (hit) hits++;
+        }
+      }
+      // 已隐藏的 Bot 只按名字过滤，不计入命中数（它是管理入口，不是搜索结果）
+      const hidBox = document.getElementById("hidden-bot-list");
+      if (hidBox) {
+        for (const el of Array.from(hidBox.children)) {
+          if (!el.classList.contains("agent-item")) continue;
+          el.hidden = !!q && !sbRowText(el).includes(q);
+        }
+      }
+      const strip = document.getElementById("bot-strip");
+      if (strip) {
+        for (const chip of Array.from(strip.children)) {
+          chip.hidden = !!q && !sbRowText(chip).includes(q);
+        }
+      }
+      if (sbSearchEmpty) sbSearchEmpty.hidden = !q || hits > 0;
+    }
+    function setSidebarSearchOpen(open) {
+      if (!sbSearchRow) return;
+      document.body.classList.toggle("sb-search-open", !!open);
+      sbSearchRow.hidden = !open;
+      if (!open) {
+        if (sbSearchInput && sbSearchInput.value) {
+          sbSearchInput.value = "";
+          applySidebarFilter("");
+        }
+        return;
+      }
+      if (sbSearchInput) {
+        sbSearchInput.focus();
+        sbSearchInput.select && sbSearchInput.select();
+      }
+    }
+    window.__bbSetSidebarSearchOpen = setSidebarSearchOpen;
+    if (sbSearchInput) {
+      sbSearchInput.addEventListener("input", () => applySidebarFilter(sbSearchInput.value));
+      sbSearchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          setSidebarSearchOpen(false);
+        }
+      });
+    }
     const sidebarSearchToggle = document.getElementById("sidebar-search-toggle");
     if (sidebarSearchToggle) {
       sidebarSearchToggle.addEventListener("click", (ev) => {
-        // 不 stopPropagation 的话，这同一次点击会冒泡到 document 级的
-        // 「点外部关闭」监听（#account-bar 之外），把刚展开的弹层立刻关掉
-        // —— 搜索图标按下去永远打不开（GP-123 门禁 15 次读到 hidden 的根因）。
         ev.stopPropagation();
-        setSessionSearchOpen(
-          !document.body.classList.contains("session-search-open"),
-        );
+        setSidebarSearchOpen(!document.body.classList.contains("sb-search-open"));
       });
     }
     /* G-28 · 账户胶囊右侧的两颗圆钮。会话图标向上弹出 #sessions-popup；
@@ -6116,7 +6756,9 @@
           sessPopup.hidden = !willOpen;
           abSessions.setAttribute("aria-expanded", String(willOpen));
           if (willOpen) {
-            setSessionSearchOpen(false);
+            // 会话弹层自己的搜索框：以前靠侧栏放大镜揭出来，现在放大镜改为
+            // 搜 Bot / 群组，这里必须自己把输入框放出来，否则它就成了死代码。
+            setSessionSearchOpen(true);
             window.bitbot.sessions
               .list()
               .then((list) => renderSessionList(list))
@@ -6135,11 +6777,11 @@
          与它的 OTA 取数一起下线，不保留第二处「更新」。
          会话按钮 #ab-sessions-btn 的接线在下方。 */
     }
-    /* Wave M35: shared shortcut entry point — button + Cmd/Ctrl+K do the same thing. */
+    /* Wave M35: shared shortcut entry point — 放大镜与 Cmd/Ctrl+K 走同一条路。
+       入口统一到侧栏搜索（Bot / 群组），不再把快捷键指向只搜会话的输入框：
+       在「Bot + 群 Bot」的产品里，按 Cmd+K 想找的首先是一个 Bot 或一个群。 */
     function toggleSessionSearchFromShortcut() {
-      setSessionSearchOpen(
-        !document.body.classList.contains("session-search-open"),
-      );
+      setSidebarSearchOpen(!document.body.classList.contains("sb-search-open"));
     }
 
     /* GP-116 (§2.1): the sidebar group list. Grok's left column shows Bots and
@@ -6227,6 +6869,64 @@
         title: rm.title || rm.id,
         meta: n + " " + wavegT("roomMembers") + " · " + wavegT("roomRouteHint"),
       };
+    }
+    /* 群 banner = 输入卡的表头：显示它时同时给 #composer 挂 has-room，
+       输入卡的上圆角才会收掉、两段才拼成一张纸（CSS 见 #room-banner）。
+       开关只走这一个出口，样式和可见性不会再分叉。 */
+    function setRoomBanner(open, bits) {
+      const banner = document.getElementById("room-banner");
+      if (banner) {
+        banner.style.display = open ? "flex" : "none";
+        if (open && bits) {
+          const t = document.getElementById("room-banner-title");
+          const m = document.getElementById("room-banner-meta");
+          if (t) t.textContent = bits.title;
+          if (m) m.textContent = bits.meta;
+        }
+      }
+      const comp = document.getElementById("composer");
+      if (comp) comp.classList.toggle("has-room", !!open);
+    }
+    /* 顶栏那颗 #bot-pill 是「现在在跟谁说话」：DM 时是 Bot，群聊时是群。
+       顶栏 56px（--header-h，合同 §3 钉死）原本只剩空白带 —— 这条身份是它
+       唯一天然该有的内容，也顺手解释了那个高度是干嘛的。
+       进群前把胶囊原样存下来（文字 / 头像 HTML / botId / 颜色），退群时照原样
+       放回：不去猜 activeBotId 对应的名字和头像，存的就是刚才真的显示着的。 */
+    let headerPillBeforeRoom = null;
+    function showRoomInHeader(rm) {
+      const pill = document.getElementById("bot-pill");
+      if (!pill) return;
+      const label = pill.querySelector(".bot-pill-name");
+      const av = pill.querySelector(".bot-pill-avatar");
+      if (!headerPillBeforeRoom) {
+        headerPillBeforeRoom = {
+          label: label ? label.textContent : "",
+          avatarHtml: av ? av.innerHTML : "",
+          botId: pill.dataset.botId || "",
+          title: pill.title,
+          color: document.documentElement.style.getPropertyValue("--bot-avatar") || "",
+        };
+      }
+      const nm = String(rm.title || rm.id || "").trim();
+      if (label) label.textContent = nm;
+      if (av) { av.innerHTML = ""; av.textContent = nm.slice(0, 1); }
+      // 颜色只写根变量（与 updateBotPill 同一约定），元素级不留字面色值。
+      if (rm.id) document.documentElement.style.setProperty("--bot-avatar", avatarColorFor(rm.id));
+      pill.title = "当前对话：" + nm;
+    }
+    function restoreHeaderIdentity() {
+      const saved = headerPillBeforeRoom;
+      headerPillBeforeRoom = null;
+      const pill = document.getElementById("bot-pill");
+      if (!pill || !saved) return;
+      const label = pill.querySelector(".bot-pill-name");
+      const av = pill.querySelector(".bot-pill-avatar");
+      if (label) label.textContent = saved.label;
+      if (av) av.innerHTML = saved.avatarHtml;
+      if (saved.botId) pill.dataset.botId = saved.botId;
+      pill.title = saved.title;
+      if (saved.color) document.documentElement.style.setProperty("--bot-avatar", saved.color);
+      else document.documentElement.style.removeProperty("--bot-avatar");
     }
     /* ---- GP-146: 群 transcript 按条目渲染 ----
        一行一条：用户消息 / bot_reply（说话人 + 正文 + 产物）/ bot_reply_error
@@ -6581,15 +7281,8 @@
     async function openRoomChat(rm) {
       if (!rm || !rm.id) return;
       composerRoom = { id: rm.id, title: rm.title || rm.id };
-      const banner = document.getElementById("room-banner");
-      if (banner) {
-        const bits = roomBannerBits(rm);
-        banner.style.display = "flex";
-        const t = document.getElementById("room-banner-title");
-        const m = document.getElementById("room-banner-meta");
-        if (t) t.textContent = bits.title;
-        if (m) m.textContent = bits.meta;
-      }
+      setRoomBanner(true, roomBannerBits(rm));
+      showRoomInHeader(rm);
       const input2 = document.getElementById("composer") ? document.querySelector("#composer #text") : null;
       if (input2) input2.placeholder = wavegT("roomComposerPh");
       clearWelcome();
@@ -6707,6 +7400,23 @@
       if (code.indexOf("room_not_found") >= 0) return wavegT("riNoRoom");
       return devModeOn() ? t("riMemberErrGeneric") + " · " + code : t("riMemberErrGeneric");
     }
+    /* 成员行的第二行只放「名字以外」的信息。
+       实测 store：情报侦察员这组 Bot 的 job 字段就直接等于名字，原来的
+       `b.job || b.description` 会把名字原样再印一行 —— 截图里那五行
+       「情报侦察员 / 情报侦察员」就是这条取值规则，不是布局塌了。
+       规则：job 与名字不同就用 job；相同则取 description 里第一句「不是
+       『你是…』」的话（persona 的自我指认句对列表没信息量）；都拿不到就不渲染。 */
+    function roomMemberSubtitle(name, bot) {
+      const nm = String(name || "").trim();
+      const job = String((bot && bot.job) || "").trim();
+      if (job && job !== nm) return job;
+      const desc = String((bot && bot.description) || "").trim();
+      if (!desc || desc === nm) return "";
+      const parts = desc.split(/[。\n]/).map((s) => s.trim()).filter(Boolean);
+      const pick = parts.find((p) => p.length > 6 && !/^你是/.test(p)) || "";
+      if (!pick) return "";
+      return pick.length > 56 ? pick.slice(0, 56) + "…" : pick;
+    }
     async function renderRoomRailMembers() {
       const host = document.getElementById("ri-member-list");
       const limit = document.getElementById("ri-limit-note");
@@ -6766,9 +7476,13 @@
         try {
           const d = await window.bitbot.bots.detail(id);
           const b = (d && (d.bot || d)) || {};
-          job.textContent = String(b.job || b.description || "");
+          const sub = roomMemberSubtitle(nm.textContent, b);
+          job.textContent = sub;
+          // 没有可用副标题就整行不占位：留一个空 div 会把行高撑成两行。
+          job.hidden = !sub;
         } catch (_) {
           job.textContent = "";
+          job.hidden = true;
         }
       }
       if (limit) limit.textContent = t("riLimitNote", { n: ROOM_MEMBER_MAX });
@@ -7239,8 +7953,8 @@
       clearRoomWorking();
       if (roomThread && roomThread.parentNode) roomThread.parentNode.removeChild(roomThread);
       roomThread = null;
-      const banner = document.getElementById("room-banner");
-      if (banner) banner.style.display = "none";
+      setRoomBanner(false);
+      restoreHeaderIdentity();
       // 群没了，群资料面板也就没有内容可显示了：一起关掉，并复位表单，
       // 免得下次开别的群时还残留上一群的输入。
       closeRoomRail();
@@ -7331,37 +8045,90 @@
         grid.appendChild(empty);
         return;
       }
+      // Group by category (order of first appearance) so the sheet reads as a
+      // categorized catalog, not one flat list.
+      const order = [];
+      const groups = {};
       for (const tpl of mkTemplates) {
-        const c = tplCopy(tpl);
-        const card = document.createElement("div");
-        card.dataset.templateId = tpl.id || "";
-        card.className = "ca-card ca-card-stack";
-        const head = document.createElement("div");
-        head.style.cssText = "display:flex;align-items:center;gap:8px;min-width:0";
-        const icon = document.createElement("span");
-        icon.className = "ca-icon";
-        icon.textContent = String(c.name || c.job || "?").trim().slice(0, 1).toUpperCase();
-        icon.style.background = avatarColorFor(tpl.id || tpl.default_name);
-        head.appendChild(icon);
-        const title = document.createElement("div");
-        title.style.cssText = "min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
-        title.textContent = c.name ? (c.name + (c.job ? " · " + c.job : "")) : (c.job || tpl.id);
-        head.appendChild(title);
-        card.appendChild(head);
-        const desc = document.createElement("div");
-        desc.style.cssText = "color:var(--muted);font-size:11px;line-height:1.4";
-        desc.textContent = c.desc || "";
-        card.appendChild(desc);
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = wavegT("mkCreate");
-        btn.style.cssText =
-          "align-self:flex-start;background:var(--accent);color:var(--accent-ink);border:0;" +
-          "border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:12px";
-        btn.addEventListener("click", () => openBotFormFromTemplate(tpl));
-        card.appendChild(btn);
-        grid.appendChild(card);
+        const cat = (tpl && tpl.category) || "其他";
+        if (!groups[cat]) { groups[cat] = []; order.push(cat); }
+        groups[cat].push(tpl);
       }
+      for (const cat of order) {
+        const catHead = document.createElement("div");
+        catHead.className = "mk-cat-head";
+        catHead.style.cssText =
+          "grid-column:1/-1;width:100%;font-size:12px;font-weight:700;color:var(--muted);" +
+          "margin:8px 0 2px;letter-spacing:.02em";
+        catHead.textContent = cat;
+        grid.appendChild(catHead);
+        for (const tpl of groups[cat]) {
+          const c = tplCopy(tpl);
+          const isTeam = tpl && tpl.kind === "team";
+          const card = document.createElement("div");
+          card.dataset.templateId = tpl.id || "";
+          card.className = "ca-card ca-card-stack";
+          const head = document.createElement("div");
+          head.style.cssText = "display:flex;align-items:center;gap:8px;min-width:0";
+          const icon = document.createElement("span");
+          icon.className = "ca-icon";
+          icon.textContent = String(c.name || c.job || "?").trim().slice(0, 1).toUpperCase();
+          icon.style.background = avatarColorFor(tpl.id || tpl.default_name);
+          head.appendChild(icon);
+          const title = document.createElement("div");
+          title.style.cssText = "min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+          title.textContent = c.name ? (c.name + (c.job ? " · " + c.job : "")) : (c.job || tpl.id);
+          head.appendChild(title);
+          card.appendChild(head);
+          const desc = document.createElement("div");
+          desc.style.cssText = "color:var(--muted);font-size:11px;line-height:1.4";
+          desc.textContent = c.desc || "";
+          card.appendChild(desc);
+          // Role templates carry the tutorial's full prompt — surface it so the
+          // template is genuinely rich (viewable/expandable), not just a one-liner.
+          if (!isTeam && tpl && tpl.prompt) {
+            const det = document.createElement("details");
+            det.className = "mk-prompt";
+            det.style.cssText = "font-size:11px;color:var(--muted)";
+            const sm = document.createElement("summary");
+            sm.style.cssText = "cursor:pointer;margin-top:2px";
+            sm.textContent = "查看完整岗位 Prompt";
+            det.appendChild(sm);
+            const pre = document.createElement("pre");
+            pre.style.cssText =
+              "max-height:140px;overflow:auto;white-space:pre-wrap;font-size:10px;line-height:1.45;" +
+              "background:var(--code-bg,#111);color:var(--ink,#eee);padding:6px;border-radius:6px;margin:4px 0 0";
+            pre.textContent = tpl.prompt;
+            det.appendChild(pre);
+            card.appendChild(det);
+          }
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = isTeam ? "一键成队" : wavegT("mkCreate");
+          btn.style.cssText =
+            "align-self:flex-start;background:var(--accent);color:var(--accent-ink);border:0;" +
+            "border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:12px";
+          btn.addEventListener("click", () => {
+            if (isTeam) openTeamFromTemplate(tpl);
+            else openBotFormFromTemplate(tpl);
+          });
+          card.appendChild(btn);
+          grid.appendChild(card);
+        }
+      }
+    }
+    // Team template → build the whole team (bots + group + shared workspace with
+    // the full role prompts), reusing the same builder as the "组建团队" flow.
+    async function openTeamFromTemplate(tpl) {
+      closeMarketplace();
+      const roles = Array.isArray(tpl.roles) ? tpl.roles : [];
+      if (!roles.length) { cmdToast("该团队模板缺少角色定义", "warn"); return; }
+      await buildTeamFromBrief({
+        title: tpl.default_name || tpl.job || "",
+        roles,
+        rules: tpl.rules || "",
+        task: "",
+      });
     }
     // "创建" opens the EXISTING Bot-creation flow, prefilled from the template
     // (localized display), instead of creating silently. Backend ids untouched.
@@ -7557,14 +8324,23 @@
       const f = st.fields || {};
       /* 四把密钥的状态文案同源，所以按表循环写；「留空＝不改动」必须说出来：
          输入框是空的、盘上却有 key，用户很容易以为留空会把已配的密钥清掉，
-         或者反过来以为留空点保存就等于删掉它。 */
+         或者反过来以为留空点保存就等于删掉它。
+         文案不套括号：这句话现在落在输入框下面单独一行，不是嵌在字段名里。 */
       SECRET_KEY_ROWS.forEach(function (r) {
         const el = document.getElementById(r.mask);
         if (!el) return;
         const fv = f[r.key];
         el.textContent = fv && fv.present
-          ? "（已配置 " + (fv.masked || "****") + "；留空＝不改动，要换就粘新的）"
-          : "（未配置，填了才生效）";
+          ? "已配置 " + (fv.masked || "****") + " · 要换就粘新的"
+          : "未配置 · 填了才生效";
+        /* 空输入框最容易被读成「还没配」。已配的那几个把占位改成
+           「留空＝不改动」，让框里自己回答这件事；原占位记在 dataset 里，
+           未配置时原样放回去（通义/Kimi 两栏的占位是「可选」）。 */
+        const inp = document.getElementById(r.input);
+        if (inp) {
+          if (!inp.dataset.ph) inp.dataset.ph = inp.placeholder;
+          inp.placeholder = fv && fv.present ? wavegT("credKeyPhSaved") : inp.dataset.ph;
+        }
       });
       const base = document.getElementById("sec-llm-base");
       if (base && f.BITBOT_LLM_BASE_URL && f.BITBOT_LLM_BASE_URL.value !== undefined) {
@@ -7599,7 +8375,10 @@
         presetEl.value = key;
         const hintEl = document.getElementById("sec-llm-hint");
         if (hintEl && LLM_PRESETS[key]) hintEl.textContent = LLM_PRESETS[key].hint;
+        renderLlmModelChips(key);
       }
+      /* 结论区跟着同一份 status 走：不另开推断路径，避免和底部保存状态各说一套 */
+      paintBrainConn(st.llm, savedBase);
       const dingPost = document.getElementById("sec-ding-post");
       if (dingPost) dingPost.checked = f.BITBOT_DINGTALK_POST && f.BITBOT_DINGTALK_POST.present && f.BITBOT_DINGTALK_POST.value === "1";
       // POST value may be in value field
@@ -7642,14 +8421,9 @@
         const el = document.getElementById(s.input);
         if (el) el.value = "";
       });
-      const icp = document.getElementById("sec-icp");
-      if (icp && f.BITBOT_ICP_FILING && f.BITBOT_ICP_FILING.value !== undefined) {
-        icp.value = f.BITBOT_ICP_FILING.value || "";
-      }
-      const algo = document.getElementById("sec-algo");
-      if (algo && f.BITBOT_ALGORITHM_FILING && f.BITBOT_ALGORITHM_FILING.value !== undefined) {
-        algo.value = f.BITBOT_ALGORITHM_FILING.value || "";
-      }
+      /* ICP / 算法备案两栏已随「合规」卡一起删掉：那是「对外提供生成式 AI 服务」
+         的主体才要填的，本机自用不存在这件事。磁盘上万一还留着旧值也不回填、不覆盖
+         —— 设置里既然没有这一栏，就不该有任何一条路径悄悄改它。 */
       const mod = document.getElementById("sec-moderation");
       if (mod && f.BITBOT_CONTENT_MODERATION && f.BITBOT_CONTENT_MODERATION.value !== undefined) {
         mod.checked = f.BITBOT_CONTENT_MODERATION.value === "1";
@@ -7908,10 +8682,7 @@
       if (wa && wa.value.trim()) patch.BITBOT_WECOM_AGENT_ID = wa.value.trim();
       const wto = document.getElementById("sec-wecom-to");
       if (wto && wto.value.trim()) patch.BITBOT_WECOM_TOUSER = wto.value.trim();
-      const icpEl = document.getElementById("sec-icp");
-      if (icpEl) patch.BITBOT_ICP_FILING = icpEl.value.trim();
-      const algoEl = document.getElementById("sec-algo");
-      if (algoEl) patch.BITBOT_ALGORITHM_FILING = algoEl.value.trim();
+      /* 「合规」卡已删：ICP / 算法备案两栏不再读也不写（见上面回填处的说明）。 */
       patch.BITBOT_CONTENT_MODERATION =
         document.getElementById("sec-moderation") &&
         document.getElementById("sec-moderation").checked
@@ -8019,6 +8790,7 @@
         const grid = document.createElement("div");
         grid.className = "wt-grid";
         for (const t of wtCatalog) {
+          if (t && t.kind === "team") continue; // team template builds via marketplace only
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "wt-btn";
@@ -8082,6 +8854,7 @@
           if (!wtCatalog || !wtCatalog.length) return;
           host.textContent = "";
           for (const t of wtCatalog) {
+            if (t && t.kind === "team") continue; // team template has no single-bot prefill
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "bc-tpl-btn";
@@ -8620,9 +9393,16 @@
       const arg = (s) => String(s || "").replace(/ +/g, "+");
       const title = brief.title;
       const made = [];
-      for (const role of brief.roles) {
-        const desc = wavegT("teamRoleDesc").replace(/\{r\}/g, role);
-        const phrase = "create bot " + arg(role) + " job=" + arg(role) + " description=" + arg(desc);
+      for (const rawRole of brief.roles) {
+        const role = (rawRole && typeof rawRole === "object") ? rawRole : { name: String(rawRole) };
+        const roleName = (role.name || "").trim();
+        if (!roleName) continue;
+        // 有解析出的岗位职责 → 用它作 description（落工作区的是完整 Prompt）；
+        // 否则回退通用模板（兼容旧自然语言组队路径）。
+        const desc = (role.description && role.description.trim())
+          ? role.description.trim()
+          : wavegT("teamRoleDesc").replace(/\{r\}/g, roleName);
+        const phrase = "create bot " + arg(roleName) + " job=" + arg(roleName) + " description=" + arg(desc);
         const r = await window.bitbot.bots.op({ phrase }).catch(() => null);
         const b = (r && r.ok && r.host_payload && r.host_payload.bot) || null;
         if (!b) continue;
@@ -8698,11 +9478,25 @@
       cmdToast("正在抓取链接内容…", "info");
       const wf = await window.bitbot.webfetch(url).catch(() => null);
       if (!wf || !wf.ok) {
-        const why = (wf && (wf.residual || wf.reason)) || "fetch_failed";
-        cmdToast("无法获取该链接（" + String(why) + "），请直接粘贴教程正文", "warn");
-        showPasteBox((pasted) => {
-          if (pasted && pasted.trim()) runBuildTeamFromText(pasted.trim());
-        });
+        const whyText = webfetchFailText(wf);
+        cmdToast("没能读取这个链接：" + whyText, "warn");
+        showPasteBox(
+          (pasted) => { if (pasted && pasted.trim()) runBuildTeamFromText(pasted.trim()); },
+          {
+            reason: whyText,
+            url,
+            // 取消 → 把链接原样放回输入框：被劫持又被取消，链接不能凭空消失，
+            // 用户应该还能把它当普通消息发出去。
+            onCancel: () => {
+              const box = document.getElementById("text");
+              if (box && !box.value.trim()) {
+                box.value = url;
+                if (typeof autoGrow === "function") autoGrow();
+                box.focus();
+              }
+            },
+          },
+        );
         return;
       }
       await runBuildTeamFromText(wf.text);
@@ -8730,50 +9524,243 @@
     }
 
     async function buildTeamFromBrief(ex) {
-      // 1) 共享目录（落应用数据目录；协作规则一并写入 00-profile/COLLAB-RULES.md）
-      const ws = await window.bitbot.teamCreateWorkspace(ex.title, ex.rules).catch(() => null);
-      // 2) Bot + 协作群（复用既有 runTeamBrief，单条命令链完成建团）
+      // 1) 共享目录（落应用数据目录；协作规则 + 每角色完整 Prompt 一并写入 00-profile/）
+      const ws = await window.bitbot.teamCreateWorkspace(ex.title, ex.rules, ex.roles).catch(() => null);
+      // 2) Bot + 协作群（复用既有 runTeamBrief，单条命令链完成建团；每个 Bot 用一句话职责）
       const ok = await runTeamBrief({ title: ex.title, roles: ex.roles, task: ex.task });
       if (ok) {
         const tail = ex.rules ? "，协作规则已写入共享目录 00-profile/COLLAB-RULES.md" : "";
+        const roleFiles = ws && ws.ok && ex.roles && ex.roles.length
+          ? "，每个角色的完整岗位 Prompt 已落到共享目录 00-profile/<角色>.md（Bot 按此交付）" : "";
         cmdToast(
           "已按教程搭好团队《" + ex.title + "》：" + ex.roles.length + " 个岗位 Bot + 协作群" +
-            (ws && ws.ok ? "，共享目录在 " + ws.path : "") + tail,
+            (ws && ws.ok ? "，共享目录在 " + ws.path : "") + tail + roleFiles,
           "ok",
         );
       }
     }
 
-    /* 轻量粘贴框：抓不到 URL 时让用户贴教程正文。自包含模态，不复用其它弹窗。 */
-    function showPasteBox(onSubmit) {
+    function decodeEntities(s) {
+      return String(s || "")
+        .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
+    }
+    function roleOneLiner(prompt) {
+      const line = String(prompt || "").split(/\n+/).find((l) => l.trim().length > 6) || "";
+      return line.trim().slice(0, 60);
+    }
+    /* ===== G-31 follow-up: 从本地教程/正文确定性反推团队（不依赖 LLM 密钥） =====
+       认「角色 N：名称 + 后续 <pre><code> 提示词」这类结构化教程（Grok 教程即此格式）。
+       返回 { title, roles:[{name, description, prompt}], rules, task }；roles<2 返回 null，
+       由调用方回退到 llmExtractTeam。 */
+    function extractTeamFromDoc(text) {
+      const raw = String(text || "").trim();
+      if (!raw) return null;
+      const isHtml = /<(h\d|pre|code|p|div|table)\b/i.test(raw);
+      let roles = [];
+      let rules = "";
+      let title = "";
+      if (isHtml) {
+        const clean = raw.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ");
+        const titleM = clean.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || clean.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+        if (titleM) title = decodeEntities(titleM[1]).replace(/\s+/g, " ").trim();
+        const codeBlocks = [];
+        const cbRe = /<pre[^>]*>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi;
+        let m;
+        while ((m = cbRe.exec(clean)) !== null) codeBlocks.push(decodeEntities(m[1]).trim());
+        const roleRe = /<h3[^>]*>\s*角色\s*\d*\s*[:：]\s*([^<]+?)\s*<\/h3>([\s\S]*?)(?=<h[23]|<h1|$)/gi;
+        let rm;
+        while ((rm = roleRe.exec(clean)) !== null) {
+          const name = decodeEntities(rm[1]).replace(/\s+/g, " ").trim();
+          const seg = rm[2];
+          const cm = seg.match(/<pre[^>]*>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/i);
+          const prompt = cm ? decodeEntities(cm[1]).trim() : decodeEntities(seg).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          if (name && prompt) roles.push({ name, description: roleOneLiner(prompt), prompt });
+        }
+        const ruleBlock = codeBlocks.find((c) => /协作群|工作顺序|协作规则/.test(c)) || "";
+        rules = ruleBlock;
+      } else {
+        const lines = raw.split(/\n+/);
+        for (let i = 0; i < lines.length; i++) {
+          const lm = lines[i].match(/(?:角色|bot|agent|队员)\s*\d*\s*[:：]\s*(.+)/i);
+          if (lm) {
+            const name = lm[1].trim().replace(/[：:].*$/, "").trim();
+            const prompt = (lines[i + 1] || "").trim();
+            if (name && prompt) roles.push({ name, description: roleOneLiner(prompt), prompt });
+          }
+        }
+      }
+      // 团队名：优先正文里的「群聊命名为 / 命名为」，其次 <title>/<h1>，最后通用名
+      const nm = raw.match(/(?:群聊命名为|命名为)\s*[“"「『]?\s*([^”"」』\n，。、：:]{1,30})/) ||
+        raw.match(/(?:群聊命名为|命名为|团队名)\s*["「『]?([^"」』\n<]{1,24})/);
+      const docName = nm ? nm[1].trim() : "";
+      if (docName) title = docName;
+      if (roles.length < 2) return null;
+      if (!title) title = "新建团队";
+      return { title, roles: roles.slice(0, 6), rules, task: "" };
+    }
+
+    async function runBuildTeamFromDoc(paths, text) {
+      let doc = (text || "").trim();
+      if (Array.isArray(paths) && paths.length) {
+        cmdToast("正在读取附件正文…", "info");
+        const parts = [];
+        for (const p of paths) {
+          const r = await window.bitbot.file.readText(p).catch(() => null);
+          if (r && r.ok && r.text) parts.push(r.text);
+        }
+        doc = (doc + "\n\n" + parts.join("\n\n")).trim();
+      }
+      if (!doc) { cmdToast("没有可读的正文，无法组建团队", "warn"); return; }
+      let ex = extractTeamFromDoc(doc);
+      if (!ex) {
+        cmdToast("正在用 LLM 反推团队结构…", "info");
+        const llm = await window.bitbot.llmExtractTeam(doc).catch(() => null);
+        if (!llm || !llm.ok) {
+          if (llm && llm.needs_key) cmdToast("需先在「设置」里配置可用的 LLM 密钥，才能从正文反推团队结构", "warn");
+          else cmdToast("无法从正文识别团队结构（" + String((llm && llm.reason) || "unknown") + "）", "warn");
+          return;
+        }
+        ex = {
+          title: llm.title,
+          roles: (llm.roles || []).map((name) => ({ name: String(name), description: "", prompt: "" })),
+          rules: llm.rules || "",
+          task: llm.task || "",
+        };
+      }
+      await buildTeamFromBrief(ex);
+    }
+
+    /* 轻量粘贴框：抓不到 URL 时让用户贴教程正文。自包含模态，不复用其它弹窗。
+       颜色必须走产品 token（--surface / --ink / --line / --input-bg / --accent）。
+       早先这里写的是 var(--panel,#1c1d22) —— 本产品没有 --panel 这个变量，
+       于是回退成深色底；而标题和「取消」用的是 --ink（浅色主题下近黑），
+       深字压深底直接看不见，界面上只剩一个白框 + 「开始搭建」。
+       规则：这个弹窗里不要再出现任何字面色值，一律取 token。 */
+    function webfetchFailText(res) {
+      const why = String((res && (res.residual || res.reason)) || "fetch_failed");
+      const map = {
+        fetch_failed: "抓取失败：站点拒绝、需要登录，或正文依赖 JS 渲染",
+        empty_body: "页面没有可读正文：可能是纯 JS 渲染或需要登录",
+        empty_url: "链接为空",
+        read_failed: "本地文件读取失败",
+        empty_file: "文件为空",
+      };
+      return map[why] || ("抓取失败：" + why);
+    }
+
+    function showPasteBox(onSubmit, info) {
+      const meta = info || {};
       const overlay = document.createElement("div");
       overlay.style.cssText =
-        "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;";
+        "position:fixed;inset:0;background:var(--overlay,rgba(0,0,0,.35));" +
+        "display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
       const box = document.createElement("div");
+      box.setAttribute("role", "dialog");
+      box.setAttribute("aria-modal", "true");
       box.style.cssText =
-        "background:var(--panel,#1c1d22);color:var(--ink,#eee);border:1px solid var(--line,#333);border-radius:12px;padding:16px;width:min(560px,92vw);";
-      box.innerHTML =
-        '<div style="font-weight:600;margin-bottom:8px;">粘贴教程正文</div>' +
-        '<textarea id="pb-text" rows="10" style="width:100%;resize:vertical;background:var(--input-bg,#111);color:var(--ink,#eee);border:1px solid var(--line,#333);border-radius:8px;padding:8px;font:13px/1.5 inherit;"></textarea>' +
-        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">' +
-        '<button id="pb-cancel" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--ink,#eee);cursor:pointer;">取消</button>' +
-        '<button id="pb-ok" style="padding:6px 14px;border-radius:8px;border:1px solid var(--accent,#4a8);background:var(--accent,#4a8);color:#fff;cursor:pointer;">开始搭建</button>' +
-        "</div>";
+        "background:var(--surface,#fff);color:var(--ink,#18191c);border:1px solid var(--line,#e5e5e5);" +
+        "border-radius:var(--radius-xl,12px);box-shadow:var(--shadow-modal,0 12px 40px rgba(0,0,0,.12));" +
+        "padding:18px;width:min(560px,92vw);display:flex;flex-direction:column;gap:9px;";
+
+      const title = document.createElement("div");
+      title.textContent = "没能读取这个链接的内容";
+      title.style.cssText = "font-weight:600;font-size:14px;color:var(--ink,#18191c);";
+
+      const why = document.createElement("div");
+      why.textContent = meta.reason || "抓取失败";
+      why.style.cssText = "font-size:12px;line-height:1.5;color:var(--muted,rgba(28,28,28,.68));";
+
+      const hint = document.createElement("div");
+      hint.textContent = meta.url
+        ? "可以把教程正文粘在下面，我按正文搭团队；也可以点「取消」，把这条链接当普通消息发出去。"
+        : "可以把正文粘在下面，我按正文搭团队；点「取消」放弃。";
+      hint.style.cssText = "font-size:12px;line-height:1.5;color:var(--muted,rgba(28,28,28,.68));";
+
+      const ta = document.createElement("textarea");
+      ta.rows = 10;
+      ta.placeholder = "把教程正文粘到这里…";
+      ta.style.cssText =
+        "width:100%;box-sizing:border-box;resize:vertical;background:var(--input-bg,#f2f2f2);" +
+        "color:var(--ink,#18191c);border:1px solid var(--line,#e5e5e5);border-radius:var(--radius-md,8px);" +
+        "padding:10px;font:13px/1.5 inherit;";
+
+      const foot = document.createElement("div");
+      foot.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:2px;";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "取消";
+      cancel.style.cssText =
+        "padding:6px 14px;border-radius:var(--radius-md,8px);border:1px solid var(--line,#e5e5e5);" +
+        "background:transparent;color:var(--ink,#18191c);cursor:pointer;font:inherit;";
+      const ok = document.createElement("button");
+      ok.type = "button";
+      ok.textContent = "开始搭建";
+      ok.style.cssText =
+        "padding:6px 14px;border-radius:var(--radius-md,8px);border:1px solid var(--accent,#1c1c1c);" +
+        "background:var(--accent,#1c1c1c);color:var(--accent-ink,#fcfcfc);" +
+        "cursor:pointer;font:inherit;font-weight:600;";
+      foot.appendChild(cancel);
+      foot.appendChild(ok);
+      box.appendChild(title);
+      box.appendChild(why);
+      box.appendChild(hint);
+      box.appendChild(ta);
+      box.appendChild(foot);
       overlay.appendChild(box);
       document.body.appendChild(overlay);
-      const ta = box.querySelector("#pb-text");
-      const close = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
-      box.querySelector("#pb-cancel").addEventListener("click", close);
-      box.querySelector("#pb-ok").addEventListener("click", () => {
-        const v = ta.value.trim();
+
+      const onKey = (e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          close();
+          if (meta.onCancel) meta.onCancel();
+        }
+      };
+      const close = () => {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        document.removeEventListener("keydown", onKey, true);
+      };
+      document.addEventListener("keydown", onKey, true);
+      cancel.addEventListener("click", () => {
         close();
-        if (v) onSubmit(v);
+        if (meta.onCancel) meta.onCancel();
+      });
+      ok.addEventListener("click", () => {
+        const v = ta.value.trim();
+        // 空内容不关框：直接关掉会被当成「点了没反应」
+        if (!v) {
+          ta.focus();
+          ta.placeholder = "正文还没粘进来——粘完再点「开始搭建」";
+          return;
+        }
+        close();
+        onSubmit(v);
       });
       setTimeout(() => ta.focus(), 30);
     }
 
     async function runUserTurn(text, opts) {
       clearWelcome();
+      /* 设置面板发起的操作（更新/重置电脑…）：这一轮的输出去设置面板，
+         不进对话。原因有两层：那不是聊天内容；而且宿主返回的是
+         "awaiting_confirm_1" 这类英文协议字段，直接摊进对话框既看不懂，
+         又容易让人以为「已经更新完了」。 */
+      const settingsAction = !!(opts && opts.settingsAction);
+      // 静音流式输出（见 muteLlmStream）：设置操作不产生对话气泡。
+      muteLlmStream = settingsAction;
+      const settingsSay = (txt) => {
+        if (!settingsAction) {
+          addMsg("assistant", txt);
+          return;
+        }
+        const el = document.getElementById("st-computer-action");
+        if (el) {
+          el.hidden = false;
+          el.textContent = txt;
+        }
+      };
       // Menu-driven protocol phrases (pin/hide/delete…) stay out of the
       // transcript — Grok's sidebar actions never echo raw commands.
       let userEl = null;
@@ -8798,6 +9785,7 @@
           webSearch: !!composerWebSearch,
         });
         const r = await window.bitbot.turn(text, turnOpts);
+        muteLlmStream = false;
         const stepRow = document.getElementById("agent-step-live");
         if (stepRow) stepRow.dataset.agentSteps = "done";
         jsonOut.textContent = JSON.stringify(r, null, 2);
@@ -8831,6 +9819,8 @@
             // sender-name header goes here, on every assistant reply — except
             // host failure/config notices, which must not wear the bot identity.
             const replyRole = m.role || "assistant";
+            // 设置操作不回显进对话（见函数顶部 settingsAction 的说明）。
+            if (settingsAction) continue;
             const el = addMsg(replyRole, locText, {
               speaker: replyRole === "assistant" && !isHostNotice(locText) ? dmBotInfo() : undefined,
             });
@@ -8921,7 +9911,7 @@
         else hideApproval();
         // (auto-review notice comes from the kernel-side runner message;
         // localized via WAVEG_REPLY_MAP — no renderer duplicate here.)
-        if (r && r.host_continued) {
+        if (r && r.host_continued && !settingsAction) {
           addMsg("assistant", "[host] ADR 0002 continue applied (MoonBit absorbed Host results)");
         }
         // Grok-style visible tool-run line: one honest summary per executed Host effect
@@ -8942,7 +9932,9 @@
           }
         }
         // Every reply line landed in debug mode → confirm the turn honestly.
-        if (r && Array.isArray(r.messages) && !visibleAssistant && !needsApprove && r.auto_approved !== true) {
+        // 设置操作除外：那里已经由面板自己回报状态，再补一句「已完成。」
+        // 就是「设置里的内容跑进对话框」的第二种形态（而且常常并不真完成）。
+        if (r && Array.isArray(r.messages) && !visibleAssistant && !needsApprove && r.auto_approved !== true && !settingsAction) {
           addMsg("assistant", wavegT("turnDone"));
         }
         if (r && Array.isArray(r.host_results)) {
@@ -9246,12 +10238,20 @@
           if (updateHost) {
             try {
               const p = JSON.parse(updateHost.stdout || "{}");
-              addMsg(
-                "assistant",
-                "Update Computer · " +
-                  (p.phase || "?") +
-                  (p.two_step_confirmed ? " (files+login preserved)" : ""),
-              );
+              const phase = String(p.phase || "");
+              // 宿主的两步确认只回写状态，不再把英文协议串摊进对话
+              // （以前这里 addMsg 了 "Update Computer · awaiting_confirm_1"）。
+              if (phase === "awaiting_confirm_1") {
+                updateConfirmStep = 1;
+                settingsSay(wavegT("crUpdateStep1"));
+              } else if (phase === "awaiting_confirm_2") {
+                updateConfirmStep = 2;
+                settingsSay(wavegT("crUpdateStep2"));
+              } else {
+                updateConfirmStep = 0;
+                settingsSay(wavegT("crUpdateDone"));
+              }
+              syncUpdateComputerButton();
             } catch (_) { /* ignore */ }
           }
           const guideHost = r.host_results.find(
@@ -11203,8 +12203,10 @@
       } catch (e) {
         const msg = String(e && e.message ? e.message : e);
         jsonOut.textContent = msg;
-        addMsg("assistant", msg);
+        // 设置操作出错也只回设置面板：错误原文不该成为一条聊天消息。
+        settingsSay(msg);
       } finally {
+        muteLlmStream = false;
         sendBtn.disabled = false;
         if (turnCancelBtn) turnCancelBtn.hidden = true;
         input.focus();
@@ -11461,44 +12463,88 @@
        本机大脑走 OpenAI 兼容协议，所以渠道不是一个封闭枚举：这里给几个常见
        预填（官方 / 聚合网关），再加两个空白预设（自建端点 / 企业网关），
        Base URL、模型 ID、provider_id 全部可改并原样落进 .env.local。 */
+    /* models 是「可点的候选」，不是白名单：输入框仍可写任意 model id。
+       候选只解决「模型名让我凭记忆手打」这件事 —— 主流 agent（Cursor 的模型列表、
+       Cline 的 Model 下拉）都把它做成可选，而不是一个空 input。 */
     const LLM_PRESETS = {
       deepseek: {
         provider: "deepseek",
+        label: "DeepSeek",
         base: "https://api.deepseek.com/v1",
         model: "deepseek-chat",
-        hint: "DeepSeek 官方端点；deepseek-chat / deepseek-reasoner 都可用。",
+        models: ["deepseek-chat", "deepseek-reasoner"],
+        hint: "DeepSeek 官方端点。",
       },
       qwen: {
         provider: "qwen",
+        label: "通义千问",
         base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
         model: "qwen-plus",
-        hint: "DashScope 的 OpenAI 兼容模式；模型如 qwen-plus / qwen-max。",
+        models: ["qwen-plus", "qwen-max", "qwen-turbo"],
+        hint: "DashScope 的 OpenAI 兼容模式。",
       },
       moonshot: {
         provider: "moonshot",
+        label: "Moonshot",
         base: "https://api.moonshot.cn/v1",
         model: "moonshot-v1-8k",
+        models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
         hint: "Moonshot 官方端点。",
       },
       openrouter: {
         provider: "openrouter",
+        label: "OpenRouter",
         base: "https://openrouter.ai/api/v1",
         model: "openai/gpt-4o-mini",
-        hint: "聚合网关：模型名带厂商前缀，如 openai/gpt-4o-mini、anthropic/claude-3.5-sonnet。",
+        models: ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
+        hint: "聚合网关：模型名带厂商前缀。",
       },
       custom: {
         provider: "custom",
+        label: "自定义端点",
         base: "",
         model: "",
+        models: [],
         hint: "自建端点：vLLM / Ollama（http://127.0.0.1:11434/v1）/ LM Studio 等，Base 一般以 /v1 结尾。",
       },
       gateway: {
         provider: "gateway",
+        label: "企业网关",
         base: "",
         model: "",
+        models: [],
         hint: "企业网关 / 代理：Base 指向网关，模型名与 Key 由网关下发；协议不同就在网关侧转换。",
       },
     };
+
+    /* 模型候选芯片：跟着服务商变，点一下填进输入框。
+       不换成 <select> 是因为自建端点/企业网关的模型名没有枚举，必须能自由写；
+       芯片只做「省一次回忆」，不做约束。 */
+    function renderLlmModelChips(key) {
+      const box = document.getElementById("sec-llm-models");
+      if (!box) return;
+      const p = LLM_PRESETS[key] || LLM_PRESETS.custom;
+      const list = Array.isArray(p.models) ? p.models : [];
+      box.textContent = "";
+      if (!list.length) return;
+      const cur = (document.getElementById("sec-llm-model") || {}).value || "";
+      list.forEach(function (m) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "st-chip" + (m === cur ? " is-on" : "");
+        b.textContent = m;
+        b.addEventListener("click", function () {
+          const el = document.getElementById("sec-llm-model");
+          if (!el) return;
+          el.value = m;
+          /* 选了候选就是一次真实改动：把「保存」这条路的脏标记走一遍，
+             别让用户以为点了就生效。 */
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          renderLlmModelChips(key);
+        });
+        box.appendChild(b);
+      });
+    }
 
     function applyLlmPreset(key) {
       const p = LLM_PRESETS[key] || LLM_PRESETS.custom;
@@ -11517,6 +12563,35 @@
         modelEl.placeholder = p.model || "model-id-on-that-endpoint";
       }
       if (hintEl) hintEl.textContent = p.hint;
+      renderLlmModelChips(key);
+    }
+
+    /* 「当前连接」结论区：一句话回答「接的是什么、通不通」。
+       数据只有一处来源（secrets.status()），不另开一条推断路径 —— 否则
+       会和底部那条保存状态各说一套。 */
+    function paintBrainConn(llm, baseUrl) {
+      const dot = document.getElementById("sec-conn-dot");
+      const title = document.getElementById("sec-conn-title");
+      const sub = document.getElementById("sec-conn-sub");
+      if (!dot || !title || !sub) return;
+      const provider = String((llm && llm.provider_id) || "").trim();
+      const model = String((llm && llm.model) || "").trim();
+      const hasKey = !!(llm && llm.key_configured);
+      dot.dataset.state = provider && hasKey ? "ok" : "miss";
+      /* 第二行只在**有话说**的时候出现：接好了就光一行「DeepSeek · deepseek-chat」，
+         端点值下面 Base URL 那栏本来就写着，不必在这里再念一遍。异常态才展开
+         一行解释（没接 / 缺 Key），因为它才是用户接下来要动的东西。 */
+      const say = (txt) => { sub.textContent = txt; sub.hidden = !txt; };
+      if (!provider) {
+        title.textContent = wavegT("credConnNone");
+        say(wavegT("credConnNoneHint"));
+        return;
+      }
+      const known = LLM_PRESETS[provider];
+      title.textContent = ((known && known.label) || provider) + (model ? " · " + model : "");
+      if (!hasKey) say(wavegT("credConnNoKey"));
+      else if (!String(baseUrl || "").trim()) say(wavegT("credConnNoBase"));
+      else say("");
     }
 
     /* 反向推断：从已保存的 provider / base 认出当前是哪个接入方式，
@@ -11535,6 +12610,14 @@
     const secLlmPreset = document.getElementById("sec-llm-preset");
     if (secLlmPreset) {
       secLlmPreset.addEventListener("change", () => applyLlmPreset(secLlmPreset.value));
+    }
+    /* 手动改模型名时芯片的高亮要跟着走，否则「输入框写着 deepseek-reasoner、
+       下面却高亮 deepseek-chat」，两个地方各说一套。 */
+    const secLlmModel = document.getElementById("sec-llm-model");
+    if (secLlmModel) {
+      secLlmModel.addEventListener("input", () => {
+        renderLlmModelChips((document.getElementById("sec-llm-preset") || {}).value || "custom");
+      });
     }
     async function refreshInboundUrlStrip() {
       const el = document.getElementById("sec-inbound-url");
@@ -14209,6 +15292,42 @@
       }
     }
 
+    /**
+     * 「电脑与权限」里那七行审批档位（本地两项 + 云端五项）。
+     *
+     * 三档是同一个决定的三种写法：`跟随` = 没有个人规则，按各动作自己的默认；
+     * `自动允许` / `先询问` = 落一条 `<kind>:*` 规则。规则优先于「本地执行」这个
+     * 总开关（「禁止」是硬闸，规则盖不过）。
+     *
+     * 一处填两份 DOM（`#gp-locexec-rules` / `#gp-approval-rules`），因为它们的形状
+     * 完全一样，只是归属不同：前两项受总开关连带约束。
+     */
+    const APPROVAL_KINDS = [
+      "shell", "computer_use",
+      "channel_send", "mail_send", "purchase_item", "mcp_call", "delegate_task",
+    ];
+
+    function refreshRuleRows(rules) {
+      const list = Array.isArray(rules) ? rules : [];
+      const rowOf = (kind) => list.find((r) => String((r && r.pattern) || "") === kind + ":*") || null;
+      // 总闸是「禁止」时本地两项没有意义：never 是硬闸，任何规则都放不出来。
+      const cur = document.querySelector("#gp-locexec-row .gp-chip.active");
+      const never = !!cur && cur.dataset.locexec === "never";
+      const locexecBox = document.getElementById("gp-locexec-rules");
+      if (locexecBox) locexecBox.classList.toggle("is-disabled", never);
+      document.querySelectorAll("#st-computer .gp-lorule button[data-lokind]").forEach((b) => {
+        const hit = rowOf(b.dataset.lokind);
+        const d = hit ? String(hit.decision || "") : "";
+        const value = d === "allow" || d === "ask" ? d : "follow";
+        b.classList.toggle("active", value === b.dataset.lodecision);
+        // 团队锁定的条目由团队策略管，这里改不了 —— 明说，而不是点了报错。
+        const locked = !!hit && (hit.locked === true || hit.source === "team");
+        const isLocalRow = !!(b.closest && b.closest("#gp-locexec-rules"));
+        b.disabled = locked || (never && isLocalRow);
+        b.title = locked ? wavegT("ruleTeamLocked") : "";
+      });
+    }
+
     async function refreshApprovalRules() {
       const box = document.getElementById("gp-rules-list");
       if (!box || !window.bitbot.approvals) return;
@@ -14227,13 +15346,23 @@
         delegate_task: wavegT("ruleDelegate"),
       };
       const kindLabel = (p) => KIND_LABEL[String(p || "").split(":")[0]] || String(p || "");
+      // 「执行命令」「操作电脑」已经归「电脑 → 本地执行」总开关管。存量规则还在
+      // （gate 也仍然尊重它），但要明说它会盖掉那个总开关，否则用户设了「始终
+      // 允许」还被弹审批，只会以为设置没生效。
+      const LOCAL_KINDS = ["shell", "computer_use"];
+      const isLocalPattern = (p) => LOCAL_KINDS.indexOf(String(p || "").split(":")[0]) >= 0;
       box.innerHTML = "";
       const rules = (res && res.rules) || [];
-      if (!rules.length) {
-        box.innerHTML = '<div style="color:var(--muted);font-size:12px">' + wavegT("rulesEmpty") + "</div>";
-        return;
-      }
-      for (const rl of rules) {
+      // 七行档位跟同一份规则走，一起刷。
+      refreshRuleRows(rules);
+      // 三档 chip 只能表达 `<kind>:*`。这些已经由 chip 直接显示出来了，列表再列
+      // 一遍就是同一件事说两遍；只把 chip 表达不了的（更细的 pattern、团队锁定）
+      // 留在这里，没有就不占位。
+      const chipPatterns = new Set(APPROVAL_KINDS.map((k) => k + ":*"));
+      const residual = rules.filter((rl) => !chipPatterns.has(String((rl && rl.pattern) || "")));
+      box.style.display = residual.length ? "" : "none";
+      if (!residual.length) return;
+      for (const rl of residual) {
         const row = document.createElement("div");
         row.className = "kv";
         row.style.cssText = "display:flex;gap:8px;align-items:center;margin:2px 0";
@@ -14244,7 +15373,8 @@
         label.textContent =
           kindLabel(rl.pattern) + " · " +
           (rl.decision === "ask" ? wavegT("askFirst") : wavegT("allowAuto")) +
-          (rl.source === "team" ? " · " + wavegT("ruleTeamLocked") : "");
+          (rl.source === "team" ? " · " + wavegT("ruleTeamLocked") : "") +
+          (isLocalPattern(rl.pattern) ? " · " + wavegT("ruleOverridesLocal") : "");
         label.title = rl.pattern + " → " + rl.decision;
         row.appendChild(label);
         const btn = document.createElement("button");
@@ -14320,8 +15450,12 @@
       const el = document.getElementById("gp-privacy-state");
       if (!el) return;
       const setZh = (stateKey, noteKey) => {
-        el.textContent = wavegT("privacyPrefix") + "：" + wavegT(stateKey);
+        // 标签写「隐私模式」，值里不再重复前缀；完整解释现在直接写在下面一行
+        // （以前只塞在 title 里 —— 悬停才看得到，等于没有解释）。
+        el.textContent = wavegT(stateKey);
         el.title = wavegT(noteKey);
+        const note = document.getElementById("gp-privacy-note");
+        if (note) note.textContent = wavegT(noteKey);
       };
       if (!window.bitbot.privacy) {
         // Dataset stays for any dev-only consumer, but the visible line is zh.
@@ -14401,11 +15535,8 @@
         statusRoute: "路由流量开关已设为：{v}",
         onWord: "开",
         offWord: "关",
-        statusRule: "已写入规则：{v}",
         statusRuleFail: "规则写入失败",
-        ruleAllowLabel: "自动允许",
-        ruleAskLabel: "先询问",
-        rulesEmpty: "暂无个人规则（默认全部先询问）",
+        ruleOverridesLocal: "覆盖「本地执行」",
         ruleTeamLocked: "团队规则（锁定）",
         ruleLocked: "锁定",
         ruleDelete: "删除",
@@ -14426,9 +15557,9 @@
         cnProbeNone: "渠道试连 · 暂不可用（不假装）",
         cnProbeErr: "渠道试连异常",
         privacyPrefix: "隐私模式",
-        privacyStateOn: "已开启（由账户验证）",
-        privacyStateUnavailable: "不可用（由账户侧管理，训练数据默认关闭）",
-        privacyStateLegacy: "旧版隐私模式不受本客户端支持",
+        privacyStateOn: "已开启 · 账户已验证",
+        privacyStateUnavailable: "不可用 · 由账户侧统一管理",
+        privacyStateLegacy: "旧版设置不受支持",
         privacyNoteOn: "训练数据不会被用于模型改进。",
         privacyNoteUnavailable: "隐私模式由账户侧统一管理，本机无法开关；训练数据默认不用于模型改进。",
         privacyNoteLegacy: "旧版隐私模式需要云存储，当前客户端不支持。",
@@ -14481,6 +15612,8 @@
         roomStartFailed: "未启动",
         roomStartFailedHint: "这次群协作没有启动，成员没有收到任务。",
         sessSearchPh: "搜索会话",
+        sbSearchPh: "搜索 Bot / 群组",
+        sbSearchEmpty: "没有匹配的 Bot 或群组",
         sessToday: "今天",
         sessYesterday: "昨天",
         sessEarlier: "更早",
@@ -14579,28 +15712,43 @@
         light: "浅色",
         dark: "深色",
         language: "语言",
-        timezone: "Bot 时区（定时任务按此区计算）",
+        timezone: "Bot 时区",
+        timezoneHint: "定时任务按这个时区计算",
         locExec: "本地执行（电脑权限）",
+        locExecHint: "总开关 · 管「执行命令」和「操作电脑」",
         askEveryTime: "每次询问",
         alwaysAllowBtn: "总是允许",
         neverAllow: "从不允许",
         routeTraffic: "通过本机路由流量",
-        autoReview: "自动审批规则（「先询问」优先于「自动允许」）",
+        approvalRulesTitle: "其它动作的审批",
+        approvalRulesHint: "发送消息、发邮件、购买这类动作要不要先问",
         allowAuto: "自动允许",
         askFirst: "先询问",
+        followMaster: "跟随",
+        statusLocRule: "「{k}」已设为：{v}",
         usageBilling: "用量与账单（本周真实 LLM 用量；无数据即空态，不造假）",
         credentials: "模型与密钥",
-        secModelOpen: "模型与供应商",
-        credLead: "只有第一张卡是必须的：接上本机大脑就能用，其余都能先跳过。",
+        secModelOpen: "换模型",
+        credLead: "必填的只有本机大脑；联网搜索和入站地址随时可以再补。",
         credZoneBrain: "本机大脑",
         credTagRequired: "必填",
         credTagOptional: "选填",
-        credBrainNote: "走 OpenAI 兼容协议：官方渠道、自建推理服务、企业网关都能接。选一个接入方式会预填下面几栏，之后可以随意改。",
+        credFieldProvider: "服务商",
+        credFieldModel: "模型",
+        credConnNone: "还没有接上大脑",
+        credConnNoneHint: "在下面选服务商、填 Key，保存后就能用。",
+        credConnNoKey: "还缺 API Key —— 填好下面的 Key 再保存",
+        credConnNoBase: "端点未填",
+        credKeyPhSaved: "留空＝不改动",
         credAdvTitle: "备用渠道与 provider 标签",
-        credZoneCapability: "能力扩展",
+        credZoneCapability: "可选接线",
+        credSubSearch: "联网搜索",
+        credSearchBaseHint: "自建或走代理时填；留空就用官方地址。",
+        credModeration: "回复前过滤敏感词",
+        credModerationNote: "按本地词表拦；词表放 data/compliance/content-blocklist.txt，没放就用内置的几条。",
         credCapNote: "不填也能用，只是不会联网：回答里不会出现编造的来源。",
         credZoneDevices: "手机配对",
-        credInboundLabel: "入站公网地址（连接应用回调要用）",
+        credInboundLabel: "公网地址（连接应用回调要用）",
         credZoneInbound: "入站地址",
         phoneTitle: "手机",
         phoneLead: "手机连的就是这台电脑上的大脑。三步：打开局域网入口 → 生成 6 位配对码 → 在手机里输入。",
@@ -14619,7 +15767,6 @@
         phoneScopeOther: "这些网络禁止设备互访，扫不到很正常。在上方「手动」里填这台桌面的地址和端口 —— 只要手机能打通那个地址就行，不限网段。",
         phoneScopeWarn2: "公网 / 跨网段",
         phoneScopePublic: "本版没有内置内网穿透：要么自己组网（如 Tailscale）后按上一条手填，要么走有公网地址的服务器。地址不是私有网段时，手机会如实提示「大概率连不通」。",
-        credZoneCompliance: "合规",
         credApplyLead: "申请 DeepSeek",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本机屏幕",
@@ -14829,6 +15976,17 @@
         usageSource: "来源 llm-usage.json",
         usageTokensUnreported: "tokens 未上报",
         usageFail: "用量读取失败（Host 未就绪）",
+        usageKpiReq: "请求数",
+        usageKpiIn: "输入 tokens",
+        usageKpiOut: "输出 tokens",
+        usageUnitReq: "次",
+        usageUnitTok: "tokens",
+        usageInShort: "输入",
+        usageOutShort: "输出",
+        usageMixTitle: "Token 构成",
+        usageByModel: "按型号分布",
+        usageModelsCount: "个型号",
+        usageUnreportedRows: "有 {n} 行未上报 tokens，上面的合计不含这些行。",
         booting: "MoonBit 内核启动中…",
         welcomeHint: "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板 · 说「组建团队：选题、写作、排版」一次拉起一支队伍",
         welcomeLine: "桌面 AI 助手 · MoonBit 内核 · DeepSeek 大脑",
@@ -14871,7 +16029,7 @@
         apSupport: "支持",
         apAddAccount: "添加账户",
         apSignOut: "退出登录",
-        searchAria: "搜索",
+        searchAria: "搜索 Bot 或群组",
         accountAria: "账户",
         copyAction: "复制",
         copyDone: "已复制",
@@ -14905,7 +16063,7 @@
         secretPastedLabel: "从对话粘贴的密钥",
         untrustedBadge: "外部内容 · 仅作数据",
         untrustedHint: "来自网页 / 插件 / 命令输出，可能包含不可信的指令；Bot 不会据此自动执行敏感操作。",
-        privacyTitle: "隐私模式（账户侧管理，本机只读）",
+        privacyTitle: "隐私模式",
         privacyChecking: "读取中…",
         linkOpenHint: "点击将在系统浏览器打开",
         linkBlocked: "不可打开的链接",
@@ -14924,17 +16082,23 @@
         attachTooLarge: "附件被拒绝：{name} 超过 25MB（文档/图片/音频上限）。",
         attachTooLargeVideo: "附件被拒绝：{name} 超过 200MB（视频上限）。",
         attachNoPath: "附件被拒绝：剪贴板内容没有真实磁盘路径（不伪造路径）。",
+        shotFailed: "截图没成功：{why}",
+        shotNoPermission: "系统没给「屏幕录制」权限，截图会是空的。到 系统设置 → 隐私与安全性 → 屏幕录制 里勾上 Bit Bot，再试一次。",
+        mentionEveryoneMeta: "全员",
+        mentionHintMove: "选择",
+        mentionHintInsert: "插入",
+        mentionHintClose: "关闭",
         rAttach: "已接收 {n} 个附件，Host 正在把每个真实路径复制进工作区（GP-11）。",
         rAttachOne: "已接收附件 {path}，Host 正在复制进工作区（GP-11）。",
-        accountSection: "账户（本地 profile · 不伪造远端登录）",
+        accountSection: "账户（本地 profile）",
         accountLabelPlaceholder: "配置名（如「个人」「工作」）",
         accountSignInBtn: "登录",
         accountSignOutBtn: "登出",
         accountSwitchTo: "切换 profile…",
         accountNone: "暂无本地 profile",
-        accountSignedIn: "已登录（本地 profile「{n}」）· 凭证来源：{src}",
+        accountSignedIn: "当前 profile「{n}」· 已配置凭证：{src}",
         accountNoCred: "无任何已配置凭证（相关功能保持关闭）",
-        accountNotSigned: "未登录（本机没有远端账号可连）",
+        accountNotSigned: "还没有本地 profile · 填个名字点「登录」新建一套",
         accountSignedOut: "已登出本地 profile「{n}」（凭证保留在本机）。",
         accountCredOn: "已配置",
         accountCredOff: "未配置",
@@ -14975,7 +16139,7 @@
         crLeaveNote: "离开预览不影响 Bot 后台任务。",
         rComputerPreview: "已打开电脑预览（右侧面板）— 关闭预览不影响后台任务。",
         tabGeneral: "通用",
-        tabComputer: "电脑",
+        tabComputer: "电脑与权限",
         tabCredentials: "凭证",
         tabPhone: "手机",
         tabUsage: "用量与账单",
@@ -14984,6 +16148,17 @@
         updateComputerBtn: "更新云端电脑",
         resetComputerBtn: "重置云端电脑",
         crNoComputer: "未读取到云端电脑状态。",
+        crUpdateArmed1: "确认更新（1/2）",
+        crUpdateArmed2: "确认更新（2/2）",
+        crUpdateStep1: "第 1 步已就绪：更新会替换云端电脑实例，文件与登录会保留。再点两次「确认更新」才真正执行。",
+        crUpdateStep2: "已确认 1/2。再点一次即开始更新。",
+        crUpdateDone: "云端电脑已更新（文件与登录保留）。",
+        crActionFailed: "操作没有完成，请稍后重试。",
+        crStateLabel: "状态",
+        crTakeoverActive: "接管中",
+        crTakeoverIdle: "空闲",
+        crLastUpdate: "上次更新",
+        crLastReset: "上次重置",
         checkUpdatesBtn: "检查更新",
         restartUpdateBtn: "重启并安装",
         updatesIdle: "尚未检查 — 点「检查更新」看看有没有新版本。",
@@ -15157,11 +16332,8 @@
         statusRoute: "路由流量開關已設為：{v}",
         onWord: "開",
         offWord: "關",
-        statusRule: "已寫入規則：{v}",
         statusRuleFail: "規則寫入失敗",
-        ruleAllowLabel: "自動允許",
-        ruleAskLabel: "先詢問",
-        rulesEmpty: "暫無個人規則（預設全部先詢問）",
+        ruleOverridesLocal: "覆寫「本機執行」",
         ruleTeamLocked: "團隊規則（鎖定）",
         ruleLocked: "鎖定",
         ruleDelete: "刪除",
@@ -15182,9 +16354,9 @@
         cnProbeNone: "通路試連 · 暫不可用（不假裝）",
         cnProbeErr: "通路試連異常",
         privacyPrefix: "隱私模式",
-        privacyStateOn: "已開啟（由帳戶驗證）",
-        privacyStateUnavailable: "不可用（由帳戶側管理，訓練資料預設關閉）",
-        privacyStateLegacy: "舊版隱私模式不受本用戶端支援",
+        privacyStateOn: "已開啟 · 帳戶已驗證",
+        privacyStateUnavailable: "不可用 · 由帳戶側統一管理",
+        privacyStateLegacy: "舊版設定不受支援",
         privacyNoteOn: "訓練資料不會被用於模型改進。",
         privacyNoteUnavailable: "隱私模式由帳戶側統一管理，本機無法開關；訓練資料預設不用於模型改進。",
         privacyNoteLegacy: "舊版隱私模式需要雲儲存，目前用戶端不支援。",
@@ -15237,6 +16409,8 @@
         roomStartFailed: "未啟動",
         roomStartFailedHint: "這次群協作沒有啟動，成員沒有收到任務。",
         sessSearchPh: "搜尋會話",
+        sbSearchPh: "搜尋 Bot / 群組",
+        sbSearchEmpty: "沒有符合的 Bot 或群組",
         sessToday: "今天",
         sessYesterday: "昨天",
         sessEarlier: "更早",
@@ -15335,28 +16509,43 @@
         light: "淺色",
         dark: "深色",
         language: "語言",
-        timezone: "Bot 時區（排程按此區計算）",
+        timezone: "Bot 時區",
+        timezoneHint: "排程按這個時區計算",
         locExec: "本機執行（電腦權限）",
+        locExecHint: "總開關 · 管「執行指令」和「操作電腦」",
         askEveryTime: "每次詢問",
         alwaysAllowBtn: "總是允許",
         neverAllow: "從不允許",
         routeTraffic: "透過本機路由流量",
-        autoReview: "自動審批規則（「先詢問」優先於「自動允許」）",
+        approvalRulesTitle: "其他動作的審批",
+        approvalRulesHint: "傳送訊息、寄郵件、購買這類動作要不要先問",
         allowAuto: "自動允許",
         askFirst: "先詢問",
+        followMaster: "跟隨",
+        statusLocRule: "「{k}」已設為：{v}",
         usageBilling: "用量與帳單（本週真實 LLM 用量；無資料即空態，不造假）",
         credentials: "產品憑證 · 開放設定（不寫死）",
-        secModelOpen: "模型與供應商",
-        credLead: "只有第一張卡是必須的：接上本機大腦就能用，其餘都能先跳過。",
+        secModelOpen: "換模型",
+        credLead: "必填的只有本機大腦；聯網搜尋和入站地址隨時可以再補。",
         credZoneBrain: "本機大腦",
         credTagRequired: "必填",
         credTagOptional: "選填",
-        credBrainNote: "走 OpenAI 相容協定：官方渠道、自建推理服務、企業閘道都能接。選一個接入方式會預填下面幾欄，之後可以隨意改。",
+        credFieldProvider: "服務商",
+        credFieldModel: "模型",
+        credConnNone: "還沒有接上大腦",
+        credConnNoneHint: "在下面選服務商、填 Key，儲存後就能用。",
+        credConnNoKey: "還缺 API Key —— 填好下面的 Key 再儲存",
+        credConnNoBase: "端點未填",
+        credKeyPhSaved: "留空＝不改動",
         credAdvTitle: "備用渠道與 provider 標籤",
-        credZoneCapability: "能力擴充",
+        credZoneCapability: "可選接線",
+        credSubSearch: "聯網搜尋",
+        credSearchBaseHint: "自建或走代理時填；留空就用官方位址。",
+        credModeration: "回覆前過濾敏感詞",
+        credModerationNote: "按本地詞表攔；詞表放 data/compliance/content-blocklist.txt，沒放就用內建的幾條。",
         credCapNote: "不填也能用，只是不會聯網：回答裡不會出現編造的來源。",
         credZoneDevices: "手機配對",
-        credInboundLabel: "入站公網地址（連接應用回調要用）",
+        credInboundLabel: "公網位址（連接應用回調要用）",
         credZoneInbound: "入站地址",
         phoneTitle: "手機",
         phoneLead: "手機連的就是這台電腦上的大腦。三步：開啟區域網入口 → 產生 6 位配對碼 → 在手機裡輸入。",
@@ -15375,7 +16564,6 @@
         phoneScopeOther: "這些網路禁止裝置互訪，掃不到很正常。在上方「手動」裡填這台桌面的位址和連接埠 —— 只要手機能打通那個位址就行，不限網段。",
         phoneScopeWarn2: "公網 / 跨網段",
         phoneScopePublic: "本版沒有內建內網穿透：要嘛自己組網（如 Tailscale）後按上一條手填，要嘛走有公網位址的伺服器。位址不是私有網段時，手機會如實提示「大概率連不通」。",
-        credZoneCompliance: "合規",
         credApplyLead: "申請 DeepSeek",
         takeover: "接管",
         takeoverTitle: "接管 — 你正在直接操作本機螢幕",
@@ -15585,6 +16773,17 @@
         usageSource: "來源 llm-usage.json",
         usageTokensUnreported: "tokens 未上報",
         usageFail: "用量讀取失敗（Host 未就緒）",
+        usageKpiReq: "請求數",
+        usageKpiIn: "輸入 tokens",
+        usageKpiOut: "輸出 tokens",
+        usageUnitReq: "次",
+        usageUnitTok: "tokens",
+        usageInShort: "輸入",
+        usageOutShort: "輸出",
+        usageMixTitle: "Token 構成",
+        usageByModel: "依型號分佈",
+        usageModelsCount: "個型號",
+        usageUnreportedRows: "有 {n} 行未上報 tokens，上面的合計不含這些列。",
         booting: "MoonBit 核心啟動中…",
         welcomeHint: "輸入訊息開始 · 左側管理工作 · 「能力」開啟渠道與機器面板 · 說「組建團隊：選題、寫作、排版」一次拉起一支隊伍",
         welcomeLine: "桌面 AI 助手 · MoonBit 核心 · DeepSeek 大腦",
@@ -15627,7 +16826,7 @@
         apSupport: "支援",
         apAddAccount: "新增帳戶",
         apSignOut: "登出",
-        searchAria: "搜尋",
+        searchAria: "搜尋 Bot 或群組",
         accountAria: "帳戶",
         copyAction: "複製",
         copyDone: "已複製",
@@ -15661,7 +16860,7 @@
         secretPastedLabel: "從對話貼上的密鑰",
         untrustedBadge: "外部內容 · 僅作資料",
         untrustedHint: "來自網頁 / 外掛 / 命令輸出，可能包含不可信的指令；Bot 不會據此自動執行敏感操作。",
-        privacyTitle: "隱私模式（帳戶側管理，本機唯讀）",
+        privacyTitle: "隱私模式",
         privacyChecking: "讀取中…",
         linkOpenHint: "點擊將在系統瀏覽器開啟",
         linkBlocked: "不可開啟的連結",
@@ -15680,17 +16879,23 @@
         attachTooLarge: "附件被拒絕：{name} 超過 25MB（檔案/圖片/音訊上限）。",
         attachTooLargeVideo: "附件被拒絕：{name} 超過 200MB（影片上限）。",
         attachNoPath: "附件被拒絕：剪貼板內容沒有真實磁碟路徑（不偽造路徑）。",
+        shotFailed: "截圖沒成功：{why}",
+        shotNoPermission: "系統沒給「螢幕錄製」權限，截圖會是空的。到 系統設定 → 隱私與安全性 → 螢幕錄製 裡勾上 Bit Bot，再試一次。",
+        mentionEveryoneMeta: "全員",
+        mentionHintMove: "選擇",
+        mentionHintInsert: "插入",
+        mentionHintClose: "關閉",
         rAttach: "已接收 {n} 個附件，Host 正把每個真實路徑複製進工作區（GP-11）。",
         rAttachOne: "已接收附件 {path}，Host 正複製進工作區（GP-11）。",
-        accountSection: "帳戶（本機 profile · 不偽造遠端登入）",
+        accountSection: "帳戶（本機 profile）",
         accountLabelPlaceholder: "配置名（如「个人」「工作」）",
         accountSignInBtn: "登入",
         accountSignOutBtn: "登出",
         accountSwitchTo: "切換 profile…",
         accountNone: "尚無本機 profile",
-        accountSignedIn: "已登入（本機 profile「{n}」）· 憑證來源：{src}",
+        accountSignedIn: "目前 profile「{n}」· 已設定憑證：{src}",
         accountNoCred: "無任何已設定憑證（相關功能保持關閉）",
-        accountNotSigned: "未登入（本機沒有可連線的遠端帳號）",
+        accountNotSigned: "尚無本機 profile · 填個名字按「登入」新建一套",
         accountSignedOut: "已登出本機 profile「{n}」（憑證保留在本機）。",
         accountCredOn: "已設定",
         accountCredOff: "未設定",
@@ -15731,7 +16936,7 @@
         crLeaveNote: "離開預覽不影響 Bot 背景任務。",
         rComputerPreview: "已開啟電腦預覽（右側面板）— 關閉預覽不影響背景任務。",
         tabGeneral: "一般",
-        tabComputer: "電腦",
+        tabComputer: "電腦與權限",
         tabCredentials: "憑證",
         tabPhone: "手機",
         tabUsage: "用量與帳單",
@@ -15740,6 +16945,17 @@
         updateComputerBtn: "更新 Bot 的電腦",
         resetComputerBtn: "重設 Bot 的電腦",
         crNoComputer: "未讀取到電腦狀態。",
+        crUpdateArmed1: "確認更新（1/2）",
+        crUpdateArmed2: "確認更新（2/2）",
+        crUpdateStep1: "第 1 步已就緒：更新會替換雲端電腦實例，檔案與登入會保留。再點兩次「確認更新」才真正執行。",
+        crUpdateStep2: "已確認 1/2。再點一次即開始更新。",
+        crUpdateDone: "雲端電腦已更新（檔案與登入保留）。",
+        crActionFailed: "操作沒有完成，請稍後重試。",
+        crStateLabel: "狀態",
+        crTakeoverActive: "接管中",
+        crTakeoverIdle: "空閒",
+        crLastUpdate: "上次更新",
+        crLastReset: "上次重設",
         checkUpdatesBtn: "檢查更新",
         restartUpdateBtn: "重新啟動並安裝",
         updatesIdle: "尚未檢查 — 點「檢查更新」看看有沒有新版本。",
@@ -15913,11 +17129,8 @@
         statusRoute: "Traffic routing set to: {v}",
         onWord: "on",
         offWord: "off",
-        statusRule: "Rule saved: {v}",
         statusRuleFail: "Failed to save rule",
-        ruleAllowLabel: "Auto-allow",
-        ruleAskLabel: "Ask first",
-        rulesEmpty: "No personal rules (ask first by default)",
+        ruleOverridesLocal: "overrides Local execution",
         ruleTeamLocked: "Team rule (locked)",
         ruleLocked: "Locked",
         ruleDelete: "Delete",
@@ -15938,9 +17151,9 @@
         cnProbeNone: "Channel test · unavailable (not faked)",
         cnProbeErr: "Channel test error",
         privacyPrefix: "Privacy Mode",
-        privacyStateOn: "Enabled (verified by account)",
-        privacyStateUnavailable: "Unavailable (managed by account; training data off by default)",
-        privacyStateLegacy: "Legacy privacy mode is not supported by this client",
+        privacyStateOn: "Enabled · verified by account",
+        privacyStateUnavailable: "Unavailable · managed by your account",
+        privacyStateLegacy: "Legacy mode not supported",
         privacyNoteOn: "Training data is not used to improve models.",
         privacyNoteUnavailable: "Privacy mode is managed by your account and cannot be toggled here; training data is not used to improve models by default.",
         privacyNoteLegacy: "Legacy privacy mode requires cloud storage, which this client does not support.",
@@ -15993,6 +17206,8 @@
         roomStartFailed: "not started",
         roomStartFailedHint: "This group run never started — no member received the task.",
         sessSearchPh: "Search chats",
+        sbSearchPh: "Search Bots / groups",
+        sbSearchEmpty: "No matching Bot or group",
         sessToday: "Today",
         sessYesterday: "Yesterday",
         sessEarlier: "Earlier",
@@ -16091,28 +17306,43 @@
         light: "Light",
         dark: "Dark",
         language: "Language",
-        timezone: "Bot Timezone (routines compute in this zone)",
+        timezone: "Bot timezone",
+        timezoneHint: "Scheduled routines use this zone",
         locExec: "Local execution (Computer permission)",
+        locExecHint: "Master switch · covers run-command and computer-use",
         askEveryTime: "Ask every time",
         alwaysAllowBtn: "Always allow",
         neverAllow: "Never allow",
         routeTraffic: "Route traffic through this computer",
-        autoReview: "Auto-review rules (Ask first wins over Allow automatically)",
+        approvalRulesTitle: "Approval for other actions",
+        approvalRulesHint: "Whether sending, mailing and purchases ask first",
         allowAuto: "Allow automatically",
         askFirst: "Ask first",
+        followMaster: "Follow",
+        statusLocRule: "{k} is now: {v}",
         usageBilling: "Usage & Billing (real weekly LLM usage; empty state, never faked)",
         credentials: "Product credentials · open config (never baked in)",
-        secModelOpen: "Model & provider",
-        credLead: "Only the first card is required: connect the local brain and the rest can wait.",
+        secModelOpen: "Change model",
+        credLead: "Only the local brain is required; web search and the inbound URL can wait.",
         credZoneBrain: "Local brain",
         credTagRequired: "Required",
         credTagOptional: "Optional",
-        credBrainNote: "OpenAI-compatible: official channels, self-hosted inference (vLLM / Ollama / LM Studio) or an enterprise gateway. Picking one prefills the fields below; you can edit them after.",
+        credFieldProvider: "Provider",
+        credFieldModel: "Model",
+        credConnNone: "No brain connected yet",
+        credConnNoneHint: "Pick a provider below, paste a key, then save.",
+        credConnNoKey: "API key missing — paste one below and save",
+        credConnNoBase: "endpoint not set",
+        credKeyPhSaved: "leave blank to keep",
         credAdvTitle: "Backup keys & provider tag",
-        credZoneCapability: "Capabilities",
+        credZoneCapability: "Optional wiring",
+        credSubSearch: "Web search",
+        credSearchBaseHint: "Fill this only for a self-hosted endpoint or a proxy; leave it blank for the official one.",
+        credModeration: "Filter sensitive words before replying",
+        credModerationNote: "Checked against a local word list at data/compliance/content-blocklist.txt; a few built-in terms are used when there is none.",
         credCapNote: "Works without this: no web search, and no invented sources in answers.",
         credZoneDevices: "Phone pairing",
-        credInboundLabel: "Public inbound URL (needed by app callbacks)",
+        credInboundLabel: "Public address (needed by app callbacks)",
         credZoneInbound: "Inbound URL",
         phoneTitle: "Phone",
         phoneLead: "Your phone talks to the brain on this computer. Three steps: open the LAN endpoint, generate a 6-digit code, then type it on the phone.",
@@ -16131,7 +17361,6 @@
         phoneScopeOther: "Those networks block device-to-device traffic, so an empty scan is normal. Type this desktop's address and port under Manual above — any reachable address works, on any subnet.",
         phoneScopeWarn2: "Public internet / different subnet",
         phoneScopePublic: "This build ships no tunnel: bring your own mesh (e.g. Tailscale) or a server with a public address, then fill it in manually. When the address is not private, the phone warns that it probably will not connect.",
-        credZoneCompliance: "Compliance",
         credApplyLead: "Get a DeepSeek key",
         takeover: "Take over",
         takeoverTitle: "Take over — you are controlling this screen directly",
@@ -16341,6 +17570,17 @@
         usageSource: "source: llm-usage.json",
         usageTokensUnreported: "tokens not reported",
         usageFail: "Usage read failed (Host not ready)",
+        usageKpiReq: "Requests",
+        usageKpiIn: "Input tokens",
+        usageKpiOut: "Output tokens",
+        usageUnitReq: "calls",
+        usageUnitTok: "tokens",
+        usageInShort: "in",
+        usageOutShort: "out",
+        usageMixTitle: "Token mix",
+        usageByModel: "By model",
+        usageModelsCount: "models",
+        usageUnreportedRows: "{n} row(s) reported no tokens; the totals above exclude them.",
         booting: "booting MoonBit…",
         welcomeHint: "Type a message to start · chats on the left · 「Capabilities」 opens channels & machines · say “create team: research, writing, design” to stand one up",
         welcomeLine: "Desktop AI assistant · MoonBit kernel · DeepSeek brain",
@@ -16383,7 +17623,7 @@
         apSupport: "Support",
         apAddAccount: "Add account",
         apSignOut: "Sign out",
-        searchAria: "Search",
+        searchAria: "Search Bots or groups",
         accountAria: "Account",
         copyAction: "Copy",
         copyDone: "Copied",
@@ -16417,7 +17657,7 @@
         secretPastedLabel: "Secret pasted from chat",
         untrustedBadge: "External content · data only",
         untrustedHint: "From a web page / plugin / command output. May contain untrusted instructions; the Bot never executes sensitive actions from it.",
-        privacyTitle: "Privacy Mode (managed by your account; read-only here)",
+        privacyTitle: "Privacy mode",
         privacyChecking: "Reading…",
         linkOpenHint: "Click opens in your system browser",
         linkBlocked: "Link cannot be opened",
@@ -16436,17 +17676,23 @@
         attachTooLarge: "Attachment refused: {name} exceeds the 25MB limit (doc/image/audio).",
         attachTooLargeVideo: "Attachment refused: {name} exceeds the 200MB video limit.",
         attachNoPath: "Attachment refused: clipboard item has no real disk path (never fabricated).",
+        shotFailed: "Screenshot failed: {why}",
+        shotNoPermission: "macOS hasn't granted Screen Recording, so the shot would be blank. Turn on Bit Bot in System Settings → Privacy & Security → Screen Recording, then try again.",
+        mentionEveryoneMeta: "everyone",
+        mentionHintMove: "move",
+        mentionHintInsert: "insert",
+        mentionHintClose: "close",
         rAttach: "Accepted {n} attachment(s); Host copies each real path into the workspace (GP-11).",
         rAttachOne: "Accepted attachment {path}; Host copies it into the workspace (GP-11).",
-        accountSection: "Account (local profile · never a fabricated remote login)",
+        accountSection: "Account (local profile)",
         accountLabelPlaceholder: "profile name (e.g. Personal / Work)",
         accountSignInBtn: "Sign in",
         accountSignOutBtn: "Sign out",
         accountSwitchTo: "Switch profile…",
         accountNone: "no local profiles yet",
-        accountSignedIn: "Signed in (local profile «{n}») · credential sources: {src}",
+        accountSignedIn: "Profile «{n}» · credentials: {src}",
         accountNoCred: "no credentials configured (dependent features stay off)",
-        accountNotSigned: "Not signed in (no remote account exists on this machine)",
+        accountNotSigned: "No local profile · type a name and press Sign in to create one",
         accountSignedOut: "Signed out of local profile «{n}» (credentials stay on this machine).",
         accountCredOn: "configured",
         accountCredOff: "missing",
@@ -16487,7 +17733,7 @@
         crLeaveNote: "Leaving the preview never pauses background work.",
         rComputerPreview: "Computer preview opened (right panel) — closing it doesn't pause tasks.",
         tabGeneral: "General",
-        tabComputer: "Computer",
+        tabComputer: "Computer & permissions",
         tabCredentials: "Credentials",
         tabPhone: "Phone",
         tabUsage: "Usage & Billing",
@@ -16496,6 +17742,17 @@
         updateComputerBtn: "Update Bot's Computer",
         resetComputerBtn: "Reset Bot's Computer",
         crNoComputer: "Computer status unavailable.",
+        crUpdateArmed1: "Confirm update (1/2)",
+        crUpdateArmed2: "Confirm update (2/2)",
+        crUpdateStep1: "Step 1 ready: updating replaces the cloud computer instance; files and logins are kept. Two more confirmations are required.",
+        crUpdateStep2: "Confirmed 1/2. One more confirmation starts the update.",
+        crUpdateDone: "Cloud computer updated (files and logins preserved).",
+        crActionFailed: "The action did not complete. Please retry.",
+        crStateLabel: "state",
+        crTakeoverActive: "in control",
+        crTakeoverIdle: "idle",
+        crLastUpdate: "last update",
+        crLastReset: "last reset",
         checkUpdatesBtn: "Check for Updates",
         restartUpdateBtn: "Restart to Update",
         updatesIdle: "Not checked yet — press Check for Updates to look for a new version.",
@@ -16752,6 +18009,44 @@
           silentKernel("local execution " + mode);
         });
       });
+      // 审批档位（七行：本地两项 + 云端五项）。
+      // 「跟随」= 删掉那条 <kind>:* 规则（本来没有也算成功）；另两档 = 落一条
+      // 个人规则。gate 读的是规则本身，UI 只是它的门面，所以两边永远同一份数据。
+      document.querySelectorAll("#st-computer .gp-lorule button[data-lokind]").forEach((b) => {
+        b.addEventListener("click", async () => {
+          if (b.disabled) return;
+          const kind = String(b.dataset.lokind || "");
+          const decision = String(b.dataset.lodecision || "follow");
+          const kindKey = {
+            shell: "ruleShell", computer_use: "ruleComputerUse",
+            channel_send: "ruleChannelSend", mail_send: "ruleMailSend",
+            purchase_item: "rulePurchase", mcp_call: "ruleMcpCall",
+            delegate_task: "ruleDelegate",
+          }[kind] || "approvalRulesTitle";
+          const kindName = wavegT(kindKey);
+          const valueName = wavegT(
+            decision === "allow" ? "allowAuto" : decision === "ask" ? "askFirst" : "followMaster",
+          );
+          try {
+            if (decision === "follow") {
+              const r = await window.bitbot.approvals.removeRule(kind + ":*");
+              // 本来就没有规则 = 早就是「跟随」，不算失败
+              if (r && r.ok === false && r.error !== "rule_not_found") {
+                throw new Error(r.error || "rule_locked");
+              }
+            } else {
+              const r = await window.bitbot.approvals.rule({
+                pattern: kind + ":*", decision, source: "personal",
+              });
+              if (r && r.ok === false) throw new Error(r.error || "rule_locked");
+            }
+            gpStatus("waveg-settings-status", t("statusLocRule", { k: kindName, v: valueName }));
+          } catch (_) {
+            gpStatus("waveg-settings-status", wavegT("statusRuleFail"));
+          }
+          refreshWaveGSettings();
+        });
+      });
       const langSel = document.getElementById("gp-language");
       if (langSel) {
         langSel.addEventListener("change", async () => {
@@ -16790,20 +18085,6 @@
           refreshWaveGSettings();
         });
       }
-      const ruleAllow = document.getElementById("gp-rule-allow");
-      const ruleAsk = document.getElementById("gp-rule-ask");
-      const ruleKind = document.getElementById("gp-rule-kind");
-      const addRule = async (decision) => {
-        if (!ruleKind) return;
-        const pattern = ruleKind.value + ":*";
-        const phrase = (decision === "allow" ? "always allow pattern=" : "ask first pattern=") + pattern;
-        const res = await window.bitbot.bots.op({ phrase });
-        if (res && res.ok) gpStatus("waveg-settings-status", t("statusRule", { v: decision === "allow" ? wavegT("ruleAllowLabel") : wavegT("ruleAskLabel") }));
-        else gpStatus("waveg-settings-status", wavegT("statusRuleFail"));
-        refreshApprovalRules();
-      };
-      if (ruleAllow) ruleAllow.addEventListener("click", () => addRule("allow"));
-      if (ruleAsk) ruleAsk.addEventListener("click", () => addRule("ask"));
       const pendBtn = document.getElementById("pending-bar-btn");
       if (pendBtn) {
         pendBtn.addEventListener("click", () => {
@@ -17492,31 +18773,40 @@
     };
 
     // ----- GP-ATx accelerators + sidebar collapse -----
-    let sidebarCollapsed = false;
-    // 自适应：窗口宽度 ≤ 断点时自动收起左侧；用户一旦手动切换(Cmd+B / 菜单)，
-    // 视为显式意图，之后 resize 不再自动覆盖（避免和用户的手动作反复对拉）。
-    let sidebarUserLocked = false;
-    const SIDEBAR_ADAPT_BP = 768; // px：窄于此宽度自动收起侧栏
-    function adaptSidebarToViewport() {
-      if (sidebarUserLocked) return;
-      const shouldCollapse = window.innerWidth <= SIDEBAR_ADAPT_BP;
-      if (shouldCollapse !== sidebarCollapsed) applySidebarCollapse(shouldCollapse, { persist: false });
+    // 侧栏收起改为「手动控制」：展开 ⇄ 完全隐藏。不再按窗口宽度强制收起
+    // （原 ≤768 自适应会与用户手动作反复对拉，已移除）。隐藏态下 #agents display:none，
+    // 左边缘浮一个细长重开条（#sidebar-reopen-tab）把侧栏再展开，避免「收起后找不到入口」。
+    let sidebarHidden = false;
+    function setSidebarHidden(hidden, opts) {
+      sidebarHidden = hidden;
+      document.body.dataset.sidebar = hidden ? "collapsed" : "expanded";
+      document.body.classList.toggle("sidebar-collapsed", hidden); // 兼容旧 e2e 镜像
+      const btn = document.getElementById("sidebar-toggle-btn");
+      if (btn) {
+        btn.setAttribute("aria-expanded", hidden ? "false" : "true");
+        btn.title = hidden ? "展开侧栏" : "收起侧栏";
+      }
+      if (!opts || opts.persist !== false) {
+        window.bitbot.settings.set({ sidebar_collapsed: hidden }).catch(() => {});
+      }
+      return hidden;
     }
-    function applySidebarCollapse(collapsed, opts) {
-      const persist = !opts || opts.persist !== false;
-      sidebarCollapsed = collapsed;
-      setSidebarCollapsed(collapsed);
-      if (persist) window.bitbot.settings.set({ sidebar_collapsed: collapsed }).catch(() => {});
-      return collapsed;
+    function toggleSidebarHidden() {
+      return setSidebarHidden(!sidebarHidden);
     }
+    // 侧栏内收起按钮（展开态时可用）：点一下收起。
+    const sidebarToggleBtn = document.getElementById("sidebar-toggle-btn");
+    if (sidebarToggleBtn) sidebarToggleBtn.addEventListener("click", () => toggleSidebarHidden());
+    // 左边缘细长重开条（收起态时显示）：点一下把侧栏重新展开。
+    const sidebarReopenTab = document.getElementById("sidebar-reopen-tab");
+    if (sidebarReopenTab) sidebarReopenTab.addEventListener("click", () => toggleSidebarHidden());
     function wireAccelerators() {
       document.addEventListener("keydown", (ev) => {
         const meta = ev.metaKey || ev.ctrlKey;
         if (!meta) return;
         if (ev.key === "b" || ev.key === "B") {
           ev.preventDefault();
-          sidebarUserLocked = true;
-          applySidebarCollapse(!sidebarCollapsed);
+          toggleSidebarHidden();
         } else if (ev.key === "n" || ev.key === "N") {
           ev.preventDefault();
           createNewChatFromUi();
@@ -17542,8 +18832,7 @@
       });
       if (window.bitbot.onMenuSidebarToggle) {
         window.bitbot.onMenuSidebarToggle(() => {
-          sidebarUserLocked = true;
-          applySidebarCollapse(!sidebarCollapsed);
+          toggleSidebarHidden();
         });
       }
       if (window.bitbot.onMenuNewChat) {
@@ -17684,6 +18973,9 @@
         if (window.bitbot.onLlmStream) {
           window.bitbot.onLlmStream((chunk) => {
             if (!chunk) return;
+            // 设置面板发起的操作不该在对话里流出打字效果（见 runUserTurn 的
+            // settingsAction）：流式片段一律丢弃，状态只在设置面板回报。
+            if (muteLlmStream) return;
             if (chunk.phase === "start" || chunk.phase === "provider") {
               if (!streamEl) {
                 streamEl = document.createElement("div");
@@ -17816,16 +19108,9 @@
           const stRes = await window.bitbot.settings.get();
           const st = (stRes && stRes.settings && stRes.settings.settings) || (stRes && stRes.settings) || {};
           applyDevMode(!!(st.dev_mode || (stRes && stRes.devmode_launch)));
-          if (typeof st.sidebar_collapsed === "boolean") {
-            // 上次会话显式设过（手动切换过）→ 原样恢复，并锁定自动适配
-            sidebarUserLocked = true;
-            applySidebarCollapse(st.sidebar_collapsed);
-          } else {
-            // 首次启动：按当前窗口宽度自适应，不落盘
-            adaptSidebarToViewport();
-          }
-          // 之后窗口宽度变化才自动跟：窄到断点收起左侧，放宽再展开
-          window.addEventListener("resize", adaptSidebarToViewport);
+          // 侧栏收起改为手动：不再按窗口宽度强制收起。之前显式收起过的用户以
+          // 更轻的图标 rail 态恢复；其余默认展开。boot 不落盘（persist:false）。
+          setSidebarHidden(st.sidebar_collapsed === true, { persist: false });
           wavegApplyAppearanceClass(st.appearance || "system");
           wavegLangApply(st.language || "zh-CN");
           // P2-7：未读回填放在 refreshSessions() 之后，行已经在 DOM 里，
@@ -17943,13 +19228,14 @@
       // 都不像才走正常回合（识别器故意写窄，见 isControlCommand 上方注释）。
       // 带附件的回合一律当对话——用户的意图显然是「把这几个文件给它看」。
       if (!pendingAttachments.length && text) {
-        // G-31: build-team-from-URL. 一条消息里带 URL，且「消息基本就是这条链接」
-        // 或带组队关键词（按这篇/从链接/搭建/团队/教程…）→ 走「抓取 + LLM 反推
-        // 结构 + 搭建团队」流程；普通「看看这个 https://…」对话不会被劫持。
+        // G-31: build-team-from-URL. 只有「消息里带链接」且「明确说要建队/搭团队」
+        // 才走「抓取 + 反推结构 + 搭建团队」流程。
+        // 这里有过一条「链接占消息 60% 以上就当成建队意图」的猜测 —— 那等于
+        // 用户单纯发个链接就被弹框要「教程正文」。已删除：没说要建队，就老老实实
+        // 当一条普通消息发出去。
         const urlHit = text.match(/https?:\/\/[^\s]+|file:\/\/[^\s]+/i);
-        const teamKw = /(组建|搭建|团队|建群|按这篇|从链接|教程|team|squad|set\s+up)/i.test(text);
-        const stripped = text.replace(/\s+/g, "");
-        if (urlHit && (teamKw || urlHit[0].length >= stripped.length * 0.6)) {
+        const teamKw = /(组建|搭建|建群|组队|创建团队|拉一支|按这篇|照这个|从链接|build\s+a\s+team|set\s+up\s+a\s+team|team\s+of)/i.test(text);
+        if (urlHit && teamKw) {
           input.value = "";
           autoGrow();
           syncVoiceChatAvailability();
@@ -17963,6 +19249,20 @@
           syncVoiceChatAvailability();
           if (teamBrief) await runTeamBrief(teamBrief);
           else await runControlCommand(text);
+          return;
+        }
+      }
+      // G-31 follow-up: 附件 + 明确的组队意图 → 从附件正文反推并搭建团队（不再当普通聊天）。
+      if (pendingAttachments.length) {
+        const teamKw = /(组建|搭建|建群|组队|创建团队|拉一支|set\s*up|build\s+a\s+team|team\s*of)/i.test(text || "");
+        if (teamKw) {
+          const paths = pendingAttachments.slice();
+          pendingAttachments = [];
+          renderAttachmentStrip();
+          input.value = "";
+          autoGrow();
+          syncVoiceChatAvailability();
+          await runBuildTeamFromDoc(paths, text);
           return;
         }
       }
@@ -18006,10 +19306,89 @@
     });
 
     /* ---- Wave G composer parity (GP-10/11/12/13/15) ---- */
+    /* 手动高度（拖拽调高）压过 autoGrow：0 = 还在自动模式。
+       声明写在这里、autoGrow 之上，且用 let —— 只有当「求值期就有人调
+       autoGrow」时才会踩到 TDZ；本文件所有调用点都在 boot 之后。 */
+    let composerManualH = 0;
+    const COMPOSER_MIN_H = 36;
+    function composerMaxH() {
+      // 最多占半屏多一点：再高就把对话挤没了，用户也看不到自己刚发的消息。
+      return Math.max(COMPOSER_MIN_H, Math.min(480, Math.round(window.innerHeight * 0.55)));
+    }
+    function applyComposerHeight(h) {
+      if (!h) {
+        composerManualH = 0;
+        input.style.maxHeight = "";
+        input.style.height = "";
+        autoGrow();
+        return;
+      }
+      composerManualH = Math.max(COMPOSER_MIN_H, Math.min(composerMaxH(), Math.round(h)));
+      // 手动高度一旦生效就摘掉 CSS 的 160px 上限，否则拖到 300 会被 max-height 卡住。
+      input.style.maxHeight = "none";
+      input.style.height = composerManualH + "px";
+    }
     function autoGrow() {
+      if (composerManualH) { input.style.height = composerManualH + "px"; return; }
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 160) + "px";
     }
+    /* composer 顶沿的抓取带：向上拖变高、向下拖变矮，双击/Home 复位到自动。
+       高度只活在本次会话里（不写 store）—— 它是窗口尺寸的产物，不是设置项。 */
+    (function wireComposerGrip() {
+      const grip = document.getElementById("composer-grip");
+      if (!grip) return;
+      let drag = null;
+      grip.addEventListener("pointerdown", (ev) => {
+        if (ev.button !== 0) return;
+        drag = { y: ev.clientY, h: input.offsetHeight, id: ev.pointerId, moved: false };
+        document.body.classList.add("composer-resizing");
+        // 不 preventDefault：拦掉 pointerdown 会连 dblclick 一起吞掉
+        // （双击复位要靠它）。选中态由 body.composer-resizing 的 user-select 挡。
+        try { grip.setPointerCapture(ev.pointerId); } catch (_) { /* 老内核无 capture */ }
+      });
+      grip.addEventListener("pointermove", (ev) => {
+        if (!drag || ev.pointerId !== drag.id) return;
+        const dy = drag.y - ev.clientY;
+        if (Math.abs(dy) > 2) drag.moved = true;
+        if (drag.moved) ev.preventDefault();
+        applyComposerHeight(drag.h + dy);
+      });
+      const endDrag = (ev) => {
+        if (!drag) return;
+        try { grip.releasePointerCapture(drag.id); } catch (_) { /* 已释放 */ }
+        drag = null;
+        document.body.classList.remove("composer-resizing");
+      };
+      grip.addEventListener("pointerup", endDrag);
+      grip.addEventListener("pointercancel", endDrag);
+      grip.addEventListener("dblclick", () => applyComposerHeight(0));
+      grip.addEventListener("keydown", (ev) => {
+        const cur = composerManualH || input.offsetHeight;
+        const step = ev.shiftKey ? 8 : 24;
+        if (ev.key === "ArrowUp") { ev.preventDefault(); applyComposerHeight(cur + step); }
+        else if (ev.key === "ArrowDown") {
+          ev.preventDefault();
+          const next = cur - step;
+          applyComposerHeight(next <= COMPOSER_MIN_H ? 0 : next);
+        } else if (ev.key === "Home" || ev.key === "Escape") { ev.preventDefault(); applyComposerHeight(0); }
+      });
+      // 窗口变矮时手动高度可能超过新上限，跟着收一下，别把对话顶没。
+      window.addEventListener("resize", () => { if (composerManualH) applyComposerHeight(composerManualH); });
+    })();
+    /* 群资料抽屉的下沿要精准停在 composer 上边框（见 #room-rail 的 bottom）。
+       composer 的高度是变的：群 banner、回合进度行、待发送附件条、多行输入都会
+       改它，所以量一次不够 —— 用 ResizeObserver 跟着写回 --composer-h。 */
+    (function watchComposerHeight() {
+      const root = document.documentElement;
+      const apply = () => {
+        const h = Math.round(form.getBoundingClientRect().height);
+        if (h > 0) root.style.setProperty("--composer-h", h + "px");
+      };
+      apply();
+      if (typeof ResizeObserver === "function") new ResizeObserver(apply).observe(form);
+      else window.addEventListener("resize", apply);
+    })();
     input.addEventListener("input", () => {
       autoGrow();
       updateComposerMenu();
@@ -18035,23 +19414,81 @@
       }
     });
 
-    // ----- @ 提及浮层（群聊里 @ 成员 / @everyone）-----
-    // 只在群聊（composerRoom 存在）时工作；候选自本群成员。浮层只收集选择，
-    // 插入文本由这里做，真正「@ 谁」的语义交给 kernel 在发送时解释。
+    // ----- @ 提及浮层（群聊点名 / 单聊插名字）-----
+    // 这里曾经有两套：群聊走 #mention-pop（带 ↑↓），单聊走 #composer-menu（不带），
+    // 结果「@ 一下」在一对一会话里只能用鼠标点 —— 同一个动作两种手感，用户只会
+    // 记住坏的那个。现在只有 #mention-pop 一条路径，候选从哪来由 composerRoom
+    // 决定，键盘行为不再分叉。
     let mentionItems = [];
     let mentionActive = -1;
     let mentionAnchor = null;
+    let mentionSig = "";
+    let mentionBotsLoading = false;
     function closeMention() {
       const pop = document.getElementById("mention-pop");
       if (pop) pop.style.display = "none";
       mentionItems = [];
       mentionActive = -1;
       mentionAnchor = null;
+      mentionSig = "";
+      try { input.removeAttribute("aria-activedescendant"); } catch (_) {}
+    }
+    /* 单聊的候选是「这台机器上的全部 Bot」。名单本来在 botInfoById 里（侧边栏刷新时
+       填），但刚开应用就 @ 时可能是空的 —— 空列表会被读成「@ 没反应」，所以这里
+       补拉一次，拉到了就把浮层再算一遍。 */
+    async function ensureMentionBots() {
+      try {
+        if (!window.bitbot || !window.bitbot.bots) return false;
+        const view = await window.bitbot.bots.list();
+        const raw = (view && (view.bots || view.views || view)) || [];
+        const list = Array.isArray(raw) ? raw : [];
+        for (const b of list) {
+          if (!b || !b.id || botInfoById[b.id]) continue;
+          botInfoById[b.id] = { id: b.id, name: b.name || b.id, avatar: b.avatar_data_url || "" };
+        }
+        return list.length > 0;
+      } catch (_) {
+        return false;
+      }
+    }
+    function mentionCurrentRoom() {
+      try {
+        if (!composerRoom) return null;
+        return (gpRooms || []).find((x) => x && x.id === composerRoom.id) || null;
+      } catch (_) { return null; }
+    }
+    function mentionCandidates(query) {
+      const out = [];
+      const seen = new Set();
+      const push = (it) => { if (!seen.has(it.token)) { seen.add(it.token); out.push(it); } };
+      const room = mentionCurrentRoom();
+      const members = room && Array.isArray(room.members) ? room.members : [];
+      if (members.length) {
+        // 群里：能点的只有本群成员。点一个不在群里的人，宿主会记 unknown_mentions 并
+        // 按「没点名」处理 —— 与其让用户以为定向成功了，不如根本不列出来。
+        if (!query || "everyone".indexOf(query) === 0 || "全部成员".indexOf(query) === 0) {
+          push({ token: "everyone", label: "全部成员", meta: wavegT("mentionEveryoneMeta"), info: null });
+        }
+        for (const id of members) {
+          const info = botInfoById[id] || { id, name: roomBotNames[id] || String(id), avatar: "" };
+          const name = info.name || String(id);
+          if (query && name.toLowerCase().indexOf(query) !== 0) continue;
+          push({ token: name, label: name, info });
+        }
+        return out;
+      }
+      // 一对一：@ 只是把名字插进正文，候选是全部 Bot（不冒充「群里点名」）
+      for (const id of Object.keys(botInfoById)) {
+        const info = botInfoById[id] || { id, name: id, avatar: "" };
+        const name = info.name || id;
+        if (query && name.toLowerCase().indexOf(query) !== 0) continue;
+        push({ token: name, label: name, info });
+      }
+      return out;
     }
     function updateMention() {
       const pop = document.getElementById("mention-pop");
       if (!pop) return;
-      if (!composerRoom) { closeMention(); return; }
       const val = input.value;
       const pos = input.selectionStart || 0;
       const before = val.slice(0, pos);
@@ -18059,42 +19496,101 @@
       if (!m) { closeMention(); return; }
       const query = m[2].toLowerCase();
       mentionAnchor = { start: pos - m[2].length - 1, end: pos };
-      let room = null;
-      try { room = (gpRooms || []).find((x) => x && x.id === composerRoom.id) || null; } catch (_) {}
-      const names = new Set();
-      if (room && Array.isArray(room.members)) {
-        for (const id of room.members) names.add(roomBotNames[id] || id);
+      const cands = mentionCandidates(query).slice(0, 12);
+      if (!cands.length) {
+        if (!mentionBotsLoading && !Object.keys(botInfoById).length) {
+          mentionBotsLoading = true;
+          ensureMentionBots().then((got) => {
+            mentionBotsLoading = false;
+            if (got && document.activeElement === input) updateMention();
+          });
+        }
+        closeMention();
+        return;
       }
-      const cands = [];
-      if (!query || "everyone".indexOf(query) === 0) cands.push({ token: "everyone", label: "全部成员" });
-      for (const n of names) {
-        if (!query || n.toLowerCase().indexOf(query) === 0) cands.push({ token: n, label: n });
-      }
-      if (!cands.length) { closeMention(); return; }
+      // 候选没变就不重建：每敲一个字符都重建 DOM，光标位置和滚动条会跟着跳。
+      const sig = query + "|" + cands.map((c) => c.token).join(",");
+      const wasOpen = pop.style.display === "block";
       mentionItems = cands;
-      mentionActive = 0;
+      if (sig !== mentionSig) {
+        mentionSig = sig;
+        mentionActive = 0;
+      } else if (!wasOpen) {
+        mentionActive = 0;
+      } else {
+        return; // 同一份候选、已经是打开的：什么都不用做
+      }
       renderMention(pop);
       const rect = input.getBoundingClientRect();
       pop.style.display = "block";
-      pop.style.left = Math.max(8, rect.left) + "px";
+      pop.style.left =
+        Math.max(8, Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8)) + "px";
       pop.style.bottom = (window.innerHeight - rect.top + 8) + "px";
+    }
+    function mentionAvatarEl(item) {
+      // @everyone 没有「哪一个人」的头像可给，给全员图标；不要拿首字母假装是一个人。
+      if (!item || !item.info) {
+        const all = document.createElement("span");
+        all.className = "msg-grok-avatar mention-av";
+        all.setAttribute("aria-hidden", "true");
+        all.innerHTML =
+          '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true" focusable="false">' +
+          '<circle cx="9.5" cy="8" r="3"/><circle cx="17" cy="9.2" r="2.3"/>' +
+          '<path d="M3.2 18.6c0-2.7 2.8-4.9 6.3-4.9s6.3 2.2 6.3 4.9z"/>' +
+          '<path d="M15.6 18.6c0-1.7-.6-3.1-1.7-4.1 .7-.2 1.5-.3 2.3-.3 2.9 0 5.3 1.8 5.3 4.4z"/>' +
+          "</svg>";
+        return all;
+      }
+      // 复用消息头的头像（同一套调色板 / 同一套品牌字形），只是缩小到列表尺寸。
+      const av = botAvatarEl(item.info);
+      av.classList.add("mention-av");
+      av.setAttribute("aria-hidden", "true");
+      return av;
     }
     function renderMention(pop) {
       pop.innerHTML = "";
+      // 候选在 .mention-list 里滚，提示行在它外面 —— 两件事互不遮挡。
+      const list = document.createElement("div");
+      list.className = "mention-list";
+      list.setAttribute("role", "presentation");
       mentionItems.forEach((item, i) => {
         const el = document.createElement("div");
         el.className = "mention-item" + (i === mentionActive ? " active" : "");
+        el.id = "mention-opt-" + i;
         el.setAttribute("role", "option");
+        el.setAttribute("aria-selected", i === mentionActive ? "true" : "false");
+        el.appendChild(mentionAvatarEl(item));
         const at = document.createElement("span");
         at.className = "m-at";
         at.textContent = "@";
         const tx = document.createElement("span");
+        tx.className = "m-name";
         tx.textContent = item.label;
         el.appendChild(at);
         el.appendChild(tx);
+        if (item.meta) {
+          const meta = document.createElement("span");
+          meta.className = "m-meta";
+          meta.textContent = item.meta;
+          el.appendChild(meta);
+        }
         el.addEventListener("mousedown", (ev) => { ev.preventDefault(); commitMentionAt(i); });
-        pop.appendChild(el);
+        list.appendChild(el);
       });
+      pop.appendChild(list);
+      const hint = document.createElement("div");
+      hint.className = "mention-hint";
+      hint.innerHTML =
+        "<span><kbd>↑</kbd> <kbd>↓</kbd> " + wavegT("mentionHintMove") + "</span>" +
+        "<span><kbd>Enter</kbd> " + wavegT("mentionHintInsert") + "</span>" +
+        "<span><kbd>Esc</kbd> " + wavegT("mentionHintClose") + "</span>";
+      pop.appendChild(hint);
+      // 选中项必须看得见：候选多到滚动时，看不见的「已选中」等于没选中。
+      const activeEl = list.querySelector(".mention-item.active");
+      if (activeEl && typeof activeEl.scrollIntoView === "function") {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+      if (mentionActive >= 0) input.setAttribute("aria-activedescendant", "mention-opt-" + mentionActive);
     }
     function moveMention(d) {
       if (!mentionItems.length) return;
@@ -18228,6 +19724,57 @@
     const addAttachBtn = document.getElementById("add-attachment-btn");
     if (addAttachBtn) addAttachBtn.addEventListener("click", pickAttachmentsViaDialog);
 
+    /* 截图：Host 先把自己的窗口藏起来再抓屏（不然抓到的第一屏就是这个应用），
+       回来的 PNG 走和附件同一条 staging 通道 —— 数量、大小、真图片头都在 Host
+       那边判，这里不自己放行。Esc 取消是正常路径：什么都不说。 */
+    const shotBtn = document.getElementById("shot-btn");
+    const shotMoreBtn = document.getElementById("shot-more-btn");
+    const shotScreenBtn = document.getElementById("shot-screen-btn");
+    let shotBusy = false;
+    async function grabScreenshot(mode) {
+      if (shotBusy) return;
+      if (!window.bitbot || !window.bitbot.screenshot) return;
+      shotBusy = true;
+      if (shotBtn) {
+        shotBtn.classList.add("is-busy");
+        shotBtn.setAttribute("aria-busy", "true");
+      }
+      try {
+        const r = await window.bitbot.screenshot.capture({
+          existing: pendingAttachments.length,
+          mode: mode === "screen" ? "screen" : "region",
+        });
+        // Host 回来的是 paths 数组（和 attachments.stage 同一个返回形状）——
+        // 别只读 r.path，那样会「成功但什么都不发生」，最难查。
+        const got = r && Array.isArray(r.paths) ? r.paths : [];
+        if (r && r.ok && got.length) {
+          pendingAttachments = pendingAttachments.concat(got);
+          renderAttachmentStrip();
+          await primeAttachmentPreviews(got);
+          renderAttachmentStrip();
+          input.focus();
+        } else if (r && r.canceled) {
+          /* 用户按了 Esc / 没框选：这不是错误，别拿气泡打扰他 */
+        } else if (r && (r.code || r.error)) {
+          const why = String(r.code || r.error || "");
+          let msg;
+          if (why.startsWith("too_many")) msg = wavegT("attachTooMany");
+          else if (why === "screen_permission_denied") msg = wavegT("shotNoPermission");
+          else msg = wavegT("shotFailed").replace("{why}", why);
+          addMsg("assistant", msg);
+        }
+      } finally {
+        shotBusy = false;
+        if (shotBtn) {
+          shotBtn.classList.remove("is-busy");
+          shotBtn.removeAttribute("aria-busy");
+        }
+      }
+    }
+    if (shotBtn) shotBtn.addEventListener("click", () => grabScreenshot("region"));
+    if (shotMoreBtn) shotMoreBtn.addEventListener("click", () => grabScreenshot("region"));
+    if (shotScreenBtn) shotScreenBtn.addEventListener("click", () => grabScreenshot("screen"));
+
     // GP-11: paste a file (screenshot) or drag files onto the composer.
     // webUtils.getPathForFile resolves the real disk path; the SAME Host
     // validator (≤6 / 25MB / 200MB) gates these channels — a clipboard blob
@@ -18271,7 +19818,8 @@
       if (!menuEl) return;
       const v = input.value;
       const slash = v.match(/^\/([^\s]*)$/);
-      const at = v.match(/(^|\s)@([^\s@]*)$/);
+      // `@` 不再在这里：提及浮层只有 #mention-pop 一处（那边有 ↑↓/Enter/Esc
+      // 和成员头像）。两个浮层同时认 @ 只会互相盖住，且各有一套手感。
       if (slash) {
         if (!skillsCache && window.bitbot && window.bitbot.skills) {
           skillsCache = await window.bitbot.skills.list();
@@ -18360,6 +19908,40 @@
     // Voice input → WAV → Host voice chain; transcript lands in composer for edit (GP-15).
     let mediaRec = null;
     let recChunks = [];
+    /* 麦克风失败的真实成因有三类，提示必须能指路，不能只丢一个错误名
+       （原来只打「麦克风被拒绝: NotAllowedError」，用户无从下手）：
+         · TCC 没授权 / 被点过「不允许」→ 去系统设置勾选，然后重开应用；
+         · 没有输入设备 → 说设备，别说「被拒绝」；
+         · 被别的程序占用（会议 / 录音）→ 让用户关掉那个程序。 */
+    const MIC_SETTINGS_PATH = "系统设置 → 隐私与安全性 → 麦克风";
+    function micStatusAdvice(status, errName) {
+      const st = String(status || "");
+      const nm = String(errName || "");
+      if (st === "denied" || st === "restricted") {
+        return "麦克风没有授权。到「" + MIC_SETTINGS_PATH + "」里勾上 Bit Bot，然后重开应用。";
+      }
+      if (nm === "NotFoundError" || nm === "OverconstrainedError") {
+        return "没找到可用的麦克风，接一个输入设备再试。";
+      }
+      if (nm === "NotReadableError" || nm === "TrackStartError") {
+        return "麦克风被别的程序占着（会议或录音软件），关掉它再试。";
+      }
+      if (st === "granted") {
+        return "系统已授权但仍打不开麦克风，重开应用后再试一次。";
+      }
+      return "麦克风打不开（" + (nm || st || "unknown") + "）。到「" + MIC_SETTINGS_PATH + "」确认已勾上 Bit Bot。";
+    }
+    /* 先问宿主 TCC 的真实状态：not-determined 时宿主会弹系统授权框，
+       已经是 denied 就不再白问一次（问了也不会弹）。 */
+    async function micPreflight() {
+      try {
+        if (!window.bitbot || !window.bitbot.media) return { status: "", ok: true };
+        const r = await window.bitbot.media.mic();
+        return { status: (r && r.status) || "", ok: !!(r && r.ok) };
+      } catch (_) {
+        return { status: "", ok: true };
+      }
+    }
     async function startVoiceInput() {
       if (mediaRec && mediaRec.state === "recording") {
         if (voiceBtn) voiceBtn.classList.remove("recording");
@@ -18368,6 +19950,11 @@
       }
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         addMsg("assistant", "语音输入不可用：无麦克风 API（residual，不伪造转写）");
+        return;
+      }
+      const pre = await micPreflight();
+      if (pre.status === "denied" || pre.status === "restricted") {
+        addMsg("assistant", micStatusAdvice(pre.status));
         return;
       }
       try {
@@ -18405,7 +19992,7 @@
         if (voiceBtn) voiceBtn.classList.add("recording");
         addMsg("assistant", wavegT("voiceRecHint"));
       } catch (e) {
-        addMsg("assistant", "麦克风被拒绝: " + (e && e.name));
+        addMsg("assistant", micStatusAdvice(pre.status, e && e.name));
       }
     }
     const voiceBtn = document.getElementById("voice-btn");
@@ -18493,8 +20080,11 @@
       voiceChatStartedAt = Date.now();
       voiceChatMicNote = "";
       // Best-effort real mic capture; sandbox without an input device stays honest.
+      const preVc = await micPreflight();
       try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        if (preVc.status === "denied" || preVc.status === "restricted") {
+          voiceChatMicNote = micStatusAdvice(preVc.status);
+        } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           voiceChatChunks = [];
           voiceChatRec = new MediaRecorder(stream);
@@ -18507,7 +20097,7 @@
           voiceChatMicNote = wavegT("vcNoMic");
         }
       } catch (e) {
-        voiceChatMicNote = wavegT("vcMicDenied") + (e && e.name ? " (" + e.name + ")" : "");
+        voiceChatMicNote = micStatusAdvice(preVc.status, e && e.name);
       }
       setVoiceChatUi(true);
       syncVoiceChatAvailability();

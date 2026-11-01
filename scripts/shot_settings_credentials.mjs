@@ -118,7 +118,7 @@ console.log(JSON.stringify(facts, null, 2));
 /* 自证的最后一环：形状不对就非零退出，别把「拍到了」当成「拍对了」 */
 const problems = [];
 if (facts.visibleTab !== "credentials") problems.push("截图不在凭证页签：" + facts.visibleTab);
-if (facts.zones.length !== 4) problems.push("分区卡数量 " + facts.zones.length + " ≠ 4");
+if (facts.zones.length !== 2) problems.push("分区卡数量 " + facts.zones.length + " ≠ 2（必填 / 选填）");
 if (facts.foldOpen) problems.push("折叠默认是开的");
 if (facts.foldHiddenControls !== 3) problems.push("折叠里应有 3 个输入，实测 " + facts.foldHiddenControls);
 if (facts.footPosition !== "sticky") problems.push("保存条不是 sticky：" + facts.footPosition);
@@ -153,7 +153,7 @@ await win.click('#settings-tabs .settings-tab-btn[data-stab="credentials"]');
 await win.waitForTimeout(800);
 await win.locator("#settings-panel .bb-sheet").screenshot({ path: OUT_DARK });
 console.log("shot: " + OUT + "\nshot: " + OUT_DARK);
-console.log(problems.length ? "FAIL: " + problems.join(" ; ") : "PASS: 形状自证 9 条全过（页签/4 卡/折叠默认收+3 栏在内/点得开/sticky/诊断行留空/指示器有尺寸/无横向溢出）");
+console.log(problems.length ? "FAIL: " + problems.join(" ; ") : "PASS: 形状自证 9 条全过（页签/2 卡/折叠默认收+3 栏在内/点得开/sticky/诊断行留空/指示器有尺寸/无横向溢出）");
 
 await app.close().catch(() => {});
 fs.rmSync(ud, { recursive: true, force: true });

@@ -139,7 +139,9 @@ async function schedule(id, cron, prompt, roomId) {
 
   /* T7 形状纪律：不往行里塞新字段 */
   const keys = Object.keys(rowOf("gp163-eve") || {}).sort();
-  const allowed = ["cron", "enabled", "id", "last_fired_at", "lifecycle", "next_due", "once_done", "prompt", "room_id", "schedule_error", "updated_at"];
+  // auto_execute：GP-? 加的「这条到点会不会自己跑」，属既有行字段（不在本门禁
+  // 的评审范围内）。此前缺这一项导致 T7 一直红，是白名单漏更新，不是形状被破。
+  const allowed = ["cron", "enabled", "id", "last_fired_at", "lifecycle", "next_due", "once_done", "prompt", "room_id", "schedule_error", "updated_at", "auto_execute"];
   const extra = keys.filter((k) => allowed.indexOf(k) < 0);
   extra.length === 0
     ? ok("T7 行形状没被扩容（本群这条行的键：" + keys.join(", ") + "）")
