@@ -110,8 +110,8 @@ if (/aria-label="新对话"/.test(html)) {
 }
 
 /* ---------- 8) settings-tab label map ---------- */
-if (/general:\s*"常规"[\s\S]{0,200}computer:\s*"电脑"[\s\S]{0,200}credentials:\s*"凭证"/.test(html)) {
-  ok("settings-tab 动态标签 map 已中文化（常规 / 电脑 / 凭证）");
+if (/general:\s*"常规"[\s\S]{0,200}computer:\s*"电脑"[\s\S]{0,200}credentials:\s*"凭证"[\s\S]{0,200}phone:\s*"手机"/.test(html)) {
+  ok("settings-tab 动态标签 map 已中文化（常规 / 电脑 / 凭证 / 手机）");
 } else {
   bad("settings-tab map", "still English");
 }

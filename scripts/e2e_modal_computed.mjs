@@ -215,11 +215,11 @@ async function shutdown(app) {
           tc.nav.background === "rgba(0, 0, 0, 0)" && tc.nav.borderWidth === "0px";
         navOk ? ok(`settings: nav is a transparent column (gap ${tc.nav.gap}, padding ${tc.nav.padding})`)
           : bad("settings: nav chrome drifted", JSON.stringify(tc.nav));
-        const tabsOk = tc.tabs.length === 5 && tc.tabs.every((t) =>
+        const tabsOk = tc.tabs.length === 6 && tc.tabs.every((t) =>
           t.display === "flex" && t.width > 0 && t.height > 0 && t.fontSize === "14px" &&
           t.borderRadius === "999px" && t.padding === "9px 12px" &&
           t.iconContent === '""' && t.iconW === "17px" && t.iconH === "17px");
-        tabsOk ? ok("settings: 5 tab rows share one 14px/pill skin with 17px icon masks")
+        tabsOk ? ok("settings: 6 tab rows share one 14px/pill skin with 17px icon masks")
           : bad("settings: tab skin drifted", JSON.stringify(tc.tabs.map((t) => [t.stab, t.fontSize, t.borderRadius, t.padding, t.iconW, t.width])));
         const act = tc.tabs.find((t) => t.active);
         act && act.background !== "rgba(0, 0, 0, 0)" && act.background !== tc.tabs.find((t) => !t.active).background

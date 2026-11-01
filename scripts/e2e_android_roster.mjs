@@ -384,12 +384,12 @@ let app = null;
       }
     }
 
-    /* ---------- AR-09/AR-10 手机配对：地址与令牌必须在凭证这一屏拿得到 ---------- *
+    /* ---------- AR-09/AR-10 手机配对：地址与令牌必须在手机这一屏拿得到 ---------- *
      * 手机连桌面大脑缺两样东西就走不通：一个它敲得到的地址，和那台的配对令牌。
      * 以前这两样只在 README 里（BITBOT_BIND_LAN 是环境变量，令牌躺在磁盘上）。
-     * 这里按用户的手顺验：设置 → 凭证 → 看见状态与掩码令牌 → 点「显示配对令牌」
-     * → 点「允许手机连接」→ 用界面上给出的局域网地址真打一发 /v1/turn →
-     * 关掉开关后同一个地址再也连不上。
+     * GP-189 起配对从「凭证」搬到独立「手机」页签（用户手顺：设置 → 手机 →
+     * 看见状态与掩码令牌 → 点「显示配对令牌」→ 点「允许手机连接」→ 用界面上
+     * 给出的局域网地址真打一发 /v1/turn → 关掉开关后同一个地址再也连不上。
      */
     {
       const tokenFile = path.join(root, "data", "host", "turn-token");
@@ -401,7 +401,7 @@ let app = null;
       await win.waitForSelector("#ap-settings", { state: "visible", timeout: 8000 });
       await win.click("#ap-settings");
       await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
-      await win.click('.settings-tab-btn[data-stab="credentials"]');
+      await win.click('.settings-tab-btn[data-stab="phone"]');
       await win.waitForTimeout(600);
 
       const view = await win.evaluate(() => {
@@ -430,7 +430,7 @@ let app = null;
       });
       const st0 = await win.evaluate(() => window.bitbot.pairing.state());
 
-      if (!view.line) bad("AR-09 凭证页没有手机配对这一行");
+      if (!view.line) bad("AR-09 手机页没有手机配对这一行");
       else if (
         !/读取中|失败/.test(view.line) &&
         st0 &&
@@ -438,7 +438,7 @@ let app = null;
         view.line.indexOf("http://") >= 0 &&
         view.line.indexOf(":" + st0.port) > 0
       ) {
-        ok("AR-09 凭证页给得出真实配对地址（端口从运行时来，不写死）");
+        ok("AR-09 手机页给得出真实配对地址（端口从运行时来，不写死）");
       } else {
         bad("AR-09 配对地址没如实显示", JSON.stringify({ line: view.line, port: st0 && st0.port }));
       }
@@ -489,6 +489,13 @@ let app = null;
         ok("AR-09 令牌默认只给掩码（原文要点「显示」）");
       }
 
+      // GP-189：令牌兜底收进 <details id="phone-adv"> 折叠区；点「显示配对令牌」前先展开，
+      // 否则按钮在折叠态零尺寸，Playwright 点不动（getElementById 读得到、click 却超时）。
+      await win.evaluate(() => {
+        const adv = document.getElementById("phone-adv");
+        if (adv && !adv.open) adv.open = true;
+      });
+      await win.waitForTimeout(150);
       await win.click("#pairing-token-btn");
       await win.waitForTimeout(400);
       const revealed = await win.evaluate(() => {
@@ -629,7 +636,7 @@ let app = null;
      * pair_code 与界面显示一致。作废后界面不再显示码、pair_code 为空。
      */
     {
-      // We should already be on the credentials tab from AR-09..11.
+      // We should already be on the phone tab from AR-09..11.
       // If not, navigate there.
       const settingsVisible = await win.evaluate(() => {
         const panel = document.getElementById("settings-panel");
@@ -640,12 +647,12 @@ let app = null;
         await win.waitForSelector("#ap-settings", { state: "visible", timeout: 8000 });
         await win.click("#ap-settings");
         await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
-        await win.click('.settings-tab-btn[data-stab="credentials"]');
+        await win.click('.settings-tab-btn[data-stab="phone"]');
         await win.waitForTimeout(600);
       }
 
       // AR-16: click "生成配对码" → 6 digits + countdown appear, pairingState.pair_code matches.
-      const genBtn = await win.waitForSelector("#pairing-gen-btn", { state: "visible", timeout: 8000 });
+      const genBtn = await win.waitForSelector("#st-phone #pairing-gen-btn", { state: "visible", timeout: 8000 });
       await genBtn.click();
       await win.waitForTimeout(800);
 

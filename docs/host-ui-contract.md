@@ -94,6 +94,10 @@ grokbot://app/v1/settings?id=<anchor>
 
 `local-execution`, `computers`, `update-computer`, `reset-computer`
 
+#### Phone
+
+`pairing`
+
 #### Usage & Billing
 
 `usage`, `plan`, `cancel-trial`, `on-demand`, `billing`
@@ -114,6 +118,7 @@ grokbot://app/v1/settings?id=<anchor>
 | `reset-computer` | 快照恢复；可能丢未同步工作；**助手不主动首选**（优先 `update-computer`） |
 | `update-channel` | 应用自身 Stable/Nightly（**≠** `update-computer`） |
 | `local-execution` | 本机执行总开关；关则 machineId 调用被拒（CM-1905） |
+| `pairing` | 手机配对（GP-189）：6 位配对码 + 「允许手机连接」开关在 **Phone** 页；`base_url` 只在同网段可达时才是可用地址，跨网段/公网要如实提示（ADR 0008） |
 
 ### 2.4 Kernel 契约类型（草图）
 
@@ -122,6 +127,7 @@ enum SettingsTab {
   General
   Computer
   Vault
+  Phone
   UsageBilling
   Updates
 }
@@ -134,6 +140,8 @@ enum SettingsAnchor {
   AutoReview; AutoReviewRules; SecurityKeys
   // Computer
   LocalExecution; Computers; UpdateComputer; ResetComputer
+  // Phone
+  Pairing
   // Usage & Billing
   Usage; Plan; CancelTrial; OnDemand; Billing
   // Updates

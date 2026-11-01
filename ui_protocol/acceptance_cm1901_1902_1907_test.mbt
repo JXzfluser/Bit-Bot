@@ -68,8 +68,8 @@ test "acceptance_CM-1901_settings_entry_closed_set" {
 test "acceptance_CM-1902_settings_anchor_deeplink_bijection" {
   let all = @ui_protocol.settings_anchors_closed_set()
   // Expected closed-set size from host-ui-contract.md §2.2:
-  // General 15 + Computer 4 + Usage&Billing 5 + Updates 3 = 27
-  assert_eq(all.length(), 27)
+  // General 15 + Computer 4 + Phone 1 + Usage&Billing 5 + Updates 3 = 28
+  assert_eq(all.length(), 28)
   let mut i = 0
   while i < all.length() {
     let a = all[i]
@@ -121,6 +121,12 @@ test "acceptance_CM-1902_settings_anchor_deeplink_bijection" {
     @ui_protocol.SettingsAnchor::UpdateChannel.tab(),
     @ui_protocol.SettingsTab::Updates,
   )
+  // GP-189: 配对有自己的页签，深链不再寄在「凭证」下。
+  assert_eq(
+    @ui_protocol.SettingsAnchor::Pairing.tab(),
+    @ui_protocol.SettingsTab::Phone,
+  )
+  assert_eq(@ui_protocol.SettingsTab::Phone.label(), "Phone")
 }
 
 ///|

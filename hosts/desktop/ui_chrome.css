@@ -1457,6 +1457,9 @@ body.grok-ui .settings-tab-btn[data-stab="computer"] {
 body.grok-ui .settings-tab-btn[data-stab="credentials"] {
   --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4'/%3E%3C/svg%3E");
 }
+body.grok-ui .settings-tab-btn[data-stab="phone"] {
+  --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='2' width='14' height='20' rx='2' ry='2'/%3E%3Cline x1='12' y1='18' x2='12.01' y2='18'/%3E%3C/svg%3E");
+}
 body.grok-ui .settings-tab-btn[data-stab="usage"] {
   --g-ic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='20' x2='18' y2='10'/%3E%3Cline x1='12' y1='20' x2='12' y2='4'/%3E%3Cline x1='6' y1='20' x2='6' y2='14'/%3E%3C/svg%3E");
 }
@@ -1714,6 +1717,42 @@ body.grok-ui .st-foot-status {
   min-width: 0;
   color: var(--g-sub);
   font: var(--text-sm)/1.5 var(--font-mono);
+}
+
+/* -- 手机页（GP-189）----------------------------------------------------
+   配对以前是「三行只读文本 + 四颗粒色一样的按钮」，读不出先后；现在按 1/2/3 排，
+   序号本身就是「先做哪个」的答案。这里只补结构原语，色值全部走已有令牌（M-1 棘轮）。 */
+body.grok-ui .st-step { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; }
+body.grok-ui .st-step-no {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--g-ink);
+  border-radius: 999px;
+  color: var(--g-ink);
+  font: var(--text-xs)/20px var(--font-mono);
+  text-align: center;
+}
+body.grok-ui .st-step-body { flex: 1 1 auto; min-width: 0; }
+body.grok-ui .st-step-name { color: var(--g-ink); font-size: var(--text-sm); font-weight: 600; }
+body.grok-ui .st-step-desc {
+  margin-top: 2px;
+  color: var(--g-sub);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+/* 「一定要在同一个局域网吗」：能用 / 看网络 / 本版不支持 —— 三种情况各给一行，
+   不写「可能」这种让人自己猜的词。 */
+body.grok-ui .st-scope { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 10px; }
+body.grok-ui .st-scope-yes { flex: 0 0 auto; color: var(--g-ink); font-weight: 600; }
+body.grok-ui .st-scope-warn,
+body.grok-ui .st-scope-no { flex: 0 0 auto; color: var(--g-sub); font-weight: 600; }
+body.grok-ui .st-scope-desc {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: var(--g-sub);
+  font-size: var(--text-xs);
+  line-height: 1.5;
 }
 
 /* 国内渠道 block inside connect-apps sheet: quiet section, not a hero card */
