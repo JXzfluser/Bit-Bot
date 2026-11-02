@@ -176,6 +176,21 @@ object TurnBridge {
     }
   }
 
+  /**
+   * 手机这一回合落在哪个会话里 —— **POST 的 body 与 SSE 订阅必须用同一个值**。
+   *
+   * 规则与服务端默认一致（`cn_inbound_server.js:902-903`：
+   * `sessionId = payload.session_id || ` + "`mobile-${machineKind}`" + `），
+   * 因为服务端事件流按 `?session_id=` 过滤（`cn_inbound_server.js:1069-1072` →
+   * `event_log.js:233` 那条 SQL）：订的会话与回合落的会话不是同一个，
+   * 手机就**一条帧都收不到**（不是少几条）。
+   *
+   * 这一行是本轮修掉的真 bug：回合 body 一直写死 `android-app`，而订阅写的是
+   * `mobile-android`，两者从来没对上过 —— 结构门与旧 fixture 把帧的会话写成测试自己的常量，
+   * 于是「两条路径各用一个字符串」被撑绿。红原文见 report.md §8.63.10。
+   */
+  fun sessionFor(machineKind: String): String = "mobile-" + machineKind
+
   fun runTurn(text: String, machineKind: String = "android"): String {
     val hostUrl = hostUrl()
     if (hostUrl != null) {
@@ -292,7 +307,7 @@ object TurnBridge {
       JSONObject()
         .put("text", text)
         .put("machine_kind", machineKind)
-        .put("session_id", "android-app")
+        .put("session_id", sessionFor(machineKind))
         .toString()
     val conn = (url.openConnection() as HttpURLConnection).apply {
       requestMethod = "POST"
@@ -324,7 +339,7 @@ object TurnBridge {
         "--machine-kind",
         machineKind,
         "--session-id",
-        "android-app",
+        sessionFor(machineKind),
         text,
       )
     pb.directory(File(repoRoot))

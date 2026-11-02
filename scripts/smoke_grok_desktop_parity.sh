@@ -2022,8 +2022,8 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     grep -q "AB-16 回合不再归某一屏管" /tmp/g47-build.log \
       && ok "G-47 还在路上的回信不跟着上一屏死：协程挪到进程级 TurnCoordinator（SupervisorJob + Main.immediate）、busy/delivery 由那一层管、落盘后 revision++ 让屏幕重读文件、转屏回来补问权限、发送走 submitTurn，5 条用例（TF-01..05）在结果里、AB-16 带七组负向对照" \
       || bad "G-47 AB-16 anchor missing"
-    grep -q "AB-06 JVM 单测真跑：157 用例 0 失败" /tmp/g47-build.log \
-      && ok "G-47 用例数如实涨到 157（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流解析与三语文案 +31），且 0 失败不是空跑" \
+    grep -q "AB-06 JVM 单测真跑：167 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 167（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流解析 15 + 三语文案 16 + 渲染级接线 10），且 0 失败不是空跑" \
       || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
   fi
 else
@@ -3348,7 +3348,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   echo "    ② /v1/turn 回执里的 host_results 不含 AgentLoop 内 dispatch 的工具效果（本门看到 effects:0 而流里有 tool_activity），"
   echo "    属既有响应体口径，按铁律没动，登记在 cross-end-roadmap-a.md；"
   echo "    ③ 跨设备的授权边界（谁能订哪个 session）没做，那是 W3「账号=设备」的活；"
-  echo "    ④ 真机（Kotlin/Swift 客户端）侧的可见性：客户端接线由 G-77（AE-01..AE-15 结构门 + 157 条 JVM 单测）证到"
+  echo "    ④ 真机（Kotlin/Swift 客户端）侧的可见性：客户端接线由 G-77（AE-01..AE-16 结构门 + 166 条 JVM 单测，其中 9 条是渲染级：帧进 Compose 树、屏幕上有字）证到"
   echo "    「代码在渲染路径上、订阅被回合生命周期驱动、断线边界正确」为止，本门只证服务端到 SSE 帧为止；"
   echo "    手上没有真机（本机无 KVM），「用户真能在手机上看见」仍未被设备级证据确认 —— 见 cross-end-roadmap-a.md R-A1-4b。"
 else
@@ -3381,9 +3381,9 @@ else
   echo "  · skip：本机没有 moon 内核，G-76 的两段真回合断言跑不了（SKIP ≠ PASS）"
 fi
 
-echo "== G-77 A1-4 手机端事件流接线（结构门 AE-01..AE-15 + 12 把注入对照 + 157 条 JVM 单测）=="
+echo "== G-77 A1-4 手机端事件流接线（结构门 AE-01..AE-17 + 15 把注入对照 + 167 条 JVM 单测）=="
 if timeout 300 node scripts/prove_android_event_stream.mjs > /tmp/g77-android-sse.log 2>&1 \
-   && grep -q "^prove_android_event_stream: PASS=27 FAIL=0$" /tmp/g77-android-sse.log; then
+   && grep -q "^prove_android_event_stream: PASS=32 FAIL=0$" /tmp/g77-android-sse.log; then
   ok "G-77 Android 事件流结构门全绿（$(tail -1 /tmp/g77-android-sse.log)）"
   grep -q "AE-08 订阅被回合生命周期驱动" /tmp/g77-android-sse.log \
     && grep -q "AE-09 进度真的走到界面" /tmp/g77-android-sse.log \
@@ -3392,9 +3392,9 @@ if timeout 300 node scripts/prove_android_event_stream.mjs > /tmp/g77-android-ss
     && ok "G-77 三条命门都在，且都有牙：订阅真的被 submitTurn 发起/finally 关掉（删掉唯一调用点就翻红）、进度真的传到 ProgressRow（断链就翻红）、close 不拖界面线程（回到在调用线程上关 reader 就翻红）" \
     || bad "G-77 AE-08/AE-09/AE-13 或注入对照锚点缺失（这条门可能是摆设）"
   g77_inj=$(grep -c "注入对照有牙" /tmp/g77-android-sse.log)
-  [ "$g77_inj" -ge 12 ] \
+  [ "$g77_inj" -ge 15 ] \
     && ok "G-77 注入对照 $g77_inj 把全部有效（每把都是「改坏副本 → 用同一判据重跑」，不是字符串自证）" \
-    || bad "G-77 注入对照只有 $g77_inj 把（应 ≥ 12；恒真对照比没对照更危险）"
+    || bad "G-77 注入对照只有 $g77_inj 把（应 ≥ 15；恒真对照比没对照更危险）"
   echo "  · G-77 上一版门是坏的（本轮实测，不是风格不满）：把 TurnCoordinator 里唯一的"
   echo "    startEventStreamSubscription(machineKind) 调用点删干净、只留方法定义，旧门仍输出"
   echo "    prove_android_event_stream: PASS=12 FAIL=0 —— 而「代码写了但界面上碰不到」正是这门存在的唯一理由。"
@@ -3404,7 +3404,7 @@ if timeout 300 node scripts/prove_android_event_stream.mjs > /tmp/g77-android-ss
   echo "    修法是载入时统一剥注释（过时注释同样能把真 bug 撑绿），不是给判据开例外。"
   echo "    AE-09 {\"onCreatePasses\":false} —— 判据把传参钉在 onCreate 体内，实际在 private fun HomeShell() 里；"
   echo "    改成「谁调用 HomeScreen(，谁的函数体里必须同时有数据源和那条传参」，两把注入都能打回红。"
-  echo "  · G-77 端上真跑的单测：$(grep -o 'AB-06 JVM 单测真跑：[0-9]* 用例 0 失败' /tmp/g47-build.log | tail -1)（本轮 157，A1-4 新增 EventStreamClientTest 15 + EventStreamMessagesTest 16；旧版那条恒真「解析测试」已删）"
+  echo "  · G-77 端上真跑的单测：$(grep -o 'AB-06 JVM 单测真跑：[0-9]* 用例 0 失败' /tmp/g47-build.log | tail -1)（本轮 167，A1-4 新增 EventStreamClientTest 15 + EventStreamMessagesTest 16 + EventStreamUiWiringTest 10；旧版那条恒真「解析测试」已删）"
   echo "  · G-77 修复的产品病（都是真机上会踩的）：① progressUpdate 收 String、coordinator 用 optString(\"row\")"
   echo "    ⇒ 手机上直接把 JSON 吐给用户；② currentLocale 从没被赋值 ⇒ zh-TW/en 文案是死代码，非简体设备上界面仍是简体；"
   echo "    ③ 我在 lifecycle 回调（界面线程）里 reader?.close()，与阻塞中的 SSE readLine() 抢 BufferedReader 读锁 —— "
@@ -3412,6 +3412,34 @@ if timeout 300 node scripts/prove_android_event_stream.mjs > /tmp/g77-android-ss
   echo "    / TurnCoordinator.stopEventStreamSubscription(TurnCoordinator.kt:248) / MainActivity.onCreate\$lambda\$4(MainActivity.kt:266)；"
   echo "    现改为只置标志 + 摘引用，拆解交守护线程，另加一条真 ServerSocket 的「close 不许阻塞调用线程」用例；"
   echo "    ④ 发送前 awaitStreamReady(3000) 把发送拖住 3 秒（连不上时更久）⇒ 已删等待，代价记为 R-A1-4a（极快回合可能少首帧）。"
+  echo "  · G-77 本轮新加的是「帧 → 那一屏」的渲染级证据：EventStreamUiWiringTest 9 条 Robolectric 用例（ES-01..ES-08），"
+  echo "    假桌面按服务端逐字形状（id:/event:/data:{seq,sessionId,turnId,kind,payload}）写真 SSE 帧，"
+  echo "    再断 Compose 语义树上有那行字：简体「正在执行工具调用」、计数「1/7」、繁体「正在執行工具呼叫」、英文"
+  echo "    「Running a tool」各说各的话；回合首尾两行都在；带 session_id=mobile-android；回合后 liveSse==0；"
+  echo "    连发 12 帧不丢；503 时回退提示上屏。"
+  echo "    单变量回退（唯一改动 = 删 MainActivity HomeShell() 里的 progressLines = progressLines,）真实红原文："
+  echo "    tests=\"9\" failures=\"5\"，dump 为 progressLines=[回合开始（由 android 发起）, 1/7 正在执行工具调用] busy=true"
+  echo "    假桌面=POST回合=1 SSE连接=1 在线=1 自身故障=无 —— 状态机里有、屏幕上没有；复原后 failures=\"0\"。"
+  echo "    结构门同步 AE-16 + INJ-AE_16：把渲染级用例里「屏幕上要有那一行」的断言换成只读内部状态，AE-16 翻红"
+  echo "    （PASS=27 → PASS=29，注入 12 → 13 把）。"
+  echo "  · G-77 本轮两条「红是自己的错」都留了原文，且都按改强不改松处理：① Robolectric 默认 locale=en-US，"
+  echo "    界面是 Running a tool 而我硬期望简体 → 显式钉 locale 并把三语各渲染各的变成断言；② 我的 fixture 帧外壳"
+  echo "    写成顶层 turn_id/row，客户端读的是 data.turnId/data.payload → 照 sendEv 重写 frame()，教训写进代码注释。"
+  echo "  · G-77 连发 12 帧那条是绿的 ⇒ 今天只有一条写线程，丢更新未被复现；不声称已修，登记为 R-A1-4c。"
+  echo "  · G-77 本轮又照出一条真 bug（AE-17 + ES-09）：**回合落的会话与订阅的会话从来不是同一个** —— "
+  echo "    TurnBridge 的 POST body 写死 session_id=android-app，订阅按服务端默认规则算出 mobile-android，"
+  echo "    而服务端事件流是按会话过滤的（cn_inbound_server.js:1069-1072 → event_log.js:233 那条 SQL），"
+  echo "    后果不是「少几帧」而是**一条都收不到**：手机发得出回合、进度那一屏永远是空的。"
+  echo "    为什么上一版没照出来：fixture 把帧的 sessionId 写成测试自己的常量，等于把「回合落哪个会话」和"
+  echo "    「订哪个会话」糊成同一件事 —— fixture 撑绿真 bug。修法是把假桌面改成照服务端推会话，红原文："
+  echo "    tests=\"9\" failures=\"6\"（BUILD FAILED in 2m 21s），dump 一律是 progressLines=[] 假桌面=POST回合=1 "
+  echo "    SSE连接=1 在线=1 本轮会话=android-app 订阅会话=mobile-android 被滤掉的帧=4 自身故障=无"
+  echo "    （连发那条 被滤掉的帧=13）。修法是两边同源：TurnBridge.sessionFor(machineKind) 一处定义，"
+  echo "    POST body、dev runner、订阅都走它；修后 tests=\"10\" failures=\"0\"、全量 167/0、门 32/0。"
+  echo "    这条用例自己也有牙：把 TurnBridge 那一行退回写死的 android-app（其余不动）单跑渲染级 → "
+  echo "    tests=\"10\" failures=\"7\"，dump 回合=android-app 订阅=mobile-android 被滤掉的帧=4；复原后 167/0。"
+  echo "    门的 brittle 也留原文：AE-12 原本钉字面量 \"mobile-\"，产品换成函数后它红了 —— 改钉「值从哪来」，"
+  echo "    INJ-AE_17 / INJ-AE_17b 两把注入仍能分别把「写死」与「两边各算一遍」打回红。"
   echo "  · G-77 残留（诚实）：这门只读 Kotlin 源码结构，不跑 Android 逻辑；本机无 KVM/真机，"
   echo "    「用户在真手机上能否看见进度」仍未被设备级证据确认（R-A1-4b）；W3 账号=设备未做，"
   echo "    sessionId 仍是 mobile-<machineKind> 约定值而非真账号会话。"

@@ -4769,12 +4769,15 @@ Failed to assert the following: (is enabled)
 
 - `scripts/e2e_remote_progress_stream.mjs`：头注释的验收清单补第 6 条（连续第二轮），RP-09 落地，
   聚合门 **G-75** 判据由 `PASS=8` 改 `PASS=9`，并新增 RP-09 锚点组与红/绿原文各一段。
-- **新增 G-77**：跑 `prove_android_event_stream`（要求恰好 `PASS=27 FAIL=0`）+ 注入把数 ≥ 12 的棘轮
+- **新增 G-77**：跑 `prove_android_event_stream`（要求恰好 `PASS=32 FAIL=0`）+ 注入把数 ≥ 15 的棘轮
   + 「三条命门都在且都有牙」锚点，echo 里留旧门 `PASS=12 FAIL=0` 的证伪原文、两条假红的成因、
-  jstack 死锁栈与 R-A1-4a/R-A1-4b 残留。
-- `prove_android_build.mjs` AB-06 棘轮 126 → **157**（本轮新增 `EventStreamClientTest` 15 +
-  `EventStreamMessagesTest` 16），矩阵 **G-47** 锚点同步。
-- 端上单测：**157 tests / 0 failures / 0 skipped**（18 个类，`--rerun-tasks` 真跑）。
+  jstack 死锁栈与 R-A1-4a/R-A1-4b 残留。（结构门初版收口时是 `PASS=27 FAIL=0` + 12 把注入；
+  §8.63.9 补渲染级证据推到 29/13；§8.63.10 那条「回合与订阅不同源」的真 bug 再加 AE-17 与两把注入，
+  推到 **32/15**。）
+- `prove_android_build.mjs` AB-06 棘轮 126 → **167**（`EventStreamClientTest` 15 +
+  `EventStreamMessagesTest` 16 + `EventStreamUiWiringTest` 10），矩阵 **G-47** 锚点同步。
+- 端上单测：**167 tests / 0 failures / 0 skipped**（19 个类，`--rerun-tasks` 真跑；
+  会话 bug 修前那一跑是 166，ES-09 是第 167 条）。
 
 ### 8.63.8 诚实残留（这一刀没关掉的）
 
@@ -4785,9 +4788,125 @@ Failed to assert the following: (is enabled)
   十几秒里至少看到三次进度更新且措辞与桌面一致；② 中途锁屏 30 秒再回来，进度接着出且不重复；
   ③ 回合结束等 10 秒再发第二条，第二轮**不得**先出现第一轮的行（这就是 RP-09 在真机上的对应物）；
   ④ 系统语言切繁体/英文，进度行与回退提示要跟着变；⑤ 关掉桌面端事件双写，手机要显示回退提示而不是空屏。
+- **R-A1-4c**：SSE 回调不在主线程，而它读-改-写 Compose 状态（`progressLines`、`lastStreamSeq`）。
+  今天实测只有一条写线程，ES-08（一回合连发 12 帧）因此是绿的 —— 我**不把它当成已修复**，
+  因为窗口仍在：`ON_STOP` 关线与上一轮未关严的订阅并发、`ON_START` 带游标续订与新一轮 `submitTurn`
+  并发时，会出现两个 writer。真机上若出现「进度行少一条/顺序乱」，先查这里。
 - **非中/英 locale 归一到 `en`**：进度文案会说英文，而 app 其余界面仍是硬编码简体 —— 混搭比全简体更刺眼，
   但把它改回去就等于承认三语没接上；已留在 A1-4 的真机验收清单里一起判。
 - **iOS 侧仍是 stub**；`TurnBridge.kt` 与 `/v1/turn` 形状全程未动（铁律，RP-07 反向钉）。
 - **W3 全部未做**：`redeem` 不登记公钥、`deviceStore` 只在启动 `loadDevices()` 一次、
   手机侧不会签名（`signTurn` 只有 `scripts/approve.js:81` 一个调用者）、`:854` 那颗地雷的范围
   本轮已从「下不了单」扩到「连自己下的单也看不见」。
+
+### 8.63.9 渲染级：从「代码接上了」到「屏幕上真有那行字」
+
+结构门能证明 `submitTurn` 里调了订阅、`HomeShell()` 里传了参，但按本简报的唯一口径，
+这仍然只是「代码写了」。**用户在手机上看见的那一屏才算数**，所以补了一份 Robolectric 渲染级
+用例 `hosts/android/BitBotHost/app/src/test/java/com/bitbot/host/EventStreamUiWiringTest.kt`
+（9 条，ES-01..ES-08）：本地起一个真 `ServerSocket`，按服务端逐字形状写 SSE 帧外壳
+（`id:` / `event:` / `data:{"seq","sessionId","turnId","kind","payload","actor","ts"}`，
+取自 `cn_inbound_server.js:1043-1064`），走真 `EventStreamClient` → `TurnCoordinator` →
+`HomeScreen` 渲染，再用 Compose 语义树断言**屏幕上有没有那行字**。断言面：
+
+- ES-01/02/03 简体「正在执行工具调用」、繁体「正在執行工具呼叫」、英文 `Running a tool`
+  —— 同一批帧在三档 locale 下各说各的话（这条钉的是三语真接上系统 locale，不是只改了字符串层）；
+- ES-04 计数 `1/7 正在执行工具调用`；ES-05 回合首尾两行（`回合开始…` / `回合完成`）；
+- ES-06 订阅 URL 带 `session_id=mobile-android`；ES-07 回合结束后 `sseConnections == 0`；
+- ES-08 一回合内连发 12 帧不许丢；另加 503 时回退提示上屏一条。
+
+**真实红原文（单变量回退，唯一改动 = 删 `MainActivity.kt:395` 的 `progressLines = progressLines,`）**：
+`tests="9" failures="5" skipped="0"`，`BUILD FAILED in 1m 59s`，逐条断言文案为
+
+```
+AssertionError: 帧必须真的变成屏幕上的一行（红 = 手机是一张空屏）；
+  progressLines=[回合开始（由 android 发起）] busy=true 假桌面=POST回合=1 SSE连接=1 在线=1 自身故障=无
+AssertionError: 手机要像桌面一样说「1/7 正在执行工具调用」，光秃秃一行没有进度感；
+  progressLines=[回合开始（由 android 发起）, 1/7 正在执行工具调用] 假桌面=POST回合=1 SSE连接=1 在线=1 自身故障=无
+AssertionError: 同一批帧在英文设备上必须渲染英文文案；
+  progressLines=[Turn started (initiated by android)] …
+AssertionError: 同一批帧在繁体设备上必须渲染繁体文案…；
+  progressLines=[回合開始（由 android 發起）] …
+AssertionError: turn_started 要上屏；progressLines=[回合开始（由 android 发起）] …
+```
+
+第 2 条最能说明这门为什么必须存在：**`progressLines` 里明明有 `1/7 正在执行工具调用`，屏幕上没有**
+—— 状态机通着、连接通着（`SSE连接=1 在线=1`）、假桌面也收到了回合，唯独差最后一步传参。
+复原该行后 `tests="9" failures="0" skipped="0"`，全量 166 条 0 失败。
+
+结构门同步加 **AE-16**（读 `EventStreamUiWiringTest.kt` 本体，要求它真的有「发帧 → 断言上屏」的形状：
+真发消息、断言屏幕文本、断言计数、断言三语、断言回退、断言带会话、断言关线、断言帧数），
+并配 **INJ-AE_16** 把那条屏幕断言换成只读内部状态 `TurnCoordinator.progressLines.isNotEmpty()`
+（正是「结构在、证据没了」的形状）→ AE-16 翻红。门从 `PASS=27 FAIL=0` 推到 **`PASS=29 FAIL=0`**，
+注入 12 → **13 把**，全部逐条有效。
+
+本轮另外两条「红是我自己的错」也留原文，并按 §8.63.4 的口径处理（改强不改松）：
+
+1. 第一跑 4 红里有一条是 `progressLines=[Turn started, Running a tool, Running a tool, Turn ended] … 在线=0`
+   —— Robolectric 默认 locale 是 `en-US`，界面说的是英文，我在用例里硬期望简体。
+   修法是**在用例里显式钉 locale**，并把「三语各渲染各的」本身变成断言（ES-01/02/03），
+   而不是放宽期望。教训：环境默认值也是一种隐式输入，钉住它才能可重复。
+2. 第二跑剩 2 红 —— 我的 fixture 把帧外壳写成顶层 `turn_id` / `row`，而客户端读的是
+   `data.turnId` / `data.payload`（`EventStreamClient.parseEvent`）。照 `frame()` 的服务端形状重写后 9/9 绿。
+   与 §8.63.5「把 `ui/` 文件复制到错目录」是同一类错：**fixture 必须逐字照被测协议，不能凭印象**。
+
+**没有假绿**：ES-08（连发 12 帧不丢）今天**是绿的** —— 当前只有一条写线程，读-改-写丢更新未被复现，
+所以我不声称修了它，只登记为 R-A1-4c（已登记在 §8.63.8）。
+
+
+### 8.63.10 渲染级 fixture 一老实，就照出一条真 bug：回合与订阅根本不在同一个会话里
+
+上面 §8.63.9 补完渲染级用例后，我把假桌面里帧的 `sessionId` 写成测试自己的常量
+（`SESSION = "mobile-android"`）。这看着只是 fixture 偷懒，实际是把两件不同的事糊成了一件：
+**回合落在哪个会话**由 POST body 决定，**手机订哪个会话**由订阅代码决定 —— 而服务端的事件流是
+按会话过滤的（`cn_inbound_server.js:1069-1072` → `event_log.js:233` 那条 SQL）。
+于是只要两边不是同一个值，手机就是**一条帧都收不到**，不是少几条。
+
+把 fixture 改成照服务端规则推会话（从 POST body 取 `session_id`，缺省再算 `mobile-<machineKind>`；
+按订阅的 `?session_id=` 过滤；被滤掉的帧计数），单跑渲染级那一类，真实红：
+
+```
+tests="9" failures="6" / BUILD FAILED in 2m 21s
+AssertionError: 帧必须真的变成屏幕上的一行（红 = 手机是一张空屏）；
+  progressLines=[] busy=true 假桌面=POST回合=1 SSE连接=1 在线=1
+  本轮会话=android-app 订阅会话=mobile-android 被滤掉的帧=4 自身故障=无
+AssertionError: 手机要像桌面一样说「1/7 正在执行工具调用」，光秃秃一行没有进度感；
+  progressLines=[] … 本轮会话=android-app 订阅会话=mobile-android 被滤掉的帧=4 …
+AssertionError: 同一批帧在繁体设备上必须渲染繁体文案…；progressLines=[] … 被滤掉的帧=4 …
+AssertionError: 同一批帧在英文设备上必须渲染英文文案；progressLines=[] … 被滤掉的帧=4 …
+AssertionError: turn_started 要上屏；progressLines=[] … 被滤掉的帧=4 …
+AssertionError: 12 帧必须一条不丢；实际收到=[] … 被滤掉的帧=13 …
+```
+
+病在两端各写各的：`TurnBridge.runTurnHttp` 的 body 一直是 `.put("session_id", "android-app")`
+（本地 dev runner 那条路也写死同一个串），而 `TurnCoordinator.startEventStreamSubscription`
+按服务端默认规则另算 `"mobile-" + machineKind`。这条 bug 的形态正好是本简报要抓的那种：
+**每一段代码单看都「接好了」，线路两端却对不上，用户那边的表现是「进度永远不出现」**。
+结构门 AE-12 当时只钉「订阅侧有没有按同规则算会话名」，回合侧那个写死的串不在它的视野里；
+渲染级用例又因 fixture 自己写死会话而看不见 —— 两层各自少一半，合起来就成了绿灯。
+
+修法不是「把两个串改一样」，而是**只允许有一个来源**：`TurnBridge.sessionFor(machineKind)`
+一处定义 `mobile-<machineKind>`，POST body、dev runner 的 `--session-id`、订阅的 `session_id`
+全部走它（`TurnBridge.kt:192/310/342`、`TurnCoordinator.kt:192`）。同源之后由构造保证，
+不靠注释提醒。修后 `tests="10" failures="0"`（新增 ES-09 专门比这两个值），
+全量 **167 tests / 0 failures / 0 skipped**，结构门 **`PASS=32 FAIL=0`**（AE-17 + 15 把注入）。
+
+这条红再验一次「用例自己有没有牙」：把 `TurnBridge` 那一行退回写死的 `android-app`
+（其余一字不动）单跑渲染级那一类 → `tests="10" failures="7"`，ES-09 的 dump 为
+`POST 的 session_id 与订阅的 session_id 必须是同一个值…；回合=android-app 订阅=mobile-android
+假桌面=POST回合=1 SSE连接=1 在线=1 本轮会话=android-app 订阅会话=mobile-android 被滤掉的帧=4 自身故障=无`；
+复原后 `167/0`。
+
+门的 brittle 也留原文：产品换成函数之后，**AE-12 红了** —— 它原来钉的是字面量 `"mobile-"`
+出现在订阅那个函数体里。那不是我想要的判据（钉「字面长在哪一行」），而是又一次
+「门把自己的假设当产品事实」。改法是钉**值的来源**：订阅必须调用 `TurnBridge.sessionFor(machineKind)`，
+且 `sessionFor` 必须真的算出 `mobile-<machineKind>`；两把注入 `INJ-AE_17`（回合侧退回写死的
+`android-app`）与 `INJ-AE_17b`（订阅侧自己再算一遍、两边「碰巧」相同但没有同源约束）都能打回红。
+这与 §8.63.4 是同一个口径：**门报错时先问它钉的是不是产品事实，是就改产品，不是就把钉法换强。**
+
+诚实残留：**R-A1-4d** —— 回合会话名从 `android-app` 归一到 `mobile-android` 是一侧的**取值**变化
+（字段与形状一字未动，`TurnBridgeTest` 里那个 `android-app` 是服务端**回包** fixture，没被牵连）。
+旧事件行仍在盘上、不删不改；但手机上「按会话翻历史」这件事在切换点会分两段：
+切换前的历史挂在 `android-app` 下，之后的行挂在 `mobile-android` 下。真机验收时如果发现
+用户需要连着看旧的那一段，那是 W3（账号=设备、会话由服务端回包真值决定）要一并处理的事，
+本轮不假装它不存在，也不为了好看去迁移动画或改历史。

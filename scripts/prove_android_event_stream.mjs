@@ -46,6 +46,15 @@
  *   AE-13 close() 不许拖住调用线程（真机上是界面线程；实测过 BufferedReader 读锁死锁）
  *   AE-14 SSE 解析器必须被单测真的执行到（不许再写「构造一个对象再断言它等于自己」）
  *   AE-15 /v1/turn 的请求形状未被触碰（只加可选订阅，不加字段）
+ *   AE-17 回合落的会话与订阅的会话必须**同源**（本轮修掉的真 bug：回合写死 android-app、
+ *        订阅另算 mobile-android ⇒ 服务端按会话过滤后手机一条帧都收不到）；
+ *   AE-16 渲染级用例真的把「帧 → 屏幕那一行」钉住：真点发送、屏幕上要有进度行/计数/三语/回退提示、
+ *        带 session_id、回合结束真的观察到关线、假桌面必须真往流里写帧（不许再写死字符串自证）
+ *   注：AE-12 原本把会话名钉在字面量 `"mobile-"` 上，产品换成 sessionFor(...) 后它红了 ——
+ *        那是门的 brittle（钉「字面量长在哪行」），不是产品的红。改钉「值从哪来」：
+ *        订阅必须用 TurnBridge.sessionFor(machineKind)，且那个函数必须真的算出 mobile-<kind>。
+ *        同族问题与上面的 AE-09 一样按「改强不改松」处理，INJ-AE_17b 仍能把「两边各自再算一遍」打红。
+ *
  *   INJ-xx 注入对照：把某条改动从**副本**里拿掉，同一个判据必须翻红；
  *          翻不了红就说明那条判据是摆设，本门直接判它红。
  *
@@ -74,6 +83,7 @@ const FILES = {
   bridge: H + "/TurnBridge.kt",
   clientTest: T + "/EventStreamClientTest.kt",
   messagesTest: T + "/EventStreamMessagesTest.kt",
+  esuiTest: T + "/EventStreamUiWiringTest.kt",
 };
 
 /* ------------------------------------------------------------------ 工具 */
@@ -394,8 +404,14 @@ const CHECKS = {
     const connect = funBody(S.client, "connectAndRead");
     const start = funBody(S.coordinator, "startEventStreamSubscription");
     return need(
-      connect.includes("session_id=") && connect.includes("URLEncoder.encode(") && start.includes('"mobile-"') && start.includes("machineKind"),
-      "订阅必须带 ?session_id=，且会话名要与服务端默认 mobile-<machineKind> 同规则",
+      connect.includes("session_id=") &&
+        connect.includes("URLEncoder.encode(") &&
+        // 会话名必须跟着 machineKind 走，且来源与回合那侧是同一个（AE-17）。
+        // 上一版这里钉的是字面量 `"mobile-"`，于是「换成一个函数」会被判红 ——
+        // 那是门的 brittle，不是产品的红。改钉**值从哪来**，不钉它长在哪一行。
+        start.includes("TurnBridge.sessionFor(machineKind)") &&
+        /fun\s+sessionFor\(machineKind: String\)\s*:\s*String\s*=\s*"mobile-"\s*\+\s*machineKind/.test(S.bridge),
+      "订阅必须带 ?session_id=，且会话名要与服务端默认 mobile-<machineKind> 同规则（同一条规则由 TurnBridge.sessionFor 提供）",
     );
   },
 
@@ -421,12 +437,67 @@ const CHECKS = {
     );
   },
 
+  /* 本轮修掉的真 bug：回合落的会话与订阅的会话必须**同一个来源**。
+   * 服务端事件流按 ?session_id= 过滤（cn_inbound_server.js:1069-1072 → event_log.js:233），
+   * 两边不是同一个值时手机不是「少几帧」而是**一条都收不到**。
+   * 上一版为什么没照出来：回合 body 写死 android-app，订阅另算一个 mobile-android，
+   * 而 fixture 把帧的 sessionId 写成测试自己的常量 —— 两边被 fixture 糊成了一边。 */
+  AE_17: (S) => {
+    const b = S.bridge,
+      c = S.coordinator,
+      t = S.esuiTest || "";
+    const hits = {
+      // 单一来源：sessionFor 必须真的按 machineKind 算（写死一个常量等于回到原病）
+      helper: /fun\s+sessionFor\(machineKind: String\)\s*:\s*String\s*=\s*"mobile-"\s*\+\s*machineKind/.test(b),
+      // POST body 不许再写死会话名
+      postUsesHelper: b.includes('.put("session_id", sessionFor(machineKind))') && !b.includes('.put("session_id", "android-app")'),
+      // dev runner 那条路也必须同一个来源（否则本地跑通、真机跑不通）
+      runnerUsesHelper: /"--session-id",\s+sessionFor\(machineKind\)/.test(b.replace(/\s+/g, " ")),
+      // 订阅侧必须引用同一个函数，而不是自己再算一遍
+      subUsesHelper: c.includes("TurnBridge.sessionFor(machineKind)"),
+      // 而且要有用例真的比较过两边（fixture 自己按服务端规则推会话，不许再写死）
+      testCompares: t.includes("server.turnSession()") && t.includes("server.sseRequestedSession") && t.includes("filteredFrames"),
+      fixtureDerivesSession: t.includes('optString("session_id")') && t.includes("frameSessionId"),
+    };
+    return need(
+      Object.values(hits).every(Boolean),
+      "回合会话与订阅会话必须同源且被用例真的比过 —— " + JSON.stringify(hits),
+    );
+  },
+
   /* 铁律：不碰既有 /v1/turn 的形状。 */
   AE_15: (S) => {
     const b = S.bridge;
     return need(
       b.includes("runTurnHttp") && /POST/.test(b) && b.includes("turnEndpoint") && !b.includes("/v1/events"),
       "TurnBridge 必须还是那条 POST /v1/turn 的老路，订阅不许长在它身上",
+    );
+  },
+
+  /* 渲染级证据必须在：不许再出现「结构门全绿但没人证明帧上过屏」。
+   * 本轮之前仓里 157 条用例没有一条读过 sseConnections，也没有一条断言屏幕上有进度行。 */
+  AE_16: (S) => {
+    const t = S.esuiTest;
+    if (!t) return need(false, "EventStreamUiWiringTest.kt 不存在 —— 帧到屏幕这一寸又没有证据了");
+    const hits = {
+      // 真发一次合（点发送键），而不是直接调用私有方法
+      realSend: /sendButtonMatcher\(\)/.test(t) && t.includes("performClick()"),
+      onScreen: t.includes("fetchSemanticsNodes()") && /screenHas\(PROGRESS_ZH\)/.test(t),
+      counter: /screenHas\("1\/7 \$PROGRESS_ZH"\)/.test(t),
+      // 三语各渲染各的：这条钉的是「locale 接进了渲染结果」，不只是字符串层有分支
+      triLocale: t.includes("PROGRESS_ZH_TW") && t.includes("PROGRESS_EN") && t.includes('locale = "zh-TW"') && t.includes('locale = "en"'),
+      // 拿不到流也不能是空屏
+      fallbackOnScreen: /screenHas\("实时进度暂时不可用"\)/.test(t),
+      // 会话边界与关连接都要有真断言
+      session: t.includes("session_id=mobile-android"),
+      closed: /liveSse\.get\(\) == 0/.test(t),
+      // 假桌面必须真往流里写帧（写死字符串的「解析测试」就是上一版的病）
+      pushesFrames: /text\/event-stream/.test(t) && /frame\(/.test(t),
+    };
+    return need(
+      Object.values(hits).every(Boolean),
+      "渲染级用例必须齐：真点发送 + 屏幕上要有进度行/计数/三语/回退提示 + 带 session_id + 回合结束真的关线 + 假桌面真写帧 —— " +
+        JSON.stringify(hits),
     );
   },
 };
@@ -517,6 +588,30 @@ const INJECTIONS = [
       );
     },
   },
+  {
+    id: "INJ-AE_16",
+    check: "AE_16",
+    what: "把渲染级用例里「屏幕上要有那一行」的断言换成只读内部状态（结构在、证据没了）",
+    mutate: (F) => {
+      F.esuiTest = F.esuiTest.replace("awaitReal { screenHas(PROGRESS_ZH) }", "awaitReal { TurnCoordinator.progressLines.isNotEmpty() }");
+    },
+  },
+  {
+    id: "INJ-AE_17",
+    check: "AE_17",
+    what: "把回合 body 的会话名退回写死的 android-app（订阅仍是 mobile-android ⇒ 手机一条帧都收不到）",
+    mutate: (F) => {
+      F.bridge = F.bridge.replace('.put("session_id", sessionFor(machineKind))', '.put("session_id", "android-app")');
+    },
+  },
+  {
+    id: "INJ-AE_17b",
+    check: "AE_17",
+    what: "订阅侧自己再算一遍会话名（两边「碰巧」相同，但没有同源约束）",
+    mutate: (F) => {
+      F.coordinator = F.coordinator.replace("TurnBridge.sessionFor(machineKind)", '"mobile-" + machineKind');
+    },
+  },
 ];
 
 /* --------------------------------------------------------------- 执行器 */
@@ -568,6 +663,8 @@ const TITLE = {
   AE_13: "close() 不在调用线程上拆 socket（界面线程不许被读锁拖住）",
   AE_14: "SSE 解析器被单测真的执行（含真 socket 关闭不阻塞用例）",
   AE_15: "/v1/turn 请求形状未被触碰",
+  AE_17: "回合落的会话与订阅的会话同源，且被渲染级用例真的比过",
+  AE_16: "渲染级用例真的证明帧上屏（进度行/计数/三语/回退/关线/带会话）",
 };
 
 let PASS = 0;

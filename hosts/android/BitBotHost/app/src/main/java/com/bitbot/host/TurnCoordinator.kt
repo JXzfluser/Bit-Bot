@@ -187,7 +187,9 @@ object TurnCoordinator {
     // 不会把桌面上别人（或本机 UI）的进度串进来。服务端过滤已由 RP-06 钉住。
     // 代价/残留：这里靠「与服务端默认同规则」推导，没读 /v1/turn 回包里的 session_id；
     // 以后若允许 payload 指定会话（W3），这里必须改成用回包真值。
-    val sessionId = "mobile-" + machineKind
+    // 本轮修的是：回合 body 那边原本写死 android-app，与这里对不上 ⇒ 手机一条帧都收不到。
+    // 现在两边共用 TurnBridge.sessionFor(...)，「同一个会话」由构造保证而不是靠注释提醒。
+    val sessionId = TurnBridge.sessionFor(machineKind)
 
     val callback = object : EventStreamClient.SubscriptionCallback {
       override fun onStateChange(state: EventStreamClient.SubscriptionState, reason: String?) {

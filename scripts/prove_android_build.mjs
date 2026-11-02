@@ -12,8 +12,8 @@
  *          —— 缺声明时框架抛 SecurityException，点「扫描」是崩而不是「没找到桌面」
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 157（防止 test 任务空转假绿；157 = 原 126 + 本轮 A1-4 新增的
- *         EventStreamClientTest 15 条 + EventStreamMessagesTest 16 条 —— 这条是棘轮，用例只准涨不准掉）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 167（防止 test 任务空转假绿；167 = 原 126 + A1-4 客户端 15 +
+ *         三语文案 16 + 渲染级接线 10 —— 这条是棘轮，用例只准涨不准掉）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -262,7 +262,7 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 157) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 167) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
