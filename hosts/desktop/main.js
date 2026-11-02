@@ -21,6 +21,16 @@ const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
 
+// A1-2 桥：回合广播 → 持久化事件（docs/events.md §5.2）。布局安全 require：
+// 开发态 ../shared/，Box 平铺包 ./shared/（与 event_mirror_ref 同一条手法）。
+const turnEvents = (() => {
+  try {
+    return require("../shared/turn_event_emitter");
+  } catch (_devMiss) {
+    return require("./shared/turn_event_emitter");
+  }
+})();
+
 // GP-A1: 应用名必须在 app ready **之前** 设定。
 // macOS 的菜单栏第一项（以及「关于本应用」「退出 Bit Bot」等条目）读的是
 // 进程启动时就定下的 app.name，等到 whenReady 之后再 setName() 已经晚了 ——
@@ -269,6 +279,12 @@ const DATA_ROOT = resolveDataRoot({
  *  instead of throwing on a null path; source-only helpers (`scripts/*.sh`)
  *  then report "missing" on their own instead of crashing the host. */
 const REPO_ROOT = SRC_ROOT || (DATA_ROOT ? path.dirname(DATA_ROOT) : null);
+
+// A1-2：与 sessions.js / product_surface.js 共用同一个 dataRoot 的镜像句柄，
+// 这样回合事件落进的库，正是 A1-1 路由（createCnInboundServer 的 eventLog）读的那份。
+// 关默认（BITBOT_EVENT_DUAL_WRITE / BITBOT_EVENT_ONLY 都没开）时这个句柄不开库、
+// emit 全是 no-op，路由继续诚实 503、零足迹。
+const turnMirror = turnEvents.getMirror(DATA_ROOT);
 
 if (!SRC_ROOT && !KERNEL_BIN) {
   // Honest failure: neither a checkout to run `moon` from nor a bundled
@@ -3657,6 +3673,14 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     });
     releaseActiveTurnCancel = releaseCancel;
     const hostTurnId = "desktop-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
+    // A1-2：回合开始 → 落 turn_started（回合流事件，由手机端 SSE 直接消费）。
+    try {
+      turnEvents.emitTurnStarted(turnMirror, {
+        sessionId,
+        turnId: hostTurnId,
+        initiator: sessionId + ":user:desktop",
+      });
+    } catch (_) { /* 回合事件绝不影响回合本身 */ }
     const result = await runner.runTurn(String(text || ""), {
       sessionId,
       machineId: resolveMachineId({ kind: "desktop" }),
@@ -3684,6 +3708,10 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
         });
         progressRows.push(row);
         broadcast("bitbot:turn-progress", row);
+        // A1-2：进度行 → 落 progress（回合流事件，手机端 SSE 实时看见进度）。
+        try {
+          turnEvents.emitProgress(turnMirror, { sessionId, turnId: hostTurnId, row });
+        } catch (_) { /* 回合事件绝不影响回合本身 */ }
       },
       // Kernel AgentLoop lines, forwarded as AgentStep. The renderer only
       // displays them. This handler does not call the model again.
@@ -3836,6 +3864,14 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       session_id: sessionId,
       ok: Boolean(result && result.ok),
     });
+    // A1-2：回合结束 → 落 turn_ended（回合流事件，手机端据此收尾）。
+    try {
+      turnEvents.emitTurnEnded(turnMirror, {
+        sessionId,
+        turnId: hostTurnId,
+        status: result && result.ok ? "ok" : "error",
+      });
+    } catch (_) { /* 回合事件绝不影响回合本身 */ }
     return result;
   } finally {
     finishLiveLoopApproval("deny");
@@ -4131,6 +4167,15 @@ async function ensureCnInbound() {
           (channel === "android" || channel === "ios" ? channel : "desktop");
         const sessionId =
           (meta && meta.session_id) || `cn-${channel}`;
+        const hostTurnId = "desktop-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
+        // A1-2：手机/网页发起的回合 → 同样落 turn_started（回合流事件）。
+        try {
+          turnEvents.emitTurnStarted(turnMirror, {
+            sessionId,
+            turnId: hostTurnId,
+            initiator: sessionId + ":user:" + (channel || "desktop"),
+          });
+        } catch (_) { /* 回合事件绝不影响回合本身 */ }
         broadcast("bitbot:llm-stream", {
           phase: "start",
           session_id: sessionId,
@@ -4143,6 +4188,7 @@ async function ensureCnInbound() {
           machineId: resolveMachineId({ kind: machineKind }),
           machineKind,
           channel: channel === "android" || channel === "ios" ? "" : channel,
+          turnId: hostTurnId,
           approved: false,
         });
         broadcast("bitbot:llm-stream", {
@@ -4150,8 +4196,20 @@ async function ensureCnInbound() {
           session_id: sessionId,
           ok: Boolean(result && result.ok),
         });
+        // A1-2：回合结束 → 落 turn_ended（手机端据此收尾）。
+        try {
+          turnEvents.emitTurnEnded(turnMirror, {
+            sessionId,
+            turnId: hostTurnId,
+            status: result && result.ok ? "ok" : "error",
+          });
+        } catch (_) { /* 回合事件绝不影响回合本身 */ }
         return result;
       },
+      // A1-2 接线片：把桌面进程手里的镜像读句柄喂给 A1-1 路由，让 SSE 流读得到
+      // 真实事件库（之前这里没传 → 路由一直诚实 503）。关默认开关时 readHandle()
+      // 返回 null，路由继续 503、零足迹。
+      eventLog: turnMirror.readHandle(),
     });
   }
   return cnInbound.start();

@@ -3266,6 +3266,35 @@ else
   echo "  · skip：本机 node 没有 node:sqlite，G-73 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-74 事件面最小集（路线 A · W2 / A1-2 · turn_started/progress/turn_ended 带 seq，且 A1-1 路由不再 503）=="
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 120 node scripts/prove_cn_turn_events.js > /tmp/g74-cn-turn.log 2>&1; then
+    ok "G-74 回合事件桥全绿（$(grep -c '^ok ' /tmp/g74-cn-turn.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g74-cn-turn.log)）"
+  else
+    bad "G-74 回合事件桥（见 /tmp/g74-cn-turn.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g74-cn-turn.log || tail -2 /tmp/g74-cn-turn.log | head -1)）"
+  fi
+  grep -q '^ok EV-1' /tmp/g74-cn-turn.log \
+    && grep -q '^ok EV-2' /tmp/g74-cn-turn.log \
+    && grep -q '^ok EV-3' /tmp/g74-cn-turn.log \
+    && grep -q '^ok EV-4' /tmp/g74-cn-turn.log \
+    && grep -q '^ok EV-5' /tmp/g74-cn-turn.log \
+    && grep -q '^ok EV-6' /tmp/g74-cn-turn.log \
+    && grep -q '^ok EV-7' /tmp/g74-cn-turn.log \
+    && grep -q '^ok EV-8' /tmp/g74-cn-turn.log \
+    && ok "G-74 八条命门都在：桥存在 / 镜像带 emit / 日志含 turn_started·progress·turn_ended / seq 递增 / 路由读到句柄→200 且流出 turn_started" \
+    || bad "G-74 EV-1..EV-8 锚点缺失（桥或路由接线没被断言到）"
+  echo "  · G-74 修复前红（桥未实现，真实输出）：PASS=0 FAIL=8 —— turn_event_emitter 模块缺失、mirror.emit /"
+  echo "    mirror.readHandle 都不存在，路由拿不到库继续 503；八条断言全红。"
+  echo "  · G-74 修复后绿：PASS=8 FAIL=0 —— 新增 hosts/shared/turn_event_emitter.js（桥），event_mirror 句柄加 emit /"
+  echo "    readHandle；main.js 在 bitbot:llm-stream（phase=start/end）与 onProgress 三处落 turn_started/progress/turn_ended，"
+  echo "    并把镜像读句柄喂给 createCnInboundServer 的 eventLog —— A1-1 路由从「没库」变「读得到真库」。"
+  echo "  · G-74 残留（诚实）：默认关（BITBOT_EVENT_DUAL_WRITE / BITBOT_EVENT_ONLY 都没开）时桥是 no-op、连库都不开，"
+  echo "    路由继续诚实 503、零足迹 —— 这是「开关默认关」的铁律，不是缺陷。端上消费（Android/iOS 只读 SSE 订阅 + 进度 UI）"
+  echo "    是 A1-4 的活，本门只证明事件真的落库且路由能读出来。"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-74 未跑（SKIP ≠ PASS）"
+fi
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

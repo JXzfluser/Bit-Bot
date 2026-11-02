@@ -70,7 +70,7 @@ W1 的收口判据（本轮实测）：全量矩阵从 `PASS=478 FAIL=19` → `4
 | 片 | 内容 | 约束 |
 |---|---|---|
 | A1-1 | 服务端 `GET /v1/events?from_seq=<n>`（SSE，只读） | 复用 `event_log.readAfter`；**只加路由，不改任何既有响应体**；鉴权沿用当轮所选凭证体系，未鉴权一律 401 | **已交付 · 接矩阵 G-73**，红绿见 `report.md` §8.60；生产路径仍 503（event_mirror 未接进桌面 main.js，见 §8.60.4） |
-| A1-2 | 事件面：`turn_started`/`turn_progress`/`turn_finished` 三类最小集，带 `seq` | 不新造 kind —— 以 `docs/events.md` 已定义的为准；缺就先补契约再补码 |
+| A1-2 | 事件面：`turn_started`/`turn_progress`/`turn_finished` 三类最小集，带 `seq` | 不新造 kind —— 以 `docs/events.md` 已定义的为准；缺就先补契约再补码 | **已交付 · 接矩阵 G-74**，红绿见 `report.md` §8.61。注：按「以 docs/events.md 为准」落的是契约真 kind `turn_started`/`progress`/`turn_ended`（§5.2），未自造 `turn_progress`/`turn_finished`；并顺带把 `event_mirror` 读句柄接进桌面 → A1-1 路由生产路径从 503 变可读 |
 | A1-3 | 断线重连：客户端带 `Last-Event-ID` 续订 | 验收原话「任意 seq 续订事件完整、有序」（AC-T1-9） |
 | A1-4 | 端上消费：Android/iOS 各加一个只读 SSE 订阅，界面显示进度 | 拿不到就退回现有整轮模式，**不许静默丢事件**；每条都写进残留清单 |
 

@@ -437,6 +437,16 @@ function parseJsonl(text) {
  * 刻意不从 JSON 借任何东西：基线是 BASELINE，除此之外只有事件里写的。
  * @returns {{sessions:object, rooms:object, approvals:Array}}
  */
+/* §5.2 回合流 kind：它们是「刚刚发生了什么」的流水，由手机端 SSE 直接消费，
+   不走快照 fold（fold 只重建 sessions/rooms/approvals 三张面）。识别但不折叠，
+   避免被当成「折叠器不认识 kind」的 anomaly 污染读模型。A1-2 把回合事件写入了
+   同一份库，所以必须显式放行，否则开了双写又跑了回合的库一旦被读模型 fold 就红。 */
+const IGNORED_KINDS = new Set([
+  "turn_started", "progress", "turn_ended",
+  "job_started", "job_output", "job_ended",
+  "effect_started", "effect_finished", "presence_changed",
+]);
+
 function foldEvents(rows) {
   const state = {
     sessions: clone(BASELINE.sessions),
@@ -470,6 +480,8 @@ function foldEvents(rows) {
       continue;
     }
     const kind = row.kind;
+    // 回合流事件不进快照 fold：识别但跳过，不当 anomaly（见 IGNORED_KINDS）。
+    if (IGNORED_KINDS.has(kind)) continue;
     if (kind === "session_created") {
       const surface = p.surface === "rooms" ? "rooms" : "sessions";
       const ent = clone(p.session || {});
@@ -702,6 +714,44 @@ function createMirror(opts = {}) {
     if (first) log(`[event-mirror] ${where}：${err && err.message ? err.message : err}（后续同类失败只计数，不再刷屏）`);
   }
 
+  /**
+   * A1-2 桥：把回合生命周期事件（turn_started / progress / turn_ended，docs/events.md §5.2）
+   * 落进同一份事件库。与 commit() 同一条「行为不变」纪律：任何异常都咽下并计数，
+   * 绝不把回合报错带崩主流程。enabled 为 false（默认关，BITBOT_EVENT_DUAL_WRITE /
+   * BITBOT_EVENT_ONLY 都没开）时直接 no-op，连库都不开。
+   */
+  function emit(entry) {
+    if (!enabled) return false;
+    if (!entry || !entry.kind) {
+      noteFailure("emit", new Error("emit: 需要 kind"));
+      return false;
+    }
+    try {
+      const h = handle();
+      if (!h) return false;
+      const res = h.append({
+        sessionId: String(entry.sessionId || "system"),
+        turnId: entry.turnId == null ? undefined : String(entry.turnId),
+        kind: String(entry.kind),
+        payload: entry.payload === undefined ? {} : entry.payload,
+      });
+      if (res.duplicated) stats.duplicated++;
+      stats.emitted++;
+      stats.kinds[entry.kind] = (stats.kinds[entry.kind] || 0) + 1;
+      return true;
+    } catch (err) {
+      noteFailure("emit(" + entry.kind + ")", err);
+      return false;
+    }
+  }
+
+  /** 暴露底层读句柄（懒开），供 A1-1 的 SSE 路由在同一连接上读事件。
+      禁用 / 开库失败 → 返回 null（路由据此诚实 503）。 */
+  function readHandle() {
+    if (!enabled) return null;
+    return handle();
+  }
+
   return {
     enabled,
     file,
@@ -709,6 +759,8 @@ function createMirror(opts = {}) {
     capture,
     commit,
     commitText,
+    emit,
+    readHandle,
     close() {
       if (logHandle) {
         try {
@@ -781,6 +833,12 @@ function createDisabledMirror(dataRoot, env) {
     },
     commit() {
       return false;
+    },
+    emit() {
+      return false;
+    },
+    readHandle() {
+      return null;
     },
     commitText() {
       const err = new Error("commitText: 运行时没有 node:sqlite，EVENT_ONLY 无法落库");

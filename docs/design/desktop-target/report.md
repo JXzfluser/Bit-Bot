@@ -4384,3 +4384,89 @@ SKIP ≠ PASS）；有则用 `PASS=/FAIL=` 汇总行判绿，并钉 EV-1/EV-2/EV
   轮询在 W2 够用；要更实时得等 W3 之后的真单写者（T1-06）。
 - 没起真 Electron 量「SSE 长连接真的被端上读出来」—— 那是 A1-4 的活，A1-1 不假装做过。
 
+## 8.61 路线 A · W2 第二刀：事件面最小集（`turn_started`/`progress`/`turn_ended` 带 seq，A1-2）
+
+验收口径照 `cross-end-roadmap-a.md` W2/A1-2 原话：「以 `docs/events.md` 已定义的为准；缺就先补契约再补码」。
+路线图那一行把三类写作 `turn_started`/`turn_progress`/`turn_finished`，但 `docs/events.md` §5.2 的**契约真源**
+是 `turn_started`/`progress`/`turn_ended`（§8 也把 `bitbot:turn-progress` 映射到 `progress`、`phase=end`
+映射到 `message_committed + turn_ended`）。按路线图「以 docs/events.md 为准」的规矩，本刀落的是**契约里的真 kind**，
+没有自造 `turn_progress`/`turn_finished` —— 否则就是词表分叉。
+
+这一刀同时是 §8.60.4 那条残留（「生产路径仍 503」）的接线片：桌面进程把 `event_mirror` 的读句柄喂给
+`createCnInboundServer` 的 `eventLog`，A1-1 路由从「没库 ⇒ 503」变成「读得到真库 ⇒ 200/SSE」。
+
+新增 `scripts/prove_cn_turn_events.js`（门，接矩阵 **G-74**）。
+
+### 8.61.1 先写红（桥不存在 / 路由 503）
+
+`node scripts/prove_cn_turn_events.js`（修复前，真实输出）：
+
+```
+FAIL EV-1 turn_event_emitter 桥存在且导出 emitTurnStarted 模块缺失（A1-2 桥尚未落地）
+FAIL EV-2 镜像句柄带 emit（回合流落库桥） mirror.emit 不存在
+FAIL EV-3 日志含 turn_started 桥未就绪
+FAIL EV-4 日志含 progress 桥未就绪
+FAIL EV-5 日志含 turn_ended 桥未就绪
+FAIL EV-6 三条事件 seq 严格递增 桥未就绪
+FAIL EV-7 路由读到镜像句柄 → 200（不再 503） mirror.readHandle 不存在（桥未落地）
+FAIL EV-8 流里带 event: turn_started 桥未落地，路由仍 503
+
+prove_cn_turn_events: PASS=0 FAIL=8
+```
+
+红态说明：`turn_event_emitter.js` 不存在、镜像句柄没有 `emit`、没有 `readHandle`，因此回合广播从来没有
+被写成事件、A1-1 路由也拿不到库。这正是 §8.60.4 写下的那条残留。
+
+### 8.61.2 修复
+
+1. `hosts/shared/event_mirror.js`
+   - 镜像句柄新增 `emit(entry)`：回合生命周期事件落同一份库；与 `commit()` 同一条「行为不变」纪律，
+     任何异常都咽下并计数，绝不让回合事件把回合本身带崩；`enabled` 为 false 时 no-op、连库都不开。
+   - 新增 `readHandle()`：懒开并返回底层读句柄，供 A1-1 路由在同一连接上读事件；禁用 / 开库失败返回 `null`。
+   - `foldEvents` 新增 `IGNORED_KINDS`（§5.2 回合流 kind）：**识别但跳过**，不被当成「折叠器不认识 kind」
+     的 anomaly 污染读模型（A1-2 把回合事件写进同一份库，读模型 fold 时必须显式放行）。
+   - 运行时撑不住时的 `createDisabledMirror` 同步补 `emit:()=>false` / `readHandle:()=>null`，接口保持一致。
+2. `hosts/shared/turn_event_emitter.js`（新增）：`getMirror` / `emitTurnStarted` / `emitProgress` / `emitTurnEnded`，
+   按 §5.2 载荷构造（`turn_started`:`{turn_id, initiator}`；`progress`:`{turn_id, row}`；`turn_ended`:`{turn_id, status}`）。
+3. `hosts/desktop/main.js`
+   - 布局安全 require 桥（dev `../shared/`、Box 平铺 `./shared/`）；模块级 `turnMirror = turnEvents.getMirror(DATA_ROOT)`
+     —— 与 `sessions.js`/`product_surface.js` 同一个 `dataRoot`，共享同一句柄、同一份库。
+   - 桌面回合入口：`hostTurnId` 生成后落 `turn_started`；`onProgress` 里落 `progress`；`phase=end` 处落 `turn_ended`。
+   - 手机/网页发起的 `onTurn`：同样生成 `hostTurnId`、落 `turn_started`/`turn_ended`，并把 `turnId` 透传给 `runner.runTurn`。
+   - `createCnInboundServer({ ..., eventLog: turnMirror.readHandle() })`：A1-1 路由拿到真句柄。
+
+### 8.61.3 修复后绿
+
+`node scripts/prove_cn_turn_events.js`（修复后，真实输出）：
+
+```
+ok EV-1 turn_event_emitter 桥存在且导出 emitTurnStarted
+ok EV-2 镜像句柄带 emit（回合流落库桥）
+ok EV-3 日志含 turn_started
+ok EV-4 日志含 progress
+ok EV-5 日志含 turn_ended
+ok EV-6 三条事件 seq 严格递增
+ok EV-7 路由读到镜像句柄 → 200（不再 503）
+ok EV-8 流里带 event: turn_started
+
+prove_cn_turn_events: PASS=8 FAIL=0
+```
+
+回归确认：A1-1 门 `node scripts/prove_cn_events_sse.js` 仍 **PASS=10 FAIL=0**（改 `event_mirror` 没碰路由契约）。
+
+矩阵接 **G-74**：`node -e "require('node:sqlite')"` 探测，没有就 `skip`（与 G-61/62/65/66/73 同口径，
+SKIP ≠ PASS）；有则用 `PASS=/FAIL=` 汇总行判绿，并钉 EV-1..EV-8 八条命门。
+
+### 8.61.4 诚实残留（这一刀没关掉的）
+
+- **默认关时路由仍诚实 503。** 桥与镜像共用 `BITBOT_EVENT_DUAL_WRITE`/`BITBOT_EVENT_ONLY` 开关，
+  默认关 ⇒ `emit` 是 no-op、`readHandle()` 返回 `null` ⇒ 路由 503、零足迹。这是「开关默认关」的铁律，
+  不是缺陷；真要让手机端到端看见，得在部署侧把双写开关打开（A1-4 消费片的运行前提）。
+- **`onTurn`（手机/网页发起）只落 start + end，不落 progress。** 该路径调用 `runner.runTurn` 时没有
+  `onProgress` 回调，内核的进度不走 `bitbot:turn-progress`；桌面本地回合（`bitbot:run-turn`）才有完整三件套。
+  手机发起的回合要看到逐行进度，属 A1-4 端上消费与后续编排，不在本刀范围。
+- **进程内两条并发回合会各落一条 `turn_started`，共享同一进程单写者句柄。** 本刀不证明「同会话单写者」
+  （那是 T1-06）；只在「能落库、能读回、seq 递增」这层立住。
+- 没起真 Electron 跑一整轮再读库 —— 门用「桥 + 镜像句柄 + 路由」在 Node 里把同一段代码证到位；
+  真机端到端（手机订阅并显示进度）是 A1-4 的活，本刀不假装做过。
+
