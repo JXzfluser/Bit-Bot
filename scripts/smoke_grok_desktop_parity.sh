@@ -3240,6 +3240,32 @@ echo "  · G-72 残留（诚实）：这道门兜的是矩阵自己进出的一�
 echo "    kill -9 则连 trap 都没有 —— 那种情况下仍会留脏，需要下次开局读快照才能发现，"
 echo "    而快照在 /tmp（重启即失）。真正把 stub 钉死要在各门里显式 pin provider，已记进 GP-201"
 
+echo "== G-73 跨端事件流 SSE 路由（路线 A · W2 / A1-1 · hosts/shared/cn_inbound_server.js GET /v1/events）=="
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 120 node scripts/prove_cn_events_sse.js > /tmp/g73-cn-events.log 2>&1; then
+    ok "G-73 SSE 事件流路由全绿（$(grep -c '^ok ' /tmp/g73-cn-events.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g73-cn-events.log)）"
+  else
+    bad "G-73 SSE 事件流路由（见 /tmp/g73-cn-events.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g73-cn-events.log || tail -2 /tmp/g73-cn-events.log | head -1)）"
+  fi
+  grep -q '^ok EV-1' /tmp/g73-cn-events.log \
+    && grep -q '^ok EV-2' /tmp/g73-cn-events.log \
+    && grep -q '^ok EV-3' /tmp/g73-cn-events.log \
+    && ok "G-73 三条命门都在：无凭证→401、有凭证+有库→200/SSE/有序seq、无库→诚实503（不假装空流）" \
+    || bad "G-73 EV-1/EV-2/EV-3 锚点缺失（鉴权或降级没被断言到）"
+  echo "  · G-73 修复前红（路由未实现，真实输出）：PASS=1 FAIL=9 —— GET /v1/events 落到"
+  echo "    unknown_cn_inbound_route 404，EV-1/2/3 全红（401/200/503 一个都没达成）；EV-4 在红态下是空过（404"
+  echo "    没有 data: 行，快照为空这个判据被它顺手满足，不算真绿）。"
+  echo "  · G-73 修复后绿：PASS=10 FAIL=0 —— 新增 GET /v1/events（SSE）只加路由不改任何既有响应体；"
+  echo "    复用 event_log.readAfter 做游标；鉴权沿用设备密钥（B-4a），未鉴权一律 401；"
+  echo "    无事件库（双写没开）走诚实 503 event_log_unavailable，不假装空流通过。"
+  echo "  · G-73 残留（诚实）：这条路由在桌面生产路径上仍会 503，因为双写/镜像（event_mirror）"
+  echo "    尚未接进 hosts/desktop/main.js —— 桌面进程里没有可读事件库句柄可注入。要让「手机看得见」"
+  echo "    真的端到端，需要把 event_mirror 的读句柄接到 ensureCnInbound（W2 后续 A1-2/A1-4 或专门的接线片）。"
+  echo "    本门只证明路由/鉴权/SSE 形态/游标这层，事件库内部契约由 G-61/G-62 守。"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-73 未跑（SKIP ≠ PASS）"
+fi
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

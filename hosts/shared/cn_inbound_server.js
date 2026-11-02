@@ -396,6 +396,29 @@ function createCnInboundServer(opts = {}) {
   // instance so IPC and HTTP routes see the same codes.
   const pairingManager = opts.pairingManager || createPairingCodeManager();
 
+  // W2/A1-1: 跨端事件流（SSE）的可读句柄。优先用调用方注入的（活路径——
+  // 桌面把双写库句柄传进来）；没注入时，仅当默认事件库文件已存在才懒加载它。
+  // §5.4 规则4：开关没开时绝不在「加载期」require event_log（旧 Electron 运行时
+  // 加载即抛）；这里延到命中路由、且文件确实存在那一刻才 require，并全程 try/catch，
+  // 因此非 Node≥22.5 的运行时只会落到 503，不会拖垮整个模块链。
+  const eventLog = opts.eventLog || null;
+  const eventsDbPath = opts.eventsDbPath
+    ? path.resolve(opts.eventsDbPath)
+    : path.join(repoRoot, "data", "events", "desktop-events.sqlite");
+  let eventLogResolved = false;
+  function resolveEventLog() {
+    if (eventLog) return eventLog;
+    if (eventLogResolved) return null;
+    eventLogResolved = true;
+    try {
+      if (!fs.existsSync(eventsDbPath)) return null; // 没库 = 没事件，诚实 503
+      const { openEventLog } = require("./event_log");
+      return openEventLog({ file: eventsDbPath, actor: "cn-inbound-sse", busyTimeoutMs: 5000 });
+    } catch (_) {
+      return null; // node:sqlite 不可用或库打不开 → 路由层转 503，不崩进程
+    }
+  }
+
   const state = {
     listening: false,
     port,
@@ -938,6 +961,97 @@ function createCnInboundServer(opts = {}) {
         await handleWecom(req, res, raw, payload || {}, urlObj);
         return;
       }
+      // ===== W2 / A1-1: 跨端事件流（SSE，只读）================================
+      // 手机/网页订阅这台机器的事件（本地事件库），看得见「现在在干什么」。
+      // 鉴权与 /v1/approvals 同一套设备密钥（B-4a）：没登记的设备看不到。
+      // 内容不落云：这里只把本机已落库的事件往外推（后续经 W4 中转也只转发密文）。
+      // 没有可读事件库 ⇒ 诚实 503 event_log_unavailable，绝不假装空流通过。
+      if (p === "/v1/events") {
+        if (req.method !== "GET") {
+          json(res, 405, { ok: false, error: "method_not_allowed", allow: "GET" });
+          return;
+        }
+        const auth = deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore });
+        if (!auth.ok) {
+          json(res, 401, { ok: false, error: auth.error || "unauthorized" });
+          return;
+        }
+        const log = resolveEventLog();
+        if (!log || typeof log.readAfter !== "function") {
+          json(res, 503, {
+            ok: false,
+            error: "event_log_unavailable",
+            note: "这台机器没有可读的事件库（双写没开或库还没建）。开了之后这里才有流。",
+          });
+          return;
+        }
+        // 游标：优先 Last-Event-ID（断线重连），其次 ?from_seq=（A1-3 续订的落点）。
+        const lastEventId = String(req.headers["last-event-id"] || "").trim();
+        let fromSeq = Number(urlObj.searchParams.get("from_seq") || 0);
+        if (/^[0-9]+$/.test(lastEventId)) fromSeq = Number(lastEventId);
+        if (!Number.isFinite(fromSeq) || fromSeq < 0) fromSeq = 0;
+
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        });
+        res.write("retry: 3000\n\n");
+        let closed = false;
+        let lastSent = fromSeq;
+        const sendEv = (ev) => {
+          if (closed) return;
+          const seq = Number(ev.seq);
+          let payload = ev.payload;
+          if (typeof payload === "string") {
+            try { payload = JSON.parse(payload); } catch (_) { /* 保留原串 */ }
+          }
+          res.write("id: " + seq + "\n");
+          if (ev.kind) res.write("event: " + ev.kind + "\n");
+          res.write(
+            "data: " +
+              JSON.stringify({
+                seq,
+                sessionId: ev.sessionId,
+                turnId: ev.turnId,
+                kind: ev.kind,
+                payload,
+                actor: ev.actor,
+                ts: ev.ts,
+              }) +
+              "\n\n",
+          );
+          if (seq > lastSent) lastSent = seq;
+        };
+        const snapshot = () => {
+          try {
+            const batch = log.readAfter({ fromSeq: lastSent, limit: 5000 });
+            for (const ev of batch) sendEv(ev);
+          } catch (e) {
+            if (!closed) res.write(": read error: " + String((e && e.message) || e) + "\n\n");
+          }
+        };
+        snapshot();
+        const heartbeat = setInterval(() => {
+          if (closed) return;
+          try { res.write(": ping " + Date.now() + "\n\n"); } catch (_) {}
+        }, 15000);
+        const tail = setInterval(() => {
+          if (closed) return;
+          snapshot();
+        }, 1500);
+        const cleanup = () => {
+          if (closed) return;
+          closed = true;
+          try { clearInterval(heartbeat); } catch (_) {}
+          try { clearInterval(tail); } catch (_) {}
+          try { res.end(); } catch (_) {}
+        };
+        req.on("close", cleanup);
+        return;
+      }
+
       state.counts.other += 1;
       json(res, 404, {
         ok: false,
@@ -948,6 +1062,7 @@ function createCnInboundServer(opts = {}) {
           "POST /feishu/event",
           "GET|POST /wecom/callback",
           "POST /v1/turn",
+          "GET /v1/events（SSE 事件流，需设备凭证）",
           "GET /v1/pair/discover",
           "POST /v1/pair/redeem",
           "GET /health",

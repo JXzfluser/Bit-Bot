@@ -4305,3 +4305,82 @@ ppid 正常、env 里没有 `BITBOT_KERNEL_RESIDENT`、随后自己退出 ——
 `Z`（defunct）挂在 ppid=1 —— 沙箱 PID 1（`sandbox-runtime`）不收割孩子，
 所以「427 个 electron 僵尸」这条底噪每跑一轮还会 +1。它不影响 0 残留的结论（那四项数的是**活着的**进程），
 但任何按 `pgrep` 全盘计数的判据都要把 defunct 排掉，否则读数会一路涨。
+
+## 8.60 路线 A · W2 第一刀：跨端事件流 SSE 路由（`GET /v1/events`，A1-1）
+
+这一刀只解决一件事：手机/网页订阅这台机器「本地已落库的事件」的通道本体。
+不做事件面改造（A1-2）、不做端上消费（A1-4）、不碰双写开不开（那是 W1 之后的事）。
+验收口径照 `cross-end-roadmap-a.md` W2/A1-1 原话：复用 `event_log.readAfter`；
+**只加路由，不改任何既有响应体**；鉴权沿用设备密钥（B-4a），未鉴权一律 401。
+
+改动文件：`hosts/shared/cn_inbound_server.js`（新增 `/v1/events` 分支 + 闭包里 `resolveEventLog` 懒加载器 + 404 `routes` 清单补一行）；
+新增 `scripts/prove_cn_events_sse.js`（门，接矩阵 **G-73**）。
+
+### 8.60.1 先写红（路由不存在）
+
+```
+$ node scripts/prove_cn_events_sse.js
+[cn-inbound] http://127.0.0.1:61567 ...
+FAIL EV-1 无设备凭证 GET /v1/events → 401 404 {"ok":false,"error":"unknown_cn_inbound_route",...}
+[cn-inbound] http://127.0.0.1:61569 ...
+FAIL EV-2 有效设备凭证 → 200 404 / end
+FAIL EV-2 Content-Type 是 text/event-stream application/json; charset=utf-8
+FAIL EV-2 流里含首条事件 id=1 {...unknown_cn_inbound_route...}
+FAIL EV-2 至少 3 条事件且 seq 严格递增 []
+FAIL EV-2 含首末两条事件 []
+FAIL EV-2 带 kind 字段（event: <kind>）
+[cn-inbound] http://127.0.0.1:61571 ...
+FAIL EV-3 无事件库 → 503（诚实降级） 404 {...unknown_cn_inbound_route...}
+FAIL EV-3 报错 event_log_unavailable {...unknown_cn_inbound_route...}
+ok EV-4 from_seq=末条 ⇒ 快照为空（不含已读事件）
+prove_cn_events_sse: PASS=1 FAIL=9
+```
+
+（EV-4 在红态下是空过：404 没有任何 `data:` 行，「快照为空」这个判据被它顺手满足，不算真绿。）
+
+### 8.60.2 修复
+
+在 `cn_inbound_server.js` 的 `http.createServer` 处理器里、404 兜底之前插入一个 `if (p === "/v1/events")` 分支：
+- `method !== "GET"` → 405；
+- `deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore })` 不过 → 401（与 `/v1/approvals` 同一套设备密钥，零新鉴权面）；
+- `resolveEventLog()` 拿不到可读句柄 → 诚实 503 `event_log_unavailable`（绝不假装空流通过）；
+- 拿到句柄 → `writeHead(200, text/event-stream)` + `retry:` + 先推 `from_seq` 之后的快照（每条 `id:/event:/data:`），
+  再留连接：15s 心跳 + 1.5s 轮询新 `seq`（让「手机看得见现在在干什么」在 A1-4 接上时直接可用）；
+  `Last-Event-ID` 头优先于 `?from_seq=` 作为游标（A1-3 断线重连的落点）。
+
+`resolveEventLog` 的加载约束（§5.4 规则4）：**绝不在加载期 `require("./event_log")`**——
+优先用调用方注入的句柄（活路径）；没注入时，仅当默认事件库文件 `data/events/desktop-events.sqlite`
+**确实存在**才 `require` 并 `openEventLog`，整段包在 try/catch：老 Electron 运行时（无 node:sqlite）
+命中路由也只落到 503，不会拖垮整个模块链。这与 `event_mirror.js` 的 `openEventLogLazy` 是同一套路。
+
+### 8.60.3 修复后绿
+
+```
+$ node scripts/prove_cn_events_sse.js
+ok EV-1 无设备凭证 GET /v1/events → 401
+ok EV-2 有效设备凭证 → 200
+ok EV-2 Content-Type 是 text/event-stream
+ok EV-2 流里含首条事件 id=1
+ok EV-2 至少 3 条事件且 seq 严格递增
+ok EV-2 含首末两条事件
+ok EV-2 带 kind 字段（event: <kind>）
+ok EV-3 无事件库 → 503（诚实降级）
+ok EV-3 报错 event_log_unavailable
+ok EV-4 from_seq=末条 ⇒ 快照为空（不含已读事件）
+prove_cn_events_sse: PASS=10 FAIL=0
+```
+
+矩阵接 **G-73**：`node -e "require('node:sqlite')"` 探测，没有就 `skip`（与 G-61/62/65/66 同口径，
+SKIP ≠ PASS）；有则用 `PASS=/FAIL=` 汇总行判绿，并钉 EV-1/EV-2/EV-3 三条命门。
+
+### 8.60.4 诚实残留（这一刀没关掉的）
+
+- **生产路径上这条路由现在仍会 503。** 桌面 `hosts/desktop/main.js` 的 `ensureCnInbound` 调
+  `createCnInboundServer` 时**没有传 `eventLog`**，而 `event_mirror`（双写/镜像）也**没接进 `main.js`**——
+  桌面进程里根本没有可读事件库句柄可注入。要让「手机看得见」真的端到端，需要把 `event_mirror`
+  的读句柄接到 `ensureCnInbound`（属 W2 后续 A1-2/A1-4 或专门的接线片，不是 A1-1 的范围）。
+  本门只证明「路由/鉴权/SSE 形态/游标」这层立得住，事件库内部契约仍由 G-61/G-62 守。
+- **live tail 是 1.5s 轮询读 `readAfter`，不是变更订阅。** 事件库没有 change-notify API，
+  轮询在 W2 够用；要更实时得等 W3 之后的真单写者（T1-06）。
+- 没起真 Electron 量「SSE 长连接真的被端上读出来」—— 那是 A1-4 的活，A1-1 不假装做过。
+
