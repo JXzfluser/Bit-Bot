@@ -43,14 +43,39 @@ object DesktopPairing {
    * Redeem success: contains base_url, turn_token, and base_url_scope per pairing-v1.md.
    * base_url_scope: private|cgnat|public|link_local|loopback
    * Non-private scopes mean the phone likely can't reach the Desktop.
+   *
+   * A2-3 新增的三个字段都是**回执原文里的**（device.registered / device.id /
+   * requires_device_credential），端上不自己推断：
+   *   · deviceRegistered —— 这台手机的公钥有没有真的登记进桌面那张表；
+   *   · deviceId —— 登记上了的话，桌面派发的那个身份（之后签名用的就是它，不是手机自己编的）；
+   *   · requiresDeviceCredential —— 桌面是否已进入「只认设备签名」的模式。
+   * 后两个合起来才是那句要紧的话：**桌面只认设备签名，而这台手机没登记上** —— 配对看着成功，
+   * 发消息却会一路 401。这一格必须能被界面看见，不许咽掉。
    */
   data class RedeemSuccess(
     val baseUrl: String,
     val turnToken: String,
     val baseUrlScope: String,
+    val deviceRegistered: Boolean = false,
+    val deviceId: String? = null,
+    val requiresDeviceCredential: Boolean = false,
   ) {
     /** True when the Desktop gave a non-private address the phone likely can't reach. */
     val isNonPrivateScope: Boolean get() = baseUrlScope != "private"
+
+    /**
+     * 「这台设备以后签不签得了」的人话结论，给配对成功的界面直接用。
+     * 三种情况三种说法，不许含糊：登记上了 / 没登记上但桌面还没启用设备签名（老桌面，还能走 bearer）/
+     * 没登记上而桌面已经只认设备签名（下一步一定 401，得当场说清）。
+     */
+    val deviceTrustNotice: String?
+      get() = when {
+        deviceRegistered && deviceId != null -> "这台设备已在这台桌面上登记（$deviceId），之后的请求都带设备签名"
+        requiresDeviceCredential ->
+          "注意：这台桌面只认设备签名，但这次配对没能把公钥登记上" +
+            "（桌面版本可能较旧，或手机上的设备身份文件不可用）—— 发消息可能被拒，请先更新桌面再重新配对"
+        else -> null
+      }
 
     /** Human-readable warning for non-private scopes. */
     val scopeWarning: String?
@@ -86,6 +111,15 @@ object DesktopPairing {
 
     /** Network/transport error */
     data class NetworkError(val reason: String) : RedeemFailure("连不上桌面：$reason")
+
+    /**
+     * 400 bad_device_public_key / device_key_not_ed25519：手机带了公钥来，但桌面认不得它。
+     * 这一条不能归进 BadRequest（「请求格式不对，请重试」）—— 重试一百次也不会变好，
+     * 而且用户必须知道：**配对没成**（桌面这次不会发令牌），不是「配对成功但没登记」。
+     */
+    data class DeviceKeyRejected(val why: String, val nextStep: String?) : RedeemFailure(
+      listOfNotNull("这台手机的设备公钥被桌面拒绝：$why", nextStep).joinToString("；"),
+    )
   }
 
   /**
@@ -150,6 +184,17 @@ object DesktopPairing {
   }
 
   /**
+   * org.json 的 `optString` 在值是 `JSONObject.NULL` 时会还回字符串 "null" —— 那正是
+   * 「桌面这次没有派发身份」的形状。把它当合法 id 用，端上就会拿 "null" 去签名。
+   * 这里统一按「没有」处理。
+   */
+  private fun JSONObject.field(key: String): String {
+    val v = opt(key)
+    if (v == null || v === JSONObject.NULL) return ""
+    return v.toString().trim()
+  }
+
+  /**
    * Map redeem failure to human-readable message per pairing-v1.md §2.
    *
    * @param httpStatus HTTP status code (400, 409, etc.)
@@ -166,11 +211,41 @@ object DesktopPairing {
     return when {
       httpStatus == 400 && errorCode == "invalid_code" -> RedeemFailure.InvalidCode(attemptsLeft)
       httpStatus == 400 && errorCode == "attempts_exceeded" -> RedeemFailure.AttemptsExceeded
+      httpStatus == 400 && errorCode == "bad_device_public_key" -> deviceKeyFailure(httpStatus, errorBody, errorCode)
+      httpStatus == 400 && errorCode == "device_key_not_ed25519" -> deviceKeyFailure(httpStatus, errorBody, errorCode)
+      httpStatus == 400 && errorCode == "device_store_unreadable" -> deviceKeyFailure(httpStatus, errorBody, errorCode)
+      httpStatus == 400 && errorCode == "device_store_unwritable" -> deviceKeyFailure(httpStatus, errorBody, errorCode)
       httpStatus == 400 && errorCode == "bad_request" -> RedeemFailure.BadRequest
       httpStatus == 409 && errorCode == "pairing_not_open" -> RedeemFailure.PairingNotOpen
       httpStatus in 400..499 -> RedeemFailure.BadRequest
       else -> RedeemFailure.NetworkError("HTTP $httpStatus")
     }
+  }
+
+  /**
+   * 公钥被拒：优先用**桌面自己写的** error_description / next_step（A2-4 那条口径：产品给的话就贴产品的话），
+   * 桌面没给（老版本桌面）才回落到端上那句。
+   */
+  private fun deviceKeyFailure(httpStatus: Int, errorBody: String, errorCode: String): RedeemFailure {
+    val obj = try {
+      JSONObject(errorBody.trim())
+    } catch (e: Exception) {
+      JSONObject()
+    }
+    val why = obj.field("error_description").ifBlank {
+      when (errorCode) {
+        "device_key_not_ed25519" -> "桌面只接受 ed25519 设备公钥"
+        "device_store_unreadable" -> "桌面的设备登记表读不出来"
+        "device_store_unwritable" -> "桌面的设备登记表写不进去"
+        else -> "桌面读不成这台手机交来的公钥"
+      }
+    }
+    val next = obj.field("next_step").takeIf { it.isNotEmpty() }
+      ?: when {
+        httpStatus == 400 && errorCode.startsWith("device_store_") -> "这是桌面侧的问题，请在桌面上检查数据目录后重试"
+        else -> "在手机「凭证」里清掉本机设备身份后重新配对一次"
+      }
+    return RedeemFailure.DeviceKeyRejected(why, next)
   }
 
   /**
@@ -267,6 +342,7 @@ object DesktopPairing {
    * @param desktopPort Port of the Desktop (from discover)
    * @param code 6-digit pairing code
    * @param deviceName Phone's device name (e.g., "Pixel 7")
+   * @param identityContext 用于取/建这台手机的设备身份；null（纯 JVM 测试、老调用方）= 完全保持原形状
    * @return RedeemSuccess with baseUrl, turnToken, baseUrlScope on success, or RedeemFailure on error
    */
   fun redeemCode(
@@ -274,17 +350,24 @@ object DesktopPairing {
     desktopPort: Int,
     code: String,
     deviceName: String,
+    identityContext: android.content.Context? = TurnBridge.context(),
   ): Result<RedeemSuccess> {
     if (!isValidPairingCode(code)) {
       return Result.failure(IllegalArgumentException("配对码必须是 6 位数字"))
     }
 
     val url = URL("http://$desktopIp:$desktopPort/v1/pair/redeem")
-    val body = JSONObject()
+    // A2-1/A2-3：配对这一步顺带把**这台手机的公钥**交出去（私钥永不出设备）。
+    // 有 context 才做：没有身份文件时这里生成一把（生成只发生在配对，签名路径只读不生成）。
+    // 身份文件存在但读坏了 ⇒ loadOrCreate 回 null ⇒ 不发公钥：宁可这次不登记设备，
+    // 也不悄悄换一把钥匙把桌面上已登记的那台丢掉。
+    val identity = identityContext?.let { DeviceIdentity.loadOrCreate(it) }
+    val json = JSONObject()
       .put("code", code.trim())
       .put("device_name", deviceName)
       .put("machine_kind", "android")
-      .toString()
+    if (identity != null) json.put("device_public_key", identity.publicKeyPem.trim())
+    val body = json.toString()
 
     val conn = url.openConnection() as HttpURLConnection
     conn.connectTimeout = 10000
@@ -311,7 +394,25 @@ object DesktopPairing {
         if (turnToken.isEmpty() || baseUrl.isEmpty()) {
           return Result.failure(RedeemFailure.BadRequest)
         }
-        Result.success(RedeemSuccess(baseUrl, turnToken, baseUrlScope))
+        // 设备这条只认**回执原文**：桌面说 registered 才算登记上，桌面派发的 id 才是身份。
+        // 端上一律不许「自己配对成功 ⇒ 推断自己已经是设备」—— 那正是把这颗地雷咽掉的写法。
+        val deviceObj = obj.optJSONObject("device")
+        val deviceRegistered = deviceObj?.optBoolean("registered", false) ?: false
+        val issuedDeviceId = deviceObj?.field("id")?.takeIf { it.isNotEmpty() }
+        val requiresCredential = obj.optBoolean("requires_device_credential", false)
+        if (deviceRegistered && issuedDeviceId != null && identity != null && identity.deviceId != issuedDeviceId) {
+          identityContext?.let { DeviceIdentity.save(it, identity.copy(deviceId = issuedDeviceId)) }
+        }
+        Result.success(
+          RedeemSuccess(
+            baseUrl = baseUrl,
+            turnToken = turnToken,
+            baseUrlScope = baseUrlScope,
+            deviceRegistered = deviceRegistered,
+            deviceId = issuedDeviceId,
+            requiresDeviceCredential = requiresCredential,
+          ),
+        )
       } else {
         Result.failure(mapRedeemFailure(responseCode, responseBody))
       }
@@ -334,8 +435,9 @@ object DesktopPairing {
     desktop: DiscoveredDesktop,
     code: String,
     deviceName: String,
+    identityContext: android.content.Context? = TurnBridge.context(),
   ): Result<RedeemSuccess> {
-    val result = redeemCode(desktop.ip, desktop.port, code, deviceName)
+    val result = redeemCode(desktop.ip, desktop.port, code, deviceName, identityContext)
     return result.fold(
       onSuccess = { success ->
         TurnBridge.setHostUrl(success.baseUrl)

@@ -70,6 +70,13 @@ object EventStreamClient {
     private val callback: SubscriptionCallback,
     private val sessionId: String? = null,
     initialSeq: Long = 0L,
+    /**
+     * A2-3：桌面登记过设备之后，事件流这条路也只认设备签名（bearer 不够）。
+     * 每次**连接尝试**都要重新签一遍（新 nonce + 新时间戳）—— 重连抄上一次的头
+     * 拿到的是 nonce_reused 401，然后按 401 走回退，用户看到的永远是「没有实时进度」。
+     * 传 null（没有本地身份 / 老桌面）时行为一字不变：继续只挂 bearer。
+     */
+    private val identityContext: android.content.Context? = null,
   ) {
     // A1-4: initialSeq —— 用户切走再回来时，上一段已经看到的帧编号要带回来。
     // 不带就会从 0 重放，去重失效，同一批进度行在界面上重复出现。
@@ -165,6 +172,11 @@ object EventStreamClient {
       val urlStr = "$baseUrl/v1/events" + (if (qs.isEmpty()) "" else "?" + qs.joinToString("&"))
 
       val url = URL(urlStr)
+      // 每次连接尝试都现签：GET 没有请求体，签的就是「deviceId\nts\nnonce\n」这三行前缀
+      // （服务端把空 body 直接拼进去，见 device_keys.js:signingPayload）。
+      // 放在循环里而不是外面，是因为 nonce 用第二次就是 nonce_reused —— 401 之后走回退，
+      // 用户看到的是「一直没有实时进度」，而日志里只有一条看不懂的码。
+      val deviceHeaders = DeviceIdentity.requestHeaders(identityContext, ByteArray(0))
       val conn = (url.openConnection() as HttpURLConnection).apply {
         requestMethod = "GET"
         connectTimeout = 15000
@@ -176,6 +188,7 @@ object EventStreamClient {
           setRequestProperty("Last-Event-ID", lastSeq.get().toString())
         }
         token?.let { setRequestProperty("Authorization", "Bearer $it") }
+        DeviceIdentity.applyHeaders({ k, v -> setRequestProperty(k, v) }, deviceHeaders)
       }
 
       this.connection = conn
@@ -323,7 +336,8 @@ object EventStreamClient {
     callback: SubscriptionCallback,
     sessionId: String? = null,
     initialSeq: Long = 0L,
+    identityContext: android.content.Context? = null,
   ): Subscription {
-    return Subscription(baseUrl, token, callback, sessionId, initialSeq)
+    return Subscription(baseUrl, token, callback, sessionId, initialSeq, identityContext)
   }
 }

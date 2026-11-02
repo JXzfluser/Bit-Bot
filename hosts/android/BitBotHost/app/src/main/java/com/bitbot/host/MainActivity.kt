@@ -548,9 +548,13 @@ class MainActivity : ComponentActivity() {
         result.fold(
           onSuccess = { ok ->
             val warning = ok.scopeWarning
+            // A2-3：这台手机以后到底能不能以「设备」的身份发消息，只有桌面的回执知道。
+            // 这句话不许咽在代码里 —— 配对成功但没登记上，下一步就是一路 401。
+            val trust = ok.deviceTrustNotice
+            val head = if (warning != null) "配对成功，但注意：$warning" else "配对成功！现在可以开始对话了"
             redeemState =
               PairingRedeemState.Success(
-                if (warning != null) "配对成功，但注意：$warning" else "配对成功！现在可以开始对话了",
+                if (trust != null) "$head\n$trust" else head,
                 warning,
               )
             delay(1200)

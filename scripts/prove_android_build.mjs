@@ -12,8 +12,8 @@
  *          —— 缺声明时框架抛 SecurityException，点「扫描」是崩而不是「没找到桌面」
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 167（防止 test 任务空转假绿；167 = 原 126 + A1-4 客户端 15 +
- *         三语文案 16 + 渲染级接线 10 —— 这条是棘轮，用例只准涨不准掉）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 183（防止 test 任务空转假绿；183 = 原 126 + A1-4 客户端 15 +
+ *         三语文案 16 + 渲染级接线 10 + A2-3 设备身份金标 9 + A2-3 端上接线 7 —— 这条是棘轮，用例只准涨不准掉）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -262,7 +262,9 @@ if (badge.status !== 0 || !badgeOut) {
   }
   if (!files) bad("AB-06 JVM 单测结果文件不存在（test 任务没真跑）", dir);
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
-  else if (tests < 167) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  // 棘轮：这个数字只准往上抬。写死下限的意义是「test 任务空转/测试文件被删」也会被抓出来，
+  // 所以每次加用例都要同时把这里抬上去（漏了就会出现「用例加了但门还按老数字绿」）。
+  else if (tests < 183) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -1164,8 +1166,82 @@ if (badge.status !== 0 || !badgeOut) {
     );
 }
 
-console.log(
-  "prove_android_build: 残留（诚实）— 无 KVM 起不了 emulator：OS 权限弹窗、真机安装、" +
-    "厂商商店签名（BITBOT_ANDROID_STORE_*）未验证；本门禁不声称装过或跑过。",
-);
+/* AB-17 A2-3 端上真会签名：金标文件在、DI/DT 那 16 条真跑、接线没断。
+ *
+ * 为什么这条要单独钉：DeviceIdentity 这个类写得再对，只要 TurnBridge / EventStreamClient /
+ * DesktopPairing 少挂一处，真机上就是「配对成功、发消息一路 401」—— 而这正是最容易「测试还全绿」的走偏。
+ * AB-17 不重做运行时证据（那是 DT 那 7 条 + WD-10/11 + 注入对照的事），它钉的是**这层东西还在仓里、还在跑**：
+ *   · 金标文件在（端上删了它，DI-02 就失去跨语言基线）；
+ *   · DI/DT 的用例名真的出现在结果里（删测试文件会让 AB-06 的 183 掉，但这里点名到条）；
+ *   · 三处生产接线（回合签名、事件流签名、配对上行公钥）的源码锚点还在。
+ * 带三组负向对照：尺子抓不到走偏就是摆设。 */
+{
+  const ANDROID = "hosts/android/BitBotHost/app/src/main/java/com/bitbot/host";
+  const TEST_DIR = "hosts/android/BitBotHost/app/src/test/java/com/bitbot/host";
+  const read = (rel) => {
+    try { return fs.readFileSync(path.join(REPO, rel), "utf8"); } catch { return ""; }
+  };
+  const identity = read(ANDROID + "/DeviceIdentity.kt");
+  const golden = read(TEST_DIR + "/DeviceSignatureVectors.kt");
+  const turn = read(ANDROID + "/TurnBridge.kt");
+  const sse = read(ANDROID + "/EventStreamClient.kt");
+  const pair = read(ANDROID + "/DesktopPairing.kt");
+
+  // 用例名自己从结果 XML 里捞（AB-06/07 那个 names 是块内作用域，这里够不着；
+  // 而且点名到条本来就该看**这一层**跑出来的东西，不是复用别处的清单）。
+  const names = [];
+  try {
+    const dir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+      const xml = fs.readFileSync(path.join(dir, f), "utf8");
+      for (const m of xml.matchAll(/<testcase\s+name="([^"]+)"/g)) names.push(m[1]);
+    }
+  } catch {
+    /* 上面 AB-06 已经因为结果目录不在报过了，这里不重复报 */
+  }
+
+  // 结果里必须出现的用例（点名到条，不只看总数）
+  const wantNames = [
+    /DI-01/, /DI-02/, /DI-03/, /DI-04/, /DI-07/, /DI-08/,
+    /DT-01/, /DT-02b?/, /DT-03/, /DT-04b?/, /DT-05/,
+  ];
+
+  /** 尺子本身：喂进（可能被改坏的）源码与结果里的用例名，返回这一版有什么问题。 */
+  const measure = (src) => {
+    const got = [];
+    const missing = wantNames.filter((re) => !src.names.some((n) => re.test(n)));
+    if (!src.identity.includes("fun requestHeaders(")) got.push("DeviceIdentity.requestHeaders 没了（端上没人签了）");
+    if (!src.identity.includes("signingPayload")) got.push("端上没有 signingPayload 了（跨语言约定失锚）");
+    if (!src.golden.includes("SEED_HEX") || !src.golden.includes("signatureBase64"))
+      got.push("金标文件不完整（DI-02 没有可比对的基线）");
+    if (!src.turn.includes("DeviceIdentity.requestHeaders(")) got.push("回合不再尝试签名（POST 这条路断了）");
+    if (!src.turn.includes("DeviceIdentity.applyHeaders(")) got.push("回合签了但不挂头（真机必 401）");
+    if (!src.sse.includes("DeviceIdentity.requestHeaders(")) got.push("事件流不再尝试签名（GET 这条路断了）");
+    if (!src.pair.includes("device_public_key")) got.push("配对不再上行公钥（登记这一步永远做不成）");
+    if (missing.length) got.push("用例不在结果里：" + missing.map(String).join(", "));
+    return got;
+  };
+
+  const base = { identity, golden, turn, sse, pair, names };
+  const problems = measure(base);
+
+  // 负向对照：每一处锚点单独拿掉，尺子必须抓到。抓不到 = 那条断言是装饰。
+  const muts = [
+    ["1 回合不签", (s) => ({ ...s, turn: s.turn.replace("DeviceIdentity.requestHeaders(", "// (injected) 不签了") })],
+    ["2 签了不挂头", (s) => ({ ...s, turn: s.turn.replace("DeviceIdentity.applyHeaders(", "// (injected) 不挂头") })],
+    ["3 事件流不签", (s) => ({ ...s, sse: s.sse.replace("DeviceIdentity.requestHeaders(", "// (injected) 不签了") })],
+    ["4 配对不上行公钥", (s) => ({ ...s, pair: s.pair.replace(/device_public_key/g, "public_key") })],
+    // 「测试文件被删」这类走偏必须也抓到 —— 否则 AB-17 就只剩源码锚点这一条腿。
+    ["5 用例名不在结果里", (s) => ({ ...s, names: s.names.filter((n) => !/^DI-02/.test(n)) })],
+  ];
+  const undetected = muts.filter(([label, mutate]) => mutate(base) === base || !measure(mutate(base)).length).map(([label]) => label);
+  if (undetected.length) bad("AB-17 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
+
+  if (problems.length) bad("AB-17 端上设备签名这一层没接齐", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-17 A2-3 端上真会签名：金标在、DI/DT 11 条点名用例真跑、三处生产接线（回合 / 事件流 / 配对上行公钥）锚点在（五组负向对照全抓到；无 KVM ⇒ 真机仍属残留）",
+    );
+}
 done();

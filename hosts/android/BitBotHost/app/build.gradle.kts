@@ -100,6 +100,10 @@ dependencies {
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.material3:material3")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+  // A2-3 端侧 ed25519 签名：minSdk 26 时 java.security 还没有 Ed25519（API 33 才有），
+  // 而服务端验的正是 ed25519（hosts/shared/device_keys.js）。这一条依赖就是「账号=设备」
+  // 在手机上的落地前提；包体因此变大约 4–5 MB，代价登记在 §8.64 残留里。
+  implementation("org.bouncycastle:bcprov-jdk18on:1.77")
   testImplementation("junit:junit:4.13.2")
   // android.jar 里的 org.json 在 JVM 单测中是「未 mock 即抛」的空壳，必须给真实现。
   testImplementation("org.json:json:20240303")

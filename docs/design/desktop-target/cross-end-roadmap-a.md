@@ -104,14 +104,21 @@ W2 遗留（下一轮要认领，别混进完成判据）：
 
 | 片 | 内容 | 复现测试（先红） |
 |---|---|---|
-| A2-1 | `/v1/pair/redeem` 成功后**登记设备公钥**（端上生成密钥对，redeem 请求体带可选 `device_public_key`） | 门：配对完成 → `devices.json` 出现该设备；不带该可选字段的旧客户端仍按现合同工作 |
-| A2-2 | `deviceStore` 热生效（按需重载或 ≤30 s TTL） | 门：revoke 一台 → 不重启入站服务，≤30 s 内该设备请求被拒，其他设备不受影响（AC-T4-4） |
-| A2-3 | 端上真签名：把 `signTurn` 的等价实现下沉到 Kotlin/Swift | 集成门：真 HTTP 服务 + 真验签，覆盖 `missing_signature`/`bad_signature`/`stale_timestamp`/`nonce` 重放 |
-| A2-4 | 消掉 `:854` 那颗地雷（登记非空 ⇒ 只发 Bearer 的端立刻 401） | 迁移期门：登记表非空 + 客户端只会 Bearer 时，给**可读的 401 文案 + 桌面侧提示**，而不是让它静默连不上 |
-| A2-5 | 设备花名册 UI：桌面「移动端远程控制」里列出已登记设备（名称/机器类/最近活跃/吊销按钮） | 复用 `bitbot:pairing:*` IPC 面，只加可选字段与新 IPC 名 |
+| A2-1 | `/v1/pair/redeem` 成功后**登记设备公钥**（端上生成密钥对，redeem 请求体带可选 `device_public_key`） | ✅ 已实现（服务端登记 + 端上上行公钥都接线了；真机未验）。门：配对完成 → `devices.json` 出现该设备；不带该可选字段的旧客户端仍按现合同工作（`prove_w3_device_trust` WD-01/02/05/06/07 + 端上 DT-04/04b，注入 `INJ-WD_01`/`INJ-WD_05`/`INJ-WD_06a/b/c`） |
+| A2-2 | `deviceStore` 热生效（按需重载或 ≤30 s TTL） | ✅ 已实现（实测 TTL 2 s；「配对完立刻下单」零等待）。门：revoke 一台 → 不重启入站服务，≤30 s 内该设备请求被拒，其他设备不受影响（AC-T4-4）—— WD-03/04/07，注入 `INJ-WD_03_04`/`INJ-WD_07` |
+| A2-3 | 端上真签名：把 `signTurn` 的等价实现下沉到 Kotlin/Swift | ✅ **Android 已实现、iOS 未做**；真机未验。集成门：真 HTTP 服务 + 真验签，覆盖 `missing_signature`/`bad_signature`/`stale_timestamp`/`nonce` 重放 —— 服务端侧 WD-09，端上侧跨语言金标 WD-10 + 源码接线 WD-11 + Robolectric 真 socket 的 DT-01..05（`DeviceIdentityTest` 9 条、`DeviceTrustWiringTest` 7 条），注入 `INJ-WD_10`/`INJ-WD_11` |
+| A2-4 | 消掉 `:854` 那颗地雷（登记非空 ⇒ 只发 Bearer 的端立刻 401） | ✅ 已实现（只加字段：`device_error`/`error_description`/`next_step`，既有 `error` 取值一字未改；端上直接显示桌面给的 `next_step`）。迁移期门：登记表非空 + 客户端只会 Bearer 时，给**可读的 401 文案 + 桌面侧提示**，而不是让它静默连不上 —— WD-08/09，注入 `INJ-WD_08`/`INJ-WD_09`；桌面侧提示仍属 A2-5 |
+| A2-5 | 设备花名册 UI：桌面「移动端远程控制」里列出已登记设备（名称/机器类/最近活跃/吊销按钮） | ⏳ 未做（W3 剩下的最后一件；A2-1 登记上之后才有东西可列） |
 | A2-6 | （W2 收口时新增）把 `:854` 地雷的范围说清楚：`/v1/events` 现在与 `/v1/turn` 同构 ⇒ 登记表非空 + 端上只会 Bearer 时，**连"看不见自己下的单"都算上了**。A2-4 的可读 401 文案与桌面侧提示必须两路一起给 | 已有锚点：`prove_cn_events_sse` EV-7 钉「两路一起 401」；文案与提示仍是 W3 的活，`parity-gaps-next.md` GP-206 |
 
 W3 不做：邮箱/密码/第三方登录、多用户组织架构、跨账号共享。二维码按 ADR 0014 仍排除在外。
+
+**W3 判据现状（2026-11-02 收口 A2-1..A2-4 后）**：`prove_w3_device_trust` 主断言 **26/0**、含 11 把真注入 **37/0**；
+端上全量 **183 tests / 0 failures / 0 skipped**（21 类），`prove_android_build` **18/0**（新增 AB-17）。
+实现前那道门真跑 **`PASS=1 FAIL=9`**，逐字红原文与三次「门自己的错」见 `report.md` §8.64。
+**全量矩阵复跑 `PASS=525 FAIL=0`、0 条 `· skip`**、G-71 基线与收尾同为 12 项、收尾零 `tick routines` 残留进程。
+按唯一口径，本节状态是 **服务端 + Android 端上已实现、真机未验**（R-A2-1，本机无 KVM），不是「W3 完成」——
+要盖章仍得有人在真手机上走完 §8.64.10 那份清单，外加 A2-5 那枚吊销按钮还没长到界面上。
 
 ### W4 跨网可达（把成功率从 0 抬起来）
 

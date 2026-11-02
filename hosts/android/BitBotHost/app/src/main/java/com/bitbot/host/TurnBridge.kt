@@ -31,6 +31,9 @@ object TurnBridge {
     appContext = context.applicationContext
   }
 
+  /** 配对那一步要往本地身份文件里写服务端派发的 id —— 给它同一个应用上下文，别再传一份。 */
+  fun context(): Context? = appContext
+
   fun hostUrl(): String? {
     val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     val fromPrefs = prefs?.getString(KEY_HOST_URL, null)?.trim().orEmpty()
@@ -102,6 +105,15 @@ object TurnBridge {
     val status = Regex("turn HTTP (\\d{3})").find(text)?.groupValues?.get(1)
     if (status == null) return explainTransport(text)
     val code = Regex("\"error\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1).orEmpty()
+    // A2-4：桌面在设备凭证那条路上已经把「为什么」和「下一步做什么」写在回包里了
+    // （error_description / next_step，都是**新增可选字段**）。产品都替用户想好了，
+    // 端上就不该再自己编一句 —— 用它的，并保留机器码，报障时还能和桌面日志对上。
+    val nextStep = Regex("\"next_step\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1).orEmpty()
+    val why = Regex("\"error_description\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1).orEmpty()
+    if (nextStep.isNotBlank()) {
+      val tail = if (why.isNotBlank()) "（$why）" else ""
+      return "桌面说：$nextStep$tail" + if (code.isNotBlank()) "［$code］" else ""
+    }
     val sign = if (code.isEmpty()) status else "$status/$code"
     return when {
       status == "401" && code == "invalid_token" ->
@@ -113,8 +125,12 @@ object TurnBridge {
       status == "401" && code == "turn_token_unconfigured" ->
         "桌面那边还没生成配对令牌（turn_token_unconfigured）：手机怎么改都没用，" +
           "先在桌面上打开「设置 → 凭证 → 手机配对」，并点「允许手机连接」。"
+      // 这句原来写的是「手机配对走的是配对令牌那条路，重抄一遍令牌再试」—— A2-3 之后它是**错的**：
+      // 手机已经会自己签了，出现这几个码说明的是「这台设备的签名桌面不认」，
+      // 真正该做的是重新配对（或让桌面把这台设备重新登记），不是重抄令牌。
       status == "401" && code in SIGNATURE_CODES ->
-        "桌面在要签名（$code），手机配对走的是配对令牌那条路：重抄一遍令牌再试。"
+        "桌面不认这台手机的签名（$code）：先在手机「凭证」里重新配对一次，把这台设备的公钥重新登记上；" +
+          "若桌面版本较旧还不支持设备签名，再重抄一遍配对令牌。"
       status == "404" ->
         "地址连上了，但这个端口上没有 /v1/turn（404）：确认填的是 Desktop 的入站端口" +
           "（默认 18765），别填成路由器页面或别的服务。"
@@ -309,6 +325,10 @@ object TurnBridge {
         .put("machine_kind", machineKind)
         .put("session_id", sessionFor(machineKind))
         .toString()
+    // 先定字节，再签、再发 —— 顺序很重要：签「将要发的这串」与发「签过的那串」必须是同一份，
+    // 差一个换行或一次 charset 改写，真机上就是一条 bad_signature 401（DT-01 钉的就是这件事）。
+    val bodyBytes = body.toByteArray(Charsets.UTF_8)
+    val deviceHeaders = DeviceIdentity.requestHeaders(appContext, bodyBytes)
     val conn = (url.openConnection() as HttpURLConnection).apply {
       requestMethod = "POST"
       connectTimeout = 15000
@@ -316,8 +336,11 @@ object TurnBridge {
       doOutput = true
       setRequestProperty("Content-Type", "application/json; charset=utf-8")
       turnToken()?.let { setRequestProperty("Authorization", "Bearer $it") }
+      // bearer 与设备签名同时挂：桌面版本可能比手机旧（不认登记，只认 bearer），
+      // 摘掉 bearer 就把这条路断了；登记表非空时桌面自己忽略 bearer。代价记在 §8.64（R-A2-2）。
+      DeviceIdentity.applyHeaders({ k, v -> setRequestProperty(k, v) }, deviceHeaders)
     }
-    OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
+    conn.outputStream.use { it.write(bodyBytes) }
     val code = conn.responseCode
     val stream = if (code in 200..299) conn.inputStream else conn.errorStream
     val out =

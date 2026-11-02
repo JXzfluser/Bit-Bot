@@ -2022,9 +2022,12 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     grep -q "AB-16 回合不再归某一屏管" /tmp/g47-build.log \
       && ok "G-47 还在路上的回信不跟着上一屏死：协程挪到进程级 TurnCoordinator（SupervisorJob + Main.immediate）、busy/delivery 由那一层管、落盘后 revision++ 让屏幕重读文件、转屏回来补问权限、发送走 submitTurn，5 条用例（TF-01..05）在结果里、AB-16 带七组负向对照" \
       || bad "G-47 AB-16 anchor missing"
-    grep -q "AB-06 JVM 单测真跑：167 用例 0 失败" /tmp/g47-build.log \
-      && ok "G-47 用例数如实涨到 167（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流解析 15 + 三语文案 16 + 渲染级接线 10），且 0 失败不是空跑" \
+    grep -q "AB-06 JVM 单测真跑：183 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 183（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流解析 15 + 三语文案 16 + 渲染级接线 10、A2-3 设备身份金标 9 + 端上接线 7），且 0 失败不是空跑" \
       || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
+    grep -q "AB-17 A2-3 端上真会签名" /tmp/g47-build.log \
+      && ok "G-47 AB-17 端上设备签名那一层被钉住：金标文件 + DI/DT 点名用例 + 三处生产接线锚点（五组负向对照全抓到）" \
+      || bad "G-47 AB-17 anchor missing（端上真会签名这件事没有锚点在矩阵里）"
   fi
 else
   bad "G-47 prove_android_build（见 /tmp/g47-build.log；$(tail -1 /tmp/g47-build.log)）"
@@ -3445,6 +3448,65 @@ if timeout 300 node scripts/prove_android_event_stream.mjs > /tmp/g77-android-ss
   echo "    sessionId 仍是 mobile-<machineKind> 约定值而非真账号会话。"
 else
   bad "G-77 prove_android_event_stream（见 /tmp/g77-android-sse.log；$(tail -3 /tmp/g77-android-sse.log | tr '\n' ' ')）"
+fi
+
+echo "== G-78 W3 账号=设备（A2-1 配对即登记 / A2-2 热生效 / A2-4 地雷说人话 / A2-3 端上真会签名 + 11 把注入对照）=="
+if timeout 900 node scripts/prove_w3_device_trust.mjs > /tmp/g78-w3-device.log 2>&1 \
+   && grep -q "^prove_w3_device_trust: PASS=37 FAIL=0$" /tmp/g78-w3-device.log; then
+  ok "G-78 W3 设备信任门全绿（$(tail -1 /tmp/g78-w3-device.log)）"
+  grep -q "WD-01 配对即登记公钥" /tmp/g78-w3-device.log \
+    && grep -q "id 由服务端派发" /tmp/g78-w3-device.log \
+    && ok "G-78 A2-1：redeem 带 device_public_key 就登记，且设备 id 由服务端从公钥指纹派生（客户端自报的身份被无视 —— INJ-WD_01 把它照抄回去就翻红）" \
+    || bad "G-78 A2-1 锚点缺失（配对即登记没被钉住）"
+  grep -q "WD-03 加设备后 ≤30s 热生效" /tmp/g78-w3-device.log \
+    && grep -q "WD-04 删设备后 ≤30s 热生效" /tmp/g78-w3-device.log \
+    && grep -q "WD-07 配对成功 → 立刻签名下单通过" /tmp/g78-w3-device.log \
+    && ok "G-78 A2-2：登记表改盘 ≤30s 生效（实测 2s），且「配对完立刻下单」零等待（自己写的盘必须立刻可见）" \
+    || bad "G-78 A2-2 锚点缺失（吊销/登记仍要重启才成立）"
+  grep -q "WD-05a 坏公钥被整体拒" /tmp/g78-w3-device.log \
+    && grep -q "WD-06 同钥匙幂等" /tmp/g78-w3-device.log \
+    && ok "G-78 A2-1 的边界：坏公钥/RSA 公钥整体拒（400，不发 bearer），同钥匙幂等一行、不同钥匙不同身份" \
+    || bad "G-78 坏公钥或幂等锚点缺失"
+  grep -q "WD-08a /v1/turn 的 401 会说人话" /tmp/g78-w3-device.log \
+    && grep -q "WD-08b /v1/events 的 401 也会说人话" /tmp/g78-w3-device.log \
+    && ok "G-78 A2-4：登记表非空时 bearer 的 401 带上 error_description / next_step（既有 error 取值一字未改）" \
+    || bad "G-78 A2-4 锚点缺失（那颗地雷还是只回一串读不懂的码）"
+  g78_inj=$(grep -c "注入对照有牙" /tmp/g78-w3-device.log)
+  [ "$g78_inj" -ge 11 ] \
+    && ok "G-78 注入对照 $g78_inj 把全部有牙（改坏的是产品副本，门一字不动；补丁对不上也算红）" \
+    || bad "G-78 注入对照只有 $g78_inj 把（应 ≥ 11；跳过的对照比没有对照更危险）"
+  grep -q "WD-10c 三条 payload 的签名逐字节相同" /tmp/g78-w3-device.log \
+    && grep -q "WD-10d 反向对照有牙" /tmp/g78-w3-device.log \
+    && grep -q "WD-10e 换 deviceId 验不过" /tmp/g78-w3-device.log \
+    && ok "G-78 A2-3 金标：Node 现行 signingPayload 重算的公钥与三条签名，与已提交的端上金标逐字节相同；改一字节 / 换 deviceId 都验不过（INJ-WD_10 把约定里那行 nonce 删掉就翻红）" \
+    || bad "G-78 A2-3 金标锚点缺失（跨语言约定没被钉住）"
+  grep -q "WD-11a /v1/turn 按「实际要发出去的那串字节」签名并挂头" /tmp/g78-w3-device.log \
+    && grep -q "WD-11b 事件流每次连接现签" /tmp/g78-w3-device.log \
+    && grep -q "WD-11d redeem 发公钥" /tmp/g78-w3-device.log \
+    && ok "G-78 A2-3 接线：回合、事件流、配对三条路真的挂了签名/上行公钥，身份只认服务端派发（INJ-WD_11 少挂一次头就翻红）" \
+    || bad "G-78 A2-3 接线锚点缺失（会签的类 ≠ 发出去时真签了）"
+  echo "  · G-78 修复前红（真实输出，逐字）：PASS=1 FAIL=9 —— WD-01 'device not found in store after redeem. Response: {\"ok\":true,...}'、"
+  echo "    WD-03 'status=401 bad_signature'、WD-04 'device removed from disk but server still accepted signed turn after 31s. Last status: status=200'、"
+  echo "    WD-05a 'status=200 ... 表里条数=0'、WD-06 '表里 0 行，应为 2 行'、WD-07 'status=401 {\"ok\":false,\"error\":\"bad_signature\"}'、"
+  echo "    WD-08a/b '{\"ok\":false,\"error\":\"unauthorized\"}'。绿的只有 WD-02（反向对照：不带公钥时行为一字未变）。"
+  echo "  · G-78 两处「第一版是错的」都留原文：① 重载原设计「先比 mtime、变了才重读」被实测否掉 —— 这块盘上两次写入"
+  echo "    落在同一毫秒（statSync 的 mtimeMs 一模一样而文件大小从 26 变 124），WD-03 31s 不翻绿；改成到期就重读，"
+  echo "    正确性不押在时钟精度上。② 坏公钥原回 200 + device.registered:false，看着更兼容，实际把失败推后："
+  echo "    设备以为配对成功、拿着 bearer 走进「登记表非空 ⇒ 只认设备签名」那条雷；改成 400 整体拒、当场说清原因。"
+  echo "  · G-78 门的两次自我修正也留原文：① WD-01 的公钥比对漏了 trim（服务端登记时 trim 是写入规范，"
+  echo "    Node 导出的 PEM 结尾带 \\n）⇒ 同一把钥匙两次字符串不同，报 'registered public key should match — mismatch'，"
+  echo "    那是门的 bug；修法是两处用同一条归一规则，不是放宽成「查得到就算」。② WD-06 原来先比行数再比 id，"
+  echo "    于是「id 不含公钥指纹」这把红在「表里 1 行」上（报的是别的因）；改成先比身份再比行数，"
+  echo "    INJ-WD_06a/06b/06c 三把注入各自打回各自的分支。"
+  echo "  · G-78 残留（诚实）：服务端与端上的**代码**两侧都钉住了，但「用户在真机上配对一次、看到设备登记上、"
+  echo "    之后发消息与看进度都带签名」这一条仍未在真机验证过 —— 本机无 KVM，起不了 emulator。"
+  echo "    端上的运行时证据是 Robolectric + 真 ServerSocket（DT 那 7 条：请求真发出去、签名真按发出去的字节签）；"
+  echo "    桌面对这些签名的验收证据是本门 WD-01..09（服务端真验）加 WD-10 金标（两边签的是同一串字节）。"
+  echo "    三者合起来才等于「真机走通」，任何一条单独拿出来说都不算（登记为 R-A2-1）。"
+  echo "    另一处已知代价：bearer 与设备签名**同挂**（桌面版本可能比手机旧，只认 bearer）——"
+  echo "    登记表非空时桌面自己忽略 bearer，代价登记为 R-A2-2。"
+else
+  bad "G-78 prove_w3_device_trust（见 /tmp/g78-w3-device.log；$(tail -3 /tmp/g78-w3-device.log | tr '\n' ' ')）"
 fi
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"

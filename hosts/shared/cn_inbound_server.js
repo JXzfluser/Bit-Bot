@@ -12,11 +12,68 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto"); // A2-1：算设备公钥指纹（device id 由它派生）
 const { URL } = require("url");
 const p0 = require("./p0_security");
 const deviceKeys = require("./device_keys");
 const { createProductSurfaceRef } = require("./product_surface_ref");
 const { createPairingCodeManager } = require("./desktop_pairing");
+
+/**
+ * A2-4：把设备鉴权的失败码翻成一句给用户看的话。
+ * 只**加**字段，不改 `error` 本身 —— 既有门禁与客户端都按 `error` 分支。
+ */
+function describeDeviceAuthFailure(code, req) {
+  const hasBearer = Boolean(req && req.headers && /^Bearer /i.test(String(req.headers.authorization || "")));
+  const base = {
+    no_devices_registered: "这台机器还没有登记任何设备",
+    missing_device_credential: hasBearer
+      ? "这台机器现在只认设备签名，Bearer 令牌不再够（配对成功的手机需要重新配对以登记公钥）"
+      : "请求缺少设备凭证头（x-bitbot-device / timestamp / nonce / signature）",
+    unknown_device: "登记表里没有这台设备（可能已吊销，或配到了另一台机器）",
+    stale_timestamp: "设备时间戳与本机相差太大",
+    nonce_reused: "这个 nonce 被用过（重放保护）",
+    bad_signature: "设备签名验不过",
+  }[String(code || "")];
+  return base || "设备凭证校验未通过：" + String(code || "unauthorized");
+}
+
+/**
+ * A2-4（同一口径延伸到 redeem）：公钥被拒时，只给机器码的话手机只能贴「请求格式不对，请重试」，
+ * 而这几种情况用户必须分得清：手机钥匙文件坏了 / 桌面版本不认这种钥匙 / 桌面登记表根本写不进去。
+ * 仍然只**加**字段：`error` 的取值一字不动（WD-05 与手机都在按它分支）。
+ */
+function describeRedeemDeviceKeyFailure(code) {
+  const m = {
+    bad_device_public_key: [
+      "手机交来的公钥读不成（PEM 或格式不对）",
+      "在手机「凭证」里清掉本机设备身份后重新配对一次；若仍失败，请把手机与桌面两侧的版本一起报出来",
+    ],
+    device_key_not_ed25519: [
+      "手机交来的公钥不是 ed25519 密钥",
+      "这台桌面只接受 ed25519 设备钥匙：请更新手机端配对实现，或先在桌面「设备」里吊销这台设备再重新配对",
+    ],
+    device_store_unreadable: [
+      "桌面的设备登记表读不出来",
+      "这是桌面侧的问题：请检查 data/desktop/devices.json 是否被改坏或权限不可读",
+    ],
+    device_store_unwritable: [
+      "桌面的设备登记表写不进去",
+      "这是桌面侧的问题：设备登记不上，配对不会成；请检查桌面数据目录的写权限后重试",
+    ],
+  }[String(code || "")];
+  if (!m) return {};
+  return { error_description: m[0], next_step: m[1] };
+}
+
+/** A2-2：登记表文件的 mtime（毫秒）。文件不存在/读不到 → -1，与「有文件」天然区分。 */
+function statMtime(file) {
+  try {
+    return Math.floor(fs.statSync(file).mtimeMs);
+  } catch (_) {
+    return -1;
+  }
+}
 const { rankLanIPv4, classifyScope } = require("./lan_candidates");
 
 function defaultRepoRoot() {
@@ -379,7 +436,90 @@ function createCnInboundServer(opts = {}) {
   const devicesPath =
     String(opts.devicesPath || process.env.BITBOT_DEVICES_PATH || "") ||
     path.join(repoRoot, "data", "host", "devices.json");
-  const deviceStore = deviceKeys.loadDevices(devicesPath);
+  // A2-2（W3）：登记表必须**热生效**。上一版这里只在启动时 loadDevices() 一次，
+  // 于是「配对即登记」「桌面点吊销」都要重启桌面才成立 —— 而用户看到的是
+  // 「手机上明明配对了，机器却说没这台设备」。
+  //
+  // 做法是**按请求惰性重载**，而不是 setInterval 轮询：
+  //   · 门禁脚本里那些「起服务、跑断言、退出」的 Node 测试不会被一个活定时器拖住
+  //     （要定时器也得 unref()，那是给门禁加不必要的寿命）；
+  //   · 真正的代价只有一个 TTL 窗口：默认 2s，最大 30s 的验收线（WD-03/04）远远够；
+  //   · 到期就重读整份表（登记表只有几行 JSON），**不**拿 mtime 当「没变就不用读」的依据 ——
+  //     那版优化被实测否掉了，原因写在 deviceStoreNow 里。
+  // 自己写盘的那条路（redeem 登记）必须**立刻**让缓存失效，否则刚登记完就发回合会 401。
+  let deviceStore = deviceKeys.loadDevices(devicesPath);
+  let deviceStoreMtime = statMtime(devicesPath);
+  let deviceStoreCheckedAt = Date.now();
+  const DEVICE_RELOAD_TTL_MS = Math.max(
+    0,
+    Number(process.env.BITBOT_DEVICES_RELOAD_TTL_MS || 2000),
+  );
+  /** 本轮登记/吊销之后强制重读（不等 TTL）。 */
+  function invalidateDeviceStore() {
+    deviceStoreCheckedAt = 0;
+  }
+  function deviceStoreNow() {
+    const now = Date.now();
+    if (now - deviceStoreCheckedAt < DEVICE_RELOAD_TTL_MS) return deviceStore;
+    deviceStoreCheckedAt = now;
+    // 「先比 mtime、变了才重读」是这一刀的第一版，它被实测否掉了：
+    // 这块盘上两次写入落在同一个毫秒里（statSync 的 mtimeMs 一模一样，而文件大小从 26 变 124），
+    // 于是 mtime 永远「没变」，WD-03 那条「加设备后 ≤30s 热生效」一直红。
+    // 登记表就几行 JSON，稳态每 TTL 读一次不是负担；而漏掉一次吊销是安全问题。
+    // 结论：**到期就重读**，不做「看起来没变」的优化 —— 优化不能把正确性押在时钟精度上。
+    deviceStoreMtime = statMtime(devicesPath);
+    deviceStore = deviceKeys.loadDevices(devicesPath);
+    return deviceStore;
+  }
+  /**
+   * A2-1：把 redeem 收到的公钥登进设备表。
+   * 只存公钥；id 由公钥指纹派生（同 key 重复配对 → 同一个 id，幂等，不产生第二行）。
+   * 写盘走既有的 deviceKeys.saveDevices —— 登记表 JSON 的形状一字不改。
+   */
+  function registerDeviceFromRedeem(input) {
+    const pem = String((input && input.publicKeyPem) || "").trim();
+    const kind = String((input && input.kind) || "mobile");
+    if (!pem) return { ok: false, error: "no_device_public_key" };
+    let der = null;
+    try {
+      const key = crypto.createPublicKey(pem);
+      if (key.asymmetricKeyType !== "ed25519") {
+        return { ok: false, error: "device_key_not_ed25519" };
+      }
+      der = key.export({ type: "spki", format: "der" });
+    } catch (_) {
+      return { ok: false, error: "bad_device_public_key" };
+    }
+    const fingerprint = crypto.createHash("sha256").update(der).digest("hex").slice(0, 12);
+    const id = "dev-" + kind + "-" + fingerprint;
+    let store;
+    try {
+      store = deviceKeys.loadDevices(devicesPath);
+    } catch (_) {
+      return { ok: false, error: "device_store_unreadable" };
+    }
+    const list = Array.isArray(store.devices) ? store.devices : [];
+    const existing = list.find((d) => d && d.id === id);
+    const record = {
+      id,
+      name: String((input && input.name) || id),
+      kind,
+      public_key_pem: pem,
+      created_at: (existing && existing.created_at) || new Date().toISOString(),
+      revoked_at: null,
+    };
+    if (existing) list[list.indexOf(existing)] = record;
+    else list.push(record);
+    try {
+      deviceKeys.saveDevices(devicesPath, { version: store.version, devices: list });
+    } catch (_) {
+      return { ok: false, error: "device_store_unwritable" };
+    }
+    // 自己刚写的盘必须立刻可见：否则「配对成功 → 马上发回合」这条最短的路会 401。
+    invalidateDeviceStore();
+    return { ok: true, device: record };
+  }
+
   // 跨端审批的队列住在 surface 里(pending-approvals.jsonl)。
   const surface = createProductSurfaceRef(repoRoot, path.join(repoRoot, "data"));
   const logDir = ensureDir(path.join(repoRoot, "data", "routines", "webhooks", "cn-inbound"));
@@ -672,9 +812,15 @@ function createCnInboundServer(opts = {}) {
       // 语义要点:决定写进的是**这台机器**的队列和规则,所以在手机上点「总是允许」
       // 等于授权这台机器以后做这类事。这是重决策,回执要说清楚。
       if (p === "/v1/approvals" || p.startsWith("/v1/approvals/")) {
-        const auth = deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore });
+        const auth = deviceKeys.verifyDeviceTurn(deviceStoreNow(), req, raw, { nonceStore });
         if (!auth.ok) {
-          json(res, 401, { ok: false, error: auth.error || "unauthorized" });
+          json(res, 401, {
+            ok: false,
+            error: auth.error || "unauthorized",
+            ...(auth.error_description ? { error_description: auth.error_description } : {}),
+            ...(auth.next_step ? { next_step: auth.next_step } : {}),
+            ...(auth.device_error ? { device_error: auth.device_error } : {}),
+          });
           return;
         }
         if (!surface) {
@@ -840,6 +986,33 @@ function createCnInboundServer(opts = {}) {
           json(res, 400, { ok: false, error: redeemResult.error });
           return;
         }
+        // A2-1（W3 / 账号=设备）：配对码换来的不只是「一把共享令牌」，还应把**这台设备**登记上。
+        // 只收公钥（私钥永远不出设备），id 由公钥指纹派生 —— 不是客户端自己填的，
+        // 否则任何一台 LAN 设备都能声称自己是 phone-desktop-x（身份来自凭证这件事就白做了）。
+        // 可选字段：不带 device_public_key 的老客户端行为一字不变（继续只发 turn_token）。
+        const devicePublicKey = String(payload.device_public_key || "").trim();
+        let deviceReg = null;
+        if (devicePublicKey) {
+          const reg = registerDeviceFromRedeem({
+            publicKeyPem: devicePublicKey,
+            kind: machineKind,
+            name: deviceName || machineKind + " 设备",
+          });
+          if (!reg.ok) {
+            // 坏公钥 = 配对这件事**没做成**，整体拒（400），不发 bearer。
+            // 第一版这里是 200 + device.registered:false + 一个 reason 字段，看着更「兼容」，
+            // 实际是把失败推后：设备以为自己配对成功了，拿着 bearer 走进
+            // 「登记表非空 ⇒ 只认设备签名」那颗地雷，用户看到的是配好了却什么都干不了。
+            // 既然设备明确表达了要当一台设备（带了公钥），失败就必须当场说清楚。
+            json(res, 400, {
+              ok: false,
+              error: reg.error || "bad_device_public_key",
+              ...describeRedeemDeviceKeyFailure(reg.error),
+            });
+            return;
+          }
+          deviceReg = reg.device;
+        }
         // Success: return the existing 64-char turn token + base_url.
         // Use lan_candidates ranking (192.168 > 10/8 > 172.16/12, docker0/virtual last,
         // 169.254 bottom) instead of raw os.networkInterfaces() enumeration order.
@@ -855,12 +1028,22 @@ function createCnInboundServer(opts = {}) {
             baseScope = ranked[0].scope || classifyScope(ranked[0].ip);
           }
         } catch (_) { /* fallback to loopback */ }
+        // 地雷（A2-4）：登记表一旦非空，入站就**只认设备凭证**（:854 那条口径）。
+        // 这时候还发一把 bearer 给没登记成功的设备，等于让用户走进一个
+        // 「配对了但下不了单、连自己下的单也看不见」的洞 —— 回执必须把这件事说在前面。
+        const registryNonEmpty = (deviceStoreNow().devices || []).length > 0;
+        const requiresDevice = registryNonEmpty && !deviceReg;
         json(res, 200, {
           ok: true,
           turn_token: turnToken,
           base_url: baseUrl,
           base_url_scope: baseScope,
           expires_in_ms: 0,
+          // 以下全是**可选新增字段**，既有形状一字未动（ADR 0008 的 bearer 合同照旧）。
+          device: deviceReg
+            ? { registered: true, id: deviceReg.id, kind: deviceReg.kind, name: deviceReg.name }
+            : { registered: false, reason: "no_device_public_key" },
+          requires_device_credential: requiresDevice,
         });
         return;
       }
@@ -874,10 +1057,34 @@ function createCnInboundServer(opts = {}) {
         }
         // ADR 0008: no Authorization and no valid signature → 401, no wake.
         // B-4a:登记了设备就走设备凭证(带机器身份);没登记才回落共享 turn token。
-        const hasDevices = (deviceStore.devices || []).length > 0;
+        const store = deviceStoreNow();
+        const hasDevices = (store.devices || []).length > 0;
         const auth = hasDevices
-          ? deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore })
+          ? deviceKeys.verifyDeviceTurn(store, req, raw, { nonceStore })
           : p0.verifyTurnAuth(req, raw, turnToken, nonceStore);
+        // A2-4：把这颗地雷说人话。
+        // 登记表一非空，这台机器就**只认设备凭证**（B-4a 的口径，代码本身是对的）；
+        // 坏的是回执：老客户端手里只有 bearer，它收到的是一串它读不懂的码，
+        // 于是用户看到「配对成功了但什么都做不了」。error 字段一字不改（既有合同），
+        // 只加 error_description / next_step —— 让手机与桌面能直接把它显示给用户。
+        // 注意：既有 `error` 的映射（下面那段三元）一字不改 —— 那是别的门与客户端在分支的字段。
+        // 真原因放在**新增字段**里：device_error / error_description / next_step。
+        if (!auth.ok && hasDevices) {
+          auth.device_error = auth.error || "unauthorized";
+          auth.error_description = describeDeviceAuthFailure(auth.error, req);
+          auth.next_step =
+            auth.error === "missing_device_credential"
+              ? "重新配对一次，让这台设备把公钥登记到机器上（之后请求要带设备签名）"
+              : auth.error === "unknown_device"
+                ? "这台设备不在这台机器的登记表里（可能被吊销或配到了另一台机器），请重新配对"
+                : auth.error === "stale_timestamp"
+                  ? "设备与这台机器的时间差太大，请校准系统时间后重试"
+                  : auth.error === "nonce_reused"
+                    ? "这个请求号已经被用过，请重试一次（每次请求要换新 nonce）"
+                    : auth.error === "bad_signature"
+                      ? "签名验不过：私钥与登记的公钥不是同一对，请重新配对"
+                      : "请重新配对这台设备";
+        }
         if (!auth.ok) {
           const error =
             auth.error === "invalid_token" ||
@@ -888,7 +1095,16 @@ function createCnInboundServer(opts = {}) {
             auth.error === "turn_token_unconfigured"
               ? auth.error
               : "unauthorized";
-          json(res, 401, { ok: false, error });
+          json(res, 401, {
+            ok: false,
+            error,
+            // A2-4：既有 error 的映射一字不改，真原因与下一步放新增字段里。
+            ...(auth.device_error && auth.device_error !== error
+              ? { device_error: auth.device_error }
+              : {}),
+            ...(auth.error_description ? { error_description: auth.error_description } : {}),
+            ...(auth.next_step ? { next_step: auth.next_step } : {}),
+          });
           return;
         }
         const text =
@@ -975,10 +1191,34 @@ function createCnInboundServer(opts = {}) {
           json(res, 405, { ok: false, error: "method_not_allowed", allow: "GET" });
           return;
         }
-        const hasDevices = (deviceStore.devices || []).length > 0;
+        const store = deviceStoreNow();
+        const hasDevices = (store.devices || []).length > 0;
         const auth = hasDevices
-          ? deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore })
+          ? deviceKeys.verifyDeviceTurn(store, req, raw, { nonceStore })
           : p0.verifyTurnAuth(req, raw, turnToken, nonceStore);
+        // A2-4：把这颗地雷说人话。
+        // 登记表一非空，这台机器就**只认设备凭证**（B-4a 的口径，代码本身是对的）；
+        // 坏的是回执：老客户端手里只有 bearer，它收到的是一串它读不懂的码，
+        // 于是用户看到「配对成功了但什么都做不了」。error 字段一字不改（既有合同），
+        // 只加 error_description / next_step —— 让手机与桌面能直接把它显示给用户。
+        // 注意：既有 `error` 的映射（下面那段三元）一字不改 —— 那是别的门与客户端在分支的字段。
+        // 真原因放在**新增字段**里：device_error / error_description / next_step。
+        if (!auth.ok && hasDevices) {
+          auth.device_error = auth.error || "unauthorized";
+          auth.error_description = describeDeviceAuthFailure(auth.error, req);
+          auth.next_step =
+            auth.error === "missing_device_credential"
+              ? "重新配对一次，让这台设备把公钥登记到机器上（之后请求要带设备签名）"
+              : auth.error === "unknown_device"
+                ? "这台设备不在这台机器的登记表里（可能被吊销或配到了另一台机器），请重新配对"
+                : auth.error === "stale_timestamp"
+                  ? "设备与这台机器的时间差太大，请校准系统时间后重试"
+                  : auth.error === "nonce_reused"
+                    ? "这个请求号已经被用过，请重试一次（每次请求要换新 nonce）"
+                    : auth.error === "bad_signature"
+                      ? "签名验不过：私钥与登记的公钥不是同一对，请重新配对"
+                      : "请重新配对这台设备";
+        }
         if (!auth.ok) {
           const error =
             auth.error === "invalid_token" ||
@@ -989,7 +1229,16 @@ function createCnInboundServer(opts = {}) {
             auth.error === "turn_token_unconfigured"
               ? auth.error
               : "unauthorized";
-          json(res, 401, { ok: false, error });
+          json(res, 401, {
+            ok: false,
+            error,
+            // A2-4：既有 error 的映射一字不改，真原因与下一步放新增字段里。
+            ...(auth.device_error && auth.device_error !== error
+              ? { device_error: auth.device_error }
+              : {}),
+            ...(auth.error_description ? { error_description: auth.error_description } : {}),
+            ...(auth.next_step ? { next_step: auth.next_step } : {}),
+          });
           return;
         }
         const log = resolveEventLog();

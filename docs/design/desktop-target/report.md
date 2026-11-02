@@ -4910,3 +4910,213 @@ AssertionError: 12 帧必须一条不丢；实际收到=[] … 被滤掉的帧=1
 切换前的历史挂在 `android-app` 下，之后的行挂在 `mobile-android` 下。真机验收时如果发现
 用户需要连着看旧的那一段，那是 W3（账号=设备、会话由服务端回包真值决定）要一并处理的事，
 本轮不假装它不存在，也不为了好看去迁移动画或改历史。
+
+## 8.64 路线 A · W3「账号 = 设备」：配对即登记、吊销热生效、地雷说人话，以及手机真的开始签名
+
+W2 收口时留下的问题是「手机看得见这一轮」，但它仍然只是**拿着一把共享令牌的人**——
+桌面不知道来的是哪台设备。于是三件事做不了：不能单独吊销（换令牌会踢掉所有设备）、
+不能把「谁下的单」和「谁该看见进度」绑到机器身份上、不能在配对那一刻就把权限发给**这台**手机。
+W3 就是把「账号」这件事落到设备凭证上：私钥只在手机里，桌面只收公钥，身份由桌面派发。
+
+### 8.64.1 服务端三件先写门：第一跑的真实红是 `PASS=1 FAIL=9`
+
+`scripts/prove_w3_device_trust.mjs` 的 WD-01/02 是最早两条断言，实现之前真跑（`/tmp/w3-red-baseline.log`，逐字）：
+
+```
+prove_w3_device_trust: PASS=1 FAIL=9
+  ✗ WD-01a redeem with device_public_key should register the device — device not found in store after redeem.
+    Response: {"ok":true,"turn_token":"w3-test-token-aaa…","base_url":"http://25.4.80.43:44831","base_url_scope":"public","expires_in_ms":0}
+  ✗ WD-03 加设备后 ≤30s 热生效 — device added to disk but server didn't accept signed turn within 31s. Last error: status=401 bad_signature
+  ✗ WD-04 删设备后 ≤30s 热生效 — device removed from disk but server still accepted signed turn after 31s. Last status: status=200
+  ✗ WD-05a 坏公钥被整体拒 — status=200 body={"ok":true,…} 表里条数=0
+  ✗ WD-06a 同一把公钥重复配对必须只留一行 — 表里 0 行，应为 2 行（A 两次 + B 一次）
+  ✗ WD-07 配对成功 → 立刻签名下单通过 — status=401 {"ok":false,"error":"bad_signature"}
+  ✗ WD-08a /v1/turn 的 401 要带 error_description / next_step — {"ok":false,"error":"unauthorized"}
+  ✗ WD-08b /v1/events 的 401 也要带 error_description / next_step — {"ok":false,"error":"unauthorized"}
+```
+
+唯一绿的那条 WD-02 是反向对照（不带 `device_public_key` 的老客户端行为一字未变）——
+它当时绿是因为功能确实还没动，修完必须**继续**绿，这一点由 `INJ-*` 与后面的复跑共同钉。
+
+### 8.64.2 A2-1 配对即登记：身份来自公钥指纹，不来自客户端自报
+
+`registerDeviceFromRedeem()` 只收 SPKI 公钥（私钥永不出设备），必须 `asymmetricKeyType === "ed25519"`，
+id 由 `sha256(der)` 前 12 位派生：`dev-<kind>-<指纹>`。同 id 覆盖旧行但**保留 `created_at`**，写完立刻
+`invalidateDeviceStore()`。
+
+WD-01 的请求体里特意塞了一个诱饵 `device_id: "phone-desktop-x"`（客户端自报身份），判据是
+「登记表里出现的必须是指纹派生的那个 id，而不是它」。这把对照搬到产品侧就是 `INJ-WD_01`：
+把 id 改成 `payload.device_id` 说了算 → 红的正是 `WD-01a 设备 id 必须由服务端派发，不许照抄客户端自报的`。
+**没有这一把，「身份来自凭证」这句话在门里就只是注释。**
+
+坏公钥的处理换过一次方向，两次都留原文。第一版回 `200 + device.registered:false + reason`，
+看着更兼容，实际把失败推后了：设备以为配对成功、拿着 bearer 走进
+「登记表非空 ⇒ 只认设备签名」那颗地雷，用户看到「配好了却什么都干不了」。
+现在改成 **400 整体拒、不发 bearer**（`bad_device_public_key` / `device_key_not_ed25519`），
+并且本轮把 A2-4 的同一口径延伸过去：这条 400 也带 `error_description` / `next_step`
+（**只加字段**，`error` 的取值一字未动，WD-05 仍按它分支）。取舍写进门注释：
+设备既然明确表达了「要当一台设备」，失败就必须当场说清。
+
+### 8.64.3 A2-2 吊销热生效：mtime 那版优化被实测否掉
+
+第一版重载是「先比 mtime、变了才重读」。它被 **WD-03 一直不翻绿**否掉：这块盘上两次写入
+落在同一毫秒（`statSync().mtimeMs` 一模一样，而文件大小从 26 变 124），于是 mtime 永远「没变」。
+现在是**到期就重读整份表**（TTL 2 s，验收线 30 s），不做「看起来没变」的优化——
+**优化不能把正确性押在时钟精度上**。同样按请求惰性重载而不是 `setInterval`，
+免得给门禁脚本添一个活定时器。
+
+`INJ-WD_03_04`（把重载删掉）与 `INJ-WD_07`（自己写完盘不失效缓存）都能各自打回对应的红。
+后一把钉的是最短的那条路：配对完立刻发一个回合——自己写的盘必须立刻可见，否则用户
+第一次发消息就撞 `bad_signature`。
+
+### 8.64.4 A2-4 把地雷说人话：五种失败必须各说各的，且既有 `error` 一字不改
+
+`describeDeviceAuthFailure()` + `next_step` 挂在 `/v1/turn`、`/v1/events` 三处 401 上，全部是
+**新增可选字段**。`device_error` 只在它**与 `error` 不同**时才多发（去重）——这条合同是 WD-09
+反复两次才钉对的，两次假红都留原文：
+
+```
+PASS=22 FAIL=3（/tmp/w3-full-gate2.log）
+  ✗ WD-09c stale_timestamp 真实原因码要对 — device_error=undefined body={"ok":false,"error":"stale_timestamp",…}
+  ✗ WD-09d nonce_reused … device_error=undefined
+  ✗ WD-09e bad_signature … device_error=undefined
+PASS=23 FAIL=2（/tmp/w3-full-gate3.log）
+  ✗ WD-09a missing_device_credential 两个字段同时出现时必须一致 — error=unauthorized device_error=missing_device_credential
+  ✗ WD-09b unknown_device … error=unauthorized device_error=unknown_device
+```
+
+第一版门以为 `device_error` 必带 ⇒ 三条红（那三个码本来就在既有 `error` 映射里，
+两个字段说的是同一件事）；改成「两个字段同时出现必须一致」⇒ 又红两条，
+而**不一致正是 `device_error` 的用途**（`error` 归到 `unauthorized`，真原因只有它能说）。
+最终判据按合同的真实形状写：真原因优先从 `device_error` 读、读不到用 `error`，
+两者都必须能对上那一个码；再加 `WD-09f` 反向钉「五个码各自的 `error` 与既有映射完全一致」。
+另加一条防「万金油话术」：五个 `error_description` 必须**两两不同**，
+`INJ-WD_09` 把它们合成一句就翻红。
+
+### 8.64.5 门自己的另外两次错（都按「改强不改松」处理）
+
+- **WD-01 的公钥比对漏了 trim**：Node 导出的 PEM 结尾带 `\n`，服务端登记时 trim（那是写入规范），
+  于是同一把钥匙两边字符串不同，报 `registered public key should match — mismatch`。
+  修法是两侧用同一条归一规则比对，**不是**放宽成「查得到就算」。
+- **WD-06 的断言顺序**：原来先比行数再比 id，导致 `INJ-WD_06b`（id 不含公钥指纹）红在「表里 1 行」上——
+  报的是别的因。改成先比身份再比行数之后，`INJ-WD_06a/06b/06c` 三把各自打回各自的分支。
+- 顺带一条：**`INJ-WD_06c` 第一版没有牙**。我预期的坏味道是「id 掺随机后缀」，
+  但先写的注入版本改的是另一处（`existing = undefined` 仍产生同一个 id），拿真判据跑副本发现全绿——
+  换成真会分叉的改法之后才红。这条与 §8.63.1 同型：**对照「看起来在跑」和「真能抓错」是两件事。**
+
+### 8.64.6 A2-3 端上：金标在前，接线在后
+
+Android 4.12 之前（minSdk 26）没有 Ed25519，因此引 `org.bouncycastle:bcprov-jdk18on:1.77`
+（离线缓存里 jar+pom 都在，`--offline` 可构建）。代价如实登记：debug APK 现在 11.2 MB，
+其中这份 jar 解压 14.8 MB；release 侧的体积影响本轮**没有量**（见残留 R-A2-4）。
+
+先做的不是实现，而是**把 Node 侧的输入输出冻结成金标**
+（`scripts/gen_device_signature_vectors.mjs` → `DeviceSignatureVectors.kt`）：
+一个派生 seed（`sha256("bitbot-a23-device-signature-golden-seed")`，不是任何真实密钥）、
+三条 payload（纯 ASCII / 中文多字节 / **空 body**，GET 的签名必须只有三行前缀）、
+Node 用同一 seed 签出的 base64。选「逐字节相同」当判据是因为 ed25519 是确定性签名（RFC 8032）：
+不存在「等价但不同」，不一样就只有「实现错了」一种解释。生成器自检还带反向对照
+（改一字节必须验不过、空 body 那条用「加一字节」做对照），否则金标本身可能是恒真的。
+
+`DeviceIdentity.kt` 的三条硬规矩都各有一条用例钉着：坏的身份文件**不许悄悄重生**
+（重生等于把桌面已登记的那台设备丢掉，用户下次看到的是 `unknown_device`，DI-07）、
+没有服务端派发的 id **一律不签**（自己编 id 去签只会换来一片 `unknown_device` 迷雾，DI-08/DT-02b）、
+nonce 与时间戳**每次现取**（抄上一次就是 `nonce_reused`，DI-09/DT-03）。私钥只落 `filesDir` 一个文件（DI-06）。
+
+先写测试的红是编译期红（`/tmp/a23-red-compile.log`）：
+`e: DeviceIdentityTest.kt:49:5 Unresolved reference: DeviceIdentity` —— 类还不存在，符合预期；
+实现后 `DeviceIdentityTest` **9 条 0 失败**。
+
+### 8.64.7 接线的红与一条「假桌面自己读错了」的教训
+
+接线判据写在 `DeviceTrustWiringTest`（Robolectric + 真 `ServerSocket` 假桌面）：
+**不是「DeviceIdentity 这个类会签名」，而是真发出去那个请求带着真签名、签的就是被发出去的字节**。
+先红的形态是编译错（`/tmp/a23-wiring-red.log`）：
+`Cannot find a parameter with this name: identityContext`、
+`Too many arguments for … completePairing`、`Unresolved reference: deviceId / deviceRegistered / requiresDeviceCredential`
+—— 判据已经在要求那三个回执字段与那条参数，产品还没有。
+
+接完之后第一跑是 **4 条红**（`/tmp/a23-dt-run1.log`，`BUILD FAILED in 6m 24s`），
+报的是 `连不上 Desktop 大脑。桌面那边报：连过去但没有回包（超时）`。
+**这次不是产品的错，是我那个假桌面读错了**：它用 `BufferedReader` 读请求头、再用同一个
+`InputStream` 读 body —— `BufferedReader` 一次吸满 8K，把 body 一起吞进自己的缓冲，
+于是服务端等在 socket 上读 body、客户端等在 socket 上读响应，两边僵死到超时。
+表现与「产品没签名」一模一样（`connection`、`timeout`），而 `GET` 那条因为没 body 反而一直是绿的——
+这正是最难发现的一类假红：**错的在尺子，症状在功能**。
+修法是头和 body 走同一个字节流（按字节读到 `\r\n\r\n`，剩下按 `Content-Length` 原样读），
+并给假桌面自己加 20 s 超时，让「产品发歪了」快速红而不是挂两分钟。
+修后 `DeviceTrustWiringTest` **7 条 0 失败**（`BUILD SUCCESSFUL in 7s`）。
+
+三条 401 文案的判据也在这里：`DT-05` 要求界面用**桌面给的** `next_step`
+（「桌面说：重新配对一次，让这台设备把公钥登记到机器上」），并显式禁止旧的
+「手机配对走的是配对令牌那条路」再出现——那句在 A2-3 之后是错的，而它当时还在产品里。
+`DT-04` 钉配对把公钥发出去并把**服务端派发的** id 写回本地；`DT-04b` 钉老桌面回执没有
+`device` 字段时**不许假装登记成功**（`deviceRegistered=false`、本地凭空不许多一个身份）。
+
+兼容性上做了一个明确取舍：**bearer 与设备签名同挂**（`TurnBridge.kt:338-341`）。
+桌面版本可能比手机旧、只认 bearer，摘掉 bearer 就把那条路断了；登记表非空时桌面自己忽略 bearer。
+代价登记为 R-A2-2，不写成「已完全切到设备凭证」。
+
+### 8.64.8 端上证据怎么进门：WD-10 金标 + WD-11 接线 + 11 把注入
+
+「手机会签名」这件事不能只让 Kotlin 自说自话，也不能只靠结构 grep，所以分两条腿接进
+`prove_w3_device_trust`：
+
+- **WD-10（金标）**：用 Node **现行**的 `device_keys.signingPayload` 重算公钥与三条签名，
+  与已提交的 `DeviceSignatureVectors.kt` 逐字节比对；再加两条反向对照
+  （改一字节、换 `deviceId` 都必须验不过）。`INJ-WD_10` 改的不是端上实现，而是
+  `device_keys.js` 里那行约定（把 nonce 那一行删掉）——服务端自签自验**仍然自洽**，
+  只有金标会红。这正是要它的原因：约定改了而两端没一起改，任何一端的单测都抓不到。
+- **WD-11（接线）**：源码钉三条路（回合按实际发出的字节签并挂头、事件流每次连接现签、
+  配对上行公钥且只认回执派发 id）+ 可空 Context 的降级路 + 登记状态必须上屏。
+  它明说不证明运行时：运行时由 DT 那 7 条真 socket 用例钉。
+  `INJ-WD_11` 把 `applyHeaders` 那一句删掉（照旧签但不上车）→ 红的正是 `WD-11a`。
+
+注入机制从 Android 结构门搬到 Node 门时保留了两条口径：**只改产品副本、门一字不动**；
+**补丁命中数对不上就算红**（跳过的对照比没有对照更危险）。子进程统一带 `--no-inj`，
+`node scripts/prove_w3_device_trust.mjs --no-inj` 可单独跑主断言（当前 **PASS=26 FAIL=0**），
+完整版 **PASS=37 FAIL=0**（26 判据 + 11 把注入，`/tmp/w3-full-gate4.log`）。
+过程中我自己还踩了一条：`Buffer.from([b]).concat(...)` 根本不是 Buffer 的方法 ⇒
+`TypeError` 把整个套间打停在 `PASS=18 FAIL=1`。那是门的 bug（产品一字未动），
+按「先让门老实」处理：改成 `Buffer.concat([...])` 后重跑，判据没放宽。
+
+### 8.64.9 尺子接线与复跑
+
+- **G-78** 标题从「服务端三件」改为含 A2-3；锚点 `PASS=18` → **`PASS=37`**，注入棘轮 `-ge 8` → **`-ge 11`**；
+  新增两组锚点（金标 `WD-10c/d/e`、接线 `WD-11a/b/d`），并把「端上还没有会签名的客户端」
+  那句已经过时的残留改成真实状态（代码两侧都钉住、真机未验，R-A2-1/R-A2-2）。
+- **AB-06 棘轮 167 → 183**（`DeviceIdentityTest` 9 + `DeviceTrustWiringTest` 7），并在门里写明
+  「这个数字只准往上抬，加用例必须同时抬这里」。
+- **新增 AB-17**：金标文件完整性 + DI/DT 11 条点名用例（从结果 XML 里捞，不复用别处的清单）
+  + 三处生产接线锚点，带**五组负向对照**（回合不签 / 签了不挂头 / 事件流不签 / 配对不上行公钥 /
+  用例名不在结果里）。`prove_android_build: PASS=18 FAIL=0 SKIP=0`；矩阵 **G-47** 加 AB-17 锚点。
+- 端上全量：**183 tests / 0 failures / 0 skipped**（21 个类，`--rerun-tasks` 真跑，`/tmp/a23-full-183.log`）。
+- 相邻门复跑未破：`prove_pairing_code` **19/0**、`prove_pairing_lan_rank` **9/0**、
+  `prove_cn_events_sse` **29/0**、`e2e_android_turn` **11/0**、
+  `e2e_remote_progress_stream`（xvfb + `ELECTRON_DISABLE_SANDBOX=1`）**9/0**。
+  其中 RP 那条第一跑是 `electron.launch: Process failed to launch!` —— 我漏了 xvfb 与
+  沙箱开关，不是产品回归；按矩阵同款 invocation 复跑即 9/0。**门的错要当门的错说，不许记成产品红。**
+- **收口后全量矩阵复跑**：`bash scripts/smoke_grok_desktop_parity.sh` → **`smoke_grok_desktop_parity: PASS=525 FAIL=0`**，
+  整轮约 37 分钟（上一轮 W2 收口时是 503/0）。+22 项里能逐条对上的是新增的两道门：
+  **G-77 贡献 3 条 ✓、G-78 贡献 8 条 ✓**，其余 11 项来自这期间给既有门补的锚点，
+  本轮没有把它们一条条对完 —— 只报差值，不假装知道每一项的来源。
+  日志 `/tmp/w3-final-matrix.log`：`· skip` 计数 **0**（没有一条绿是「没跑」）；
+  G-71 `基线 12 项，收尾 12 项`（本轮真正在改的那 12 个已跟踪文件之外，门禁没写脏任何一份）；
+  G-72 `开局 absent → 收尾「开局没有、现在也没有」`；收尾 `run_turn.js tick routines` 进程数 **0**。
+
+### 8.64.10 诚实残留（这一刀没关掉的）
+
+- **R-A2-1｜真机未验**：本机无 KVM，起不了 emulator。端上的运行时证据是 Robolectric + 真 socket，
+  服务端证据是 WD-01..09 真验签，跨语言一致性是 WD-10 金标——三者合起来才等于「用户真机上走通」，
+  任何一条单独拿出来说都不算。真机验收清单（配对一次→桌面「设备」里看得见这台手机→发消息带签名→
+  锁屏重连不重复帧→桌面上点吊销后手机立刻 401 且文案是 `next_step` 那句）仍未逐条打勾。
+- **R-A2-2｜bearer 与设备签名同挂**：老桌面只认 bearer，所以没摘。登记表非空时桌面自己忽略 bearer，
+  但这意味着「共享令牌仍是一条可用的入口」——这一步没做完，不许写成已全面切到设备凭证。
+- **R-A2-3｜iOS 没动**：`hosts/ios` 仍是 stub，A2-3 只在 Android 成立。
+- **R-A2-4｜体积代价未量**：bcprov 进了包（debug APK 11.2 MB、这份 jar 解压 14.8 MB），
+  release/minify 之后的增量本轮没测，`prove_pack_artifacts` 的棘轮仍按现状。
+- **R-A2-5｜设备身份文件的可读性边界**：只做到「落在应用私有目录 + 尽力 `setReadable/setWritable(0600)`」；
+  root 设备、允许 backup 的备份这一层管不了，也不假装管了。
+- **A2-5（花名册 UI）未做**：现在登记是**服务端单方面记上一行**，用户在桌面上还没有
+  「看一眼有哪些设备、吊销哪一台」的入口。没有它，「吊销」只有 API 没有产品动作，
+  所以真机验收清单里那条「点吊销」目前只能靠改盘复现（WD-04 就是这么测的）。

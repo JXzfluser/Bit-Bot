@@ -228,7 +228,16 @@ object TurnCoordinator {
     }
 
     currentSubscription =
-      EventStreamClient.createSubscription(baseUrl, token, callback, sessionId, initialSeq)
+      EventStreamClient.createSubscription(
+        baseUrl,
+        token,
+        callback,
+        sessionId,
+        initialSeq,
+        // A2-3：桌面登记过设备之后，/v1/events 也只认设备签名。把本地身份带下去，
+        // 每次连接尝试现签（没有身份时 createSubscription 的行为与之前一字不差）。
+        TurnBridge.context(),
+      )
 
     // 在 IO 线程启动订阅（阻塞调用）
     scope.launch {
