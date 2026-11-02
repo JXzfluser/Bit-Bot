@@ -6,6 +6,26 @@ const { canonicalAction } = require("./host_approval_gate");
 const { buildToolPolicy } = require("./tool_policy");
 const { DEFAULTS } = require("./machine_identity");
 
+/* GP-96/97 §5.7 进度：AgentLoop 时代的回合不再走「一次批量 effects」，于是
+   executeHostEffects 里那个进度发射器**一次都没被喂到** —— 桌面 UI 的 #turn-progress
+   行与手机 SSE 的 progress 帧双双空转（scripts/prove_gp96_progress.js 的真回合三条
+   断言今天就是红的，原文见 report.md §8.62）。这里补的是同一条链路的另一半：
+   · kernel 的每一次 llm_chat 跳 → 一条 model_reply 的 start/done（总数未知 ⇒ total 传 0，
+     协议层的 reducer 明确允许「没有 total 就沿用上一个」，不猜数）；
+   · 本文件里两处**真** executeHostEffects（web_fetch / send_mail）→ 把调用方的
+     onProgress 一起交进去，让 host_ffi 里那个既有的发射器自然发 start/done。
+   没传 onProgress 时 createProgressEmitter 整体 no-op，行为与改之前逐字节一致。 */
+let _createProgressEmitter = null;
+try {
+  _createProgressEmitter = require("./turn_progress").createProgressEmitter;
+} catch (_) {
+  try {
+    _createProgressEmitter = require("../shared/turn_progress").createProgressEmitter;
+  } catch (_) {
+    _createProgressEmitter = null;
+  }
+}
+
 /**
  * One Host FFI op for the kernel AgentLoop.
  * The kernel owns think → call → observe. This file does not call the model
@@ -212,7 +232,7 @@ async function execHostProductTool(name, args, argsJson, state) {
     try {
       results = await state.ffi.executeHostEffects(
         [{ kind: "webfetch", command: url, needs_host_ffi: true }],
-        {},
+        { turnId: state.turnId, sessionId: state.sessionId, onProgress: state.onProgress },
       );
     } catch (err) {
       return {
@@ -354,7 +374,12 @@ async function execHostProductTool(name, args, argsJson, state) {
             needs_host_ffi: true,
           },
         ],
-        { approved: true },
+        {
+          approved: true,
+          turnId: state.turnId,
+          sessionId: state.sessionId,
+          onProgress: state.onProgress,
+        },
       );
     } catch (err) {
       return {
@@ -517,6 +542,20 @@ function createProductSession(ffi, llmOpts) {
     llmError: "",
     ffi,
     turnId: String(opts.turnId || ""),
+    // §5.7 进度的两半：调用方给的监听器 + 本回合的 llm 跳计数器。
+    // sessionId 只用于给进度行打标 —— 没有它，桌面渲染层会按「当前会话」误显示别人的进度。
+    sessionId: String((opts && opts.sessionId) || ""),
+    onProgress: typeof opts.onProgress === "function" ? opts.onProgress : null,
+    llmHops: 0,
+    hopProgress: _createProgressEmitter
+      ? _createProgressEmitter({
+          onProgress: opts.onProgress,
+          // 跳数事先不可知：total 传 0，行里就不带猜测的总数（协议层允许）。
+          total: 0,
+          turnId: String(opts.turnId || ""),
+          sessionId: String((opts && opts.sessionId) || ""),
+        })
+      : null,
     // B-5: 上下文按机器分槽。机器身份由 Host 提供(见 hosts/shared/machine_identity.js),
     // 内核不需要知道「机器」这件事。
     machineId: String((opts && opts.machineId) || ""),
@@ -529,6 +568,11 @@ function createProductSession(ffi, llmOpts) {
         // Production Chat: one kernel llm_chat becomes one executeLlmChat.
         // The URL is catalog / BITBOT_LLM_* (default DeepSeek). This file does
         // not substitute a loopback stub and does not call the model again.
+        // §5.7：这一跳本身就是「Bot 在干活」的可见证据 —— 上屏为 model_reply 类。
+        state.llmHops += 1;
+        const hopIndex = state.llmHops;
+        const hopEffect = { kind: "llm_chat", command: "agent-loop" };
+        if (state.hopProgress) state.hopProgress.start(hopIndex, hopEffect);
         const res = await ffi.executeLlmChat("agent-loop", {
           ...chatOpts,
           messages: Array.isArray(req.messages) ? req.messages : [],
@@ -545,8 +589,13 @@ function createProductSession(ffi, llmOpts) {
           // 会把这一票算成「成功回复」。这里只留原因、正文留空，交给 Host
           // 出口按 ok:false 报出去。
           state.llmError = String(res.error || res.stderr || "llm_chat_failed");
+          // 失败也如实发一条 done（ok:false + error），进度行不许静默消失。
+          if (state.hopProgress)
+            state.hopProgress.done(hopIndex, hopEffect, { ok: false, error: state.llmError });
           return { content: "", calls: [], error: state.llmError };
         }
+        if (state.hopProgress)
+          state.hopProgress.done(hopIndex, hopEffect, { ok: true });
         return {
           content: String(res.stdout || ""),
           calls: calls.map((c) => ({

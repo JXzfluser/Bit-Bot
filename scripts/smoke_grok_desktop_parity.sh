@@ -3258,6 +3258,10 @@ if node -e "require('node:sqlite')" 2>/dev/null; then
   echo "  · G-73 修复后绿：PASS=10 FAIL=0 —— 新增 GET /v1/events（SSE）只加路由不改任何既有响应体；"
   echo "    复用 event_log.readAfter 做游标；鉴权沿用设备密钥（B-4a），未鉴权一律 401；"
   echo "    无事件库（双写没开）走诚实 503 event_log_unavailable，不假装空流通过。"
+  echo "  · G-73 更正（2026-11-02，§8.62）：这里原来写的「鉴权与 /v1/approvals 同一套设备密钥」在真机上是错的 ——"
+  echo "    配对 /v1/pair/redeem 回给手机的只有共享 bearer turn_token，手机没有设备私钥 ⇒ GET /v1/events 一连就 401。"
+  echo "    现在鉴权与 /v1/turn 完全同构（登记表空→bearer，非空→设备签名，两边一起 401），断言补到 EV-8（PASS=24 FAIL=0）。"
+  echo "    取红原文的办法是把产品代码临时回退再跑同一命令：FAIL=6（EV-5 三红 + EV-8 三红），恢复后 24/0。"
   echo "  · G-73 残留（诚实）：这条路由在桌面生产路径上仍会 503，因为双写/镜像（event_mirror）"
   echo "    尚未接进 hosts/desktop/main.js —— 桌面进程里没有可读事件库句柄可注入。要让「手机看得见」"
   echo "    真的端到端，需要把 event_mirror 的读句柄接到 ensureCnInbound（W2 后续 A1-2/A1-4 或专门的接线片）。"
@@ -3293,6 +3297,76 @@ if node -e "require('node:sqlite')" 2>/dev/null; then
   echo "    是 A1-4 的活，本门只证明事件真的落库且路由能读出来。"
 else
   echo "  · skip：本机 node 没有 node:sqlite，G-74 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g75_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g75_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  timeout 600 ${g75_xvfb[@]+"${g75_xvfb[@]}"} env ELECTRON_DISABLE_SANDBOX=1 node scripts/e2e_remote_progress_stream.mjs > /tmp/g75-remote-stream.log 2>&1
+  if grep -q "^e2e_remote_progress_stream: PASS=8 FAIL=0 SKIP=0$" /tmp/g75-remote-stream.log; then
+    ok "G-75 真 Electron 远程进度流全绿（8 项，$(tail -1 /tmp/g75-remote-stream.log)）"
+  elif grep -q "SKIP=1" /tmp/g75-remote-stream.log; then
+    echo "  · skip：$(grep -m1 'SKIP —' /tmp/g75-remote-stream.log || tail -1 /tmp/g75-remote-stream.log)（SKIP ≠ PASS）"
+  else
+    bad "G-75 e2e_remote_progress_stream（见 /tmp/g75-remote-stream.log；$(tail -1 /tmp/g75-remote-stream.log)）"
+  fi
+  grep -q "RP-02 配对手机用的那把 bearer" /tmp/g75-remote-stream.log \
+    && grep -q "RP-03 手机这一轮的流里" /tmp/g75-remote-stream.log \
+    && grep -q "RP-05 断线续订" /tmp/g75-remote-stream.log \
+    && ok "G-75 三条命门都在：配对那把 bearer 订得到（不再 401）、手机这一轮真的落 progress、半程拔线带 Last-Event-ID 接上且零重复零缺失" \
+    || bad "G-75 RP-02/RP-03/RP-05 锚点缺失（鉴权口径或续订没被断言到）"
+  grep -q "RP-06 session 隔离" /tmp/g75-remote-stream.log \
+    && grep -q "RP-07 /v1/turn 响应体一字未变" /tmp/g75-remote-stream.log \
+    && grep -q "RP-08 对照成立" /tmp/g75-remote-stream.log \
+    && ok "G-75 边界也钉住了：指定会话的流里不许有别的会话、/v1/turn 响应体 10 个字段一个没动、零 effect 的纯聊天也有进度" \
+    || bad "G-75 RP-06/RP-07/RP-08 锚点缺失"
+  echo "  · G-75 修复前红（真实输出，三轮分开取的）："
+  echo "    RP-02 ✗ 手机那把凭证订不到事件流：401 body={\"ok\":false,\"error\":\"no_devices_registered\"}；"
+  echo "    RP-04 ✗ 回合里一个 progress 都没有 …… effects:0（单独回退 main.js 的 onTurn onProgress 后："
+  echo "    RP-03 ✗ {\"kinds\":[\"turn_started\",\"turn_ended\"],\"seqs\":[6,7]}、RP-05 ✗ got:2、RP-08 ✗ cats:[]，整门 PASS=4 FAIL=4）"
+  echo "  · G-75 修复后绿：PASS=8 FAIL=0 —— RP-03 一轮 9 帧 turn_started→7×progress→turn_ended（seq 6→14），"
+  echo "    RP-04 progress 7 帧含 tool_activity，RP-05 半程拔断后从 seq=17 接上、合并 4 帧 == 整轮 4 帧、重复 0 缺失 0。"
+  echo "  · G-75 改了四处产品（都是可选/新增，不动既有契约）：/v1/events 鉴权与 /v1/turn 同构（cn_inbound_server.js）、"
+  echo "    /v1/events 可选 ?session_id=（不传时行为一字不变）、桌面 onTurn 补 onProgress（main.js）、"
+  echo "    AgentLoop 的 llm 跳与它 dispatch 的真效果发进度（agent_loop_product_wire.js + run_moon_turn.js 传可选字段）。"
+  echo "  · G-75 残留（诚实）：① 双写默认关（BITBOT_EVENT_DUAL_WRITE 没开）时这条流仍诚实 503，端上回退整轮 —— 部署侧策略；"
+  echo "    ② /v1/turn 回执里的 host_results 不含 AgentLoop 内 dispatch 的工具效果（本门看到 effects:0 而流里有 tool_activity），"
+  echo "    属既有响应体口径，按铁律没动，登记在 cross-end-roadmap-a.md；"
+  echo "    ③ 跨设备的授权边界（谁能订哪个 session）没做，那是 W3「账号=设备」的活；"
+  echo "    ④ 真机（Kotlin/Swift 客户端）侧的可见性由 A1-4 的 AE-01..AE-06 结构门 + 人工验收兜，本门只证服务端到 SSE 帧为止。"
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-75 未跑（SKIP ≠ PASS）"
+fi
+
+echo "== G-76 §5.7 进度链路真回合回归（GP-96/97/98 —— 此前这道门不在矩阵里，导致 AgentLoop 断进度没人发现）=="
+if command -v moon >/dev/null 2>&1 || [ -x "$HOME/.moon/bin/moon" ]; then
+  timeout 420 node scripts/prove_gp96_progress.js > /tmp/g76-gp96.log 2>&1
+  if grep -q "32 passed, 0 failed" /tmp/g76-gp96.log; then
+    ok "G-76 GP-96/97/98 全绿（$(grep -c '✓' /tmp/g76-gp96.log) 项，$(tail -1 /tmp/g76-gp96.log)）"
+  else
+    bad "G-76 prove_gp96_progress（见 /tmp/g76-gp96.log；$(tail -1 /tmp/g76-gp96.log)）"
+  fi
+  grep -q "纯聊天回合也有进度行" /tmp/g76-gp96.log \
+    && grep -q "工具回合（真 effect 边界）成功" /tmp/g76-gp96.log \
+    && grep -q "2×N 排序: 3 start + 3 done 一一对应" /tmp/g76-gp96.log \
+    && ok "G-76 三条都在：模型跳可见、真工具边界可见、2×N 排序不再被 0 对恒真放过" \
+    || bad "G-76 GP-96 锚点缺失"
+  echo "  · G-76 为什么现在才接进矩阵（诚实）：这道门 30 条断言一直存在，但矩阵从没跑过它 —— "
+  echo "    内核换成 AgentLoop 后，一次真实回合不再产生批量 effects，进度发射器一次都没被喂到，"
+  echo "    本地跑出来的真实红是：'GP-97 event count' ✗ 0 rows、'GP-96 2×N 排序: 0 start + 0 done 一一对应' ✓（恒真的绿）、"
+  echo "    'GP-96 total consistency' ✗ 空。三处产品接线补上后同一命令变 32 passed, 0 failed。"
+  echo "  · G-76 修复的落点：hosts/shared/agent_loop_product_wire.js（llm 跳发 model_reply 的 start/done；"
+  echo "    它 dispatch 的 web_fetch/send_mail 把 onProgress 带进 executeHostEffects）、"
+  echo "    hosts/shared/run_moon_turn.js（createProductSession 多传 sessionId/onProgress 两个可选字段）。"
+  echo "  · G-76 残留（诚实）：AgentLoop 的 Shell 产品工具在这个 wire 里仍是 Host 侧的模拟回执（'[product-shell] …'），"
+  echo "    它不走 executeHostEffects ⇒ 没有真效果边界，也就不该有进度行 —— 这条按现状登记，不冒充已交付。"
+else
+  echo "  · skip：本机没有 moon 内核，G-76 的两段真回合断言跑不了（SKIP ≠ PASS）"
 fi
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"

@@ -190,9 +190,19 @@ async function main() {
     ? ok("GP-96 真实 kernel 回合成功")
     : bad("GP-96 kernel turn", res.error);
 
-  turnEvents.length >= 3
-    ? ok("GP-97 进度事件在回合期间发出 (" + turnEvents.length + " rows)")
-    : bad("GP-97 event count", turnEvents.length);
+  /* ── 2026-11-02 复核（本文件此前不在聚合矩阵里，所以这一段今天第一次真跑）──
+     内核换成 AgentLoop 之后，一次「纯聊天」回合**没有任何批量 effects**：模型跳
+     发生在 hosts/shared/agent_loop_product_wire.js 里，executeHostEffects 的进度
+     发射器一次都没被喂到 ⇒ 上面这两条计数断言当场红（0 rows），而 2×N 排序那条
+     是「0 start + 0 done 一一对应」——恒真的绿。这是尺子和产品同时有问题：
+       · 产品：AgentLoop 的 llm 跳 / 真效果必须自己发进度行（本轮已修，见 report.md §8.62）；
+       · 尺子：0 对不能算「排序正确」，并且 ≥3 行这条要落在**真的有效果边界**的回合上。
+     所以这里跑两遍：A 纯聊天（证明模型跳可见 + 首行早于回合结束），
+     B 脚本化 tool_call（证明效果边界 start/done、2×N、total=真实效果数）。 */
+  const chatPairs = turnEvents.filter((e) => e.phase === "start").length;
+  turnEvents.length >= 2 && chatPairs >= 1
+    ? ok("GP-97 纯聊天回合也有进度行：" + turnEvents.length + " rows（model_reply 起 " + chatPairs + " 跳）")
+    : bad("GP-97 纯聊天回合零进度行（AgentLoop 的 llm 跳没发进度）", turnEvents.length);
 
   // GP-97 slow provider: the FIRST progress event must arrive well before the
   // turn resolves. The stub holds the HTTP response for 800ms; if progress
@@ -208,18 +218,74 @@ async function main() {
     ? ok("GP-97 慢 provider 下首个进度事件在 " + firstWall + "ms 可见 (回合 " + lastWall + "ms 才结束)")
     : bad("GP-97 slow provider", JSON.stringify({ first: firstWall, last: lastWall }));
 
-  // GP-96 2×N ordering: every start has a matching done with the same index
-  const starts = turnEvents.filter(e => e.phase === "start");
-  const dones = turnEvents.filter(e => e.phase === "done");
-  starts.length === dones.length && starts.every((s, i) => dones[i] && dones[i].index === s.index)
-    ? ok("GP-96 2×N 排序: " + starts.length + " start + " + dones.length + " done 一一对应")
-    : bad("GP-96 ordering", { starts: starts.map(s => s.index), dones: dones.map(d => d.index) });
+  /* ---- 3b) Tool turn: real effect boundaries must stream (§5.7 工具活动) ---- */
+  const TOOL_PORT = STUB_PORT + 1;
+  const toolStub = spawn(process.execPath, [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")], {
+    cwd: REPO,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      BITBOT_STUB_PORT: String(TOOL_PORT),
+      BITBOT_STUB_MODE: "toolcall",
+      BITBOT_STUB_LATENCY_MS: "200",
+      // 一次真工具调用：kernel 让模型调 web_fetch → Host 真的 executeHostEffects
+      // → 边界上发 start/done → kernel 续跑第二跳收尾。这证明的是**工具链路**，
+      // 不是模型质量（stub 自己的头注释里同一句话）。
+      BITBOT_STUB_TOOL_SCRIPT: JSON.stringify([
+        { tool_calls: [{ id: "c1", name: "web_fetch", arguments: { url: "http://127.0.0.1:" + TOOL_PORT + "/v1/healthz" } }] },
+        { content: "GP96 工具回合完成" },
+      ]),
+    },
+  });
+  const toolStubUp = await new Promise((res) => {
+    const t = setTimeout(() => res(false), 8000);
+    toolStub.stdout.on("data", (d) => {
+      if (String(d).includes("[stub-llm]")) {
+        clearTimeout(t);
+        res(true);
+      }
+    });
+    toolStub.on("error", () => { clearTimeout(t); res(false); });
+  });
+  if (!toolStubUp) {
+    bad("GP-96 工具回合 stub 启动", "openai_compat_stub.js(toolcall) 未在 8s 内就绪");
+  } else {
+    Object.assign(process.env, {
+      BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + TOOL_PORT + "/v1",
+    });
+    const toolEvents = [];
+    const t1 = Date.now();
+    const resB = await runner.runTurn("GP96 用工具抓一个链接", {
+      sessionId: "sess-gp96tool-" + RUN_ID,
+      machineId: "desk-1",
+      machineKind: "desktop",
+      onProgress: (ev) => toolEvents.push(Object.assign({ wall: Date.now() - t1 }, ev)),
+    });
+    resB.ok === true
+      ? ok("GP-96 工具回合（真 effect 边界）成功")
+      : bad("GP-96 工具回合", resB.error);
 
-  // GP-96 total is real effect count
-  const totals = turnEvents.map(e => e.total).filter(t => t > 0);
-  totals.length > 0 && totals.every(t => t === totals[0])
-    ? ok("GP-96 total 字段一致 (" + totals[0] + ")")
-    : bad("GP-96 total consistency", totals);
+    toolEvents.length >= 3
+      ? ok("GP-97 进度事件在回合期间发出 (" + toolEvents.length + " rows，含 " +
+        toolEvents.filter((e) => e.phase === "start" && e.category === "tool_activity").length + " 条工具活动)")
+      : bad("GP-97 event count", toolEvents.length);
+
+    // GP-96 2×N ordering: every start has a matching done with the same index.
+    // 加了 starts.length >= 1：0 对不算「一一对应」（上一版就是这么恒真通过的）。
+    const starts = toolEvents.filter(e => e.phase === "start");
+    const dones = toolEvents.filter(e => e.phase === "done");
+    starts.length >= 1 && starts.length === dones.length && starts.every((s, i) => dones[i] && dones[i].index === s.index)
+      ? ok("GP-96 2×N 排序: " + starts.length + " start + " + dones.length + " done 一一对应")
+      : bad("GP-96 ordering", { starts: starts.map(s => s.index), dones: dones.map(d => d.index) });
+
+    // GP-96 total is real effect count（工具回合里 total 必须来自真实效果数）
+    const totals = toolEvents.map(e => e.total).filter(t => t > 0);
+    totals.length > 0 && totals.every(t => t === totals[0])
+      ? ok("GP-96 total 字段一致 (" + totals[0] + "，来自真实 effect 数组长度)")
+      : bad("GP-96 total consistency", totals);
+  }
+  try { toolStub.kill(); } catch (_) { /* 收尾 */ }
+
 
   stub.kill();
 

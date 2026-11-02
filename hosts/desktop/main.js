@@ -4192,6 +4192,23 @@ async function ensureCnInbound() {
           channel: channel === "android" || channel === "ios" ? "" : channel,
           turnId: hostTurnId,
           approved: false,
+          // A1-3（W2 收口）：手机发起的回合也要有进度。之前这里没传 onProgress，
+          // 于是事件流只有 turn_started/turn_ended 两头 —— 手机上这几十秒是空屏，
+          // 「手机看得见这一轮」这句话并不成立（RP-04 的红原文）。桌面的本地回合
+          // 一直是传了的（上面 runTurn 的 GP-96/97 那段），所以这是**两条路径不对称**，
+          // 不是设计选择。行为对齐本地回合：广播给渲染层 + 落 progress 事件。
+          // 事件绝不影响回合本身 ⇒ 两处都包 try/catch 吞掉。
+          onProgress: (ev) => {
+            const row = Object.assign({}, ev, {
+              session_id: String((ev && ev.session_id) || sessionId),
+            });
+            try {
+              broadcast("bitbot:turn-progress", row);
+            } catch (_) { /* 渲染层没就绪也不影响回合 */ }
+            try {
+              turnEvents.emitProgress(turnMirror, { sessionId, turnId: hostTurnId, row });
+            } catch (_) { /* 回合事件绝不影响回合本身 */ }
+          },
         });
         broadcast("bitbot:llm-stream", {
           phase: "end",

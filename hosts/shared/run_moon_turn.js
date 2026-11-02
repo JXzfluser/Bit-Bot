@@ -438,6 +438,10 @@ function createTurnRunner(repoRoot, opts = {}) {
       replyTo: String(ctx.replyTo || ""),
       replyQuote: (preReplyQuote && preReplyQuote.resolved && preReplyQuote.text) || "",
       replyRole: (preReplyQuote && preReplyQuote.role) || "assistant",
+      // §5.7 进度：AgentLoop 的 llm 跳与它dispatch 的真效果都发生在这个 wire 里，
+      // 监听器不带进来，桌面 #turn-progress 与手机 SSE 的 progress 帧就双双空转。
+      sessionId: String(ctx.sessionId || ""),
+      onProgress: typeof ctx.onProgress === "function" ? ctx.onProgress : undefined,
     });
     const session = await runKernel(kernelArgs, {
       timeoutMs: ctx.timeoutMs || 180000,

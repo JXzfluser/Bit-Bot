@@ -4470,3 +4470,160 @@ SKIP ≠ PASS）；有则用 `PASS=/FAIL=` 汇总行判绿，并钉 EV-1..EV-8 �
 - 没起真 Electron 跑一整轮再读库 —— 门用「桥 + 镜像句柄 + 路由」在 Node 里把同一段代码证到位；
   真机端到端（手机订阅并显示进度）是 A1-4 的活，本刀不假装做过。
 
+
+---
+
+## 8.62 路线 A · W2 收口：手机真订得到、真看得见、断线真接得上（A1-3 + 三条只有真 app 才暴露的缺口）
+
+上一刀的口径是「桥 + 镜像句柄 + 路由在 Node 里证到位」，两条 Node 门各自全绿
+（`prove_cn_events_sse` 10/0、`prove_cn_turn_events` 8/0）。本轮把最后一环补上 ——
+**起真桌面 Electron app，让手机侧那一端真的连一次**。连完立刻发现三条绿门结构上测不出来的缺口。
+
+### 8.62.1 三条缺口的现场（都是真实原文）
+
+新门 `scripts/e2e_remote_progress_stream.mjs`（RP-01..RP-08）首跑的真实输出：
+
+```
+  ✓ RP-01 无凭证 GET /v1/events → 401（事件流不裸奔）
+  ✗ RP-02 手机那把凭证订不到事件流：401（路由只认设备密钥签名，而配对回发的是共享 bearer —— 真机一连就死在这） — body={"ok":false,"error":"no_devices_registered"}
+  ✗ RP-03 手机发起的回合要落 turn_started
+  ✗ RP-05 前置：要有一整轮可续订的事件 — {"status":200,"got":0}
+  ✗ RP-06 带 session_id 的订阅应 200 — status=401
+  ✓ RP-07 /v1/turn 响应体一字未变：10 个字段与本轮之前记下的形状逐条相同（只加路由没动契约）
+e2e_remote_progress_stream: PASS=2 FAIL=4 SKIP=0
+```
+
+- **F1 鉴权口径与 `/v1/turn` 不一致。** `/v1/turn`（`cn_inbound_server.js:877-880`）是
+  `hasDevices ? 设备签名 : 共享 bearer`；而 `/v1/events` 只写死了 `deviceKeys.verifyDeviceTurn`。
+  `/v1/pair/redeem` 回给手机的只有 `turn_token` + `base_url`（`:856-862`），手机手里没有设备私钥
+  ⇒ **能下单、看不见自己下的单**。两条 Node 门看不见这条，因为它们把 server 与 deviceStore
+  分开注入、并且自己就是拿设备签名去订的（`prove_cn_events_sse.js:470-486 makeDevice()`）。
+- **F2 手机发起的回合不落 `progress`。** 桌面本地回合一直在传 `onProgress`（`main.js:3707-3717`），
+  `ensureCnInbound()` 的 `onTurn` 里那次 `runner.runTurn` 没传（`:4186-4193`）⇒ 两条路径不对称。
+  §8.61.4 当时把这条写成「属 A1-4 端上消费，不在本刀范围」—— 本轮按缺陷处理，不当残留挂着。
+- **F3 事件流没有会话边界。** `readAfter({fromSeq, limit})` 不带 `sessionId`，而库里
+  `event_log.js:230 readAfter` **早就支持** `sessionId`（`readSessionAfterStmt`）⇒ 手机订自己的
+  回合会把这台大脑上所有会话的对话行读走。RP-06 首跑的红就是这个（顺带 401 挡住，反而看不见泄漏面）。
+
+### 8.62.2 更深的一条：`progress` 事件在 AgentLoop 时代根本没发过（GP-96 本地红）
+
+F2 修完，`RP-03` 仍然是 `{"kinds":["turn_started","turn_ended"],"seqs":[6,7]}` —— 一条 progress 都没有。
+往内核侧追，用一个不带 Electron 的最小探针（同一 runner、仓里现成的 OpenAI 兼容 stub）对账：
+
+```
+{"resident":false,"ok":true,"host_results":0,"effects":0,"progressRows":0,"rows":[],"intent":"chat","agent_steps":1,"agent_llm":1}
+```
+
+`scripts/prove_gp96_progress.js` 的真回合三条断言当场就是红的（**这道门 30 条断言从来没接进聚合矩阵**，
+所以内核换成 AgentLoop 之后一直没人撞见）：
+
+```
+  ✓ GP-96 真实 kernel 回合成功
+  ✗ GP-97 event count
+  ✗ GP-97 slow provider — {"first":null,"last":0}
+  ✗ GP-96 total consistency —
+  ✓ GP-96 2×N 排序: 0 start + 0 done 一一对应        ← 恒真的绿
+27 passed, 3 failed
+```
+
+真因：§5.7 的进度发射器只长在 `host_ffi.executeHostEffects` 里（`host_ffi.js:24531`），
+而 AgentLoop 的模型跳与它 dispatch 的工具都发生在 `hosts/shared/agent_loop_product_wire.js`
+（`createProductSession` → `dispatch({op:"llm_chat"})`），两处 `executeHostEffects`
+调用一个不传 `onProgress`、`run_moon_turn.js:424-441` 也没把监听器带进 wire。
+**后果不止手机端**：桌面自己的 `#turn-progress` 那一行同样不再更新 —— 官方 §5.7
+「实时显示 Bot 工作进度 / 长时间任务有中间更新」在当前内核形态下是断的。
+
+那条 `2×N 排序: 0 start + 0 done 一一对应` 尤其要记：断言写成 `starts.length === dones.length && every(...)`，
+零对也满足，于是产品坏了、尺子绿着。本轮把 `starts.length >= 1` 补进判据（这是加严，不是放宽）。
+
+### 8.62.3 修法（四处，全部只加可选字段/新路由参数，不动任何既有契约）
+
+| 落点 | 改动 | 铁律核对 |
+|------|------|----------|
+| `hosts/shared/cn_inbound_server.js` `/v1/events` | 鉴权改成与 `/v1/turn` **逐字同构**的同一段（`hasDevices ? verifyDeviceTurn : p0.verifyTurnAuth(bearer)`，401 原因码集合也同一套） | 不弱于 `/v1/turn`：EV-5 里错 bearer 仍 401 `invalid_token`、裸连仍 401；EV-7 钉「登记表非空时 events/turn 两路一起 401」 |
+| 同上 `?session_id=` | 可选过滤，透传给既有 `event_log.readAfter({sessionId})` | **不传时行为一字不变**（EV-8 带反向对照：不带过滤时别会话那条确实在流里） |
+| `hosts/desktop/main.js` `onTurn` | 补 `onProgress`：`broadcast("bitbot:turn-progress", row)` + `turnEvents.emitProgress(turnMirror, …)`，两处各包 try/catch | 回合事件绝不影响回合本身（与本地回合同一口径） |
+| `hosts/shared/agent_loop_product_wire.js` + `run_moon_turn.js` | llm 跳发 `model_reply` 的 start/done（`total` 传 0 —— 跳数事先不可知，协议层允许沿用上一个，不猜数）；wire 里两处真 `executeHostEffects`（web_fetch / send_mail）把 `onProgress` 带进去；`createProductSession` 新增可选 `sessionId`/`onProgress` | 没传监听器时 `createProgressEmitter` 整体 no-op ⇒ 旧调用方逐字节不变；`prove_agent_loop_product_wire` 52/0、`prove_agent_loop_a7_a8` 23/0 复跑未破 |
+
+### 8.62.4 修复后绿（同一命令，真实原文）
+
+```
+  ✓ RP-01 无凭证 GET /v1/events → 401（事件流不裸奔）
+  ✓ RP-02 配对手机用的那把 bearer（/v1/pair/redeem 回发的 turn_token）订得到事件流 → 200 text/event-stream; charset=utf-8
+  ✓ RP-03 手机这一轮的流里 9 帧：turn_started→progress×7→turn_ended（seq 6→14 严格递增）
+  ✓ RP-04 进度真的进流了：progress 7 帧 / 该回合 effect 0 条，类别 ["model_reply","tool_activity"]（≥3 次更新，AC 的「几十秒里看得见」成立）
+  ✓ RP-05 断线续订：半程拔断（前 2 帧到 seq=11），带 Last-Event-ID 重连从 seq=12 接上，合并 4 帧 == 整轮 4 帧，重复 0 / 缺失 0 / 严格递增
+  ✓ RP-06 session 隔离：不带 session_id 时流里有 4 个 session，带 session_id=rp-phone-B 时只剩 4 帧且全是这一个 session
+  ✓ RP-07 /v1/turn 响应体一字未变：10 个字段与本轮之前记下的形状逐条相同
+  ✓ RP-08 对照成立：零 effect 的纯聊天也有 2 条进度（["model_reply"]）——不是只有动了工具的回合才看得见
+e2e_remote_progress_stream: PASS=8 FAIL=0 SKIP=0
+```
+
+RP-03 那一轮不是脚本喂出来的：门把 stub provider 切到 `toolcall` 模式，让模型真的要求一次
+`web_fetch`（URL 指向 stub 自己的 healthz，不依赖外网），kernel dispatch、Host 真执行、
+边界上发进度 —— 证的是**工具链路**，不是模型质量。
+
+单变量对照（证明每条断言钉的是它自己那条改动）：把 `main.js` 的 `onTurn onProgress` 单独回退，
+同一门立刻回到 `PASS=4 FAIL=4`，红的是 RP-03/04/05/08 四条而不是鉴权类：
+
+```
+  ✗ RP-03 三类事件要按顺序、seq 严格递增 — {"kinds":["turn_started","turn_ended"],"seqs":[6,7]}
+  ✗ RP-04 回合里一个 progress 都没有 ⇒ 手机上这几十分钟是空屏 …… "effects":0
+  ✗ RP-05 前置：要有一整轮可续订的事件 — {"status":200,"got":2}
+  ✗ RP-08 零 effect 的回合在手机上还是空屏（模型跳没发进度） — {"frames":2,"cats":[]}
+```
+
+把 F1+F3 在产品代码里临时回退（只回退 `/v1/events` 那两处），Node 侧新加的 EV-5/EV-8 六个断言
+当场红，恢复后回到 24/0：
+
+```
+FAIL EV-5 配对手机的 bearer（无设备登记）→ 200 401 {"ok":false,"error":"no_devices_registered"}
+FAIL EV-5 bearer 也是 text/event-stream application/json; charset=utf-8
+FAIL EV-5 错 bearer 报 invalid_token（与 /v1/turn 同一套原因码） {"ok":false,"error":"no_devices_registered"}
+FAIL EV-8 带 session_id 订阅 → 200 401 {"ok":false,"error":"no_devices_registered"}
+FAIL EV-8 过滤后只含本会话的事件 {"fIds":[],"keep":[1,3],"other":2}
+FAIL EV-8 对照：不带 session_id 时那条别会话的事件在流里（证明过滤真在起作用） []
+prove_cn_events_sse: PASS=18 FAIL=6
+```
+
+`prove_gp96_progress.js` 补了「A 纯聊天 / B 脚本化工具回合」两段真回合后：
+
+```
+  ✓ GP-97 纯聊天回合也有进度行：2 rows（model_reply 起 1 跳）
+  ✓ GP-97 慢 provider 下首个进度事件在 236ms 可见 (回合 1055ms 才结束)
+  ✓ GP-96 工具回合（真 effect 边界）成功
+  ✓ GP-97 进度事件在回合期间发出 (7 rows，含 1 条工具活动)
+  ✓ GP-96 2×N 排序: 3 start + 3 done 一一对应
+  ✓ GP-96 total 字段一致 (1，来自真实 effect 数组长度)
+32 passed, 0 failed
+```
+
+### 8.62.5 尺子接线与复跑
+
+| 门 | 本轮结果 | 接进矩阵 |
+|----|----------|----------|
+| `scripts/e2e_remote_progress_stream.mjs`（新，RP-01..08） | 8/0（修复前 2/4） | **G-75**（含 SKIP≠PASS 分支、单变量回退红原文、四条残留） |
+| `scripts/prove_gp96_progress.js`（补两段真回合） | 32/0（修复前 27/3） | **G-76**（此前不在矩阵，正是这次断进度没人发现的原因） |
+| `scripts/prove_cn_events_sse.js`（+EV-5..EV-8） | 24/0（回退 F1/F3 时 18/6） | 已有 **G-73** 的锚点与文案同步更正 |
+| `scripts/prove_cn_turn_events.js` | 8/0 未破 | G-74 |
+| `scripts/prove_agent_loop_product_wire.js` / `prove_agent_loop_a7_a8.js` / `prove_tool_names.mjs` | 52/0、23/0、全绿 | 未改动，复跑 |
+| `scripts/prove_kernel_resident.mjs` | 12/0 未破 | G-58 |
+| `hosts/android/**` 只读 SSE 订阅（A1-4） | 结构门 `prove_android_event_stream.mjs` 8/0；Kotlin 单测在本机 gradle 复跑通过 | 待 UI 接线后接 **G-77**（见 8.62.6） |
+
+### 8.62.6 诚实残留（这一刀没关掉的）
+
+- **W2 的用户可见半程还没闭。** Android 侧本轮交付的是**客户端能力**（`EventStreamClient.kt` +
+  三语回退文案 + 21 条 JVM 单测 + 结构门 AE-01..AE-06 含注入对照），但**没有任何界面引用它** ——
+  真机上订阅不会发起、进度不会上屏、回退提示不会显示。按「用户在真机里能否走通」这条唯一口径，
+  A1-4 不能算交付完成，已退回继续接线（AE-07/AE-08 要钉「界面确实引用并驱动」「回退文案确实在 UI 分支上」，
+  并各带注入对照）。iOS 侧仍是 stub。
+- **`/v1/turn` 回执里的 `host_results` 不含 AgentLoop 内 dispatch 的工具效果**（RP-04 里
+  `effects:0` 而流里有 `tool_activity`）。这是既有响应体口径，按「不动既有契约」的铁律本轮没改，
+  登记给 W3；改它要给 `host_results` 加可选字段并同步三端消费方。
+- **谁能订哪个 session 没解决。** `?session_id=` 只挡「看得见谁」，不挡「有权看谁」：
+  同一把 bearer 现在能订到这台大脑上的任意会话。真正的设备↔会话授权属 W3「账号=设备」（A2-3/A2-4）。
+- **双写默认仍关**（`BITBOT_EVENT_DUAL_WRITE`），关着的时候路由诚实 503、端上回退整轮 —— 部署侧策略，不是缺陷。
+- **`AgentLoop` 的 Shell 产品工具在 wire 里仍是 Host 侧模拟回执**（`'[product-shell] …'`），
+  不走 `executeHostEffects` ⇒ 没有真效果边界，也就不该有进度行；按现状登记，不冒充已交付。
+- **没做真机验收**：本机无 KVM 起不了 emulator，`gradle` 只能跑到 JVM 单测层；
+  真机上「几十秒里至少三次更新」「断线重连不重复不缺失」「连接不泄漏」仍需人工走一遍。

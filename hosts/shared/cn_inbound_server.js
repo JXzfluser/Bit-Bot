@@ -963,7 +963,11 @@ function createCnInboundServer(opts = {}) {
       }
       // ===== W2 / A1-1: 跨端事件流（SSE，只读）================================
       // 手机/网页订阅这台机器的事件（本地事件库），看得见「现在在干什么」。
-      // 鉴权与 /v1/approvals 同一套设备密钥（B-4a）：没登记的设备看不到。
+      // 鉴权**与 /v1/turn 完全同构**（同一段 hasDevices ? 设备签名 : 共享 bearer）：
+      //   配对回给手机的是共享 bearer turn_token（/v1/pair/redeem），手机手里没有
+      //   设备私钥；这里只认设备签名的话，真机一连就 401，而两条 Node 门全绿也看不见
+      //   （report.md §8.62 的 RP-02 红原文）。同构意味着**不弱于 /v1/turn**：
+      //   /v1/turn 拒绝的凭证，这里一样拒绝；登记表非空时 bearer 在两边一起失效（W3/A2-4）。
       // 内容不落云：这里只把本机已落库的事件往外推（后续经 W4 中转也只转发密文）。
       // 没有可读事件库 ⇒ 诚实 503 event_log_unavailable，绝不假装空流通过。
       if (p === "/v1/events") {
@@ -971,9 +975,21 @@ function createCnInboundServer(opts = {}) {
           json(res, 405, { ok: false, error: "method_not_allowed", allow: "GET" });
           return;
         }
-        const auth = deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore });
+        const hasDevices = (deviceStore.devices || []).length > 0;
+        const auth = hasDevices
+          ? deviceKeys.verifyDeviceTurn(deviceStore, req, raw, { nonceStore })
+          : p0.verifyTurnAuth(req, raw, turnToken, nonceStore);
         if (!auth.ok) {
-          json(res, 401, { ok: false, error: auth.error || "unauthorized" });
+          const error =
+            auth.error === "invalid_token" ||
+            auth.error === "bad_signature" ||
+            auth.error === "missing_signature" ||
+            auth.error === "stale_timestamp" ||
+            auth.error === "nonce_reused" ||
+            auth.error === "turn_token_unconfigured"
+              ? auth.error
+              : "unauthorized";
+          json(res, 401, { ok: false, error });
           return;
         }
         const log = resolveEventLog();
@@ -990,6 +1006,12 @@ function createCnInboundServer(opts = {}) {
         let fromSeq = Number(urlObj.searchParams.get("from_seq") || 0);
         if (/^[0-9]+$/.test(lastEventId)) fromSeq = Number(lastEventId);
         if (!Number.isFinite(fromSeq) || fromSeq < 0) fromSeq = 0;
+        // A1-3 附带：可选 session 过滤。库里 readAfter 早就支持 sessionId，这里只是把
+        // 它接出来 —— 不传时**行为与之前一字不变**（全量），传了才只推这一个 session。
+        // 为什么必须有：同一台大脑上多个 session 是常态（桌面本地 + 手机 + 网页），
+        // 手机订自己的回合却看到别人的对话行，那是跨会话泄漏，不是「便利」。
+        // 注意这只解决「看得见谁」，没解决「谁有权订」—— 后者是账号=设备（W3/A2-3）的活。
+        const onlySession = String(urlObj.searchParams.get("session_id") || "").trim();
 
         res.writeHead(200, {
           "Content-Type": "text/event-stream; charset=utf-8",
@@ -1026,7 +1048,11 @@ function createCnInboundServer(opts = {}) {
         };
         const snapshot = () => {
           try {
-            const batch = log.readAfter({ fromSeq: lastSent, limit: 5000 });
+            const batch = log.readAfter({
+              fromSeq: lastSent,
+              limit: 5000,
+              ...(onlySession ? { sessionId: onlySession } : {}),
+            });
             for (const ev of batch) sendEv(ev);
           } catch (e) {
             if (!closed) res.write(": read error: " + String((e && e.message) || e) + "\n\n");
