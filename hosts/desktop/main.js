@@ -284,7 +284,9 @@ const REPO_ROOT = SRC_ROOT || (DATA_ROOT ? path.dirname(DATA_ROOT) : null);
 // 这样回合事件落进的库，正是 A1-1 路由（createCnInboundServer 的 eventLog）读的那份。
 // 关默认（BITBOT_EVENT_DUAL_WRITE / BITBOT_EVENT_ONLY 都没开）时这个句柄不开库、
 // emit 全是 no-op，路由继续诚实 503、零足迹。
-const turnMirror = turnEvents.getMirror(DATA_ROOT);
+// DATA_ROOT 在极端装坏时可能是 null（resolveDataRoot 会返空）；模块加载期不能
+// path.resolve(null) 把主进程崩掉（那会把「内核未找到」的优雅提示一起打死）。
+const turnMirror = DATA_ROOT ? turnEvents.getMirror(DATA_ROOT) : null;
 
 if (!SRC_ROOT && !KERNEL_BIN) {
   // Honest failure: neither a checkout to run `moon` from nor a bundled
@@ -4209,7 +4211,7 @@ async function ensureCnInbound() {
       // A1-2 接线片：把桌面进程手里的镜像读句柄喂给 A1-1 路由，让 SSE 流读得到
       // 真实事件库（之前这里没传 → 路由一直诚实 503）。关默认开关时 readHandle()
       // 返回 null，路由继续 503、零足迹。
-      eventLog: turnMirror.readHandle(),
+      eventLog: turnMirror ? turnMirror.readHandle() : null,
     });
   }
   return cnInbound.start();
