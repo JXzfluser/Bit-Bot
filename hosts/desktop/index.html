@@ -3208,7 +3208,6 @@
               <div class="mc-card-title" data-i18n="mcAppTitle">手机端从哪来</div>
               <p class="mc-note" data-i18n="mcAppNote">安卓版目前是自己构建的安装包，还没上应用商店 —— 所以这里不给一个点了没反应的下载按钮。装好后打开 App，点「连接 Desktop」，输入上面这 6 位码就能连上。</p>
             </div>
-            <p class="mc-note" data-i18n="mcManualNote">同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 可选接线 → 入站地址。</p>
           </section>
           <section class="mc-card" id="mc-channel-card">
             <div class="mc-card-title" data-i18n="mcChannelTitle">使用 Bot Channel</div>
@@ -4444,7 +4443,6 @@
       if (mClose) setTimeout(() => mClose.focus(), 40);
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
-      refreshPairingStrip().catch(() => {});
       // Honest product residuals (brain / CN channels / filing / OTA) — never pretend ready.
       // Dev-mode only: these carry internal enum tokens (live/draft/armed/residual).
       if (devModeOn()) (async () => {
@@ -12675,81 +12673,6 @@
       return document.getElementById("sec-pairing-status");
     }
 
-    async function refreshPairingStrip() {
-      const line = document.getElementById("sec-pairing-line");
-      if (!line || !window.bitbot || !window.bitbot.pairing) return;
-      const lanBtn = document.getElementById("pairing-lan-btn");
-      const copyUrl = document.getElementById("pairing-copy-url");
-      const note = document.getElementById("sec-pairing-note");
-      const turn = document.getElementById("sec-pairing-turn");
-      try {
-        const st = await window.bitbot.pairing.state();
-        pairingSnapshot = st && st.ok ? st : null;
-        if (!pairingSnapshot) {
-          line.textContent = wavegT("pairingReadFail");
-          if (lanBtn) lanBtn.disabled = true;
-          if (copyUrl) copyUrl.disabled = true;
-          if (note) {
-            note.textContent = "";
-            note.style.display = "none";
-          }
-          if (turn) {
-            turn.textContent = "";
-            turn.style.display = "none";
-          }
-          return;
-        }
-        if (!st.listening) {
-          line.textContent = wavegT("pairingNotListening");
-        } else if (st.lan_open && (st.turn_urls || []).length) {
-          line.textContent = t("pairingLanOn", { url: st.pair_base || st.turn_urls[0] });
-        } else if (st.lan_open) {
-          line.textContent = wavegT("pairingLanOnNoIp");
-        } else {
-          line.textContent = t("pairingLocalOnly", { url: st.loopback_base || st.loopback_url || "" });
-        }
-        // 地址是哪类网卡来的，就说什么话：只有公网 / 169.254 / 覆盖网时，
-        // 手机大概率连不通，不能让用户拿着一个「像地址的东西」去试。
-        const scopeNote = pairingScopeNote(st);
-        if (note) {
-          note.textContent = scopeNote;
-          note.style.display = scopeNote ? "block" : "none";
-        }
-        if (turn) {
-          const endpoint = (st.turn_urls && st.turn_urls[0]) || st.loopback_url || "";
-          turn.textContent = endpoint ? t("pairingTurnEndpoint", { url: endpoint }) : "";
-          turn.style.display = endpoint && devModeOn() ? "block" : "none";
-        }
-        if (lanBtn) {
-          lanBtn.textContent = st.lan_enabled
-            ? wavegT("pairingBtnDisable")
-            : wavegT("pairingBtnEnable");
-          lanBtn.disabled = false;
-        }
-        // 没地址可复制时按钮保持禁用：点一下必失败的按钮不是「可用」。
-        if (copyUrl) copyUrl.disabled = !(st.pair_base || st.loopback_base || (st.turn_urls || []).length || st.loopback_url);
-        const status = pairingStatusEl();
-        if (status) {
-          status.textContent = st.token_masked
-            ? t("pairingTokenMasked", { code: st.token_masked })
-            : wavegT("pairingTokenMissing");
-        }
-        // Pairing-v1: update the 6-digit code UI.
-        updatePairingCodeUI(st);
-      } catch (_) {
-        line.textContent = wavegT("pairingReadFail");
-        if (lanBtn) lanBtn.disabled = true;
-        if (copyUrl) copyUrl.disabled = true;
-        if (note) {
-          note.textContent = "";
-          note.style.display = "none";
-        }
-        if (turn) {
-          turn.textContent = "";
-          turn.style.display = "none";
-        }
-      }
-    }
 
     /**
      * 配对地址来自哪类网卡 → 一句实话。局域网地址不啰嗦；只有覆盖网 / 公网 /
@@ -12791,7 +12714,6 @@
         try {
           const r = await window.bitbot.pairing.setLan(next);
           if (r && r.ok) pairingSnapshot = r;
-          await refreshPairingStrip();
           const status = pairingStatusEl();
           if (status) {
             status.textContent =
@@ -12812,39 +12734,6 @@
       });
     }
 
-    const pairingTokenBtn = document.getElementById("pairing-token-btn");
-    if (pairingTokenBtn) {
-      pairingTokenBtn.addEventListener("click", async () => {
-        const box = document.getElementById("sec-pairing-token");
-        const copyToken = document.getElementById("pairing-copy-token");
-        if (!box) return;
-        const shown = box.dataset.shown === "1";
-        if (shown) {
-          box.textContent = "";
-          box.style.display = "none";
-          box.dataset.shown = "0";
-          copyToken.disabled = true;
-          pairingTokenBtn.textContent = wavegT("pairingBtnShowToken");
-          return;
-        }
-        try {
-          const r = await window.bitbot.pairing.token();
-          box.style.display = "block";
-          if (r && r.ok) {
-            box.textContent = r.token;
-            box.dataset.shown = "1";
-            copyToken.disabled = false;
-            pairingTokenBtn.textContent = wavegT("pairingBtnHideToken");
-          } else {
-            box.textContent = wavegT("pairingTokenMissing");
-            copyToken.disabled = true;
-          }
-        } catch (e) {
-          box.style.display = "block";
-          box.textContent = t("pairingCopyFail", { err: String((e && e.message) || e) });
-        }
-      });
-    }
 
     const pairingCopyUrlBtn = document.getElementById("pairing-copy-url");
     if (pairingCopyUrlBtn) {
@@ -12855,60 +12744,16 @@
       pairingCopyTokenBtn.addEventListener("click", () => pairingCopy("token"));
     }
 
-    /* ---------- Pairing-v1: 6-digit code UI ---------------------------- */
-    let pairingCodeTimer = null;
     // GP-189：配对主路搬去「手机」页后，凭证旧卡按门禁 MC-10 仍要保留一个一键配对手动兜底
     // （同一份 pairing.state()）。凭证卡与手机页各有一个 #pairing-gen-btn，都要能点，故全绑。
     const pairingGenBtns = document.querySelectorAll("#pairing-gen-btn");
     const pairingRevokeBtn = document.getElementById("pairing-revoke-btn");
-    const pairingCodeDigits = document.getElementById("pairing-code-digits");
-    const pairingCodeCountdown = document.getElementById("pairing-code-countdown");
-    const pairingCodeDisplay = document.getElementById("pairing-code-display");
-    const pairingCodeActions = document.getElementById("pairing-code-actions");
-
-    function updatePairingCodeUI(st) {
-      if (!pairingCodeDisplay || !pairingCodeActions) return;
-      if (st && st.pair_code) {
-        pairingCodeDigits.textContent = st.pair_code;
-        pairingCodeDisplay.hidden = false;
-        pairingCodeActions.hidden = false;
-        startPairingCountdown(st.pair_code_expires_in_ms || 0);
-      } else {
-        pairingCodeDigits.textContent = "";
-        pairingCodeCountdown.textContent = "";
-        pairingCodeDisplay.hidden = true;
-        pairingCodeActions.hidden = true;
-        if (pairingCodeTimer) { clearInterval(pairingCodeTimer); pairingCodeTimer = null; }
-      }
-    }
-
-    function startPairingCountdown(ms) {
-      if (pairingCodeTimer) clearInterval(pairingCodeTimer);
-      let remaining = Math.max(0, Math.round(ms / 1000));
-      function tick() {
-        const m = Math.floor(remaining / 60);
-        const s = remaining % 60;
-        pairingCodeCountdown.textContent = m + ":" + String(s).padStart(2, "0");
-        if (remaining <= 0) {
-          clearInterval(pairingCodeTimer);
-          pairingCodeTimer = null;
-          // Refresh state to clear the code.
-          refreshPairingStrip();
-        }
-        remaining--;
-      }
-      tick();
-      pairingCodeTimer = setInterval(tick, 1000);
-    }
 
     pairingGenBtns.forEach((pairingGenBtn) => {
       pairingGenBtn.addEventListener("click", async () => {
         pairingGenBtn.disabled = true;
         try {
-          const r = await window.bitbot.pairing.code({ action: "issue" });
-          if (r && r.ok) {
-            await refreshPairingStrip();
-          }
+          await window.bitbot.pairing.code({ action: "issue" });
         } catch (_) { /* ignore */ }
         pairingGenBtn.disabled = false;
       });
@@ -12918,7 +12763,6 @@
         pairingRevokeBtn.disabled = true;
         try {
           await window.bitbot.pairing.code({ action: "revoke" });
-          await refreshPairingStrip();
         } catch (_) { /* ignore */ }
         pairingRevokeBtn.disabled = false;
       });
@@ -15849,7 +15693,6 @@
         pairingCopied: "已复制到剪贴板",
         pairingCopyFail: "复制失败 · {err}",
         pairingCodeFail: "配对码没生成 · {err}（没有码，手机就只能走手动那一栏）",
-        pairingModalHint: "主路在「账户 → 移动端远程控制」；这里保留手动填写与配对令牌，读的是同一份配对状态。",
         apRemote: "移动端远程控制",
         mcTitle: "移动端远程控制",
         mcPairTitle: "手机连接这台桌面",
@@ -15862,7 +15705,6 @@
         mcCodeRefresh: "刷新配对码",
         mcCodeRevoke: "立即作废",
         mcCodeHint: "手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。",
-        mcManualNote: "同一 Wi-Fi 也连不上时才走手动：设置 → 凭证 → 可选接线 → 入站地址。",
         mcAppTitle: "手机端从哪来",
         mcAppNote: "安卓版目前是自己构建的安装包，还没上应用商店 —— 所以这里不给一个点了没反应的下载按钮。装好后打开 App，点「连接 Desktop」，输入上面这 6 位码就能连上。",
         mcChannelTitle: "使用 Bot Channel",
@@ -16645,7 +16487,6 @@
         pairingCopied: "已複製到剪貼簿",
         pairingCopyFail: "複製失敗 · {err}",
         pairingCodeFail: "配對碼未產生 · {err}（沒有碼，手機就只能走手動那一欄）",
-        pairingModalHint: "主路在「帳戶 → 移動端遠端控制」；這裡保留手動填寫與配對權杖，讀的是同一份配對狀態。",
         apRemote: "移動端遠端控制",
         mcTitle: "移動端遠端控制",
         mcPairTitle: "手機連接這台桌面",
@@ -16658,7 +16499,6 @@
         mcCodeRefresh: "重新產生配對碼",
         mcCodeRevoke: "立即作廢",
         mcCodeHint: "手機只需點「連接 Desktop」並輸入這 6 位數字：5 分鐘內有效，用過一次即作廢。",
-        mcManualNote: "同一 Wi-Fi 也連不上時才走手動：設定 → 憑證 → 可選接線 → 入站位址。",
         mcAppTitle: "手機端從哪來",
         mcAppNote: "安卓版目前是自己建置的安裝包，還沒上應用商店 —— 所以這裡不給一個點了沒反應的下載按鈕。裝好後打開 App，點「連接 Desktop」，輸入上面這 6 位碼就能連上。",
         mcChannelTitle: "使用 Bot Channel",
@@ -17441,7 +17281,6 @@
         pairingCopied: "Copied to clipboard",
         pairingCopyFail: "Copy failed · {err}",
         pairingCodeFail: "No pairing code issued · {err} (without one the phone has to fall back to manual entry)",
-        pairingModalHint: "The main path now lives under Account → Mobile remote control; this card keeps the manual fields and the pairing token, reading the same pairing state.",
         apRemote: "Mobile remote control",
         mcTitle: "Mobile remote control",
         mcPairTitle: "Connect your phone to this desktop",
@@ -17454,7 +17293,6 @@
         mcCodeRefresh: "Refresh pairing code",
         mcCodeRevoke: "Revoke now",
         mcCodeHint: "On the phone tap “Connect Desktop” and enter these 6 digits: valid for 5 minutes, single use.",
-        mcManualNote: "Only when the same Wi-Fi still fails: Settings → Credentials → Optional wiring → Inbound address.",
         mcAppTitle: "Where the phone app comes from",
         mcAppNote: "The Android build is currently a self-built package — it is not on any app store yet, so there is no download button here that would do nothing. Install it, open the app, tap “Connect Desktop”, and enter the 6-digit code above.",
         mcChannelTitle: "Use a Bot Channel",
