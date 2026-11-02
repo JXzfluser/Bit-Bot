@@ -72,12 +72,14 @@ W1 的收口判据（本轮实测）：全量矩阵从 `PASS=478 FAIL=19` → `4
 | A1-1 | 服务端 `GET /v1/events?from_seq=<n>`（SSE，只读） | 复用 `event_log.readAfter`；**只加路由，不改任何既有响应体**；鉴权沿用当轮所选凭证体系，未鉴权一律 401 | **已交付 · 接矩阵 G-73**，红绿见 `report.md` §8.60；生产路径仍 503（event_mirror 未接进桌面 main.js，见 §8.60.4） |
 | A1-2 | 事件面：`turn_started`/`turn_progress`/`turn_finished` 三类最小集，带 `seq` | 不新造 kind —— 以 `docs/events.md` 已定义的为准；缺就先补契约再补码 | **已交付 · 接矩阵 G-74**，红绿见 `report.md` §8.61。注：按「以 docs/events.md 为准」落的是契约真 kind `turn_started`/`progress`/`turn_ended`（§5.2），未自造 `turn_progress`/`turn_finished`；并顺带把 `event_mirror` 读句柄接进桌面 → A1-1 路由生产路径从 503 变可读 |
 | A1-3 | 断线重连：客户端带 `Last-Event-ID` 续订 | 验收原话「任意 seq 续订事件完整、有序」（AC-T1-9） | **已交付 · 接矩阵 G-75**：`prove_cn_events_sse` EV-6（Node 层游标优先）+ `e2e_remote_progress_stream` RP-05（真 Electron 半程拔线 → 重连首帧正好接上、合并 == 整轮、重复 0 缺失 0）。同刀附带把三条只有真 app 才暴露的缺口修掉（`/v1/events` 鉴权与 `/v1/turn` 同构、桌面 `onTurn` 补 `onProgress`、`?session_id=` 会话隔离），红绿原文见 `report.md` §8.62 |
-| A1-4 | 端上消费：Android/iOS 各加一个只读 SSE 订阅，界面显示进度 | 拿不到就退回现有整轮模式，**不许静默丢事件**；每条都写进残留清单 | **半成品，不算交付**：Android 客户端能力已落（`EventStreamClient.kt` 含 seq 去重 / `Last-Event-ID` 退避重连 / 401·503·网络失败三类诚实回退 + 三语文案，21 条 JVM 单测，结构门 `prove_android_event_stream` AE-01..AE-06 含注入对照 8/0）——但**没有任何界面引用它**，真机上订阅不会发起、进度不会上屏；按「用户在真机里能否走通」这条唯一口径退回继续接线（AE-07/AE-08 要钉引用点与回退分支，各带注入对照），iOS 仍是 stub |
+| A1-4 | 端上消费：Android/iOS 各加一个只读 SSE 订阅，界面显示进度 | 拿不到就退回现有整轮模式，**不许静默丢事件**；每条都写进残留清单 | **端上已接线、真机未验（2026-11-02，接矩阵 G-77）**：Android 侧订阅真的长在回合生命周期上（`submitTurn` 发起、`turn_ended`/`finally` 关）、进度行真的传到 `ProgressRow`、回退提示真的在 busy 分支显示、三语真的接上系统 locale、`ON_STOP`/`ON_START` 管连接边界。结构门 `prove_android_event_stream` **27/0**（15 判据 + 12 把真注入），JVM 单测 **157/0**。上一版的「半成品」判定成立且已被本轮闭掉 —— 更糟的是那把门自己没牙（删掉唯一调用点仍报 `PASS=12 FAIL=0`），取证与重写过程见 `report.md` §8.63.1。**仍不算交付的部分**：本机无 KVM/真机，「用户在真手机上看得见」没有被设备级证据确认（R-A1-4b），另有一条本轮取舍 R-A1-4a；iOS 仍是 stub |
 
 W2 完成判据（对应 §7 指标）：手机发一轮，能在界面上看到 ≥3 次进度更新；拔网 10 s 重连后无重复无缺失。
 
-**判据现状（2026-11-02）**：服务端到 SSE 帧这一半**已实测成立**（RP-03 一轮 9 帧、RP-04 `progress` 7 帧含 `tool_activity`、RP-05 续订零重复零缺失）；
-「手机界面上看得见」那一半**未成立**（见 A1-4）。两条合起来才算 W2 收口，因此本节状态是 **服务端收口 / 端上未收口**。
+**判据现状（2026-11-02，两次核实）**：服务端到 SSE 帧这一半**已实测成立**（RP-03 一轮 9 帧、RP-04 `progress` 7 帧含 `tool_activity`、RP-05 续订零重复零缺失、RP-09 连续第二轮真看得见）；
+「手机界面上看得见」这一半本轮**接上并过了结构门**（G-77：15 判据 + 12 把真注入 = 27/0，端上 JVM 单测 157/0），
+但**没有被任何设备级证据确认**（本机无 KVM/真机）—— 所以本节状态写的是 **服务端收口 / 端上已接线未验收**，
+不是「W2 完成」。要盖章，得有人照着 R-A1-4b 那份清单在真手机上走一遍。
 
 顺带挖出并修掉的一条跨面缺陷（不止手机）：内核换 AgentLoop 后 §5.7 进度链路整条断掉，
 桌面 `#turn-progress` 也不再更新；`prove_gp96_progress.js` 的真回合三条断言本地是红的，
@@ -91,6 +93,8 @@ W2 遗留（下一轮要认领，别混进完成判据）：
 | R-A1-1 | 谁能订哪个 session：`?session_id=` 只挡「看得见谁」，不挡「有权看谁」；同一把 bearer 可订这台大脑上任意会话 | 授权主体是设备/账号，属 A2-3 的验签面 |
 | R-A1-2 | `/v1/turn` 回执的 `host_results` 不含 AgentLoop 内 dispatch 的工具效果（RP-04 里 `effects:0` 而流里有 `tool_activity`）—— 既有响应体口径本轮按铁律没动 | 与 T2（effect 契约带 `effect_id`）同批改，避免两处各自扩字段 |
 | R-A1-3 | 双写默认关（`BITBOT_EVENT_DUAL_WRITE`），关着时路由诚实 503、端上回退整轮 | 打开默认值的时机应等 W3 单写者/授权成形 |
+| R-A1-4a | **本轮接线时的取舍**：`submitTurn` 里一度 `awaitStreamReady(3000)` 再 POST，结果发送被进度连接拖住 3 秒（连不上时更久；`ChatThreadPersistenceTest` CP01/CP02 因此真渲染红：`Failed to assert the following: (is enabled)`、composer `[Disabled]`）。已**删掉等待**——消息必须立刻走。代价：极快回合（小于一个 RTT）可能少 `turn_started` 与首帧 progress | 要闭就得让服务端接受「先下单、再补订」的显式游标协商（`/v1/turn` 已回 `session_id`，缺的是「本轮起点 seq」），那是新的可选返回字段，等 W3 一起改 |
+| R-A1-4b | **A1-4 至今没有被设备级证据确认**：`prove_android_event_stream` 只读 Kotlin 源码结构（15 判据 + 12 把真注入 = 27/0），端上 JVM 单测 157/0 跑在 Robolectric 上；本机无 KVM 起不了 emulator。真机人工验收清单：① 配对后发一条需要工具的消息，十几秒里至少看到 3 次进度更新且措辞与桌面一致；② 中途锁屏 30 s 再回来，进度接着出且不重复（ON_STOP/ON_START 那条边界）；③ 第一轮结束后 10 s 再发第二条，第二轮**不得**先出现第一轮的行（RP-09 的真机对应物）；④ 系统语言切繁体/英文，进度行与回退提示要跟着变（现在非中/英 locale 归一到 `en`，而 app 其余文案仍是硬编码简体，会混搭）；⑤ 关掉桌面事件双写，手机要显示回退提示而不是空屏 | 任何一条在真机上不过，A1-4 就从「已接线」退回「未交付」；iOS 侧同样是 stub，要单独一刀 |
 
 ### W3 让「账号 = 设备」真的成立（这一段就是用户问的「账号管理」）
 

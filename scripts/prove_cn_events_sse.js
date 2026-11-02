@@ -87,8 +87,10 @@ function getEvents(port, opts) {
   // 断线重连：浏览器 EventSource 用的是 Last-Event-ID 头。
   if (o.lastEventId != null) headers["Last-Event-ID"] = String(o.lastEventId);
   return new Promise((resolve) => {
-    let qpath = "/v1/events?from_seq=" + (o.fromSeq != null ? o.fromSeq : 0);
-    if (o.sessionId) qpath += "&session_id=" + encodeURIComponent(o.sessionId);
+    // noCursor：一个游标都不带 —— EV-9 钉的就是这一档（不带游标 = 订阅实况）。
+    // 其余各条一直显式 from_seq=0，行为与改默认值之前一字不变。
+    let qpath = o.noCursor ? "/v1/events" : "/v1/events?from_seq=" + (o.fromSeq != null ? o.fromSeq : 0);
+    if (o.sessionId) qpath += (o.noCursor ? "?" : "&") + "session_id=" + encodeURIComponent(o.sessionId);
     const req = http.request(
       {
         host: "127.0.0.1",
@@ -293,7 +295,9 @@ function closeServer(api) {
   const a2 = evLog2.append({ sessionId: "keep-me", kind: "turn_ended", payload: { a: 3 } }).seq;
   const s8 = await startServer({ eventLog: evLog2, devicesPath: EMPTY_DEVICES, turnToken: BEARER });
   try {
-    const filtered = await getEvents(s8.port, { bearer: BEARER, sessionId: "keep-me" });
+    // 这条测的是「会话过滤」，不是游标默认值 —— 所以显式带 from_seq=0，
+    // 免得 EV-9 改了默认档之后这里被误判成红（改默认值那一档由 EV-9 单独钉）。
+    const filtered = await getEvents(s8.port, { bearer: BEARER, sessionId: "keep-me", fromSeq: 0 });
     const all = await getEvents(s8.port, { bearer: BEARER, fromSeq: 0 });
     const fIds = [];
     for (const line of filtered.raw.split("\n")) {
@@ -324,6 +328,72 @@ function closeServer(api) {
   } finally {
     await closeServer(s8.server);
     try { evLog2.close(); } catch (_) { /* 关不掉不影响结论 */ }
+  }
+
+  // ---- EV-9：不带游标 = 订阅实况，不许把历史倒灌给新连接 -------------------
+  // 病（这条是本轮在 Android 接线时才暴露出来的，服务端自己看不出）：
+  // 不带游标以前等价 from_seq=0，会把整条库倒灌。手机每一轮都是「先订阅、再发
+  // 回合」，于是从第二轮起：流里第一段就是**上一轮**的 turn_ended，而客户端按
+  // 契约在 turn_ended 时关流 —— 用户从第二轮开始只看得见上一轮的进度，
+  // 这一轮一帧都收不到。SSE 的常规语义也是「不带 Last-Event-ID = 只收新事件」。
+  const EV9_DB = path.join(TMP, "events-live-tail.sqlite");
+  const evLog3 = openEventLog({ file: EV9_DB, actor: "test-sse-live" });
+  const oldStart = evLog3.append({ sessionId: "mobile-android", kind: "turn_started", turnId: "t-old", payload: { turn_id: "t-old" } }).seq;
+  const oldEnd = evLog3.append({ sessionId: "mobile-android", kind: "turn_ended", turnId: "t-old", payload: { turn_id: "t-old", status: "ok" } }).seq;
+  const s9 = await startServer({ eventLog: evLog3, devicesPath: EMPTY_DEVICES, turnToken: BEARER });
+  try {
+    // 订上去之后才写一条新事件 —— 它必须到（证明不重放不是因为流坏了）。
+    const liveP = getEvents(s9.port, { bearer: BEARER, noCursor: true, sessionId: "mobile-android", expectSeq: oldEnd + 1 });
+    await new Promise((r) => setTimeout(r, 200));
+    const newStart = evLog3.append({ sessionId: "mobile-android", kind: "turn_started", turnId: "t-new", payload: { turn_id: "t-new" } }).seq;
+    const live = await liveP;
+    const ids = [];
+    for (const line of live.raw.split("\n")) {
+      if (line.startsWith("data: ")) {
+        try {
+          const o = JSON.parse(line.slice(6));
+          if (Number.isFinite(o.seq)) ids.push(o.seq);
+        } catch (_) { /* 跳过 */ }
+      }
+    }
+    check(live.status === 200, "EV-9 不带游标订阅 → 200（没被当成非法请求）", live.status + " " + live.raw.slice(0, 140));
+    check(ids.indexOf(oldStart) < 0 && ids.indexOf(oldEnd) < 0,
+      "EV-9 不带游标不许重放订阅之前的历史（上一轮的 turn_ended 绝不能进流）",
+      JSON.stringify({ ids, oldStart, oldEnd }));
+    check(ids.indexOf(newStart) >= 0, "EV-9 订阅之后新写的事件必须到（不重放≠不推）", JSON.stringify({ ids, newStart }));
+
+    // 对照：显式 from_seq=0 时历史照旧能取到 —— 证明变的只是默认档，不是读库能力。
+    const replay = await getEvents(s9.port, { bearer: BEARER, sessionId: "mobile-android", fromSeq: 0, expectSeq: newStart });
+    const rIds = [];
+    for (const line of replay.raw.split("\n")) {
+      if (line.startsWith("data: ")) {
+        try {
+          const o = JSON.parse(line.slice(6));
+          if (Number.isFinite(o.seq)) rIds.push(o.seq);
+        } catch (_) { /* 跳过 */ }
+      }
+    }
+    check(rIds.indexOf(oldStart) >= 0 && rIds.indexOf(oldEnd) >= 0,
+      "EV-9 对照：显式 from_seq=0 仍能拿到全部历史（门禁/回放这条路没被砍）",
+      JSON.stringify({ rIds, oldStart, oldEnd }));
+
+    // 对照：Last-Event-ID 依然是「从那之后」，不受默认档改动影响。
+    const resumed = await getEvents(s9.port, { bearer: BEARER, noCursor: true, lastEventId: oldEnd, expectSeq: newStart });
+    const reIds = [];
+    for (const line of resumed.raw.split("\n")) {
+      if (line.startsWith("data: ")) {
+        try {
+          const o = JSON.parse(line.slice(6));
+          if (Number.isFinite(o.seq)) reIds.push(o.seq);
+        } catch (_) { /* 跳过 */ }
+      }
+    }
+    check(reIds.length > 0 && reIds.every((v) => v > oldEnd),
+      "EV-9 Last-Event-ID 优先于默认档：仍从那条之后接着推",
+      JSON.stringify({ reIds, oldEnd }));
+  } finally {
+    await closeServer(s9.server);
+    try { evLog3.close(); } catch (_) { /* 关不掉不影响结论 */ }
   }
 
   console.log("\nprove_cn_events_sse: PASS=" + pass + " FAIL=" + fail);

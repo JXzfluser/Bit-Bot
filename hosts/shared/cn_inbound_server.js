@@ -1001,11 +1001,29 @@ function createCnInboundServer(opts = {}) {
           });
           return;
         }
-        // 游标：优先 Last-Event-ID（断线重连），其次 ?from_seq=（A1-3 续订的落点）。
+        // 游标三档，缺一档就有人在手机上连上一轮都看不见：
+        //   1) Last-Event-ID —— 断线重连，从那条之后接着推；
+        //   2) ?from_seq= —— 显式要历史（门禁、回放、对账用的就是这一档）；
+        //   3) 两个都不带 —— **从当前队尾开始，只推订阅之后的新事件**。
+        // 第 3 档以前是 from_seq=0（全量重放），那是个真 bug：手机每个回合都是
+        // 「先订阅、再发回合」，重放会先把**上一回合**的 turn_started/progress/
+        // turn_ended 倒灌进来 —— 客户端按契约在 turn_ended 时关流，于是第二轮起
+        // 用户看到的是上一轮的进度，而这一轮的帧一条都收不到。
+        // 这也是 SSE 的常规语义：不带游标 = 订阅实况，要历史请显式带游标。
         const lastEventId = String(req.headers["last-event-id"] || "").trim();
-        let fromSeq = Number(urlObj.searchParams.get("from_seq") || 0);
-        if (/^[0-9]+$/.test(lastEventId)) fromSeq = Number(lastEventId);
+        const fromSeqParam = urlObj.searchParams.get("from_seq");
+        let fromSeq = Number(fromSeqParam || 0);
+        let cursorGiven = fromSeqParam !== null && fromSeqParam !== "";
+        if (/^[0-9]+$/.test(lastEventId)) {
+          fromSeq = Number(lastEventId);
+          cursorGiven = true;
+        }
         if (!Number.isFinite(fromSeq) || fromSeq < 0) fromSeq = 0;
+        if (!cursorGiven) {
+          // 队尾：log.lastSeq() 是 MAX(seq)，没有事件时是 0（首次使用不受影响）。
+          fromSeq = typeof log.lastSeq === "function" ? Number(log.lastSeq()) : 0;
+          if (!Number.isFinite(fromSeq) || fromSeq < 0) fromSeq = 0;
+        }
         // A1-3 附带：可选 session 过滤。库里 readAfter 早就支持 sessionId，这里只是把
         // 它接出来 —— 不传时**行为与之前一字不变**（全量），传了才只推这一个 session。
         // 为什么必须有：同一台大脑上多个 session 是常态（桌面本地 + 手机 + 网页），

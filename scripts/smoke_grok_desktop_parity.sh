@@ -2022,8 +2022,8 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     grep -q "AB-16 回合不再归某一屏管" /tmp/g47-build.log \
       && ok "G-47 还在路上的回信不跟着上一屏死：协程挪到进程级 TurnCoordinator（SupervisorJob + Main.immediate）、busy/delivery 由那一层管、落盘后 revision++ 让屏幕重读文件、转屏回来补问权限、发送走 submitTurn，5 条用例（TF-01..05）在结果里、AB-16 带七组负向对照" \
       || bad "G-47 AB-16 anchor missing"
-    grep -q "AB-06 JVM 单测真跑：126 用例 0 失败" /tmp/g47-build.log \
-      && ok "G-47 用例数如实涨到 126（对话落盘 +9、草稿 +3、在路上的回合 +5），且 0 失败不是空跑" \
+    grep -q "AB-06 JVM 单测真跑：157 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 157（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流解析与三语文案 +31），且 0 失败不是空跑" \
       || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
   fi
 else
@@ -3308,8 +3308,8 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
   sleep 1
   timeout 600 ${g75_xvfb[@]+"${g75_xvfb[@]}"} env ELECTRON_DISABLE_SANDBOX=1 node scripts/e2e_remote_progress_stream.mjs > /tmp/g75-remote-stream.log 2>&1
-  if grep -q "^e2e_remote_progress_stream: PASS=8 FAIL=0 SKIP=0$" /tmp/g75-remote-stream.log; then
-    ok "G-75 真 Electron 远程进度流全绿（8 项，$(tail -1 /tmp/g75-remote-stream.log)）"
+  if grep -q "^e2e_remote_progress_stream: PASS=9 FAIL=0 SKIP=0$" /tmp/g75-remote-stream.log; then
+    ok "G-75 真 Electron 远程进度流全绿（9 项，$(tail -1 /tmp/g75-remote-stream.log)）"
   elif grep -q "SKIP=1" /tmp/g75-remote-stream.log; then
     echo "  · skip：$(grep -m1 'SKIP —' /tmp/g75-remote-stream.log || tail -1 /tmp/g75-remote-stream.log)（SKIP ≠ PASS）"
   else
@@ -3325,20 +3325,32 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     && grep -q "RP-08 对照成立" /tmp/g75-remote-stream.log \
     && ok "G-75 边界也钉住了：指定会话的流里不许有别的会话、/v1/turn 响应体 10 个字段一个没动、零 effect 的纯聊天也有进度" \
     || bad "G-75 RP-06/RP-07/RP-08 锚点缺失"
+  grep -q "RP-09 连续第二轮真看得见" /tmp/g75-remote-stream.log \
+    && ok "G-75 第二轮也钉住了：不带游标先订、再发回合（Android 的真实顺序），流里只许有本轮帧" \
+    || bad "G-75 RP-09 锚点缺失（连续第二轮的可见性没被断言）"
   echo "  · G-75 修复前红（真实输出，三轮分开取的）："
   echo "    RP-02 ✗ 手机那把凭证订不到事件流：401 body={\"ok\":false,\"error\":\"no_devices_registered\"}；"
   echo "    RP-04 ✗ 回合里一个 progress 都没有 …… effects:0（单独回退 main.js 的 onTurn onProgress 后："
   echo "    RP-03 ✗ {\"kinds\":[\"turn_started\",\"turn_ended\"],\"seqs\":[6,7]}、RP-05 ✗ got:2、RP-08 ✗ cats:[]，整门 PASS=4 FAIL=4）"
-  echo "  · G-75 修复后绿：PASS=8 FAIL=0 —— RP-03 一轮 9 帧 turn_started→7×progress→turn_ended（seq 6→14），"
-  echo "    RP-04 progress 7 帧含 tool_activity，RP-05 半程拔断后从 seq=17 接上、合并 4 帧 == 整轮 4 帧、重复 0 缺失 0。"
-  echo "  · G-75 改了四处产品（都是可选/新增，不动既有契约）：/v1/events 鉴权与 /v1/turn 同构（cn_inbound_server.js）、"
-  echo "    /v1/events 可选 ?session_id=（不传时行为一字不变）、桌面 onTurn 补 onProgress（main.js）、"
+  echo "    RP-09（本轮第四条，单变量回退：只把 cn_inbound_server.js 的游标默认档 if (!cursorGiven) 改成 if (false)，"
+  echo "    其余一字未动）✗ 不带游标的新订阅里出现了上一轮（第二轮起用户就看不见实时进度了） —"
+  echo "    {\"id1\":\"desktop-mvzhxg63-k9hp\",\"ids\":[\"desktop-mvzhxg63-k9hp\"],\"frames\":4}，整门 PASS=8 FAIL=1 SKIP=0。"
+  echo "    同一条语义在 Node 层也各钉了一次（prove_cn_events_sse EV-9）：单变量回退后"
+  echo "    ✗ EV-9 不带游标不许重放订阅之前的历史 — {\"ids\":[1,2,3],\"oldStart\":1,\"oldEnd\":2}，PASS=28 FAIL=1。"
+  echo "  · G-75 修复后绿：PASS=9 FAIL=0 —— RP-03 一轮 9 帧 turn_started→7×progress→turn_ended（seq 6→14），"
+  echo "    RP-04 progress 7 帧含 tool_activity，RP-05 半程拔断后从 seq=17 接上、合并 4 帧 == 整轮 4 帧、重复 0 缺失 0，"
+  echo "    RP-09 不带游标订上后 4 帧全是本轮、首帧 turn_started、progress 2 帧。"
+  echo "  · G-75 改了五处产品（都是可选/新增，不动既有契约）：/v1/events 鉴权与 /v1/turn 同构（cn_inbound_server.js）、"
+  echo "    /v1/events 可选 ?session_id=（不传时行为一字不变）、/v1/events 不带游标时改为「从队尾起推实况」（要历史请显式带 from_seq，"
+  echo "    门禁自己就是这么做的，EV-9/RP-09 的对照档仍在）、桌面 onTurn 补 onProgress（main.js）、"
   echo "    AgentLoop 的 llm 跳与它 dispatch 的真效果发进度（agent_loop_product_wire.js + run_moon_turn.js 传可选字段）。"
   echo "  · G-75 残留（诚实）：① 双写默认关（BITBOT_EVENT_DUAL_WRITE 没开）时这条流仍诚实 503，端上回退整轮 —— 部署侧策略；"
   echo "    ② /v1/turn 回执里的 host_results 不含 AgentLoop 内 dispatch 的工具效果（本门看到 effects:0 而流里有 tool_activity），"
   echo "    属既有响应体口径，按铁律没动，登记在 cross-end-roadmap-a.md；"
   echo "    ③ 跨设备的授权边界（谁能订哪个 session）没做，那是 W3「账号=设备」的活；"
-  echo "    ④ 真机（Kotlin/Swift 客户端）侧的可见性由 A1-4 的 AE-01..AE-06 结构门 + 人工验收兜，本门只证服务端到 SSE 帧为止。"
+  echo "    ④ 真机（Kotlin/Swift 客户端）侧的可见性：客户端接线由 G-77（AE-01..AE-15 结构门 + 157 条 JVM 单测）证到"
+  echo "    「代码在渲染路径上、订阅被回合生命周期驱动、断线边界正确」为止，本门只证服务端到 SSE 帧为止；"
+  echo "    手上没有真机（本机无 KVM），「用户真能在手机上看见」仍未被设备级证据确认 —— 见 cross-end-roadmap-a.md R-A1-4b。"
 else
   echo "  · skip：缺 playwright-core 或 electron，G-75 未跑（SKIP ≠ PASS）"
 fi
@@ -3367,6 +3379,44 @@ if command -v moon >/dev/null 2>&1 || [ -x "$HOME/.moon/bin/moon" ]; then
   echo "    它不走 executeHostEffects ⇒ 没有真效果边界，也就不该有进度行 —— 这条按现状登记，不冒充已交付。"
 else
   echo "  · skip：本机没有 moon 内核，G-76 的两段真回合断言跑不了（SKIP ≠ PASS）"
+fi
+
+echo "== G-77 A1-4 手机端事件流接线（结构门 AE-01..AE-15 + 12 把注入对照 + 157 条 JVM 单测）=="
+if timeout 300 node scripts/prove_android_event_stream.mjs > /tmp/g77-android-sse.log 2>&1 \
+   && grep -q "^prove_android_event_stream: PASS=27 FAIL=0$" /tmp/g77-android-sse.log; then
+  ok "G-77 Android 事件流结构门全绿（$(tail -1 /tmp/g77-android-sse.log)）"
+  grep -q "AE-08 订阅被回合生命周期驱动" /tmp/g77-android-sse.log \
+    && grep -q "AE-09 进度真的走到界面" /tmp/g77-android-sse.log \
+    && grep -q "AE-13 close() 不在调用线程上拆 socket" /tmp/g77-android-sse.log \
+    && grep -q "INJ-AE_08 注入对照有牙" /tmp/g77-android-sse.log \
+    && ok "G-77 三条命门都在，且都有牙：订阅真的被 submitTurn 发起/finally 关掉（删掉唯一调用点就翻红）、进度真的传到 ProgressRow（断链就翻红）、close 不拖界面线程（回到在调用线程上关 reader 就翻红）" \
+    || bad "G-77 AE-08/AE-09/AE-13 或注入对照锚点缺失（这条门可能是摆设）"
+  g77_inj=$(grep -c "注入对照有牙" /tmp/g77-android-sse.log)
+  [ "$g77_inj" -ge 12 ] \
+    && ok "G-77 注入对照 $g77_inj 把全部有效（每把都是「改坏副本 → 用同一判据重跑」，不是字符串自证）" \
+    || bad "G-77 注入对照只有 $g77_inj 把（应 ≥ 12；恒真对照比没对照更危险）"
+  echo "  · G-77 上一版门是坏的（本轮实测，不是风格不满）：把 TurnCoordinator 里唯一的"
+  echo "    startEventStreamSubscription(machineKind) 调用点删干净、只留方法定义，旧门仍输出"
+  echo "    prove_android_event_stream: PASS=12 FAIL=0 —— 而「代码写了但界面上碰不到」正是这门存在的唯一理由。"
+  echo "    旧门的三条「注入对照」也只是「替换后的副本里不含那个字符串」，从没拿真判据跑过那份副本。"
+  echo "  · G-77 本版第一次跑（对着已写对的产品）报 4 红，其中两条是门的错，都按「改强不改松」修："
+  echo "    AE-06 {\"dumpsJson\":true} —— 判据没区分代码与注释，那串 optString(\"row\") 只在说明注释里；"
+  echo "    修法是载入时统一剥注释（过时注释同样能把真 bug 撑绿），不是给判据开例外。"
+  echo "    AE-09 {\"onCreatePasses\":false} —— 判据把传参钉在 onCreate 体内，实际在 private fun HomeShell() 里；"
+  echo "    改成「谁调用 HomeScreen(，谁的函数体里必须同时有数据源和那条传参」，两把注入都能打回红。"
+  echo "  · G-77 端上真跑的单测：$(grep -o 'AB-06 JVM 单测真跑：[0-9]* 用例 0 失败' /tmp/g47-build.log | tail -1)（本轮 157，A1-4 新增 EventStreamClientTest 15 + EventStreamMessagesTest 16；旧版那条恒真「解析测试」已删）"
+  echo "  · G-77 修复的产品病（都是真机上会踩的）：① progressUpdate 收 String、coordinator 用 optString(\"row\")"
+  echo "    ⇒ 手机上直接把 JSON 吐给用户；② currentLocale 从没被赋值 ⇒ zh-TW/en 文案是死代码，非简体设备上界面仍是简体；"
+  echo "    ③ 我在 lifecycle 回调（界面线程）里 reader?.close()，与阻塞中的 SSE readLine() 抢 BufferedReader 读锁 —— "
+  echo "    jstack 原文：java.io.BufferedReader.close → ReentrantLock.lock / EventStreamClient\$Subscription.close(EventStreamClient.kt:134)"
+  echo "    / TurnCoordinator.stopEventStreamSubscription(TurnCoordinator.kt:248) / MainActivity.onCreate\$lambda\$4(MainActivity.kt:266)；"
+  echo "    现改为只置标志 + 摘引用，拆解交守护线程，另加一条真 ServerSocket 的「close 不许阻塞调用线程」用例；"
+  echo "    ④ 发送前 awaitStreamReady(3000) 把发送拖住 3 秒（连不上时更久）⇒ 已删等待，代价记为 R-A1-4a（极快回合可能少首帧）。"
+  echo "  · G-77 残留（诚实）：这门只读 Kotlin 源码结构，不跑 Android 逻辑；本机无 KVM/真机，"
+  echo "    「用户在真手机上能否看见进度」仍未被设备级证据确认（R-A1-4b）；W3 账号=设备未做，"
+  echo "    sessionId 仍是 mobile-<machineKind> 约定值而非真账号会话。"
+else
+  bad "G-77 prove_android_event_stream（见 /tmp/g77-android-sse.log；$(tail -3 /tmp/g77-android-sse.log | tr '\n' ' ')）"
 fi
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"

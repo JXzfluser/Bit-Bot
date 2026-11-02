@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import com.bitbot.host.EventStreamMessages
 
 /**
  * 首屏外壳（顶栏 + 内容 + 输入区）与各组件。
@@ -297,9 +298,12 @@ fun ChatListView(
   lines: List<ChatLine>,
   busy: Boolean,
   modifier: Modifier = Modifier,
+  // A1-4: 实时进度行与回退提示
+  progressLines: List<String> = emptyList(),
+  fallbackMessage: String? = null,
 ) {
   val listState = rememberLazyListState()
-  androidx.compose.runtime.LaunchedEffect(lines.size, busy) {
+  androidx.compose.runtime.LaunchedEffect(lines.size, busy, progressLines.size) {
     val target = if (busy) lines.size else lines.size - 1
     if (target >= 0 && lines.isNotEmpty()) listState.animateScrollToItem(target.coerceAtMost(lines.size - 1))
   }
@@ -314,7 +318,20 @@ fun ChatListView(
   ) {
     items(lines) { line -> ChatRow(line) }
     if (busy) {
-      item { WaitingRow() }
+      // A1-4: 显示实时进度行
+      if (progressLines.isNotEmpty()) {
+        item {
+          ProgressRow(progressLines)
+        }
+      } else {
+        item { WaitingRow() }
+      }
+      // A1-4: 显示回退提示（如果有）
+      if (fallbackMessage != null) {
+        item {
+          FallbackRow(fallbackMessage)
+        }
+      }
     }
   }
 }
@@ -398,6 +415,54 @@ private fun WaitingRow() {
         )
       }
     }
+  }
+}
+
+/** A1-4: 实时进度行（收到 progress 事件时显示）。 */
+@Composable
+private fun ProgressRow(lines: List<String>) {
+  val scheme = MaterialTheme.colorScheme
+  Column(
+    Modifier
+      .fillMaxWidth()
+      .widthIn(max = 640.dp),
+  ) {
+    Text(
+      // A1-4: 这句也走三语，不再硬编码简体（同 FallbackRow 里的文案口径）。
+      EventStreamMessages.thinking(),
+      style = MaterialTheme.typography.bodySmall,
+      color = scheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(BitBotSpace.sm))
+    // 显示最新的几条进度行（最多 5 条，避免刷屏）
+    lines.takeLast(5).forEach { line ->
+      Text(
+        line,
+        style = MaterialTheme.typography.bodySmall,
+        color = scheme.primary,
+        modifier = Modifier.padding(start = BitBotSpace.md),
+      )
+    }
+  }
+}
+
+/** A1-4: 回退提示行（401/503/网络失败时显示）。 */
+@Composable
+private fun FallbackRow(message: String) {
+  val scheme = MaterialTheme.colorScheme
+  Column(
+    Modifier
+      .fillMaxWidth()
+      .widthIn(max = 640.dp)
+      .clip(RoundedCornerShape(BitBotRadius.card))
+      .background(scheme.errorContainer)
+      .padding(BitBotSpace.md),
+  ) {
+    Text(
+      message,
+      style = MaterialTheme.typography.bodySmall,
+      color = scheme.onErrorContainer,
+    )
   }
 }
 

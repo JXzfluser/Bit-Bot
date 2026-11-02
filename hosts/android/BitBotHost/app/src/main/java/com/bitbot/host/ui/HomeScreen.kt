@@ -42,6 +42,9 @@ fun HomeScreen(
   onOpenCredentials: () -> Unit,
   onOpenMenu: () -> Unit,
   modifier: Modifier = Modifier,
+  // A1-4: 实时进度行与回退提示
+  progressLines: List<String> = emptyList(),
+  fallbackMessage: String? = null,
 ) {
   Column(
     modifier
@@ -83,6 +86,9 @@ fun HomeScreen(
           lines = lines,
           busy = busy,
           modifier = Modifier.fillMaxSize(),
+          // A1-4: 传递实时进度行
+          progressLines = progressLines,
+          fallbackMessage = fallbackMessage,
         )
       }
     }

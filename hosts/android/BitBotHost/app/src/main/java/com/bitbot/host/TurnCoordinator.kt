@@ -60,6 +60,25 @@ object TurnCoordinator {
 
   private var pendingPermissions: List<String> = emptyList()
 
+  /** A1-4: 当前活跃的 SSE 订阅（用于进度显示）。 */
+  private var currentSubscription: EventStreamClient.Subscription? = null
+
+  /**
+   * A1-4: 用户切到别的 app 再回来时，这一轮还要接着看。
+   * ON_STOP 关掉长连接（挂着不放就是一条后台常连），ON_START 用这两个字段续订：
+   * 机器类别决定订哪个会话，游标决定不重复渲染已经看见的帧。
+   */
+  private var streamMachineKind: String = ""
+  private var lastStreamSeq: Long = 0L
+
+  /** A1-4: 实时进度行（收到 progress 事件时更新）。 */
+  var progressLines by mutableStateOf<List<String>>(emptyList())
+    private set
+
+  /** A1-4: 回退提示（401/503/网络失败时显示）。 */
+  var fallbackMessage by mutableStateOf<String?>(null)
+    private set
+
   /** 每个 Activity 实例 onCreate 时 bind 一次：文件路径是同一份，协程与状态只有一份。 */
   fun bind(context: Context) {
     store = ChatHistoryStore(context)
@@ -115,6 +134,7 @@ object TurnCoordinator {
   /**
    * 跑一整个回合。busy 由这里加减，屏幕读的是它 —— 于是转屏之后「还在等」这件事还在。
    * 用户那句先落盘（立刻上屏），再去等桌面的回信。
+   * A1-4: 同时启动 SSE 订阅，接收实时进度。
    */
   fun submitTurn(
     machineKind: String,
@@ -122,8 +142,21 @@ object TurnCoordinator {
     onBody: suspend (String) -> Unit,
   ) {
     inFlight++
+    progressLines = emptyList()
+    fallbackMessage = null
+    lastStreamSeq = 0L
+    streamMachineKind = machineKind
+
     scope.launch {
       try {
+        // A1-4: 先发起订阅，再发回合 —— 服务端不带游标时从「订阅那一刻的队尾」开始推，
+        // 所以先订上的那一半决定本轮能不能看见自己的帧。
+        // 这里**不等连接建立**：等过一次，用户那句话就要多憋 3 秒才发得出去
+        // （单测实测：配对到一个连不上的地址时，发送被 SSE 的退避重连拖住，
+        // 界面在 busy 期间拒绝输入）。消息必须立刻走，实时进度只是加成。
+        // 代价（诚实残留 R-A1-4a）：桌面极快时 turn_started 可能早于连接建立，
+        // 本轮少最前一两帧；真机要不要补，看设备验收。
+        startEventStreamSubscription(machineKind, 0L)
         appendLine(ChatLine("user", text))
         val body =
           withContext(Dispatchers.IO) {
@@ -133,8 +166,97 @@ object TurnCoordinator {
         onBody(body)
       } finally {
         inFlight--
+        // A1-4: 回合结束，关闭订阅（如果还没关的话）
+        stopEventStreamSubscription()
       }
     }
+  }
+
+  /**
+   * A1-4: 启动 SSE 事件流订阅。
+   * 收到 progress 事件时更新 progressLines，收到 turn_ended 时自动关闭。
+   * 401/503/网络失败时显示回退提示并退回整轮模式。
+   */
+  private fun startEventStreamSubscription(machineKind: String, initialSeq: Long) {
+    val baseUrl = TurnBridge.hostUrl() ?: return
+    val token = TurnBridge.turnToken() ?: return
+
+    // A1-4: 会话边界 —— 与服务端默认值同一套规则：
+    //   cn_inbound_server.js:902-903  sessionId = payload.session_id || `mobile-${machineKind}`
+    // 手机这一轮就落在那个会话里，所以订 ?session_id= 只会看见自己的帧，
+    // 不会把桌面上别人（或本机 UI）的进度串进来。服务端过滤已由 RP-06 钉住。
+    // 代价/残留：这里靠「与服务端默认同规则」推导，没读 /v1/turn 回包里的 session_id；
+    // 以后若允许 payload 指定会话（W3），这里必须改成用回包真值。
+    val sessionId = "mobile-" + machineKind
+
+    val callback = object : EventStreamClient.SubscriptionCallback {
+      override fun onStateChange(state: EventStreamClient.SubscriptionState, reason: String?) {
+        // 状态变化可用于调试，这里不处理
+      }
+
+      override fun onEvent(event: EventStreamClient.StreamEvent) {
+        when (event.kind) {
+          "progress" -> {
+            // A1-4: row 是**对象**（turn_progress.js:121-128），必须取结构化字段。
+            // 之前这里写 optString("row")，把整个对象当字符串塞进气泡 —— 手机上
+            // 显示的是 {"phase":"start","index":1,...}，等于把调试面板给用户看。
+            val line = EventStreamMessages.progressUpdate(event.payload?.optJSONObject("row"))
+            progressLines = progressLines + line
+          }
+          "turn_started" -> {
+            // initiator 可能是空串（turn_event_emitter.js:32），归一成「不显示」交给文案层
+            val line = EventStreamMessages.turnStarted(event.payload?.optString("initiator"))
+            progressLines = progressLines + line
+          }
+          "turn_ended" -> {
+            // 回合结束，显示状态并关闭订阅
+            val status = event.payload?.optString("status")?.takeIf { it.isNotEmpty() }
+            val line = EventStreamMessages.turnEnded(status)
+            progressLines = progressLines + line
+            stopEventStreamSubscription()
+          }
+        }
+      }
+
+      override fun onFallback(reason: String) {
+        // SSE 不可用，显示回退提示并退回整轮模式
+        fallbackMessage = EventStreamMessages.fallbackMessage(reason)
+        stopEventStreamSubscription()
+      }
+    }
+
+    currentSubscription =
+      EventStreamClient.createSubscription(baseUrl, token, callback, sessionId, initialSeq)
+
+    // 在 IO 线程启动订阅（阻塞调用）
+    scope.launch {
+      withContext(Dispatchers.IO) {
+        currentSubscription?.start()
+      }
+    }
+  }
+
+  /**
+   * A1-4: 停止 SSE 事件流订阅（释放连接）。
+   * 用户离开屏幕或回合结束时调用。
+   */
+  fun stopEventStreamSubscription() {
+    val sub = currentSubscription ?: return
+    // 游标要留下来：回来时从这个编号之后接着订，否则要么漏一段、要么重复一段。
+    if (sub.lastSeq() > lastStreamSeq) lastStreamSeq = sub.lastSeq()
+    sub.close()
+    currentSubscription = null
+  }
+
+  /**
+   * A1-4: 界面回到前台（ON_START）时续订 —— 只在「这一轮还在路上」时才有意义。
+   * 回合早就结束的话什么都不做，不凭空挂一条常连。
+   */
+  fun resumeEventStreamSubscription() {
+    if (inFlight <= 0) return
+    if (currentSubscription != null) return
+    if (streamMachineKind.isEmpty()) return
+    startEventStreamSubscription(streamMachineKind, lastStreamSeq)
   }
 
   /**
@@ -147,6 +269,11 @@ object TurnCoordinator {
     inFlight = 0
     delivery = SendToUserSurface.Summary()
     pendingPermissions = emptyList()
+    progressLines = emptyList()
+    fallbackMessage = null
+    stopEventStreamSubscription()
+    streamMachineKind = ""
+    lastStreamSeq = 0L
     revision++
   }
 }

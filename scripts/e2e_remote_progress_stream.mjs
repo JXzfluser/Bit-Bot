@@ -6,7 +6,11 @@
  *   2) 再 `POST /v1/turn` 发一个真回合；
  *   3) 在这一轮里就该看见 `turn_started → progress… → turn_ended`，seq 有序；
  *   4) 中途拔连接、带 `Last-Event-ID` 重连后**不重复、不缺失**（AC-T1-9）；
- *   5) 订阅某个 session 时**不许看到别的 session** 的事件。
+ *   5) 订阅某个 session 时**不许看到别的 session** 的事件；
+ *   6) 连续第二轮必须真看得见：客户端按契约在 `turn_ended` 关流，第二轮「先不带游标订上、
+ *      再发回合」是 Android 的实际顺序。这一条把服务端「不带游标 = 重放整条历史」的
+ *      默认档钉死 —— 那条默认档会让第二轮先灌回上一轮的进度，用户在手机上看到的是
+ *      旧回合（RP-09，红→绿原文见 docs/design/desktop-target/report.md）。
  *
  * 为什么这条门必须起真 app：`prove_cn_events_sse.js` / `prove_cn_turn_events.js`
  * 是在 Node 里把 `createCnInboundServer` 与 `turn_event_emitter` 单独接起来测的 ——
@@ -518,6 +522,57 @@ let mainLog = "";
         bad("RP-08 纯聊天的进度里应该有 model_reply 类", JSON.stringify(cats));
       } else {
         ok("RP-08 对照成立：零 effect 的纯聊天也有 " + cats.length + " 条进度（" + JSON.stringify([...new Set(cats)]) + "）——不是只有动了工具的回合才看得见");
+      }
+    }
+
+    /* ---------- RP-09 连续第二轮：不带游标订阅时不许把上一轮倒灌进来 ---------- */
+    /* 这条是 Android 接线时暴露出来的服务端病：不带游标以前等价 from_seq=0，
+     * 新连接一上来就收到**上一轮**的 turn_started…turn_ended；客户端按契约在
+     * turn_ended 关流，于是用户从第二轮起只看得见上一轮的进度，这一轮一帧都收不到。
+     * 手机每轮的真实顺序就是「不带游标先订 → 再发回合」，所以只有真 Electron + 真内核
+     * 连着跑两轮才照得出来（Node 门里补的 EV-9 是同一条病的进程内版本）。 */
+    {
+      const sess = "rp-phone-F";
+      const hdr = { Authorization: "Bearer " + token };
+      // 第一轮：显式 from_seq=0（门禁老口径不变），拿到这一轮的 turn_id 作对照锚点
+      const s1P = openStream({
+        path: "/v1/events?from_seq=0&session_id=" + encodeURIComponent(sess),
+        headers: hdr,
+        ms: 25000,
+        stopWhen: (frames) => frames.some((f) => f.data && f.data.kind === "turn_ended" && f.data.sessionId === sess),
+      });
+      const t1 = await postTurn({ text: "RP-09 第一轮：记住 color=teal", session_id: sess, machine_kind: "android" }, token);
+      const s1 = await s1P;
+      const turn1Id = (s1.frames.find((f) => f.data && f.data.turnId) || {}).data;
+      const id1 = turn1Id ? turn1Id.turnId : "";
+      if (t1.status !== 200 || !id1) {
+        bad("RP-09 前置：第一轮没跑成或没拿到它的 turn_id", JSON.stringify({ status: t1.status, id1 }));
+      } else {
+        // 第二轮：完全照 Android 客户端的顺序 —— 不带任何游标先订，再发这一轮
+        const s2P = openStream({
+          path: "/v1/events?session_id=" + encodeURIComponent(sess),
+          headers: hdr,
+          ms: 25000,
+          stopWhen: (frames) => frames.some((f) => f.data && f.data.kind === "turn_ended" && f.data.sessionId === sess),
+        });
+        await new Promise((r) => setTimeout(r, 200));
+        const t2 = await postTurn({ text: "RP-09 第二轮：现在 color 是什么", session_id: sess, machine_kind: "android" }, token);
+        const s2 = await s2P;
+        const mine = s2.frames.filter((f) => f.data && f.data.sessionId === sess);
+        const ids = [...new Set(mine.map((f) => (f.data && f.data.turnId) || ""))];
+        const firstKind = mine.length ? mine[0].data.kind : "";
+        const sawOld = mine.some((f) => f.data && f.data.turnId === id1);
+        if (t2.status !== 200) {
+          bad("RP-09 前置：第二轮没跑成", String(t2.text).slice(0, 200));
+        } else if (sawOld) {
+          bad("RP-09 不带游标的新订阅里出现了上一轮（第二轮起用户就看不见实时进度了）", JSON.stringify({ id1, ids: ids.slice(0, 4), frames: mine.length }));
+        } else if (firstKind !== "turn_started") {
+          bad("RP-09 第二轮流里第一帧不是本轮的 turn_started", JSON.stringify({ firstKind, ids: ids.slice(0, 4) }));
+        } else if (mine.length < 2 || !mine.some((f) => f.data.kind === "progress")) {
+          bad("RP-09 第二轮看不见进度（只剩 turn_started/turn_ended）", JSON.stringify({ frames: mine.length, kinds: mine.map((f) => f.data.kind) }));
+        } else {
+          ok("RP-09 连续第二轮真看得见：不带游标订上 → 流里 " + mine.length + " 帧全是本轮（turn_id=" + ids[0].slice(0, 8) + "…），上一轮那条 " + id1.slice(0, 8) + "… 一条没漏进来，首帧 turn_started，progress " + mine.filter((f) => f.data.kind === "progress").length + " 帧");
+        }
       }
     }
 

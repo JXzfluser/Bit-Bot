@@ -248,11 +248,25 @@ class MainActivity : ComponentActivity() {
     startupLines = runCatching { chatStore.load() }.getOrDefault(emptyList())
     // 没发出去的那半稿同理从盘上读回来（不是从实例字段）。
     draftNow = runCatching { chatStore.loadDraft() }.getOrDefault("")
+    // A1-4: SSE 文案的语言取系统配置。上一版 EventStreamMessages.currentLocale
+    // 是个从没被赋值过的 var，于是繁体/英文分支全是死代码，非简体用户读到简体字。
+    run {
+      val cfg = resources.configuration.locales[0]
+      EventStreamMessages.currentLocale =
+        EventStreamMessages.localeFrom(cfg.language, cfg.country, cfg.script)
+    }
     // 交出去之前不许丢：每次离开前台存一次（旋转、切后台、被系统回收前都会走到这里）。
     // 不在每次按键时写盘 —— 那是在主线程上按字符次数放大 IO。
     lifecycle.addObserver(
       LifecycleEventObserver { _, event ->
         if (event == Lifecycle.Event.ON_PAUSE) chatStore.saveDraft(draftNow)
+        // A1-4: 真的看不见时（ON_STOP）才关长连接；ON_PAUSE 太早 —— 权限弹窗、
+        // 分屏、下拉通知栏都会走 PAUSE，那种时候把进度关掉等于自己把功能弄没。
+        // 回合结束时 finally 也会关，这里管的是「用户中途切走、这一轮还在路上」。
+        if (event == Lifecycle.Event.ON_STOP) TurnCoordinator.stopEventStreamSubscription()
+        // 回来时若这一轮还没结束，从上次游标接着订：不接着做用户会以为卡住了，
+        // 从头再订则会把看过的帧重播一遍。
+        if (event == Lifecycle.Event.ON_START) TurnCoordinator.resumeEventStreamSubscription()
       }
     )
     setContent { BitBotTheme { HomeShell() } }
@@ -277,6 +291,9 @@ class MainActivity : ComponentActivity() {
     // 不该把这两件事一起取消（旧代码里它们是 remember 的，recreate 之后回不来）。
     val busy = TurnCoordinator.busy
     val delivery = TurnCoordinator.delivery
+    // A1-4: 实时进度行与回退提示（从 TurnCoordinator 读取）
+    val progressLines = TurnCoordinator.progressLines
+    val fallbackMessage = TurnCoordinator.fallbackMessage
     var paired by remember { mutableStateOf(pairedNow()) }
     var hostLabel by remember { mutableStateOf(hostLabelNow()) }
     var showMenu by remember { mutableStateOf(false) }
@@ -374,6 +391,9 @@ class MainActivity : ComponentActivity() {
       onOpenPairing = { showMenu = false; showPairing = true },
       onOpenCredentials = { openCredentials() },
       onOpenMenu = { showMenu = true },
+      // A1-4: 传递实时进度与回退提示
+      progressLines = progressLines,
+      fallbackMessage = fallbackMessage,
     )
 
     if (showMenu) {

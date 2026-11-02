@@ -248,6 +248,12 @@ class TurnInFlightRecreationTest {
     val port: Int = socket.localPort
     val requests = AtomicInteger(0)
 
+    /** A1-4: 假桌面收到的 SSE 订阅数与原样路径 —— 用来证明客户端真的订了。 */
+    val sseConnections = AtomicInteger(0)
+
+    @Volatile
+    var ssePath: String = ""
+
     @Volatile
     var error: String? = null
 
@@ -272,7 +278,7 @@ class TurnInFlightRecreationTest {
               } catch (e: Throwable) {
                 error = "${e::class.simpleName}: ${e.message}"
               }
-            }.start()
+            }.apply { isDaemon = true }.start()
           }
         }
       t.isDaemon = true
@@ -294,11 +300,21 @@ class TurnInFlightRecreationTest {
       client.use { s ->
         val raw = s.getInputStream()
         var len = 0
+        var method = ""
+        var path = ""
         while (true) {
           val line = readLine(raw) ?: break
           if (line.isEmpty()) break
           if (line.lowercase().startsWith("content-length:")) {
             len = line.substringAfter(":").trim().toIntOrNull() ?: 0
+          }
+          // A1-4: 解析请求方法和路径，只计数 /v1/turn POST
+          if (method.isEmpty() && line.matches(Regex("^[A-Z]+ /.* HTTP/.*"))) {
+            val parts = line.split(" ")
+            if (parts.size >= 2) {
+              method = parts[0]
+              path = parts[1]
+            }
           }
         }
         val buf = ByteArray(len.coerceAtLeast(0))
@@ -308,7 +324,40 @@ class TurnInFlightRecreationTest {
           if (n < 0) break
           off += n
         }
-        requests.incrementAndGet()
+        // A1-4: 只计数 /v1/turn POST 请求，忽略 /v1/events GET（SSE 订阅）
+        if (method == "POST" && path == "/v1/turn") {
+          requests.incrementAndGet()
+        }
+        // A1-4: /v1/events 必须按 SSE 侍候，不能拿回合的 JSON 回法糊它。
+        // 上一版让它和 /v1/turn 一起排队等 release，等客户端在回合结束时挂断，
+        // 这里就往一条已经死掉的 socket 上写 JSON —— 写出 SocketException:
+        // Broken pipe，被 catch 记成「假桌面自己坏了」，于是这两条用例的绿红
+        // 都不成立（断言原文就是这个意思）。真实桌面不会这么干。
+        if (method == "GET" && path.startsWith("/v1/events")) {
+          sseConnections.incrementAndGet()
+          ssePath = path
+          runCatching {
+            val out = s.getOutputStream()
+            out.write(
+              (
+                "HTTP/1.1 200 OK\r\n" +
+                  "Content-Type: text/event-stream; charset=utf-8\r\n" +
+                  "Cache-Control: no-cache\r\n" +
+                  "Connection: keep-alive\r\n\r\n"
+                ).toByteArray(Charsets.UTF_8)
+            )
+            out.flush()
+          }
+          // 挂着直到客户端挂断。对端关连接时服务器侧 socket 的 isClosed 仍是 false
+          // （本地没关），只有 read() 会返回 -1 —— 上一版用 isClosed 轮询，
+          // 于是这条非 daemon 线程一直转着，整个测试任务挂死。
+          // 兜底 20 秒：真机上是回合结束/界面 ON_STOP 来关，测试里不许因为它不放而卡住门禁。
+          val until = System.currentTimeMillis() + 20_000L
+          runCatching {
+            while (running && System.currentTimeMillis() < until && raw.read() >= 0) {}
+          }
+          return
+        }
         if (!release.await(60, TimeUnit.SECONDS)) return
         val bytes = body.toByteArray(Charsets.UTF_8)
         val out = s.getOutputStream()

@@ -4608,15 +4608,15 @@ prove_cn_events_sse: PASS=18 FAIL=6
 | `scripts/prove_cn_turn_events.js` | 8/0 未破 | G-74 |
 | `scripts/prove_agent_loop_product_wire.js` / `prove_agent_loop_a7_a8.js` / `prove_tool_names.mjs` | 52/0、23/0、全绿 | 未改动，复跑 |
 | `scripts/prove_kernel_resident.mjs` | 12/0 未破 | G-58 |
-| `hosts/android/**` 只读 SSE 订阅（A1-4） | 结构门 `prove_android_event_stream.mjs` 8/0；Kotlin 单测在本机 gradle 复跑通过 | 待 UI 接线后接 **G-77**（见 8.62.6） |
+| `hosts/android/**` 只读 SSE 订阅（A1-4） | 结构门 `prove_android_event_stream.mjs` **27/0**（15 判据 + 12 把真注入）；Kotlin JVM 单测 **157/0** 本轮 gradle 复跑 | 已接 **G-77**（见 8.63.7；真机验收仍挂着，见 8.63.8） |
 
 ### 8.62.6 诚实残留（这一刀没关掉的）
 
-- **W2 的用户可见半程还没闭。** Android 侧本轮交付的是**客户端能力**（`EventStreamClient.kt` +
-  三语回退文案 + 21 条 JVM 单测 + 结构门 AE-01..AE-06 含注入对照），但**没有任何界面引用它** ——
-  真机上订阅不会发起、进度不会上屏、回退提示不会显示。按「用户在真机里能否走通」这条唯一口径，
-  A1-4 不能算交付完成，已退回继续接线（AE-07/AE-08 要钉「界面确实引用并驱动」「回退文案确实在 UI 分支上」，
-  并各带注入对照）。iOS 侧仍是 stub。
+- **W2 的用户可见半程还没闭。** ~~Android 侧本轮交付的是**客户端能力**（`EventStreamClient.kt` +
+  三语回退文案 + 21 条 JVM 单测 + 结构门 AE-01..AE-06 含注入对照），但**没有任何界面引用它**~~ ——
+  **本条已在下一刀闭掉（见 §8.63）**：接线过程中发现那把门自己是没有牙的（删掉唯一调用点仍报 `PASS=12 FAIL=0`），
+  重写为 15 判据 + 12 把真注入，并修掉四条端上产品病；剩下的残留换成 R-A1-4a/R-A1-4b（真机未验）。
+  iOS 侧仍是 stub。
 - **`/v1/turn` 回执里的 `host_results` 不含 AgentLoop 内 dispatch 的工具效果**（RP-04 里
   `effects:0` 而流里有 `tool_activity`）。这是既有响应体口径，按「不动既有契约」的铁律本轮没改，
   登记给 W3；改它要给 `host_results` 加可选字段并同步三端消费方。
@@ -4627,3 +4627,167 @@ prove_cn_events_sse: PASS=18 FAIL=6
   不走 `executeHostEffects` ⇒ 没有真效果边界，也就不该有进度行；按现状登记，不冒充已交付。
 - **没做真机验收**：本机无 KVM 起不了 emulator，`gradle` 只能跑到 JVM 单测层；
   真机上「几十秒里至少三次更新」「断线重连不重复不缺失」「连接不泄漏」仍需人工走一遍。
+
+## 8.63 路线 A · W2 端上收口：进度真的长在手机那一屏上（A1-4 接线 + 一把没有牙的门被拆掉重写）
+
+§8.62.6 第一条残留写的是「Android 只交付了客户端能力，**没有任何界面引用它**」。本轮把它接上，
+过程中撞出两类问题：一类是**产品**的（手机上会吐 JSON、繁体设备永远说简体、界面线程被我锁死），
+另一类更麻烦 —— 是**尺子**的：那把专门用来照「代码写了但界面碰不到」的门，自己就没有牙。
+
+### 8.63.1 先判门的红：删掉唯一调用点，旧门仍报全绿
+
+`scripts/prove_android_event_stream.mjs`（旧版，AE-01..AE-06 + 三条「注入对照」）我按唯一验收标准做了一次证伪：
+把 `TurnCoordinator.submitTurn` 里**唯一**的订阅发起点 `startEventStreamSubscription(machineKind)` 删干净，
+只保留那个方法的定义 —— 这正是「客户端写了但界面上碰不到」的形状。旧门的输出：
+
+```
+prove_android_event_stream: PASS=12 FAIL=0
+```
+
+门全绿，产品坏透。两条成因（都是真的，不是风格不满）：
+
+- **AE-07/AE-08 只查「某个词在文件里出现过」**。方法定义、`Last-Event-ID` 字符串、`turn_ended` 分支都在文件里 ⇒ 绿。
+  它从来没有区分「定义了」和「被调用了」。
+- **三条「注入对照」是恒真的**：它把源码里某个字符串替换掉，然后断言「替换后的副本里不含那个字符串」。
+  它**从没拿真正的判据去跑那份副本**。恒真的对照比没有对照更糟 —— 它让人以为判据有牙。
+  同型的病本轮在 §8.62.2（GP-96 零对也满足 `starts.length === done.length`）刚记过一次。
+
+重写后的结构（一句话：**判据是纯函数，注入是把同一函数跑在被改坏的副本上**）：
+
+```js
+const CHECKS = { AE_01: (S) => {...}, ..., AE_15: (S) => {...} };   // 15 条，输入是「文件集合」
+const INJECTIONS = [{ id, check, mutate }, ...];                    // 12 把，复制→改坏一处→重跑同判据
+// 任何一把注入翻不了红，就 bad(inj.id + " 注入对照失效 …这条断言是摆设")，本门判红
+```
+
+判据的关键工具是 `funBody()`（大括号配对、跳过字符串与注释里的括号）：AE-08 现在要求
+`submitTurn` 的**函数体内**出现 `startEventStreamSubscription(`，且 `finally` 之后出现 `stopEventStreamSubscription(`；
+INJ-AE_08 删掉的正是那一行调用 —— 方法定义留着，门翻红。
+
+### 8.63.2 端上四条产品病（都是真机会踩的，逐条有对应判据与单测）
+
+- **手机上吐 JSON。** `EventStreamMessages.progressUpdate(row: String?)` 配 `TurnCoordinator` 里
+  `payload?.optString("row")` —— 服务端 `row` 是个对象（`turn_progress.js:121-128`：
+  `{phase,index,total,kind,category,label_key,command,at}`）。改 `optJSONObject("row")`，
+  按 `label_key → 三语文案`、`phase → 后缀`（`awaiting` 加「等你回答」、`failed` 带错误原文）、
+  `index/total → "3/7 …"` 取词；措辞逐条抄桌面 `index.html:15924-15933 / 16718-16727 / 17512-17521`
+  与 `progressLabel()`（`:5105`，`continuing` 不带计数）。钉在 AE-06 + `EventStreamMessagesTest`
+  「取 label_key 不许吐 JSON」「缺 row 也要有话」「同一个进度帧三语各说各的话」。
+- **三语是死代码。** `currentLocale` 声明了、被读，但**全仓没有一处写它** ⇒ 繁体/英文设备上界面仍是简体。
+  `MainActivity.onCreate` 里补 `EventStreamMessages.currentLocale = localeFrom(cfg.language, cfg.country, cfg.script)`
+  （zh+TW/HK/MO/Hant→zh-TW，en→en，其它→en）。钉在 AE-07，INJ-AE_07 删掉赋值必须翻红。
+- **连接边界挂错档。** 原来挂在 `ON_PAUSE` —— 权限弹窗、分屏、下拉通知栏都会走 PAUSE，
+  等于用户每次碰到系统 UI 就自己把这个功能关掉。改 `ON_STOP` 关、`ON_START` 续订，
+  且 `resumeEventStreamSubscription()` 先看 `inFlight`，没有回合在路上就不订（不许在后台留长连接）。
+  钉在 AE-11 + AE-12（`?session_id=` 与服务端默认 `mobile-<machineKind>` 同规则）。
+- **我自己引入的界面线程死锁。** 接 `ON_STOP` 时我在 lifecycle 回调里直接 `reader?.close()`，
+  而那个 `BufferedReader` 正被 SSE 线程的 `readLine()` 阻塞持有着读锁。jstack 原文：
+
+  ```
+  sun.nio.ch.SocketImpl... / java.io.BufferedReader.close -> ReentrantLock.lock
+    EventStreamClient$Subscription.close(EventStreamClient.kt:134)
+    TurnCoordinator.stopEventStreamSubscription(TurnCoordinator.kt:248)
+    MainActivity.onCreate$lambda$4(MainActivity.kt:266)
+    androidx.lifecycle.LifecycleRegistry.backwardPass
+  ```
+
+  修法：`close()` 只 `closed.getAndSet(true)` + 摘掉 `reader/connection` 引用，真正的
+  `disconnect()`/`close()` 交给 `isDaemon = true` 的线程；界面线程立刻返回。
+  回归测试不许再是「构造一个对象断言它等于自己」：`EventStreamClientTest` 用**真 `ServerSocket`**
+  写完 SSE 头就吊着不发帧，断言 `sub.close()` 在 500ms 内返回、且 reader 线程 join 后不再 alive。
+  判据 AE-13，INJ-AE_13 把 close 改回「在调用线程上直接关 reader」必须翻红。
+
+### 8.63.3 服务端的一条同型病：不带游标 = 重放整条历史
+
+接线时按 Android 的真实顺序跑第二轮（**先订阅、再发回合**，且客户端按契约在 `turn_ended` 关流），
+第二轮界面上出现的是**上一轮**的进度。原因在 `cn_inbound_server.js` 的游标默认档：
+`Last-Event-ID` 与 `from_seq` 都不带时落到 `fromSeq = 0` ⇒ 全量重放，上一轮的
+`turn_started/progress/turn_ended` 先倒灌进来，而客户端一看到 `turn_ended` 就关流 ——
+这一轮的帧一条都收不到。改成第三档「从 `log.lastSeq()` 起推实况」（SSE 的常规语义：要历史请显式带游标）。
+三层各钉一次，红→绿都是**单变量回退**取的：
+
+```
+# Node 层 prove_cn_events_sse（EV-9）
+  ✗ EV-9 不带游标不许重放订阅之前的历史 — {"ids":[1,2,3],"oldStart":1,"oldEnd":2}
+prove_cn_events_sse: PASS=28 FAIL=1
+# 复原后
+prove_cn_events_sse: PASS=29 FAIL=0
+
+# 真 Electron 层 e2e_remote_progress_stream（RP-09）
+# 回退手法：只把 cn_inbound_server.js 的 `if (!cursorGiven) {` 改成 `if (false) {`，其余一字未动
+  ✗ RP-09 不带游标的新订阅里出现了上一轮（第二轮起用户就看不见实时进度了） —
+     {"id1":"desktop-mvzhxg63-k9hp","ids":["desktop-mvzhxg63-k9hp"],"frames":4}
+e2e_remote_progress_stream: PASS=8 FAIL=1 SKIP=0
+# 复原后
+  ✓ RP-09 连续第二轮真看得见：不带游标订上 → 流里 4 帧全是本轮（turn_id=desktop-…），
+     上一轮那条一条没漏进来，首帧 turn_started，progress 2 帧
+e2e_remote_progress_stream: PASS=9 FAIL=0 SKIP=0
+```
+
+### 8.63.4 门自己的两条假红：改强，不改松
+
+新版第一跑是 `PASS=22 FAIL=4`，对着**已经写对的产品**报了四条红。逐条查，两条是门的错：
+
+- `AE-06 {"dumpsJson":true}` —— 我判「不许出现 `optString("row")`」时没区分代码和注释，
+  而那串只存在于我自己写的说明注释里（「之前这里写 `optString("row")`，把整个对象当字符串塞进气泡」）。
+  修法不是在判据里加「忽略注释」的例外，而是**载入时统一剥掉注释**：
+  过时的一句注释同样能把真 bug 撑绿（写一句「已经不用 optString 了」判据就过了），那比假红危险得多。
+  `stripComments()` 保留字符串原文，`"https://…"` 与 `"""…"""` 里的 `//` 不会被误当注释。
+- `AE-09 {"onCreatePasses":false}` —— 判据把「把进度行交给界面」钉死在 `onCreate` 体内，
+  实际代码在 `private fun HomeShell()` 里（`onCreate` 只有 `setContent { BitBotTheme { HomeShell() } }`）。
+  这里**不能**退成「文件里出现过就行」—— 那正是 §8.63.1 假绿的形状。改成
+  `bodyCalling(S.activity, "HomeScreen(")`：**谁调用 `HomeScreen(`，谁的函数体里必须同时有数据源
+  （`TurnCoordinator.progressLines`）和那条传参**；配套两把注入 `INJ-AE_09`（删传参）与
+  `INJ-AE_09b`（删 `ProgressRow(progressLines)` 渲染）都能打回红。
+
+另两条红（`INJ-AE_06`/`INJ-AE_09`）是「无法对照：原判据本就是红的」的连带，随上面两条一起消。
+最终 **`prove_android_event_stream: PASS=27 FAIL=0`**（15 判据 + 12 注入）。
+
+### 8.63.5 一个 fixture 布局坑差点被当成门的红
+
+第一次跑单变量对照（在 `/tmp` 复制一份改坏一处）时门报 `PASS=9 FAIL=3`，
+含 `AE-08 注入对照 Components.kt 文件不存在`。查下来是**我的复制脚本**把
+`ui/Components.kt`、`ui/HomeScreen.kt` 放到了 `com/bitbot/host/` 而不是 `com/bitbot/host/ui/`。
+补齐目录后才是干净的单变量结果。记这一条是因为它当时的形状与「门坏了」一模一样 ——
+遇到门的红先证伪自己，别急着改判据。
+
+### 8.63.6 修 R-A1-4a：我一度让「发送」等进度连接建立
+
+第一版接线在 `submitTurn` 里 `awaitStreamReady(3000)` 再 POST。结果 `ChatThreadPersistenceTest`
+的 CP01/CP02 真渲染用例红：
+
+```
+Failed to assert the following: (is enabled)
+  Composer TextField [Disabled]
+```
+
+那条用例配的是**必然连不上**的地址，于是发送被拖住 3 秒。判断很清楚：**消息必须立刻走**，
+进度是锦上添花，不许反过来挡用户的路。删掉等待（连同 `awaitStreamReady`/`STREAM_READY_WAIT_MS`），
+代价登记为残留 R-A1-4a：极快回合（小于一个 RTT）可能少 `turn_started` 与首帧 progress。
+
+### 8.63.7 尺子接线与复跑
+
+- `scripts/e2e_remote_progress_stream.mjs`：头注释的验收清单补第 6 条（连续第二轮），RP-09 落地，
+  聚合门 **G-75** 判据由 `PASS=8` 改 `PASS=9`，并新增 RP-09 锚点组与红/绿原文各一段。
+- **新增 G-77**：跑 `prove_android_event_stream`（要求恰好 `PASS=27 FAIL=0`）+ 注入把数 ≥ 12 的棘轮
+  + 「三条命门都在且都有牙」锚点，echo 里留旧门 `PASS=12 FAIL=0` 的证伪原文、两条假红的成因、
+  jstack 死锁栈与 R-A1-4a/R-A1-4b 残留。
+- `prove_android_build.mjs` AB-06 棘轮 126 → **157**（本轮新增 `EventStreamClientTest` 15 +
+  `EventStreamMessagesTest` 16），矩阵 **G-47** 锚点同步。
+- 端上单测：**157 tests / 0 failures / 0 skipped**（18 个类，`--rerun-tasks` 真跑）。
+
+### 8.63.8 诚实残留（这一刀没关掉的）
+
+- **R-A1-4a**：不等流连接建立就发回合 ⇒ 极快回合可能少首帧。已删等待换「发送永不被进度拖住」，不隐藏。
+- **R-A1-4b**：本机无 KVM/真机，`prove_android_event_stream` 只读 Kotlin 源码结构、不跑 Android 逻辑。
+  按这条简报的唯一口径，**A1-4 现在的状态是「端上已接线、真机未验」，不算已交付**。
+  人工验收清单（要用户在真设备上走一遍）：① 配对后进「设置→手机」发一条需要工具的消息，
+  十几秒里至少看到三次进度更新且措辞与桌面一致；② 中途锁屏 30 秒再回来，进度接着出且不重复；
+  ③ 回合结束等 10 秒再发第二条，第二轮**不得**先出现第一轮的行（这就是 RP-09 在真机上的对应物）；
+  ④ 系统语言切繁体/英文，进度行与回退提示要跟着变；⑤ 关掉桌面端事件双写，手机要显示回退提示而不是空屏。
+- **非中/英 locale 归一到 `en`**：进度文案会说英文，而 app 其余界面仍是硬编码简体 —— 混搭比全简体更刺眼，
+  但把它改回去就等于承认三语没接上；已留在 A1-4 的真机验收清单里一起判。
+- **iOS 侧仍是 stub**；`TurnBridge.kt` 与 `/v1/turn` 形状全程未动（铁律，RP-07 反向钉）。
+- **W3 全部未做**：`redeem` 不登记公钥、`deviceStore` 只在启动 `loadDevices()` 一次、
+  手机侧不会签名（`signTurn` 只有 `scripts/approve.js:81` 一个调用者）、`:854` 那颗地雷的范围
+  本轮已从「下不了单」扩到「连自己下的单也看不见」。
