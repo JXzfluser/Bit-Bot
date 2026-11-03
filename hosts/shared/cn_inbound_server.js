@@ -429,6 +429,56 @@ function createCnInboundServer(opts = {}) {
   const maxBody = Number(
     opts.maxBodyBytes || process.env.BITBOT_INBOUND_MAX_BODY || p0.DEFAULT_MAX_BODY_BYTES,
   );
+
+  /* A3-6：配对成功时把这台桌面的**中转四栏**交给手机 —— 这就是「跨网参数从哪来」的答案。
+   *
+   * 为什么由桌面下发、而不是让用户手填：中转地址/boxId/客户端凭证三样都不该由用户记；
+   * 桌面本来就知道自己接在哪个中转上。手机在局域网里配一次对，之后离开这个 Wi-Fi 也能找回桌面。
+   *
+   * 三条约束（都对着门禁 PH-01..PH-05）：
+   *  1. **没配就不出现** —— `relay` 是可选新增字段，老客户端与老门禁读到的回执一字不变；
+   *  2. **四栏缺一整体不下发** —— 给一半比不给更坏：手机拿半套去连，报一个查不出来的错；
+   *  3. **只放四栏** —— 不夹带 turn_token / relay-secret，跨网不复用配对令牌。
+   *
+   * `opts.relayHandoff` 一旦给出就以它为准（函数返回 null 或对象本身就是 null ⇒ 不下发），
+   * 只有调用方根本没提这件事时才读环境变量。这样门禁能确定地扮演「没配 / 配齐 / 配半套」，
+   * 不会被开发机上恰好存在的环境变量污染。 */
+  function normalizeRelayHandoff(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const host = String(raw.host || "").trim();
+    const port = Number(raw.port);
+    const boxId = String(raw.boxId || raw.box_id || "").trim();
+    const clientToken = String(raw.clientToken || raw.client_token || "").trim();
+    if (!host) return null;
+    // port 必须是真的端口：`Number("abc")` 是 NaN，`18766.5` 也不是端口。
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+    if (!boxId || !clientToken) return null;
+    return { host, port, box_id: boxId, client_token: clientToken };
+  }
+
+  function relayHandoffFromEnv() {
+    return normalizeRelayHandoff({
+      host: process.env.BITBOT_RELAY_HOST,
+      port: process.env.BITBOT_RELAY_PORT,
+      boxId: process.env.BITBOT_RELAY_BOX_ID,
+      clientToken: process.env.BITBOT_RELAY_CLIENT_TOKEN,
+    });
+  }
+
+  function currentRelayHandoff() {
+    try {
+      if (opts.relayHandoff !== undefined) {
+        const raw =
+          typeof opts.relayHandoff === "function" ? opts.relayHandoff() : opts.relayHandoff;
+        return normalizeRelayHandoff(raw);
+      }
+      return relayHandoffFromEnv();
+    } catch (_e) {
+      // 下发失败不能拖垮配对：宁可这次不给中转参数，也要让局域网配对上。
+      return null;
+    }
+  }
+
   const nonceStore = p0.createNonceStore();
   // B-4a:设备登记表。**只有公钥**。登记了设备 ⇒ 入站回合必须出示设备凭证
   // (ADR 0008 的共享 turn token 不再授予设备身份);没登记 ⇒ 沿用既有
@@ -1035,7 +1085,7 @@ function createCnInboundServer(opts = {}) {
         // 「配对了但下不了单、连自己下的单也看不见」的洞 —— 回执必须把这件事说在前面。
         const registryNonEmpty = (deviceStoreNow().devices || []).length > 0;
         const requiresDevice = registryNonEmpty && !deviceReg;
-        json(res, 200, {
+        const redeemBody = {
           ok: true,
           turn_token: turnToken,
           base_url: baseUrl,
@@ -1046,7 +1096,11 @@ function createCnInboundServer(opts = {}) {
             ? { registered: true, id: deviceReg.id, kind: deviceReg.kind, name: deviceReg.name }
             : { registered: false, reason: "no_device_public_key" },
           requires_device_credential: requiresDevice,
-        });
+        };
+        // A3-6：中转四栏只在**配齐**时出现（PH-01/PH-02/PH-04），且只在成功回执里（PH-05）。
+        const handoff = currentRelayHandoff();
+        if (handoff) redeemBody.relay = handoff;
+        json(res, 200, redeemBody);
         return;
       }
 

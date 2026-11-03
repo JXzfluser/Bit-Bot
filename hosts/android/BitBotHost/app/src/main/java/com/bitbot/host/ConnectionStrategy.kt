@@ -30,9 +30,11 @@ object ConnectionStrategy {
   /* 与 connection_strategy.js:164-168 的 MODE_LABELS 一字不差（zh / zh-TW / en）。 */
   private val LABELS: Map<Mode, Map<String, String>> =
     mapOf(
-      Mode.DIRECT to mapOf("zh" to "直连", "zh-TW" to "直連", "en" to "Direct"),
-      Mode.RELAY to mapOf("zh" to "中转", "zh-TW" to "中轉", "en" to "Relay"),
-      Mode.NONE to mapOf("zh" to "未连接", "zh-TW" to "未連線", "en" to "Offline"),
+      // 端上 locale 是 "zh-CN"（EventStreamMessages.localeFrom），这里直接收，
+      // 不再在调用方加一层映射 —— 两处各写一份映射，早晚会有一处忘改。
+      Mode.DIRECT to mapOf("zh" to "直连", "zh-CN" to "直连", "zh-TW" to "直連", "en" to "Direct"),
+      Mode.RELAY to mapOf("zh" to "中转", "zh-CN" to "中转", "zh-TW" to "中轉", "en" to "Relay"),
+      Mode.NONE to mapOf("zh" to "未连接", "zh-CN" to "未连接", "zh-TW" to "未連線", "en" to "Offline"),
     )
 
   /** 界面文案：连接方式（连上时再拼 ` · Nms`）。AC-T4-5「界面显示连接方式与延迟」。 */

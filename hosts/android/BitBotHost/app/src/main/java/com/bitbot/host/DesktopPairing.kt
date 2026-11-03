@@ -59,6 +59,12 @@ object DesktopPairing {
     val deviceRegistered: Boolean = false,
     val deviceId: String? = null,
     val requiresDeviceCredential: Boolean = false,
+    /**
+     * A3-6：桌面在回执里下发的**中转四栏**（没配就是 null）。
+     * 有了它，手机离开同一个 Wi-Fi 也知道该去哪儿找这台桌面；
+     * 没配就什么都没有 —— 不在这里编一个默认中转出来。
+     */
+    val relay: RelayTunnel.RelayConfig? = null,
   ) {
     /** True when the Desktop gave a non-private address the phone likely can't reach. */
     val isNonPrivateScope: Boolean get() = baseUrlScope != "private"
@@ -411,6 +417,8 @@ object DesktopPairing {
             deviceRegistered = deviceRegistered,
             deviceId = issuedDeviceId,
             requiresDeviceCredential = requiresCredential,
+            // A3-6：只认回执原文里那四栏；没有 / 不齐都回 null（理由见 parseRelayHandoff）。
+            relay = RelayTunnel.parseRelayHandoff(responseBody),
           ),
         )
       } else {
@@ -442,6 +450,14 @@ object DesktopPairing {
       onSuccess = { success ->
         TurnBridge.setHostUrl(success.baseUrl)
         TurnBridge.setTurnToken(success.turnToken)
+        // A3-6：桌面是**中转参数的唯一事实源**。它这次没给（没配中转 / 从配了改成没配）
+        // 就把本机旧的清掉 —— 留着旧配置只会在跨网时指向一个已经不存在的登记。
+        val relay = success.relay
+        if (relay != null) {
+          TurnBridge.setRelayConfig(relay.host, relay.port, relay.token, relay.boxId)
+        } else {
+          TurnBridge.setRelayConfig(null, null, null, null)
+        }
         Result.success(success)
       },
       onFailure = { error ->

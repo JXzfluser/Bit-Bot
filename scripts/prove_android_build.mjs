@@ -12,7 +12,7 @@
  *          —— 缺声明时框架抛 SecurityException，点「扫描」是崩而不是「没找到桌面」
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 193（防止 test 任务空转假绿；193 = 183 + A3-5 中转传输层 10 —— 这条是棘轮，用例只准涨不准掉）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 199（防止 test 任务空转假绿；199 = 193 + A3-6 回执四栏解析 3 + 连接方式文案 3 —— 这条是棘轮，用例只准涨不准掉）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -41,6 +41,9 @@
  *         DENY/NOBOX/BADCMD）与 relay_server.js 逐字对齐、隧道上真能跑 HTTP（定长与 chunked
  *         两种回包都读对）、TurnBridge 直连失败才回落中转（relayConfig → RelayTunnel.open →
  *         TunnelHttp.post）；RT-01..RT-10 真在结果里且 0 失败；五组负向对照逐个摘都要被抓到
+ *   AB-19 A3-6 跨网参数这条路接通（桌面下发 → 手机解析 → 落 prefs → 界面显示）：回执里的 relay
+ *         四栏被解析、配对成功即写进 prefs、回合成功后记下真实走过的路（直连/中转 · Nms）、
+ *         状态条优先显示它；RT-11..RT-13 与 TS-01..TS-03 真在结果里；五组负向对照逐个摘都要被抓到
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -267,7 +270,7 @@ if (badge.status !== 0 || !badgeOut) {
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
   // 棘轮：这个数字只准往上抬。写死下限的意义是「test 任务空转/测试文件被删」也会被抓出来，
   // 所以每次加用例都要同时把这里抬上去（漏了就会出现「用例加了但门还按老数字绿」）。
-  else if (tests < 193) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 199) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -1344,6 +1347,80 @@ if (badge.status !== 0 || !badgeOut) {
   else
     ok(
       "AB-18 A3-5 手机侧中转传输层接齐：线协议三行与 relay 逐字对齐（含 DENY/NOBOX/BADCMD 各自说人话）、隧道上 HTTP 定长与 chunked 都读对、TurnBridge 直连失败才回落中转，RT-01..RT-10 十条真跑 0 失败（五组负向对照全抓到；SSE 走隧道属 A3-6，跨网进度仍走诚实回退）",
+    );
+}
+
+/* AB-19 A3-6 跨网参数这条路接通：桌面下发 → 手机解析 → 落 prefs → 界面显示。
+ *
+ * 为什么单独一条：A3-5 把手机侧传输层做出来了，但**参数没有来源**（没有界面、回执也不下发），
+ * 用户侧仍然是零。A3-6 接通的是这条路：桌面在 `redeem` 成功回执里给四栏（PH-01..PH-05 管这一半），
+ * 手机解析（RT-11..RT-13）、配对成功即落 prefs、回合成功后记下**真实走过的那条路**并由状态条显示
+ * （TS-01..TS-03 管文案）。
+ *
+ * AB-19 钉的是「这四段还在、还连着」；行为本身由 RT/TS 那六条用例与 PH 那五条断言承担。
+ * 五组负向对照逐个摘都要被抓到 —— 抓不到就是装饰。 */
+{
+  const ANDROID = "hosts/android/BitBotHost/app/src/main/java/com/bitbot/host";
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(REPO, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const pairSrc = read(ANDROID + "/DesktopPairing.kt");
+  const turnSrc = read(ANDROID + "/TurnBridge.kt");
+  const statusSrc = read(ANDROID + "/TransportStatus.kt");
+  const compSrc = read(ANDROID + "/ui/Components.kt");
+  const actSrc = read(ANDROID + "/MainActivity.kt");
+
+  const dir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+  const names = [];
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+      for (const m of fs.readFileSync(path.join(dir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+        names.push(m[1]);
+      }
+    }
+  } catch {
+    /* 结果目录不在时 AB-06 已报 */
+  }
+
+  const wantNames = [/RT-11/, /RT-12/, /RT-13/, /TS-01/, /TS-02/, /TS-03/];
+
+  const measure = (src) => {
+    const got = [];
+    const missing = wantNames.filter((re) => !src.names.some((n) => re.test(n)));
+    if (missing.length) got.push("用例不在结果里：" + missing.map(String).join(", "));
+    if (!src.pairSrc.includes("RelayTunnel.parseRelayHandoff(")) got.push("配对回执不再解析中转四栏（参数永远到不了手机）");
+    if (!src.pairSrc.includes("TurnBridge.setRelayConfig(")) got.push("解析到了却不落 prefs（下次跨网还是没参数）");
+    if (!src.statusSrc.includes("fun labelOrNull(")) got.push("TransportStatus 不再给界面文案（状态条只能显示地址）");
+    if (!src.turnSrc.includes("TransportStatus.record(")) got.push("回合不再记录真实走过的那条路（界面会显示上一次的）");
+    if (!src.compSrc.includes("transportLabel")) got.push("状态条不再接连接方式（AC-T4-5 的「显示直连」没人做）");
+    if (!src.actSrc.includes("TransportStatus.labelOrNull(")) got.push("MainActivity 没把连接方式传下去（组件加了也没人喂）");
+    return got;
+  };
+
+  const base = { pairSrc, turnSrc, statusSrc, compSrc, actSrc, names };
+  const problems = measure(base);
+
+  const muts = [
+    ["1 不解析四栏", (s) => ({ ...s, pairSrc: s.pairSrc.replace("RelayTunnel.parseRelayHandoff(", "// (injected) 不解析") })],
+    // 注意用 /g：调用点有两处（给四栏 / 清空），只替换第一处的话锚点还在，尺子抓不到。
+    ["2 不落 prefs", (s) => ({ ...s, pairSrc: s.pairSrc.replace(/TurnBridge\.setRelayConfig\(/g, "// (injected) 不落盘") })],
+    // 同上：DIRECT / RELAY / NONE 三处都记，必须 /g 才算真摘掉。
+    ["3 不记录实际路径", (s) => ({ ...s, turnSrc: s.turnSrc.replace(/TransportStatus\.record\(/g, "// (injected) 不记") })],
+    ["4 状态条不接文案", (s) => ({ ...s, compSrc: s.compSrc.replace(/transportLabel/g, "hostLabelOnly") })],
+    ["5 用例不在结果里", (s) => ({ ...s, names: s.names.filter((n) => !/^TS-02/.test(n)) })],
+  ];
+  const undetected = muts.filter(([, mutate]) => !measure(mutate(base)).length).map(([label]) => label);
+  if (undetected.length) bad("AB-19 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
+
+  if (problems.length) bad("AB-19 跨网参数这条路没接齐", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-19 A3-6 跨网参数接通：回执四栏被解析（RT-11..13）、配对成功即落 prefs、回合后记真实路径（直连/中转 · Nms，TS-01..03）、状态条优先显示它（五组负向对照全抓到；Compose 渲染这一跳只有源码锚点，没跑渲染用例）",
     );
 }
 done();

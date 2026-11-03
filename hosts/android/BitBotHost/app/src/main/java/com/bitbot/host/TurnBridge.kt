@@ -382,8 +382,24 @@ object TurnBridge {
         DeviceIdentity.applyHeaders({ k, v -> add(k to v) }, deviceHeaders)
       }
     // A3-5：直连优先（够快、不经第三方）；直连失败且配了中转才走隧道。
-    val direct = runCatching { postDirect(url, headers, bodyBytes) }
-    return direct.getOrElse { directErr -> postViaRelay(url, headers, bodyBytes, directErr) }
+    // A3-6：这次到底走了哪条路，记进 TransportStatus —— 界面显示的是**真实发生过的事**，
+    // 不是「探针大概能通」的推测（两者在跨网那一刻会分叉）。
+    val startedAt = System.currentTimeMillis()
+    val directResult = runCatching { postDirect(url, headers, bodyBytes) }
+    directResult.getOrNull()?.let { out ->
+      TransportStatus.record(ConnectionStrategy.Mode.DIRECT, System.currentTimeMillis() - startedAt)
+      return out
+    }
+    val directErr = directResult.exceptionOrNull() ?: IllegalStateException("unknown")
+    val viaRelay = runCatching { postViaRelay(url, headers, bodyBytes, directErr) }
+    val out =
+      viaRelay.getOrElse { err ->
+        // 两条都不通：回到「未连接」，别让状态条还挂着上一次的「中转 · 320ms」。
+        TransportStatus.record(ConnectionStrategy.Mode.NONE, System.currentTimeMillis() - startedAt)
+        throw err
+      }
+    TransportStatus.record(ConnectionStrategy.Mode.RELAY, System.currentTimeMillis() - startedAt)
+    return out
   }
 
   /** 直连：原有那条路，行为一字未改。 */

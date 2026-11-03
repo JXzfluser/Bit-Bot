@@ -264,6 +264,75 @@ class RelayTransportTest {
     assertEquals("未连接", ConnectionStrategy.describe(offline, "zh"))
   }
 
+  /* ---------------------------------------------------------------- RT-11..13 */
+
+  @Test
+  fun `RT-11 回执里的中转四栏认得出（A3-6 参数终于到得了手机）`() {
+    val body =
+      "{\"ok\":true,\"turn_token\":\"t-1\",\"base_url\":\"http://10.0.0.5:18765\"," +
+        "\"relay\":{\"host\":\"relay.example.com\",\"port\":18766," +
+        "\"box_id\":\"box-home\",\"client_token\":\"cli-abc\"}}"
+    val cfg = RelayTunnel.parseRelayHandoff(body)
+    assertNotNull("回执里明明有四栏，却没解析出来", cfg)
+    assertEquals("relay.example.com", cfg!!.host)
+    assertEquals(18766, cfg.port)
+    assertEquals("cli-abc", cfg.token)
+    assertEquals("box-home", cfg.boxId)
+    assertTrue(cfg.complete)
+  }
+
+  @Test
+  fun `RT-12 没配中转或读不出来都回 null，不编一个默认中转`() {
+    assertNull(RelayTunnel.parseRelayHandoff(null))
+    assertNull(RelayTunnel.parseRelayHandoff(""))
+    assertNull(RelayTunnel.parseRelayHandoff("   "))
+    // 桌面没配中转：回执里根本没有 relay 键（PH-01 的形状）
+    assertNull(RelayTunnel.parseRelayHandoff("{\"ok\":true,\"turn_token\":\"t-1\"}"))
+    // 不是 JSON / 截断的 JSON：解析炸了也不许抛到上层（配对已经成功，不能被这事拖失败）
+    assertNull(RelayTunnel.parseRelayHandoff("not a json"))
+    assertNull(RelayTunnel.parseRelayHandoff("{\"relay\":{\"host\":\"r\","))
+    // relay 存在但不是对象
+    assertNull(RelayTunnel.parseRelayHandoff("{\"relay\":\"relay.example.com:18766\"}"))
+  }
+
+  @Test
+  fun `RT-13 半套配置一律不认（拿半套去连比不连更坏）`() {
+    // 缺 client_token
+    assertNull(
+      RelayTunnel.parseRelayHandoff(
+        "{\"relay\":{\"host\":\"r.example.com\",\"port\":18766,\"box_id\":\"b\"}}",
+      ),
+    )
+    // 缺 box_id
+    assertNull(
+      RelayTunnel.parseRelayHandoff(
+        "{\"relay\":{\"host\":\"r.example.com\",\"port\":18766,\"client_token\":\"c\"}}",
+      ),
+    )
+    // 缺 host
+    assertNull(
+      RelayTunnel.parseRelayHandoff(
+        "{\"relay\":{\"port\":18766,\"box_id\":\"b\",\"client_token\":\"c\"}}",
+      ),
+    )
+    // port 越界 / 缺失 / 非数字
+    assertNull(
+      RelayTunnel.parseRelayHandoff(
+        "{\"relay\":{\"host\":\"r\",\"port\":70000,\"box_id\":\"b\",\"client_token\":\"c\"}}",
+      ),
+    )
+    assertNull(
+      RelayTunnel.parseRelayHandoff(
+        "{\"relay\":{\"host\":\"r\",\"box_id\":\"b\",\"client_token\":\"c\"}}",
+      ),
+    )
+    assertNull(
+      RelayTunnel.parseRelayHandoff(
+        "{\"relay\":{\"host\":\"r\",\"port\":\"abc\",\"box_id\":\"b\",\"client_token\":\"c\"}}",
+      ),
+    )
+  }
+
   /* ---------------------------------------------------------------- 假件 */
 
   /** 假中继：按 relay_server.js 的行协议应答，可选在数据面回显一行。 */

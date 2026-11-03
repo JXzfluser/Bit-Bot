@@ -2022,12 +2022,15 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     grep -q "AB-16 回合不再归某一屏管" /tmp/g47-build.log \
       && ok "G-47 还在路上的回信不跟着上一屏死：协程挪到进程级 TurnCoordinator（SupervisorJob + Main.immediate）、busy/delivery 由那一层管、落盘后 revision++ 让屏幕重读文件、转屏回来补问权限、发送走 submitTurn，5 条用例（TF-01..05）在结果里、AB-16 带七组负向对照" \
       || bad "G-47 AB-16 anchor missing"
-    grep -q "AB-06 JVM 单测真跑：193 用例 0 失败" /tmp/g47-build.log \
-      && ok "G-47 用例数如实涨到 193（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流 15 + 三语 16 + 渲染级 10、A2-3 设备身份 9 + 端上接线 7、A3-5 中转传输层 10），且 0 失败不是空跑" \
+    grep -q "AB-06 JVM 单测真跑：199 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 199（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流 15 + 三语 16 + 渲染级 10、A2-3 设备身份 9 + 端上接线 7、A3-5 中转传输层 10、A3-6 回执四栏 3 + 连接方式文案 3），且 0 失败不是空跑" \
       || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
     grep -q "AB-18 A3-5 手机侧中转传输层接齐" /tmp/g47-build.log \
       && ok "G-47 跨网那一半补上了：手机侧会 AUTH/CONNECT/TUNNEL、隧道上能跑 HTTP（定长/chunked）、TurnBridge 直连失败才回落中转，RT-01..RT-10 十条真跑 0 失败（五组负向对照全抓到）" \
       || bad "G-47 AB-18 anchor missing（手机侧中转传输层没有锚点在矩阵里）"
+    grep -q "AB-19 A3-6 跨网参数接通" /tmp/g47-build.log \
+      && ok "G-47 跨网参数有来源了：配对回执四栏被解析（RT-11..13）、成功即落 prefs、回合后记真实路径（TS-01..03）、状态条优先显示「直连/中转 · Nms」（五组负向对照全抓到）" \
+      || bad "G-47 AB-19 anchor missing（桌面下发→手机解析→界面显示这条路没有锚点在矩阵里）"
     grep -q "AB-17 A2-3 端上真会签名" /tmp/g47-build.log \
       && ok "G-47 AB-17 端上设备签名那一层被钉住：金标文件 + DI/DT 点名用例 + 三处生产接线锚点（五组负向对照全抓到）" \
       || bad "G-47 AB-17 anchor missing（端上真会签名这件事没有锚点在矩阵里）"
@@ -3387,6 +3390,44 @@ else
   bad "G-81 连接策略（见 /tmp/g81-strategy.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g81-strategy.log || tail -2 /tmp/g81-strategy.log | head -1)）"
   echo "  · G-81 修复前红（模块未实现，真实输出）：PASS=0 FAIL=6"
   echo "  · G-81 残留（诚实）：见上"
+fi
+
+echo "== G-82 配对回执带中转参数（路线 A · W4 / A3-6 · 桌面下发四栏 → 手机解析落 prefs → 界面显「直连/中转 · Nms」）=="
+if timeout 120 node scripts/prove_pairing_relay_handoff.js > /tmp/g82-handoff.log 2>&1; then
+  ok "G-82 配对回执中转参数全绿（$(grep -c '^  ✓ ' /tmp/g82-handoff.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g82-handoff.log)）"
+  grep -q 'PH-01 ' /tmp/g82-handoff.log && grep -q 'PH-02 ' /tmp/g82-handoff.log && grep -q 'PH-03 ' /tmp/g82-handoff.log \
+    && ok "G-82 三条命门都在：没配中转时回执形状一字不变（无 relay 键、turn_token/base_url 照旧）、配齐时四栏如实下发且 port 是数字、relay 里只有那四栏（不夹带配对令牌）" \
+    || bad "G-82 PH-01..PH-03 锚点缺失（下发内容或形状约束没被断言到）"
+  grep -q 'PH-04 ' /tmp/g82-handoff.log && grep -q '正控（配齐→下发）先过' /tmp/g82-handoff.log \
+    && ok "G-82 半套配置一律不下发（缺 token / 缺 box / port 越界 / port 非数字 四种），且**先跑正控**：配齐必须真下发，否则这条在功能不存在时也会绿（真空通过）" \
+    || bad "G-82 PH-04 锚点缺失或没有正控（半套结论可能是真空绿）"
+  grep -q 'PH-05 ' /tmp/g82-handoff.log && grep -q '正控先过' /tmp/g82-handoff.log \
+    && ok "G-82 失败路径不泄漏：错码 400 的回包里没有 relay（同样先正控，防真空通过）" \
+    || bad "G-82 PH-05 锚点缺失或没有正控"
+  echo "  · G-82 修复前红（cn_inbound_server 未下发，真实输出）：PASS=1 FAIL=4 ——"
+  echo "    PH-02 '配了中转却没下发 relay（手机永远拿不到跨网参数）Response: {\"ok\":true,...'、"
+  echo "    PH-03 'relay 只准有四栏' 报 (空)、PH-04 '正控失败：配齐也没下发 relay，下面四种半套的结论不算数'、"
+  echo "    PH-05 '正控失败：……失败路径的结论不算数'。绿的只有 PH-01（反向对照：没配时形状不变本来就成立）。"
+  echo "  · G-82 这门的两次自我修正也留原文：① PH-04/PH-05 第一版只有「不该出现」的断言，功能根本不存在时"
+  echo "    四条半套 + 失败路径全绿 —— 那是真空通过，比没门禁更坏；各加一条正控（配齐必须先下发）后才变红。"
+  echo "    ② PH-02 原来只比 host/box_id/client_token，漏了 port 的类型：服务端若把 port 当字符串发，"
+  echo "    端上端口校验会判非法、手机会报一个查不出来的错；改成先断言 typeof 数字。"
+  echo "  · G-82 修复后绿：PASS=5 FAIL=0 —— cn_inbound_server 的 redeem 成功回执改为「先建 redeemBody 再条件挂 relay」，"
+  echo "    relay 只由 currentRelayHandoff() 产出：opts.relayHandoff（函数或对象都收）优先，未传时读"
+  echo "    BITBOT_RELAY_HOST/PORT/BOX_ID/CLIENT_TOKEN；四栏有一栏不合法就整体回 null（半套不下发），"
+  echo "    且该函数任何异常都被吞成 null ——「跨网没配好」不该把「配对」拖死。既有回执 10 个字段一个没动。"
+  echo "  · G-82 手机侧同源证据（不在本门里，登记在此以免只看 JS 就以为通了）：Kotlin RT-11..RT-13 证"
+  echo "    parseRelayHandoff 认得四栏 / 没配或坏 JSON 回 null / 半套不认；TS-01..TS-03 证连接方式文案"
+  echo "    （直连/中转 · Nms 三语，含端上真实 locale「zh-CN」别名）。三条一起才等于「参数到了手机上」。"
+  echo "  · G-82 残留（诚实）：① **SSE 长连接仍不走隧道** —— 跨网时回合走中转，但进度事件流还是诚实回退"
+  echo "    （R-A3-5b 仍开）：TunnelHttp 只做了定长/chunked 的一次性响应，SSE 是「不结束的 chunked 流」，"
+  echo "    要先把「隧道上读流 + 断线续订 + Last-Event-ID」设计清楚，这一刀没做，不许当已交付。"
+  echo "    ② 手机侧仍无「手动填中转」入口，参数只能从配对回执来（配不上对就等于没配中转）。"
+  echo "    ③ 真机跨网一次都没跑过（本机无 Android SDK/KVM）；同一台机器上桌面与手机都未走真中转网关。"
+else
+  bad "G-82 配对回执中转参数（见 /tmp/g82-handoff.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g82-handoff.log || tail -2 /tmp/g82-handoff.log | head -1)）"
+  echo "  · G-82 修复前红（真实输出）：PASS=1 FAIL=4 —— PH-02/03/04/05 红，PH-01 绿（反向对照本来就成立）"
+  echo "  · G-82 残留（诚实）：SSE 长连接仍未走隧道（R-A3-5b）、手机无手动填中转入口、真机跨网未跑"
 fi
 
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="

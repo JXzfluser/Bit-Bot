@@ -112,15 +112,27 @@ fun ConnectionStatusChip(
   hostLabel: String?,
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
+  /**
+   * A3-6：上一次**实际**走的连接方式 + 延迟（`TransportStatus.labelOrNull`）。
+   * 有值时优先显示它而不是地址 —— 「现在经中转、320ms」比「地址是 10.x」更该被看见，
+   * 地址在「凭证」里一直看得到。没连过就是 null，状态条保持原样。
+   */
+  transportLabel: String? = null,
 ) {
   val scheme = MaterialTheme.colorScheme
   val dot = if (paired) scheme.primary else LocalBitBotExtras.current.dotIdle
-  val label =
+  val detail =
     when {
-      !paired -> "未配对"
-      hostLabel.isNullOrBlank() -> "已配对"
-      else -> "已配对 · $hostLabel"
+      !paired -> null
+      !transportLabel.isNullOrBlank() -> transportLabel
+      hostLabel.isNullOrBlank() -> null
+      else -> hostLabel
     }
+  val label = when {
+    !paired -> "未配对"
+    detail == null -> "已配对"
+    else -> "已配对 · $detail"
+  }
   Row(
     modifier =
       modifier
@@ -154,6 +166,7 @@ fun AppTopBar(
   hostLabel: String?,
   onOpenStatus: () -> Unit,
   onOpenMenu: () -> Unit,
+  transportLabel: String? = null,
 ) {
   Row(
     Modifier
@@ -168,6 +181,7 @@ fun AppTopBar(
       hostLabel = hostLabel,
       onClick = onOpenStatus,
       modifier = Modifier.weight(1f, fill = false),
+      transportLabel = transportLabel,
     )
     Spacer(Modifier.weight(1f))
     IconButton(onClick = onOpenMenu) {

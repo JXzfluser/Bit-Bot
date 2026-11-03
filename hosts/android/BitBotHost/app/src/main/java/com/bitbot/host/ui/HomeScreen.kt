@@ -45,6 +45,8 @@ fun HomeScreen(
   // A1-4: 实时进度行与回退提示
   progressLines: List<String> = emptyList(),
   fallbackMessage: String? = null,
+  // A3-6：上一次实际走的连接方式（直连/中转 · Nms），null = 还没连过
+  transportLabel: String? = null,
 ) {
   Column(
     modifier
@@ -58,6 +60,7 @@ fun HomeScreen(
       hostLabel = hostLabel,
       onOpenStatus = { if (paired) onOpenCredentials() else onOpenPairing() },
       onOpenMenu = onOpenMenu,
+      transportLabel = transportLabel,
     )
 
     Box(

@@ -394,6 +394,8 @@ class MainActivity : ComponentActivity() {
       // A1-4: 传递实时进度与回退提示
       progressLines = progressLines,
       fallbackMessage = fallbackMessage,
+      // A3-6：走的是直连还是中转（真实发生过的那条路），未连过为 null
+      transportLabel = TransportStatus.labelOrNull(EventStreamMessages.currentLocale),
     )
 
     if (showMenu) {

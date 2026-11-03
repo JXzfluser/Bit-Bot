@@ -4,6 +4,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
+import org.json.JSONObject
 
 /**
  * A3-5 中转（relay）传输层 —— 手机这一侧的客户端（残留 R-A3-3a）。
@@ -117,6 +118,32 @@ object RelayTunnel {
       if (ep.isNotEmpty()) return ConnectReply.Tunneled(ep)
     }
     return ConnectReply.Unknown(v)
+  }
+
+  /**
+   * A3-6：从**配对回执**里认中转四栏（桌面在 `redeem` 成功回执里下发，见
+   * `cn_inbound_server.js` 的 `currentRelayHandoff`）。
+   *
+   * 三种输入三种结果，一个都不许猜：
+   *  - 桌面没配中转 → 回执里**没有** `relay` 键 → null（跨网这条路就是不存在，不是「可能配错」）；
+   *  - 有 `relay` 但四栏不齐（老桌面/写坏了）→ 也回 null。给一半比不给更坏：拿半套去连，
+   *    用户看到的是一个查不出来的错；
+   *  - 回包不是 JSON / 解析炸了 → null，不抛。
+   */
+  fun parseRelayHandoff(body: String?): RelayConfig? {
+    val text = body?.trim().orEmpty()
+    if (text.isEmpty()) return null
+    return try {
+      val relay = JSONObject(text).optJSONObject("relay") ?: return null
+      parseConfig(
+        relay.optString("host", ""),
+        relay.optInt("port", 0),
+        relay.optString("client_token", ""),
+        relay.optString("box_id", ""),
+      )
+    } catch (_: Exception) {
+      null
+    }
   }
 
   /* ------------------------------------------------------------ 真连接 */
