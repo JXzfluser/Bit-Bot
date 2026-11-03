@@ -5905,3 +5905,30 @@ node scripts/e2e_grok_desktop_boot.mjs
 
 诚实边界：这条修的是**尺子的健壮性**，不是「CI 上 `moon run` 为什么卡住」。后者仍未知
 （登记为 R-A3-6f）；下一跑若 GP-11 仍超时，红里会带 `moon` 路径与 stderr 尾部，届时再查。
+
+### 8.71.8 收口：全量矩阵 `PASS=539 FAIL=0`（`053e7ea`）
+
+CI `053e7ea`（Desktop Parity Matrix = success，整轮 32 分钟；上一跑 `2756c32` 是 55 分钟，
+差的那 23 分钟就是 §8.71.7 里被 `timeout 1500` 杀掉的那段空白）：
+
+```
+smoke_grok_desktop_parity: PASS=539 FAIL=0
+
+✓ G-16 E2E 冷启动+像素断言全绿（130 项，e2e_grok_desktop_boot: PASS=130 FAIL=0)
+  · G-24 e2e 日志：bytes=11587 通过=130 失败=0 末行=e2e_grok_desktop_boot: PASS=130 FAIL=0
+✓ G-47 e2e_android_turn 全绿（11 项，e2e_android_turn: PASS=11 FAIL=0 SKIP=0）
+✓ G-78 W3 设备信任门全绿（prove_w3_device_trust: PASS=37 FAIL=0）
+✓ G-82 配对回执中转参数全绿（5 项断言，PASS=5 FAIL=0）
+✓ AB-06 JVM 单测真跑：199 用例 0 失败
+```
+
+对比三跑，就能看出这一刀到底修了什么（同一套门、同一份代码，只有尺子不同）：
+
+| 跑 | 结果 | 说明 |
+|---|---|---|
+| `0ef7a72` | `PASS=512 FAIL=20` | A3-6 主体 + 两条旧尺子脱钩（AND-06 / INJ-WD_11）+ e2e 挂死连坐 |
+| `2756c32` | `PASS=521 FAIL=18` | 两条脱钩修好；e2e 仍挂死，18 条连坐红 |
+| `053e7ea` | `PASS=539 FAIL=0` | e2e 的 spawn 有上限后，下游 15 组断言恢复；全绿 |
+
+`539 - 521 = 18`：正好是那 18 条「因为日志被截断而判 missing」的断言 —— 它们从来不是产品红。
+这条留在报告里，是因为「一次挂死能把 18 条红伪装成 18 个产品缺陷」这件事，比任何单条 bug 都危险。
