@@ -1,0 +1,21 @@
+# A3-1 中转节点镜像 —— 「哑」转发，TCP/TLS 透传，不解析应用层、不落内容、不存业务密钥。
+# 仅自托管：用户侧自己 build / 运行 / 承担备案与 SLA，项目 footprint 维持最小。
+#
+# build:  docker build -f Dockerfile.relay -t bitbot-relay:local .
+# run:    docker run -p 18766:18766 -p 18767:18767 \
+#           -e BITBOT_RELAY_SECRET=<你自己的中继准入密钥> bitbot-relay:local
+FROM node:22-alpine
+
+WORKDIR /app
+# 只拷 relay 目录（relay_server.js + relay_keys.js），不带入桌面/内核等无关代码
+COPY hosts/shared/relay/ ./relay/
+
+# 控制面（成员鉴权 + REGISTER/CONNECT）与 健康检查（/healthz）
+EXPOSE 18766 18767
+
+ENV BITBOT_RELAY_CONTROL_PORT=18766
+ENV BITBOT_RELAY_HEALTH_PORT=18767
+# 必填：中继成员准入密钥。镜像本身不带任何默认值，留空则启动即退出（见 relay_server.js 自启分支）
+ENV BITBOT_RELAY_SECRET=""
+
+CMD ["node", "relay/relay_server.js"]

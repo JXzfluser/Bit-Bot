@@ -3322,6 +3322,26 @@ else
   echo "  · G-78 残留（诚实）：见上"
 fi
 
+echo "== G-79 中转镜像（路线 A · W4 / A3-1 · 成员凭证签发 + Box 登记 + 盲转发 + 健康检查）=="
+if timeout 120 node scripts/prove_cn_relay_image.js > /tmp/g79-relay.log 2>&1; then
+  ok "G-79 中转镜像全绿（$(grep -c '^ok ' /tmp/g79-relay.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g79-relay.log)）"
+  grep -q 'EV-1 ' /tmp/g79-relay.log && grep -q 'EV-2 ' /tmp/g79-relay.log && grep -q 'EV-3 ' /tmp/g79-relay.log \
+    && grep -q 'EV-4 ' /tmp/g79-relay.log && grep -q 'EV-5 ' /tmp/g79-relay.log && grep -q 'EV-6 ' /tmp/g79-relay.log \
+    && ok "G-79 六条命门都在：模块存在 / 成员凭证签发校验 / 健康检查 / Box 登记 / 盲转发透传 / 数据面不落明文" \
+    || bad "G-79 EV-1..EV-6 锚点缺失（中继或盲转发没被断言到）"
+  echo "  · G-79 修复前红（模块未实现，真实输出）：PASS=0 FAIL=6 —— relay_server / relay_keys 模块缺失；六条断言全红。"
+  echo "  · G-79 修复后绿：PASS=6 FAIL=0 —— 新增 hosts/shared/relay/relay_server.js（控制面 AUTH→REGISTER/CONNECT + 盲 TCP 转发 + HTTP /healthz）、"
+  echo "    hosts/shared/relay/relay_keys.js（HMAC 成员凭证签发/校验）、Dockerfile.relay（node:22-alpine 镜像，CMD 直起 relay_server.js）。"
+  echo "  · G-79 残留（诚实）：① 转发模型锁定 TCP/TLS 透传，数据面结构性不碰内容（A3-2 内容不可见由架构保证，本门只证「不落明文」先手）；"
+  echo "    ② 控制面 TLS 在镜像里由用户侧 cert 启用，门禁用明文控制面跑端到端转发（诚实：未在本门内起 TLS 控制面）；"
+  echo "    ③ Box 自身 cn_inbound_server 仍是明文 HTTP（既有事实），relay 只搬运不新增暴露面；端到端业务 TLS 不在 A3-1；"
+  echo "    ④ 中继节点身份用共享 relay-secret（非设备密钥），secret 泄露只影响中转准入、不碰业务内容。"
+else
+  bad "G-79 中转镜像（见 /tmp/g79-relay.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g79-relay.log || tail -2 /tmp/g79-relay.log | head -1)）"
+  echo "  · G-79 修复前红（模块未实现，真实输出）：PASS=0 FAIL=6"
+  echo "  · G-79 残留（诚实）：见上"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

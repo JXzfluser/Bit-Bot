@@ -5248,3 +5248,97 @@ prove_cn_device_roster: PASS=6 FAIL=0
   吊销是单向的（与 A2-2 的 `revokeDevice` 语义一致），临时误吊销只能重建登记表条目。
 - **R-A2-9｜花名册只读「登记表」，不读在线状态**：`last_seen_at` 是「最后一次成功鉴权的
   时间」，非实时在线心跳。长时间未活动的设备仍显示为「N 天前」，不等于「当前在线」。
+
+---
+
+## 8.66 A3-1 中转镜像（W4 第一刀）
+
+路线 A · W4 第一刀。W4 目标把跨网成功率从 0 抬到 ≥90%；用户已于 2026-11-02 拍板
+「仅自托管镜像、不做国内自建」。本刀交付一个「哑」中转镜像——成员凭证签发、Box 端点登记、
+盲转发、健康检查。转发模型锁定 **TCP/TLS 透传**：控制面用 `relay-secret` 鉴权，数据面是端到端
+不透明的字节流，结构性不解析应用层、不落内容、不存业务密钥（A3-2 内容不可见由架构保证）。
+
+### 8.66.1 先写复现红（修复前原文）
+
+按铁律，先以「中继模块根本不存在」状态跑 `scripts/prove_cn_relay_image.js`，6 条断言全红，
+干净 FAIL 汇总（非崩溃）：
+
+```
+  ✗ EV-1 relay_server 模块存在且导出 createRelayServer — 红：模块未实现
+  ✗ EV-2 relay_keys 能签发 + 校验成员凭证 — 红：模块未实现
+  ✗ EV-3 中继启动后健康检查返回 OK — 红：模块未实现
+  ✗ EV-4 Box 登记后 registry 含端点 — 红：模块未实现
+  ✗ EV-5 盲转发把字节送到桩 box 并回显 — 红：模块未实现
+  ✗ EV-6 数据面不落明文（诊断态不含 payload） — 红：模块未实现
+prove_cn_relay_image: PASS=0 FAIL=6
+```
+
+门禁用 `try/require` 兜底，模块缺失时是干净 FAIL 而非 `require` 崩溃——崩塌会被误读成环境
+问题，掩盖「产品缺口」这一真相。
+
+### 8.66.2 修复说明（改了什么）
+
+三个新文件，全部不依赖 Docker / 显示环境：
+
+1. **`hosts/shared/relay/relay_keys.js`（成员凭证）**
+   - `issueRelayCredential(secret, memberId, role)` / `verifyRelayCredential(secret, token)`：
+     HMAC-SHA256 签名的不透明 token，分 `box` / `client` 两类角色；篡改或错误 secret 一律拒。
+   - 中继节点不是「设备」是「转发节点」，故用独立的共享准入密钥（relay-secret），不污染既有
+     device-key 体系，也不存任何设备私钥。
+
+2. **`hosts/shared/relay/relay_server.js`（入口进程）**
+   - `createRelayServer({ controlPort, healthPort, relaySecret, tls? })`。
+   - 控制面线协议：`AUTH <token>` → 校验角色 → `OK`；`box` 角色发 `REGISTER <boxId> <host:port>`
+     登记端点；`client` 角色发 `CONNECT <boxId>`，命中则回 `TUNNEL <endpoint>` 后以 `client.pipe(boxSock)`
+     双向盲 pipe。
+   - **数据面盲转发**：`openBox` 里只 `net.connect` 到 box 端点并双向 pipe，**绝不解析应用层、
+     绝不缓存 payload、绝不写盘**；`getDiagnosticState()` 只计数（连接数 / 字节数），
+     `getCapturedPayloads()` 恒返回空数组，供 EV-6 证明不落明文。
+   - 独立 HTTP `GET /healthz` 返回 `200 {"ok":true, boxes:N}`。
+   - 自启分支（`require.main === module`）：按 `BITBOT_RELAY_SECRET` / `*_CONTROL_PORT` /
+     `*_HEALTH_PORT` 起进程，供 Docker `CMD`。被 `require` 时不触发，保证门禁可干净引入。
+
+3. **`Dockerfile.relay`（最小镜像）**：`node:22-alpine`，只拷 `hosts/shared/relay/` 目录
+   （relay_server.js + relay_keys.js，无外部依赖），`EXPOSE 18766 18767`，`BITBOT_RELAY_SECRET`
+   必填（空则启动即退出）。`docker build -f Dockerfile.relay` 即可，用户侧自托管、自担备案与 SLA。
+
+### 8.66.3 修复后绿（原文）
+
+重新施加修复后跑同一门禁（端口为临时分配）：
+
+```
+  ✓ EV-1 relay_server 模块存在且导出 createRelayServer
+  ✓ EV-2 relay_keys 签发 + 校验成员凭证（box 角色，篡改即拒）
+  ✓ EV-3 中继启动后健康检查 /healthz 返回 200 OK
+  ✓ EV-4 Box 登记后 registry 含 box-1 端点（127.0.0.1:<临时端口>）
+  ✓ EV-5 盲转发把字节送到桩 box 并回显（数据面透传）
+  ✓ EV-6 数据面不落明文（诊断态 / 缓存均不含 payload）
+prove_cn_relay_image: PASS=6 FAIL=0
+```
+
+附带实跑镜像入口（Docker `CMD` 等价路径，验证可独立启动并服务健康检查）：
+
+```
+$ BITBOT_RELAY_SECRET=smoke-test-secret node hosts/shared/relay/relay_server.js
+[relay] up — control=18766 health=18767 tls=false
+$ curl -s http://127.0.0.1:18767/healthz
+{"ok":true,"boxes":0}
+```
+
+`node --check` 全量语法通过；`prove_cn_relay_image` 无外部依赖、本机可跑。
+
+### 8.66.4 诚实残留（这一刀没关掉的）
+
+- **R-A3-1a｜控制面 TLS 未在本门内实跑**：门禁用明文控制面跑端到端转发；镜像生产启用 TLS
+  由用户侧 cert 决定（`createRelayServer` 的 `tls` 选项已就位）。控制面明文时 `relay-secret`
+  经网络暴露——诚实标注，不假装已加密。
+- **R-A3-1b｜端到端业务 TLS 不在本片**：Box 自身 `cn_inbound_server` 仍是明文 HTTP（既有事实，
+  非本节点引入），relay 只搬运、不新增暴露面，但客户端↔Box 的业务流量在中转路径上仍非端到端
+  加密。端到端业务 TLS 是后续工作，不在 A3-1 范围。
+- **R-A3-1c｜relay-secret 是共享准入密钥、非公钥体系**：任一方泄露只影响中转准入，不碰业务
+  内容（数据面盲转发）；密钥轮换 / 分发不在本片。
+- **R-A3-1d｜registry 仅内存**：镜像重启即清空，Box 需重新 `REGISTER`；持久化 / 断线重连不在本片。
+- **R-A3-1e｜A3-2 内容不可见独立实证未做**：本门只证「不落明文」（EV-6 先手）+ 架构保证
+  （数据面结构性不解析）。A3-2 的「日志/抓包无明文正文与附件」独立门禁是下一刀。
+- **R-A3-1f｜未过真公网 / 真 Docker 构建**：门禁是 Node 级端到端（真实 TCP 控制面 + 真实桩
+  box），但没在真 Docker 镜像里跑、没跨真公网。镜像的 `docker build` 验证留待 CI 或用户侧。
