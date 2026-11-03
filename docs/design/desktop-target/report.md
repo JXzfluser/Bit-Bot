@@ -5858,3 +5858,50 @@ e2e_android_turn: PASS=11 FAIL=0 SKIP=0   ← 修后
   失败时打印 `bytes=$(wc -c)` + `tail -20`，G-24 块开头打印 `bytes / 通过数 / 失败数 / 末行`。
 - **诚实结论**：这 18 条**不能**写成「环境问题就算了」，也不能写成「产品坏了」。下一跑拿 `bytes` 与末行定位；
   在那之前，任何「矩阵全绿」的说法都不成立（`smoke_grok_desktop_parity: PASS=512 FAIL=20` 是这一跑的事实）。
+
+### 8.71.7 那 18 条 Electron 红的真因：一个没有上限的 spawn 把整把尺子吞了
+
+§8.71.6 里我说「证据不足」，随后加了诊断（`bytes=$(wc -c)` + `tail -20`）。CI `2756c32` 一跑，
+证据就出来了 —— 真因不在产品，也不在 Xvfb：
+
+```
+== G-16 自动化冷启动 + GP-70 像素断言（…）==
+  ✗ G-16 E2E 冷启动+像素断言（见 /tmp/e2e-g16.log；bytes=2160）
+  …（tail 20 行：从 dark/light 像素一直打到）
+  ✓ E2E GP-11：暂存路径全部落在 workspace uploads 语义目录      ← 最后一行
+== G-17 …                                                    ← 中间什么都没有
+```
+
+- **时间戳对上了**：G-16 起 `16:15:40`，G-17 起 `16:40:40` —— 正好 **1500 s**，就是外面那句
+  `timeout 1500 node scripts/e2e_grok_desktop_boot.mjs`。日志 2160 字节、26 条 ✓、**0 条 ✗**，
+  末行停在 GP-11 的最后一个 ✓ 上：脚本不是「断言失败」，是**挂住后被外面杀掉的**。
+- **挂在哪一行**：GP-11 最后那段会 spawn `moon run cmd/desktop_turn -- <phrase>` 拿内核回包，
+  而那个 spawn **没有任何超时**（只有 `p.on("close")`）。CI 上它再也回不来，整个 e2e 停在等待里。
+- **为什么看起来像 18 条红**：G-24/25/26/27/28 的断言全部依赖这份日志里**后续**的行。
+  日志被截断 ⇒ 15 组 `grep` 全部 missing ⇒ 18 条 bad。**一处挂住，等于把整本账撕掉。**
+- **本机为什么不复现**：同一个 Electron 37.10.3、同一份代码，`moon run` 在本机 1–2s 返回，
+  整份 e2e 61s 跑完 `PASS=130 FAIL=0`。CI 上为什么回不来，本轮**仍没有直接证据**（没有 stderr，
+  因为进程被 SIGKILL 前没吐字）—— 但这一点不再堵住诊断。
+
+修法（`scripts/e2e_grok_desktop_boot.mjs`）：
+
+| 改了什么 | 为什么这么改 |
+|---|---|
+| 给这个 spawn 加 240s 上限（`BITBOT_E2E_MOON_TIMEOUT_MS` 可调），超时 **SIGKILL** 并 resolve 一个带 `__timeout` 的结果 | 「子进程没上限」是这 18 条红的**唯一**结构性原因；修根因而不是把断言放宽 |
+| 超时/起不来时打 `bad(...)`，带上 `moon` 路径、耗时、已收集到的 stdout/stderr 尾部 | 下次再挂，红里就写着挂在哪、挂了多久 —— 不用再靠 `bytes=` 猜 |
+| 超时后**继续跑**后面的断言（`destsOk` 在 `effs.length===6` 才成立） | 一处坏不该让后面 15 组断言集体失踪：账要一条一条记 |
+
+本机两跑（同一个脚本，只差一个环境变量）：
+
+```
+BITBOT_E2E_MOON_TIMEOUT_MS=1 node scripts/e2e_grok_desktop_boot.mjs
+  ✗ E2E GP-11 kernel chain — moon run 超时 0s（已 SIGKILL） — {"moon":"/Users/zfl/.moon/bin/moon","ms":3,…}
+  ✓ E2E GP-116：侧边栏顺序 = Bot 列表 → 群组列表 → 尾部区块        ← 关键：下游断言照常执行
+  e2e_grok_desktop_boot: PASS=128 FAIL=2        （两条红都落在 GP-11 那条链上，没有连坐）
+
+node scripts/e2e_grok_desktop_boot.mjs
+  e2e_grok_desktop_boot: PASS=130 FAIL=0
+```
+
+诚实边界：这条修的是**尺子的健壮性**，不是「CI 上 `moon run` 为什么卡住」。后者仍未知
+（登记为 R-A3-6f）；下一跑若 GP-11 仍超时，红里会带 `moon` 路径与 stderr 尾部，届时再查。

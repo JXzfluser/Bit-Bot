@@ -723,32 +723,75 @@ async function main() {
       const phrase =
         "看下这批文件\n" +
         six.paths.map((p) => "attach file " + p).join("; ");
-      const turn = await new Promise((res, rej) => {
+      /* 这个 spawn **必须有上限**。CI 2756c32/0ef7a72 两跑都停在这一句上：
+         日志里最后一行是上面那条 ✓，随后 25 分钟一片空白，直到 `timeout 1500` 把整个
+         e2e 杀掉 —— 于是它后面 15 组断言（侧栏/资料/右栏/市场）全被判成 "missing"，
+         看着像 18 条产品红，其实是**一个没有上限的子进程把整把尺子吞了**。
+         现在：240s 未回就 SIGKILL，并把「超时 + 已收集到的 stderr」当红打出来，
+         后面那些断言照常跑 —— 一处坏不等于整本账不能记。 */
+      const MOON_TIMEOUT_MS = Number(process.env.BITBOT_E2E_MOON_TIMEOUT_MS || 240000);
+      const turn = await new Promise((res) => {
         const { spawn: spawnChild } = require("node:child_process");
         const mo =
           process.env.MOON_BIN || path.join(process.env.HOME || "", ".moon/bin/moon");
+        const startedAt = Date.now();
+        let out = "";
+        let err = "";
+        let done = false;
+        const finish = (v) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          res(v);
+        };
         const p = spawnChild(mo, ["run", "cmd/desktop_turn", "--", phrase], {
           stdio: ["ignore", "pipe", "pipe"],
           cwd: REPO,
         });
-        let out = "";
+        const timer = setTimeout(() => {
+          try {
+            p.kill("SIGKILL");
+          } catch (_) {}
+          finish({ __timeout: true, ms: Date.now() - startedAt, moon: mo, out, err });
+        }, MOON_TIMEOUT_MS);
         p.stdout.on("data", (d) => (out += d));
-        p.on("error", rej);
-        p.on("close", () =>
-          res(out.trim().split("\n").filter((l) => l.startsWith("{")).pop() || "{}"),
+        p.stderr.on("data", (d) => (err += d));
+        p.on("error", (e) =>
+          finish({ __error: true, ms: Date.now() - startedAt, moon: mo, out, err, err2: String(e) }),
+        );
+        p.on("close", (code) =>
+          finish({
+            raw: out.trim().split("\n").filter((l) => l.startsWith("{")).pop() || "{}",
+            code,
+            ms: Date.now() - startedAt,
+            moon: mo,
+            err,
+          }),
         );
       });
-      const tj = JSON.parse(turn);
-      const effs = (tj.effects || []).filter((e) => e.kind === "copy_to_box");
-      tj.intent === "attach_files" && effs.length === 6
-        ? ok("E2E GP-11：内核链 attach_files → 6 条逐路径 copy_to_box 效果（不吞列表）")
-        : bad("E2E GP-11 kernel chain", JSON.stringify({ i: tj.intent, n: effs.length }));
-      const destsOk = effs.every((e, i) =>
-        e.command === "desk-1|" + six.paths[i] + "|data/workspace/uploads/s" + i + ".txt",
-      );
+      const tj = turn.__timeout || turn.__error ? null : JSON.parse(turn.raw);
+      const effs = tj ? (tj.effects || []).filter((e) => e.kind === "copy_to_box") : [];
+      if (turn.__timeout) {
+        bad(
+          "E2E GP-11 kernel chain — moon run 超时 " + Math.round(MOON_TIMEOUT_MS / 1000) + "s（已 SIGKILL）",
+          JSON.stringify({ moon: turn.moon, ms: turn.ms, stdout: turn.out.slice(-120), stderr: turn.err.slice(-200) }),
+        );
+      } else if (turn.__error) {
+        bad("E2E GP-11 kernel chain — moon 起不来", JSON.stringify(turn).slice(0, 260));
+      } else if (tj.intent === "attach_files" && effs.length === 6) {
+        ok("E2E GP-11：内核链 attach_files → 6 条逐路径 copy_to_box 效果（不吞列表）");
+      } else {
+        bad("E2E GP-11 kernel chain", JSON.stringify({ i: tj && tj.intent, n: effs.length, code: turn.code }));
+      }
+      const destsOk =
+        effs.length === 6 &&
+        effs.every(
+          (e, i) =>
+            e.command === "desk-1|" + six.paths[i] + "|data/workspace/uploads/s" + i + ".txt",
+        );
       destsOk
         ? ok("E2E GP-11：每条效果 dest=data/workspace/uploads/<basename>（Host 可执行，无幻觉 /workspace）")
-        : bad("E2E GP-11 dest mapping", JSON.stringify(effs[0]).slice(0, 200));
+        : bad("E2E GP-11 dest mapping", JSON.stringify(effs[0] || { n: effs.length }).slice(0, 200));
       fs.rmSync(d11, { recursive: true, force: true });
       fs.rmSync(path.join(GATE_ROOT, "data/workspace/uploads/gp11e2e"), { recursive: true, force: true });
     }
