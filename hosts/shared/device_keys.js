@@ -48,6 +48,7 @@ function loadDevices(file) {
           kind: String(d.kind || "mobile"),
           public_key_pem: String(d.public_key_pem),
           created_at: String(d.created_at || ""),
+          last_seen_at: d.last_seen_at ? String(d.last_seen_at) : null,
           revoked_at: d.revoked_at ? String(d.revoked_at) : null,
         })),
     };
@@ -62,12 +63,13 @@ function saveDevices(file, store) {
   fs.mkdirSync(dir, { recursive: true });
   const payload = {
     version: DEVICES_VERSION,
-    devices: (store && Array.isArray(store.devices) ? store.devices : []).map((d) => ({
+      devices: (store && Array.isArray(store.devices) ? store.devices : []).map((d) => ({
       id: String(d.id),
       name: String(d.name || d.id),
       kind: String(d.kind || "mobile"),
       public_key_pem: String(d.public_key_pem),
       created_at: String(d.created_at || ""),
+      last_seen_at: d.last_seen_at || null,
       revoked_at: d.revoked_at || null,
     })),
   };
@@ -203,6 +205,31 @@ function revokeDevice(store, deviceId) {
   return { ok: true, device_id: id, revoked_at: hit.revoked_at };
 }
 
+/**
+ * 设备鉴权成功后更新「最近活跃」时间戳并落盘。
+ * 找不到 / 已吊销 / 读盘写盘失败都返回 null 且不抛 —— 调用点（鉴权路径）不能因
+ * 记录活跃度而失败，也不能让 last_seen 写盘阻塞正常请求。
+ */
+function touchDevice(file, deviceId) {
+  const id = String(deviceId || "").trim();
+  if (!id) return null;
+  let store;
+  try {
+    store = loadDevices(file);
+  } catch (_) {
+    return null;
+  }
+  const hit = (store.devices || []).find((d) => d.id === id && !d.revoked_at);
+  if (!hit) return null;
+  hit.last_seen_at = new Date().toISOString();
+  try {
+    saveDevices(file, store);
+  } catch (_) {
+    return null;
+  }
+  return hit;
+}
+
 module.exports = {
   DEVICES_VERSION,
   loadDevices,
@@ -213,4 +240,5 @@ module.exports = {
   signTurn,
   verifyDeviceTurn,
   revokeDevice,
+  touchDevice,
 };

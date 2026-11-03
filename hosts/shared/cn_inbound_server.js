@@ -813,6 +813,8 @@ function createCnInboundServer(opts = {}) {
       // 等于授权这台机器以后做这类事。这是重决策,回执要说清楚。
       if (p === "/v1/approvals" || p.startsWith("/v1/approvals/")) {
         const auth = deviceKeys.verifyDeviceTurn(deviceStoreNow(), req, raw, { nonceStore });
+        // A2-5：设备密钥鉴权成功 → 落「最近活跃」。失败/legacy token 路径不碰。
+        if (auth.ok && auth.device_id) deviceKeys.touchDevice(devicesPath, auth.device_id);
         if (!auth.ok) {
           json(res, 401, {
             ok: false,
@@ -1062,6 +1064,8 @@ function createCnInboundServer(opts = {}) {
         const auth = hasDevices
           ? deviceKeys.verifyDeviceTurn(store, req, raw, { nonceStore })
           : p0.verifyTurnAuth(req, raw, turnToken, nonceStore);
+        // A2-5：设备密钥鉴权成功 → 落「最近活跃」（legacy token 路径无 device_id，跳过）。
+        if (auth.ok && auth.via === "device_key" && auth.device_id) deviceKeys.touchDevice(devicesPath, auth.device_id);
         // A2-4：把这颗地雷说人话。
         // 登记表一非空，这台机器就**只认设备凭证**（B-4a 的口径，代码本身是对的）；
         // 坏的是回执：老客户端手里只有 bearer，它收到的是一串它读不懂的码，
@@ -1196,6 +1200,8 @@ function createCnInboundServer(opts = {}) {
         const auth = hasDevices
           ? deviceKeys.verifyDeviceTurn(store, req, raw, { nonceStore })
           : p0.verifyTurnAuth(req, raw, turnToken, nonceStore);
+        // A2-5：设备密钥鉴权成功 → 落「最近活跃」（legacy token 路径无 device_id，跳过）。
+        if (auth.ok && auth.via === "device_key" && auth.device_id) deviceKeys.touchDevice(devicesPath, auth.device_id);
         // A2-4：把这颗地雷说人话。
         // 登记表一非空，这台机器就**只认设备凭证**（B-4a 的口径，代码本身是对的）；
         // 坏的是回执：老客户端手里只有 bearer，它收到的是一串它读不懂的码，
@@ -1455,7 +1461,15 @@ function createCnInboundServer(opts = {}) {
     };
   }
 
-  return { start, stop, status, server, pairingManager };
+  /**
+   * 强制下次读设备表时重盘（A2-5 吊销一台设备后让入口立即热生效，不等 TTL）。
+   * deviceStoreNow 内部有 TTL 兜底，这里只是把倒计时清零，不是另起一条加载路径。
+   */
+  function refreshDeviceStore() {
+    deviceStoreCheckedAt = 0;
+  }
+
+  return { start, stop, status, server, pairingManager, refreshDeviceStore };
 }
 
 module.exports = { createCnInboundServer };

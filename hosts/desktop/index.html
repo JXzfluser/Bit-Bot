@@ -3219,6 +3219,12 @@
             </ul>
             <button type="button" id="mc-goto-channels" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mcGotoChannels">去配置</button>
           </section>
+          <section class="mc-card" id="mc-roster-card">
+            <div class="mc-card-title" id="mc-roster-title" data-i18n="mcRosterTitle">已登记的设备</div>
+            <p class="mc-note" id="mc-roster-empty" data-i18n="mcRosterEmpty">还没有已登记的设备。手机配对成功后，会出现在这一栏。</p>
+            <p class="mc-note" id="mc-roster-error" hidden></p>
+            <ul class="mc-roster" id="mc-roster-list"></ul>
+          </section>
         </div>
       </div>
     </div>
@@ -12790,6 +12796,123 @@
       revoke: document.getElementById("mc-revoke-btn"),
     };
 
+    /* A2-5 设备花名册元素引用 */
+    const mcRosterEls = {
+      title: document.getElementById("mc-roster-title"),
+      empty: document.getElementById("mc-roster-empty"),
+      error: document.getElementById("mc-roster-error"),
+      list: document.getElementById("mc-roster-list"),
+    };
+
+    /* 机器类 → 本地化标签（与 devices.json 的 kind 对齐） */
+    function mcKindLabel(kind) {
+      if (kind === "android") return wavegT("mcKindAndroid");
+      if (kind === "ios") return wavegT("mcKindIos");
+      return wavegT("mcKindMobile");
+    }
+
+    /* 时间戳 → 「x 分钟前」式相对时间（本机算，不依赖后端） */
+    function mcRelTime(iso) {
+      if (!iso) return "";
+      const t = Date.parse(iso);
+      if (!Number.isFinite(t)) return "";
+      const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+      if (sec < 60) return t("mcRosterActiveJustNow", { n: sec });
+      const min = Math.round(sec / 60);
+      if (min < 60) return t("mcRosterActiveMins", { n: min });
+      const hr = Math.round(min / 60);
+      if (hr < 24) return t("mcRosterActiveHours", { n: hr });
+      const day = Math.round(hr / 24);
+      return t("mcRosterActiveDays", { n: day });
+    }
+
+    async function refreshDeviceRoster() {
+      if (!mcRosterEls.list || !window.bitbot || !window.bitbot.devices) return;
+      try {
+        const r = await window.bitbot.devices.list();
+        if (!r || !r.ok) {
+          if (mcRosterEls.error) {
+            mcRosterEls.error.textContent = t("mcRosterLoadFail", { err: (r && r.error) || "unknown" });
+            mcRosterEls.error.hidden = false;
+          }
+          return;
+        }
+        if (mcRosterEls.error) mcRosterEls.error.hidden = true;
+        const devices = Array.isArray(r.devices) ? r.devices : [];
+        if (!devices.length) {
+          if (mcRosterEls.empty) mcRosterEls.empty.hidden = false;
+          mcRosterEls.list.innerHTML = "";
+          return;
+        }
+        if (mcRosterEls.empty) mcRosterEls.empty.hidden = true;
+        mcRosterEls.list.innerHTML = "";
+        for (const d of devices) {
+          const li = document.createElement("li");
+          li.className = "mc-roster-row" + (d.revoked ? " is-revoked" : "");
+          li.dataset.deviceId = d.id;
+
+          const name = document.createElement("div");
+          name.className = "mc-roster-name";
+          name.textContent = d.name || d.id;
+
+          const meta = document.createElement("div");
+          meta.className = "mc-roster-meta";
+          const kind = document.createElement("span");
+          kind.className = "mc-roster-kind";
+          kind.textContent = mcKindLabel(d.kind);
+          meta.appendChild(kind);
+          if (d.revoked) {
+            const rev = document.createElement("span");
+            rev.className = "mc-roster-badge revoked";
+            rev.textContent = wavegT("mcRosterRevoked");
+            meta.appendChild(rev);
+          } else if (d.last_seen_at) {
+            const seen = document.createElement("span");
+            seen.className = "mc-roster-seen";
+            seen.textContent = wavegT("mcRosterActive") + "：" + mcRelTime(d.last_seen_at);
+            meta.appendChild(seen);
+          }
+
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "bb-btn bb-btn-sm bb-btn-danger-soft mc-roster-revoke";
+          btn.textContent = wavegT("mcRevoke");
+          btn.disabled = Boolean(d.revoked);
+          btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            try {
+              const rr = await window.bitbot.devices.revoke(d.id);
+              if (!rr || !rr.ok) {
+                if (mcRosterEls.error) {
+                  mcRosterEls.error.textContent = t("mcRosterRevokeFail", { err: (rr && rr.error) || "unknown" });
+                  mcRosterEls.error.hidden = false;
+                }
+              } else {
+                await refreshDeviceRoster();
+              }
+            } catch (e) {
+              if (mcRosterEls.error) {
+                mcRosterEls.error.textContent = t("mcRosterRevokeFail", { err: String((e && e.message) || e) });
+                mcRosterEls.error.hidden = false;
+              }
+            } finally {
+              btn.disabled = false;
+            }
+          });
+
+          li.appendChild(name);
+          li.appendChild(meta);
+          li.appendChild(btn);
+          mcRosterEls.list.appendChild(li);
+        }
+      } catch (e) {
+        if (mcRosterEls.error) {
+          mcRosterEls.error.textContent = t("mcRosterLoadFail", { err: String((e && e.message) || e) });
+          mcRosterEls.error.hidden = false;
+        }
+      }
+    }
+
     function mcNote(text) {
       if (!mcEls.note) return;
       if (!text) {
@@ -12875,6 +12998,8 @@
         }
         if (mcEls.copyUrl) mcEls.copyUrl.disabled = !(st.pair_base || st.loopback_base || (st.turn_urls || []).length || st.loopback_url);
         mcPaintCode(st);
+        // A2-5：花名册与配对状态同源刷新（配对成功登记设备后，打开弹窗应立刻看到）。
+        refreshDeviceRoster();
       } catch (e) {
         mcEls.dot.dataset.state = "off";
         mcEls.status.textContent = wavegT("pairingReadFail");
@@ -15713,6 +15838,20 @@
         mcChFeishu: "飞书 · 自建应用事件回调",
         mcChWecom: "企业微信 · 应用消息回调",
         mcGotoChannels: "去配置",
+        mcRosterTitle: "已登记的设备",
+        mcRosterEmpty: "还没有已登记的设备。手机配对成功后，会出现在这一栏。",
+        mcRosterActive: "最近活跃",
+        mcRosterRevoked: "已吊销",
+        mcRevoke: "吊销",
+        mcKindAndroid: "安卓",
+        mcKindIos: "iPhone",
+        mcKindMobile: "手机",
+        mcRosterActiveJustNow: "刚刚",
+        mcRosterActiveMins: "{n} 分钟前",
+        mcRosterActiveHours: "{n} 小时前",
+        mcRosterActiveDays: "{n} 天前",
+        mcRosterLoadFail: "设备表读取失败（{err}）",
+        mcRosterRevokeFail: "吊销失败（{err}）",
         mcNowOpen: "已放开局域网：同一 Wi-Fi 下的手机现在能连进来 — 手机点「连接 Desktop」输 6 位配对码，令牌由手机端自己拿到",
         mcNowClosed: "已收回局域网：现在只有桌面自己能连",
         gpPanel: "对齐面板",
@@ -16507,6 +16646,20 @@
         mcChFeishu: "飛書 · 自建應用事件回調",
         mcChWecom: "企業微信 · 應用消息回調",
         mcGotoChannels: "去設定",
+        mcRosterTitle: "已登記的裝置",
+        mcRosterEmpty: "還沒有已登記的裝置。手機配對成功後，會出現在這一欄。",
+        mcRosterActive: "最近活躍",
+        mcRosterRevoked: "已吊銷",
+        mcRevoke: "吊銷",
+        mcKindAndroid: "安卓",
+        mcKindIos: "iPhone",
+        mcKindMobile: "手機",
+        mcRosterActiveJustNow: "剛剛",
+        mcRosterActiveMins: "{n} 分鐘前",
+        mcRosterActiveHours: "{n} 小時前",
+        mcRosterActiveDays: "{n} 天前",
+        mcRosterLoadFail: "裝置表讀取失敗（{err}）",
+        mcRosterRevokeFail: "吊銷失敗（{err}）",
         mcNowOpen: "已放開區域網路：同一 Wi-Fi 下的手機現在能連進來 — 手機點「連接 Desktop」輸 6 位配對碼，權杖由手機端自己拿到",
         mcNowClosed: "已收回區域網路：現在只有桌面本身能連",
         gpPanel: "Grok Parity 面板",
@@ -17301,6 +17454,20 @@
         mcChFeishu: "Feishu · custom app event callback",
         mcChWecom: "WeCom · app message callback",
         mcGotoChannels: "Configure",
+        mcRosterTitle: "Registered devices",
+        mcRosterEmpty: "No devices registered yet. A phone appears here after it pairs.",
+        mcRosterActive: "Last active",
+        mcRosterRevoked: "Revoked",
+        mcRevoke: "Revoke",
+        mcKindAndroid: "Android",
+        mcKindIos: "iPhone",
+        mcKindMobile: "Phone",
+        mcRosterActiveJustNow: "just now",
+        mcRosterActiveMins: "{n} min ago",
+        mcRosterActiveHours: "{n} h ago",
+        mcRosterActiveDays: "{n} d ago",
+        mcRosterLoadFail: "Failed to read device registry ({err})",
+        mcRosterRevokeFail: "Revoke failed ({err})",
         mcNowOpen: "LAN opened: phones on the same Wi-Fi can connect now — tap “Connect Desktop” and enter the 6-digit code, the phone receives the token itself",
         mcNowClosed: "LAN closed: only this desktop can connect now",
         gpPanel: "Grok Parity Panel",

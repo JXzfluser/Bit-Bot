@@ -5117,6 +5117,134 @@ nonce 与时间戳**每次现取**（抄上一次就是 `nonce_reused`，DI-09/D
   release/minify 之后的增量本轮没测，`prove_pack_artifacts` 的棘轮仍按现状。
 - **R-A2-5｜设备身份文件的可读性边界**：只做到「落在应用私有目录 + 尽力 `setReadable/setWritable(0600)`」；
   root 设备、允许 backup 的备份这一层管不了，也不假装管了。
-- **A2-5（花名册 UI）未做**：现在登记是**服务端单方面记上一行**，用户在桌面上还没有
-  「看一眼有哪些设备、吊销哪一台」的入口。没有它，「吊销」只有 API 没有产品动作，
-  所以真机验收清单里那条「点吊销」目前只能靠改盘复现（WD-04 就是这么测的）。
+- **A2-5（花名册 UI）已交付**：见 §8.65（矩阵 G-78）。桌面「移动端远程控制」弹窗现在
+  列出已登记设备（名称 / 机器类 / 最近活跃 / 吊销按钮），吊销走 `revokeInRoster` →
+  落盘 `data/host/devices.json` 并即时热生效，「最近活跃」由设备密钥鉴权成功后
+  `touchDevice` 落 `last_seen_at`（真话非装饰）。诚实残留见 §8.65.4。
+
+---
+
+## 8.65 A2-5 设备花名册 UI（W3 收尾刀）
+
+路线 A · W3 的最后一刀。A2-1~A2-4 已让「配对即登记、设备签名鉴权、吊销热生效、入站说人话」
+全部收口，但登记始终是**服务端单方面记上一行**——用户在桌面上没有「看一眼有哪些设备、
+吊销哪一台」的入口。没有它，「吊销」只有 API 没有产品动作。本刀把这一缺口补上：桌面
+「移动端远程控制」弹窗里列出已登记设备（名称 / 机器类 / 最近活跃 / 吊销按钮），吊销即时
+热生效，「最近活跃」由设备密钥鉴权成功时落 `last_seen_at`（真话，非装饰）。
+
+### 8.65.1 先写复现红（修复前原文）
+
+按铁律，先把 `device_roster.js` 删掉、`device_keys.js` 的 `touchDevice` 与 `last_seen_at`
+透传撤销，回到「花名册数据层根本不存在」的状态，跑 `scripts/prove_cn_device_roster.js`。
+红态下 6 条断言全部倒下，干净 FAIL 汇总（非崩溃）：
+
+```
+  ✗ EV-1 device_roster 模块存在（花名册数据层尚未抽出）
+  ✗ EV-2 listRoster 返回全部设备（含已吊销），字段含 name/kind/created_at/last_seen_at/revoked — 红：模块未实现
+  ✗ EV-3 revokeInRoster 标记吊销并落盘 — 红：模块未实现
+  ✗ EV-4 吊销后 listRoster 反映 revoked=true — 红：模块未实现
+  ✗ EV-5 device_keys.touchDevice 存在（鉴权成功落最近活跃） — 红：方法未实现
+  ✗ EV-6 touchDevice 对不存在/已吊销设备返回 null 且不抛 — 红：方法未实现
+prove_cn_device_roster: PASS=0 FAIL=6
+```
+
+设计要点：红态用 `try/require(ROSTER)` 兜底，模块缺失时是**干净的 FAIL 汇总**，不是
+`require` 崩溃——崩溃会被误读成「环境问题」，掩盖「产品缺口」这一真相。EV-5/EV-6 的红
+直接挂在 `typeof deviceKeys.touchDevice !== "function"` 上，所以 `touchDevice` 没实现时
+也走 FAIL 而非抛错。
+
+### 8.65.2 修复说明（改了什么）
+
+四层打通，全部落在既有的「登记表 = `data/host/devices.json`」这一份数据上，UI 读的路径
+与入站服务写 `last_seen` 的路径严格一致（否则 UI 永远看到旧数据，这是本刀最关键的不变量）：
+
+1. **数据层 · `hosts/shared/device_keys.js`**
+   - `loadDevices` / `saveDevices` 的 map 阶段双向透传 `last_seen_at`（原表只有
+     `created_at` / `revoked_at`，无「最近活跃」字段）。
+   - 新增 `touchDevice(file, deviceId)`：读 store → 找未吊销设备 → 写
+     `last_seen_at = new Date().toISOString()` → 落盘；找不到 / 已吊销 / 读写失败
+     **一律返回 `null` 不抛**（对应 EV-6 的异常输入边界）。
+   - `module.exports` 挂上 `touchDevice`。
+   - 回归：`prove_w3_device_trust.mjs` 仍 `PASS=37 FAIL=0`，`last_seen_at` 透传未破坏
+     既有设备信任契约。
+
+2. **数据层 · 新增 `hosts/shared/device_roster.js`**（本刀抽出的纯 Node 可测模块，不依赖
+   Electron / 显示）
+   - `listRoster(file)`：`deviceKeys.loadDevices` → map 成
+     `{id, name, kind, created_at, last_seen_at, revoked_at, revoked}`，已吊销与有效设备
+     一并返回（花名册要看见全部，含吊销态）。
+   - `revokeInRoster(file, deviceId)`：`loadDevices` → `deviceKeys.revokeDevice(store, id)`
+     → `saveDevices`，返回 `{ok, error?, device_id?, revoked_at?}`。
+
+3. **鉴权点 · `hosts/shared/cn_inbound_server.js`**
+   - `verifyDeviceTurn` 成功后三处补 `touchDevice(devicesPath, auth.device_id)`：
+     `/v1/approvals` 处用 `if (auth.ok && auth.device_id)`；
+     `/v1/turn` 与 `/v1/events` 处用 `if (auth.ok && auth.via === "device_key" && auth.device_id)`
+     （legacy bearer 路径无 `device_id`，跳过——「最近活跃」只由设备密钥鉴权成功触发，
+     不污染老入口）。
+   - 返回对象新增 `refreshDeviceStore()`：`deviceStoreCheckedAt = 0;` 清零 TTL 倒计时，
+     让 A2-5 的吊销**立即**热生效（而非等 A2-2 的 `DEVICE_RELOAD_TTL_MS` 兜底 2s）。
+
+4. **IPC 接线 · `hosts/desktop/main.js`**
+   - 布局安全 require：`(() => { try { return require("../shared/device_roster"); } catch(_) { return require("./shared/device_roster"); } })()`（兼容开发态与 Box 平铺包）。
+   - `devicesPath = path.join(REPO_ROOT, "data", "host", "devices.json")`。
+   - `ipcMain.handle("bitbot:devices:list", ...)` → `deviceRoster.listRoster(devicesPath)`。
+   - `ipcMain.handle("bitbot:devices:revoke", async (_e, deviceId) => { const r = deviceRoster.revokeInRoster(devicesPath, deviceId); if (cnInbound?.refreshDeviceStore) cnInbound.refreshDeviceStore(); return r; })`——吊销落盘后立刻清 TTL，下一拍鉴权即按新登记表拒绝。
+
+5. **桥暴露 · `hosts/desktop/preload.js`**：`bitbot.devices.list()` / `bitbot.devices.revoke(id)`
+   经 `contextBridge` 暴露给渲染进程。
+
+6. **UI · `hosts/desktop/index.html` + `ui_chrome.css`**
+   - 弹窗 `#mc-channel-card` 之后新增 `#mc-roster-card`（标题 / 空态 / 错误态 / 列表）。
+   - 三套词典（中 / 繁 / 英）各加 `mcRosterTitle/mcRosterEmpty/mcRosterActive/mcRosterRevoked/
+     mcRevoke/mcKindAndroid/mcKindIos/mcKindMobile` + 相对时间插值
+     `mcRosterActiveJustNow/{Mins}/{Hours}/{Days}` + 错误 `mcRosterLoadFail/mcRosterRevokeFail`。
+   - `refreshMobileControl()` 末尾调 `refreshDeviceRoster()`：每行 = 名称 + 机器类徽标 /
+     最近活跃（相对时间）/ 已吊销徽标 + 吊销按钮；点吊销键 → `bitbot.devices.revoke` → 重渲。
+   - CSS 复用既有 `--space-*` / `--radius-md` / `--line` / `--surface` / `--danger-*`，
+     并在 `@media (max-width:900px)` 里 `flex-wrap: wrap` + `revoke { margin-left:auto }` 防 480px 破版。
+
+7. **端上证据 · `scripts/e2e_desktop_mobile_control.mjs`**：新增 **MC-13**——写种子
+   `data/host/devices.json`（2 台有效设备）→ 调 `bitbot.devices.list()` → 校验
+   `#mc-roster-card` 可见、行数 = 接口数、每行含名称 / 机器类 / 吊销键；点首台吊销键 →
+   400ms 后校验接口 `revoked=true` 且 UI 含 `is-revoked` 类 + 键禁用 + 徽标。**本机无 DISPLAY /
+   无 xvfb → 走 `hasDisplay()` 的 SKIP 分支**，CI 有显示才实跑（与 A1-2 同型处理）。
+
+8. **矩阵 · `scripts/smoke_grok_desktop_parity.sh`**：G-74 与 G-75 之间插入 **G-78**
+   设备花名册数据层块，跑 `prove_cn_device_roster.js` 并锚 `EV-1..EV-6`，附修复前红原文 /
+   修复后绿原文 / 诚实残留。
+
+### 8.65.3 修复后绿（原文）
+
+重新施加修复后跑同一门禁：
+
+```
+  ✓ EV-1 device_roster 模块存在
+  ✓ EV-2 listRoster 返回 3 台、字段齐全、revoked 标记正确（android/ios/mobile 各一，1 台吊销）
+  ✓ EV-3 revokeInRoster 标记吊销并落盘（dev-mob-aaa.revoked_at 已填）
+  ✓ EV-4 吊销后 listRoster 反映 dev-mob-aaa.revoked=true
+  ✓ EV-5 touchDevice 把 last_seen_at 落盘（dev-ios-bbb.last_seen_at=2026-11-03T12:01:51）
+  ✓ EV-6 touchDevice 对已吊销/不存在设备返回 null 且不抛
+prove_cn_device_roster: PASS=6 FAIL=0
+```
+
+`node --check` 全量语法通过；`prove_w3_device_trust.mjs` 无回归（`PASS=37 FAIL=0`）。
+
+### 8.65.4 诚实残留（这一刀没关掉的）
+
+- **R-A2-1｜真机未验（继承）**：本机无 KVM，起不了真机/模拟器。端上运行时证据是
+  `e2e_desktop_mobile_control.mjs` 的 MC-13（UI 渲染断言）在**本机 SKIP**、CI 有显示才实跑；
+  服务端证据是 WD-01..09 真验签 + 本刀 `touchDevice` 落盘；跨语言一致性是 WD-10 金标。
+  三者合起来才等于「用户真机上走通」，任何一条单独拿出来说都不算。真机验收清单
+  （配对一次→桌面「设备」里看得见这台手机→发消息带签名→锁屏重连不重复帧→桌面上点吊销
+  后手机立刻 401 且文案是 `next_step` 那句）仍未逐条打勾。
+- **R-A2-6｜MC-13 本机 SKIP**：UI 渲染断言（行数=接口数、吊销键禁用、已吊销徽标）依赖真
+  Electron + 显示。本机 `hasDisplay()` 为假，走 SKIP，不伪造 PASS。CI 矩阵需带显示环境才能
+  把这一条从 SKIP 转绿。
+- **R-A2-7｜`last_seen_at` 仅设备密钥路径触发**：`touchDevice` 只在
+  `verifyDeviceTurn` 的 `via === "device_key"` 成功分支调用，legacy bearer 路径无 `device_id`
+  不触。即「最近活跃」只反映设备凭证登录，不反映老令牌登录——这是有意收紧，不是疏漏。
+- **R-A2-8｜无「取消登记 / 取消吊销」路径**：花名册只提供「吊销」动作，不做反操作。
+  吊销是单向的（与 A2-2 的 `revokeDevice` 语义一致），临时误吊销只能重建登记表条目。
+- **R-A2-9｜花名册只读「登记表」，不读在线状态**：`last_seen_at` 是「最后一次成功鉴权的
+  时间」，非实时在线心跳。长时间未活动的设备仍显示为「N 天前」，不等于「当前在线」。

@@ -3302,6 +3302,26 @@ else
   echo "  · skip：本机 node 没有 node:sqlite，G-74 未跑（SKIP ≠ PASS）"
 fi
 
+echo "== G-78 设备花名册数据层（路线 A · W3 / A2-5 · 名单读出 + 吊销落盘 + 最近活跃跟踪）=="
+if timeout 120 node scripts/prove_cn_device_roster.js > /tmp/g78-roster.log 2>&1; then
+  ok "G-78 设备花名册数据层全绿（$(grep -c '^ok ' /tmp/g78-roster.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g78-roster.log)）"
+  grep -q 'EV-1 ' /tmp/g78-roster.log && grep -q 'EV-2 ' /tmp/g78-roster.log && grep -q 'EV-3 ' /tmp/g78-roster.log \
+    && grep -q 'EV-4 ' /tmp/g78-roster.log && grep -q 'EV-5 ' /tmp/g78-roster.log && grep -q 'EV-6 ' /tmp/g78-roster.log \
+    && ok "G-78 六条命门都在：模块存在 / listRoster 字段齐全含 revoked / 吊销落盘 / 吊销后反映 / touchDevice 落 last_seen / 异常输入不抛" \
+    || bad "G-78 EV-1..EV-6 锚点缺失（花名册或 last_seen 接线没被断言到）"
+  echo "  · G-78 修复前红（模块未实现，真实输出）：PASS=0 FAIL=6 —— device_roster 模块缺失、device_keys.touchDevice 未实现；六条断言全红。"
+  echo "  · G-78 修复后绿：PASS=6 FAIL=0 —— 新增 hosts/shared/device_roster.js（listRoster / revokeInRoster），"
+  echo "    device_keys 加 last_seen_at 透传与 touchDevice；main.js 挂 bitbot:devices:list / bitbot:devices:revoke，"
+  echo "    preload 暴露 devices:{list,revoke}；cn_inbound_server 三处 verifyDeviceTurn 成功后落 last_seen_at；UI 在「移动端远程控制」弹窗加花名册卡。"
+  echo "  · G-78 残留（诚实）：① 花名册 UI 渲染（MC-13）走真 Electron e2e，本机无显示会 SKIP，CI 有显示才实跑；"
+  echo "    ② 最近活跃只由「设备密钥鉴权成功」触发（legacy turn-token 路径不记），每次落盘是一次轻量写；"
+  echo "    ③ 取消登记（redeem 反向）不在本片范围，设备表只有「配对增」与「吊销（A2-2）」两条写路径。"
+else
+  bad "G-78 设备花名册数据层（见 /tmp/g78-roster.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g78-roster.log || tail -2 /tmp/g78-roster.log | head -1)）"
+  echo "  · G-78 修复前红（模块未实现，真实输出）：PASS=0 FAIL=6"
+  echo "  · G-78 残留（诚实）：见上"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

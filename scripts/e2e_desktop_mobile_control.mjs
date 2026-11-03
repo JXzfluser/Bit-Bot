@@ -128,6 +128,23 @@ const root = isolatedRepoRoot(REPO, "mobctl", {
   "settings.json": { notify: {} },
   "sessions.json": { sessions: [] },
 });
+/* A2-5 种子：已登记的设备表必须落在 data/host/devices.json（与入站服务写 last_seen
+   的路径一致），isolatedRepoRoot 的种子表只覆盖 data/desktop/，所以这里显式写。 */
+fs.mkdirSync(path.join(root, "data", "host"), { recursive: true });
+fs.writeFileSync(
+  path.join(root, "data", "host", "devices.json"),
+  JSON.stringify(
+    {
+      version: 1,
+      devices: [
+        { id: "dev-e2e-aaa", name: "测试安卓", kind: "android", public_key_pem: "AAAA", created_at: new Date(Date.now() - 3600 * 1000).toISOString(), revoked_at: null },
+        { id: "dev-e2e-bbb", name: "测试 iPhone", kind: "ios", public_key_pem: "BBBB", created_at: new Date().toISOString(), revoked_at: null },
+      ],
+    },
+    null,
+    2,
+  ),
+);
 const UD = electronUserDataDir("mobctl");
 
 let launchSeq = 0;
@@ -423,6 +440,53 @@ let app2 = null;
       else if (m.text.indexOf(tok.token) >= 0) bad("MC-08 弹窗里摊着令牌原文", m.text.slice(Math.max(0, m.text.indexOf(tok.token) - 40), 200));
       else if (/(^|\s)[A-Za-z0-9]{40,}(\s|$)/.test(m.text)) bad("MC-08 弹窗里出现 40 位以上连续串（形似凭证的原文）", RegExp.lastMatch.slice(0, 60));
       else ok("MC-08 弹窗内读不到令牌原文（" + tok.token.length + " 位令牌不在这一屏，掩码也不摊）");
+    }
+
+    /* ---------- MC-13 设备花名册（A2-5）：登记的设备列得出、能吊销 ---------- */
+    {
+      const roster = await win.evaluate(() => window.bitbot.devices.list());
+      if (!roster || !roster.ok) bad("MC-13 花名册接口不可用（window.bitbot.devices.list 失败）", JSON.stringify(roster));
+      else {
+        const list = Array.isArray(roster.devices) ? roster.devices : [];
+        if (list.length < 1) bad("MC-13 已登记的设备未出现在花名册（种子 2 台，应 ≥1）", "len=" + list.length);
+        else {
+          const card = await readIds(win, ["mc-roster-card", "mc-roster-list", "mc-roster-title"]);
+          if (!card["mc-roster-card"] || !card["mc-roster-card"].shown) bad("MC-13 花名册卡不可见（#mc-roster-card）", JSON.stringify(card["mc-roster-card"]));
+          else if (!card["mc-roster-list"]) bad("MC-13 花名册列表容器不存在（#mc-roster-list）", JSON.stringify(card["mc-roster-list"]));
+          else {
+            const rows = await win.evaluate(() =>
+              Array.from(document.querySelectorAll("#mc-roster-list .mc-roster-row")).map((li) => ({
+                id: li.dataset.deviceId,
+                name: (li.querySelector(".mc-roster-name") || {}).textContent,
+                kind: (li.querySelector(".mc-roster-kind") || {}).textContent,
+                hasRevoke: Boolean(li.querySelector(".mc-roster-revoke")),
+              })),
+            );
+            if (rows.length !== list.length) bad("MC-13 UI 行数 ≠ 接口设备数", "ui=" + rows.length + " api=" + list.length);
+            else if (!rows.every((r) => r.name && r.kind && r.hasRevoke)) bad("MC-13 每行缺 名称/机器类/吊销键", JSON.stringify(rows));
+            else {
+              const firstId = rows[0].id;
+              await win.click(`#mc-roster-list .mc-roster-row[data-device-id="${firstId}"] .mc-roster-revoke`);
+              await win.waitForTimeout(400);
+              const after = await win.evaluate(() => window.bitbot.devices.list());
+              const revoked = (after.devices || []).find((d) => d.id === firstId);
+              const rowState = await win.evaluate((id) => {
+                const li = document.querySelector(`#mc-roster-list .mc-roster-row[data-device-id="${id}"]`);
+                if (!li) return null;
+                return {
+                  revokedClass: li.classList.contains("is-revoked"),
+                  btnDisabled: Boolean(li.querySelector(".mc-roster-revoke") && li.querySelector(".mc-roster-revoke").disabled),
+                  badge: Boolean(li.querySelector(".mc-roster-badge.revoked")),
+                };
+              }, firstId);
+              if (!revoked || !revoked.revoked) bad("MC-13 吊销后接口未反映（dev 仍非 revoked）", JSON.stringify(revoked));
+              else if (!rowState || !rowState.revokedClass || !rowState.btnDisabled || !rowState.badge)
+                bad("MC-13 吊销后 UI 未反映（缺 is-revoked / 键禁用 / 徽标）", JSON.stringify(rowState));
+              else ok("MC-13 花名册列出 " + rows.length + " 台、每行含名称/机器类/吊销键；吊销首台后接口与 UI 同步（徽标+禁用）");
+            }
+          }
+        }
+      }
     }
 
     /* ---------- MC-07 Bot Channel 一列：只列真支持的，点了真跳 ---------- */

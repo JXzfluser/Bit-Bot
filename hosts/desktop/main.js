@@ -31,6 +31,15 @@ const turnEvents = (() => {
   }
 })();
 
+// A2-5 花名册数据层：读 devices.json 成「桌面花名册 UI 要的那几列」。同一布局安全手法。
+const deviceRoster = (() => {
+  try {
+    return require("../shared/device_roster");
+  } catch (_devMiss) {
+    return require("./shared/device_roster");
+  }
+})();
+
 // GP-A1: 应用名必须在 app ready **之前** 设定。
 // macOS 的菜单栏第一项（以及「关于本应用」「退出 Bit Bot」等条目）读的是
 // 进程启动时就定下的 app.name，等到 whenReady 之后再 setName() 已经晚了 ——
@@ -4362,6 +4371,37 @@ function pairingState() {
 }
 
 ipcMain.handle("bitbot:pairing:state", async () => pairingState());
+
+// A2-5 设备花名册：读 devices.json 成「桌面花名册 UI 要的那几列」，吊销走同一份文件。
+// 路径必须与入站服务写 last_seen_at 的路径一致（REPO_ROOT/data/host/devices.json），
+// 否则 UI 看到的「最近活跃」永远读不到鉴权落盘的时间。
+const devicesPath = path.join(REPO_ROOT, "data", "host", "devices.json");
+
+ipcMain.handle("bitbot:devices:list", async () => {
+  try {
+    return { ok: true, devices: deviceRoster.listRoster(devicesPath) };
+  } catch (e) {
+    return { ok: false, error: "devices_unreadable", detail: String((e && e.message) || e) };
+  }
+});
+
+ipcMain.handle("bitbot:devices:revoke", async (_e, deviceId) => {
+  try {
+    const r = deviceRoster.revokeInRoster(devicesPath, deviceId);
+    // 吊销后让入站服务热生效（A2-2 的 deviceStoreNow 有 TTL，这里直接清掉倒计时，
+    // 让下一次请求立刻读到新表，不必等 ≤30s）。
+    if (cnInbound && typeof cnInbound.refreshDeviceStore === "function") {
+      try {
+        cnInbound.refreshDeviceStore();
+      } catch (_) {
+        /* 热生效失败不致命，TTL 内仍会兜住 */
+      }
+    }
+    return r;
+  } catch (e) {
+    return { ok: false, error: "devices_revoke_failed", detail: String((e && e.message) || e) };
+  }
+});
 
 // Pairing-v1: issue or revoke a 6-digit pairing code (IPC, local only).
 ipcMain.handle("bitbot:pairing:code", async (_e, payload) => {

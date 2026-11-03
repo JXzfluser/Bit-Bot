@@ -380,6 +380,11 @@ contextBridge.exposeInMainWorld("bitbot", {
     setLan: (enabled) => ipcRenderer.invoke("bitbot:pairing:lan", enabled),
     code: (payload) => ipcRenderer.invoke("bitbot:pairing:code", payload),
   },
+  // A2-5 设备花名册：只读列出已登记设备（含最近活跃），吊销走主进程写同一份文件。
+  devices: {
+    list: () => ipcRenderer.invoke("bitbot:devices:list"),
+    revoke: (deviceId) => ipcRenderer.invoke("bitbot:devices:revoke", deviceId),
+  },
   productStatus: () => ipcRenderer.invoke("bitbot:product:status"),
   ota: {
     check: () => ipcRenderer.invoke("bitbot:ota:check"),

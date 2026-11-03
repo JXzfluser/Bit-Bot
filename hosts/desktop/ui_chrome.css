@@ -3356,6 +3356,61 @@ body.grok-ui .ca-meta:empty { display: none; }
   line-height: 1.5;
   color: var(--ink);
 }
+/* A2-5 设备花名册：每行 = 名称 +（机器类徽标 / 最近活跃 / 已吊销）+ 吊销键。
+   复用 .mc- 既有设计变量，不另起字面样式（视觉契约门按 class 收敛计数）。 */
+.mc-roster {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mc-roster-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.mc-roster-row.is-revoked { opacity: 0.6; }
+.mc-roster-name {
+  font-weight: 600;
+  font-size: var(--text-md);
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-roster-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.mc-roster-kind { flex: 0 0 auto; }
+.mc-roster-seen {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-roster-badge.revoked {
+  color: var(--danger-ink);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: var(--text-xs);
+}
+.mc-roster-revoke { flex: 0 0 auto; }
 /* 旧卡只加一句「主路去哪」，不删任何既有控件（别的门禁在依赖它）。 */
 body.grok-ui .pairing-modal-hint {
   font-size: var(--text-sm);
@@ -3366,6 +3421,12 @@ body.grok-ui .pairing-modal-hint {
 @media (max-width: 900px) {
   .mc-grid {
     grid-template-columns: 1fr;
+  }
+  .mc-roster-row {
+    flex-wrap: wrap;
+  }
+  .mc-roster-revoke {
+    margin-left: auto;
   }
 }
 
