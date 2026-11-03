@@ -3424,6 +3424,9 @@ if timeout 120 node scripts/prove_pairing_relay_handoff.js > /tmp/g82-handoff.lo
   echo "    要先把「隧道上读流 + 断线续订 + Last-Event-ID」设计清楚，这一刀没做，不许当已交付。"
   echo "    ② 手机侧仍无「手动填中转」入口，参数只能从配对回执来（配不上对就等于没配中转）。"
   echo "    ③ 真机跨网一次都没跑过（本机无 Android SDK/KVM）；同一台机器上桌面与手机都未走真中转网关。"
+  echo "    ④ 桌面侧根本没把四栏读进来（只有 BITBOT_RELAY_* 环境变量，没设置面/没落地配置，R-A3-6d）、"
+  echo "    也没以 box 角色连中转做 REGISTER（仓库只有服务端 + 测试用 registerBox，R-A3-6e）——"
+  echo "    所以这一刀证的是「参数通路」，**不是「跨网通了」**：普通用户跑起来回执里不会有 relay。"
 else
   bad "G-82 配对回执中转参数（见 /tmp/g82-handoff.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g82-handoff.log || tail -2 /tmp/g82-handoff.log | head -1)）"
   echo "  · G-82 修复前红（真实输出）：PASS=1 FAIL=4 —— PH-02/03/04/05 红，PH-01 绿（反向对照本来就成立）"

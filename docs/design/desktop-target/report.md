@@ -5694,3 +5694,131 @@ prove_android_build: PASS=19 FAIL=0 SKIP=0
 - **没上真机、没上真公网**：假中继/假桌面是本机 `ServerSocket`，真机与真网络仍是 R-A2-1 / R-A3-3b 那一摊。
 - **一 CONNECT 一隧道**：`/v1/turn` 每次请求开一条隧道、读完即关，不复用连接。代价是跨网每条消息多一次
   握手往返（含一次中转鉴权）。复用到 A3-6 一起做时再量。
+
+## 8.71 A3-6 配对回执下发中转参数（W4 第四刀 · 关 R-A3-5a，R-A3-5b 仍开）
+
+背景一句话：A3-5 把手机侧的中转传输层做出来了，但**手机没有任何途径拿到中转参数** ——
+没界面、配对回执也不下发。于是「跨网能用」在用户侧仍然是零：代码会连，但永远没人给它地址。
+这一刀把这条路接通（桌面下发 → 手机解析 → 落 prefs → 回合后按真实路径显连接方式），
+并且把「半套配置」堵在源头 —— 给一半比不给更坏，手机会拿半套去连，报一个查不出来的错。
+
+### 8.71.1 先写复现红（修复前原文）
+
+两半各自先红。
+
+**桌面（JS）**：`cn_inbound_server.js` 的 redeem 成功回执不带 `relay`。门禁
+`scripts/prove_pairing_relay_handoff.js` 的原文：
+
+```
+  ✓ PH-01 没配中转 → 回执无 relay 字段，turn_token / base_url 照旧
+  ✗ PH-02 配了中转却没下发 relay（手机永远拿不到跨网参数） — {"ok":true,"turn_token":"t-handoff-0123456789",...
+  ✗ PH-03 relay 只准有四栏 — (空)
+  ✗ PH-04 正控失败：配齐也没下发 relay，下面四种半套的结论不算数 — {"ok":true,...
+  ✗ PH-05 正控失败：配齐也没下发 relay，失败路径的结论不算数 — {"ok":true,...
+prove_pairing_relay_handoff: PASS=1 FAIL=4
+```
+
+**这条门自己先错了一次，必须留原文**：PH-04 / PH-05 第一版只写了「不该出现 `relay`」，
+而功能根本不存在时四条半套 + 失败路径**全绿** —— 那是真空通过（vacuous pass），
+比没门禁更坏。各加一条**正控**（配齐必须真下发）之后才变红，红数从 `PASS=3 FAIL=2`
+变成 `PASS=1 FAIL=4`。另外 PH-02 原来只比 `host`/`box_id`/`client_token`，漏了 `port` 的类型；
+服务端若把 port 当字符串发，端上端口校验会判非法 —— 改成先断言 `typeof === "number"`。
+
+**手机（Kotlin）**：把 `parseRelayHandoff` 换成「一律回 null」的桩（其余实现不动），
+本机同一套 JVM 自证脚本的原文：
+
+```
+== VRT-2 跑 RT-01..RT-13 + TS-01..TS-03（真 ServerSocket 假中继 / 假桌面）==
+Tests run: 16,  Failures: 1
+1) RT-11 回执里的中转四栏认得出（A3-6 参数终于到得了手机）
+   org.opentest4j.AssertionFailedError: 应当认出回执里的中转四栏，实际: null
+```
+
+只有 RT-11 红，RT-12/RT-13 与 TS-01..03 一条没伤 —— 说明这一刀**没有**把「认不出来」写成「全都认不出来」
+（那会让 RT-13 的半套检查失去意义）。
+
+### 8.71.2 修复说明（改了什么）
+
+| 位置 | 职责 | 关键点（每条都有代价） |
+|---|---|---|
+| `cn_inbound_server.js` | redeem 成功回执**可选**挂 `relay` | 改成「先建 `redeemBody` 再条件挂字段」；没配中转时回包**逐字节不变**（老客户端/老门禁读到的是同一份，10 个既有字段一个没动）。四栏只由 `currentRelayHandoff()` 产出：`opts.relayHandoff`（函数或对象都收，方便门禁在同一台桌面上依次扮演「没配/配齐/配半套」）优先，未传时读 `BITBOT_RELAY_HOST/PORT/BOX_ID/CLIENT_TOKEN`。四栏有一栏不合法 ⇒ 整体回 `null`；该函数任何异常都吞成 `null` ——「跨网没配好」不该把「配对」拖死 |
+| `RelayTunnel.parseRelayHandoff` | 从回执原文认四栏 | 三种输入三种结果，一个都不许猜：没 `relay` 键 ⇒ null（跨网这条路**不存在**，不是「可能配错」）；有键但四栏不齐 ⇒ null；回包不是 JSON / 解析炸了 ⇒ null 不抛 |
+| `DesktopPairing` | 成功即落 prefs | 解析出的四栏当场 `TurnBridge.setRelayConfig`；这次**没给就清掉旧的** —— 桌面是唯一事实源，留着旧配置只会在跨网时指向一个已不存在的登记 |
+| `TransportStatus`（新） | 记**真实走过的那条路** | 与 `ConnectionStrategy` 的分工：那边答「探针通不通」，这边答「这条消息走的是哪条路」，两者在跨网那一刻会分叉（TCP 探针通 ≠ HTTP 层走成了）。只记上次**成功**的路径 + 耗时；两条都断 ⇒ 回 `NONE`；负延迟归 0（时钟回拨不显示 `-3ms`）；纯内存、不碰 Android 类（所以能在普通 JVM 里断言） |
+| `TurnBridge` | 按实际结果上报 | 直连成功记 DIRECT；回落成功记 RELAY；两条都断先记 NONE **再**抛 —— 否则状态条会一直挂着上一次的「中转 · 320ms」，那是撒谎 |
+| `ui/Components` + `HomeScreen` + `MainActivity` | 状态条优先显示连接方式 | 有值时显示「已配对 · 中转 · 320ms」而不是地址（地址在凭证里一直看得到）；`labelOrNull` 在 `NONE` 时回 null，让状态条保持「未配对/已配对」原样，别用一段「未连接」把「其实已经配好了」盖掉 |
+| `ConnectionStrategy.LABELS` | 补 `zh-CN` 别名 | 端上真实 locale 是 `zh-CN`（`EventStreamMessages.localeFrom`），在别名表里收掉，不在调用方另写一份映射 —— 两处各写一份，早晚有一处忘改 |
+
+### 8.71.3 修复后绿（原文）
+
+本机（同一条命令）：
+
+```
+== VRT-1 编译（6 个文件 = 4 个产品 + 2 个测试，纯 JVM，不需要 Android SDK）==
+  ✓ 编译通过（0 error；完整日志 .tmpdl/vrt-compile.log）
+== VRT-2 跑 RT-01..RT-13 + TS-01..TS-03（真 ServerSocket 假中继 / 假桌面）==
+OK (16 tests)
+== VRT-3 结果 ==
+verify_relay_transport: PASS
+
+  ✓ PH-01 没配中转 → 回执无 relay 字段，turn_token / base_url 照旧
+  ✓ PH-02 配齐 → relay 四栏（host/port/box_id/client_token）如实下发，port 是数字
+  ✓ PH-03 relay 只有 host/port/box_id/client_token，不含配对令牌
+  ✓ PH-04 四种半套配置（缺 token / 缺 box / port 越界 / port 非数字）全部不下发；正控（配齐→下发）先过
+  ✓ PH-05 错码 → 400 invalid_code，回包无 relay（正控先过）
+prove_pairing_relay_handoff: PASS=5 FAIL=0
+```
+
+CI `0ef7a72`（Android APK job = success）：
+
+```
+✓ AB-06 JVM 单测真跑：199 用例 0 失败（23 个类）
+✓ AB-18 A3-5 手机侧中转传输层接齐：…（五组负向对照全抓到；SSE 走隧道属 A3-6，跨网进度仍走诚实回退）
+✓ AB-19 A3-6 跨网参数接通：回执四栏被解析（RT-11..13）、配对成功即落 prefs、回合后记真实路径
+  （直连/中转 · Nms，TS-01..03）、状态条优先显示它（五组负向对照全抓到；Compose 渲染这一跳只有源码锚点，没跑渲染用例）
+prove_android_build: PASS=20 FAIL=0 SKIP=0
+```
+
+用例数 193 → 199（RT-11..13 三条 + TS-01..03 三条）：这跑证明的是新增六条**真跑**、既有 193 条一条没伤。
+
+**G-82 接进矩阵后，门自身的负向对照也留原文**：把 `cn_inbound_server.js` 里
+`if (handoff) redeemBody.relay = handoff;` 那一行摘掉（其余一字不动），G-82 块当场翻红：
+
+```
+== G-82 配对回执带中转参数（…）==
+  BAD G-82 配对回执中转参数（见 /tmp/g82-handoff.log；PASS=1 FAIL=4）
+  · G-82 修复前红（真实输出）：PASS=1 FAIL=4 —— PH-02/03/04/05 红，PH-01 绿（反向对照本来就成立）
+HARNESS: PASS=0 FAIL=1
+```
+
+复原后该块 `PASS=4 FAIL=0`（4 条断言全过）。**AB-19 的五组负向对照也在本机先验过**（拿真源码 +
+真实用例名跑同一套 `measure`/`muts`）：`base: []`、`undetected: []`，五组各自被抓到
+（不解析四栏 / 不落 prefs / 不记路径 / 状态条不接 / 用例不在结果里）。
+
+### 8.71.4 诚实残留（这一刀没关掉的）
+
+- **R-A3-5b 仍开｜SSE 长连接还是不走隧道**：跨网时**回合**走中转，但**进度事件流**仍是
+  `EventStreamClient` 的诚实回退（界面明说为什么没有实时进度）。原因是 `TunnelHttp` 只做了
+  「定长 / chunked 一次性读完」两种响应，而 SSE 是**不结束的 chunked 流**；要先把「隧道上读流 +
+  断线续订 + `Last-Event-ID`」设计清楚再动。这一刀没做，不许写成已交付。
+- **R-A3-6a｜手机仍无「手动填中转」入口**：参数只能从配对回执来。含义是「配不上对就等于没配
+  中转」—— 已经配对过、后来桌面才配上中转的老用户，得重新配对一次才拿到四栏。
+- **R-A3-6b｜一 CONNECT 一隧道没做复用**（承 A3-5）：跨网每条消息多一次握手往返（含一次中转
+  鉴权）。等 SSE 那条流也走隧道时一起量，否则量出来的数字没有代表性。
+- **R-A3-6c｜真机跨网一次都没跑过**：本机无 Android SDK / KVM；证到的是「回执下发 + 端上解析 +
+  状态条文案」三层，**不含**「一台真手机在 4G 下经真中转网关发通一条消息」。这一条要真机 + 真中继，
+  归 R-A2-1 / R-A3-3b 那一摊。
+- **状态条的渲染级证据只有源码锚点**：AB-19 钉的是「四段还在、还连着」（UI 那一跳是源码锚点），
+  Compose 实际渲染出来的那串字仍靠真机验收（R-A2-1）。
+- **R-A3-6d｜桌面侧没有把中转四栏读进来**：`hosts/desktop/main.js` 的 `ensureCnInbound()` 没有传
+  `relayHandoff`，也没读任何中转配置文件；今天唯一的来源是**环境变量** `BITBOT_RELAY_HOST/PORT/BOX_ID/CLIENT_TOKEN`
+  （要人从终端起桌面才算配上），既没有设置界面也没有写入磁盘的入口。含义：普通用户跑起来，回执里
+  **不会**有 `relay` 字段，手机也就仍然只在同一局域网能用。闭法：桌面设置面 + 一份落地配置（并想清楚
+  `client_token` 怎么存才不违反「内容不落云」）。
+- **R-A3-6e｜桌面没有以 box 角色连上中转做 `REGISTER`**：仓库里只有中转**服务端**（`relay_server.js`）与
+  进程内的 `registerBox()`（测试用），**没有**「桌面启动后连中转、AUTH + REGISTER + 保活重连」的客户端。
+  含义：即便 R-A3-6d 补上、手机拿到四栏，真跨网 `CONNECT` 也会回 `NOBOX`（手机侧会翻成「这台桌面没在中转上登记」）。
+  闭法：box 客户端（含断线重连与心跳），与 R-A3-6d 同一刀或紧随其后。
+- **这一刀证的是「参数通路」，不是「跨网通了」**：G-82 绿只说明「桌面会下发 / 手机认得 / 界面显示真实路径」；
+  端到端的跨网链路还差 R-A3-6d（桌面配进来）、R-A3-6e（桌面登记上中转）、R-A3-5b（SSE 走隧道）三条。
+  写在这里，是为了不让下一个人（或我自己）把「G-82 绿了」读成「跨网可以了」。

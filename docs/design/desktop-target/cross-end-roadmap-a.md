@@ -135,6 +135,7 @@ ICP 备案 / 增值电信许可 / 长期基础设施与 SLA 全部由用户侧�
 | A3-3 | 客户端直连优先、失败自动回落中转（局域网直连成功率 ≥95% 时界面显示「直连」，AC-T4-5） | **已交付 · 接矩阵 G-81**，红绿见 `report.md` §8.68。`hosts/shared/connection_strategy.js`（`resolveConnection` 直连优先短路→直连全失败且配了中转则回落 relay→全不可达回 mode:none；`defaultProbe`=net.connect+setTimeout；`describeMode` 回「直连/中转 · Nms」三语）+ 门禁 `prove_cn_connection_strategy.js` `PASS=6 FAIL=0`。诚实残留见 §8.68.4：**移动端（Android/iOS）接线与界面渲染未做**（本机无 SDK/gradle、网络 502，iOS 需 Xcode 模拟器）、≥95% 成功率需真机统计、QUIC 打洞不在本片 |
 | A3-4 | 安装包体积：`prove_pack_artifacts.mjs` 现在棘轮 85 MB、目标 70 MB，中转客户端进包前先确认这条不反弹 | **阻塞 · 前置基线已测（2026-11-03）**：本机 `dist/` 实测 `Bit Bot-0.1.0-arm64-mac.zip = 83.6 MB` / `.dmg = 80.2 MB`，均 ≤ 85 MB 棘轮，但 **zip 距棘轮仅 1.4 MB 余量**、距 70 MB 目标差 10.2–13.6 MB。中转客户端**尚未进包**（依赖 A3-3 移动端接线 R-A3-3a），「进包后不反弹」当前测不了，故本片不可作为红→绿代码片收口。PA-06/PA-07（无源码树启动/跑一轮）本机因 Electron sandbox「Operation not permitted」失败，属**环境限制**（非本片引入；注意这与 MC-13 不同——MC-13 已于 2026-11-03 本机跑绿，PA-06/07 是 sandbox 起不来的另一类）。闭法：移动端 relay 客户端接线 + 真实打包后重跑 PA-02，确认 ≤85 MB（1.4 MB 余量很紧，进包前须先量源码增量）。 |
 | A3-5 | 手机侧中转客户端（跨网那一半）：线协议 + 隧道上 HTTP + 直连失败才回落 | **已交付 · 接矩阵 G-47/AB-18**，红绿见 `report.md` §8.70。`RelayTunnel.kt`（`AUTH`/`CONNECT`/`TUNNEL` 与 `relay_server.js:141-199` 逐字对齐，DENY/NOBOX/BADCMD 各自说人话）+ `TunnelHttp.kt`（HTTP/1.1 over socket：定长 / chunked / EOF 三种回包）+ `ConnectionStrategy.kt`（与 A3-3 同语义：直连优先短路→回落→离线，三语文案一致）+ `TurnBridge` 接线（头一次攒齐、直连先试、两条原因都留）。门禁 RT-01..RT-10（真 ServerSocket 假中继/假桌面）本机 `OK (10 tests)`、CI `193 用例 0 失败` / `prove_android_build: PASS=19 FAIL=0 SKIP=0`。**本机无 Android SDK**，故另做 `scripts/verify_relay_transport_android.sh` 走 maven 的 kotlinc 本机自证。残留见 §8.70.4：配对本身仍只走局域网、SSE 未走隧道、手机无填中转的界面（A3-6） |
+| A3-6 | 跨网参数这条路接通：桌面配对回执下发中转四栏 → 手机解析落 prefs → 状态条显示「直连/中转 · Nms」 | **已交付 · 接矩阵 G-82 / G-47·AB-19**，红绿见 `report.md` §8.71。桌面：redeem 成功回执**可选**挂 `relay: {host, port, box_id, client_token}`（`currentRelayHandoff()`：`opts.relayHandoff` 优先、否则读 `BITBOT_RELAY_*`；半套一律回 null），没配时回包逐字节不变。手机：`RelayTunnel.parseRelayHandoff`（没键/不齐/坏 JSON 一律 null）+ `DesktopPairing` 成功即落 prefs（没给就清旧）+ `TransportStatus` 记**真实走过的那条路**（两条都断回 NONE）+ 状态条优先显示连接方式（`labelOrNull`，NONE 时回 null 不盖掉「已配对」）。门禁 `prove_pairing_relay_handoff.js` PH-01..PH-05 本机 `PASS=1 FAIL=4 → PASS=5 FAIL=0`（PH-04/PH-05 先加正控才变红，防真空通过）；RT-11..RT-13 + TS-01..TS-03 本机 `Tests run: 16, Failures: 1`（仅 RT-11）→ `OK (16 tests)`；AB-19 五组负向对照本机先验 `base: []` / `undetected: []`。残留见 §8.71.4：**SSE 仍不走隧道（R-A3-5b）**、无手动填中转入口、真机跨网未跑 |
 
 **W4 判据现状（2026-11-03，A3-3 收口）**：路线 A 最后一波的目标是把跨网成功率从 0 抬到 ≥90%，
 用户已拍板「仅自托管镜像、不做国内自建」。A3-1（中转镜像）已交付并接矩阵 **G-79**（`prove_cn_relay_image`
@@ -215,23 +216,40 @@ A3-4（安装包体积不反弹）**阻塞**：前置基线已测（zip 83.6 MB 
 | R-A3-2d | registry 仅内存、审计缓冲 10000 循环 | 仍开 | 是 | 外部采集 |
 | R-A3-2e | EV-4 只扫受控临时目录 | 已知边界 | 是 | 扩大扫描（低优先） |
 | R-A3-2f | 继承 R-A3-1a/b/c/d/f | 同上 | — | 同上 |
-| R-A3-3a | 移动端 Android/iOS 中转接线与界面渲染 | **半开（2026-11-03 A3-5 关掉传输层那一半）**：Android 已有 `RelayTunnel`/`TunnelHttp`/`ConnectionStrategy` 且接进 `TurnBridge`（RT-01..RT-10 十条真跑，CI `193 用例 0 失败`）。仍缺 ① 配对（discover/redeem）走中转、② 事件流 SSE 走中转、③ 填中转四栏的界面、④ iOS 侧（需 Xcode）。闭法：A3-6 三件套 + iOS | 是（传输层）/ 否（iOS） | 端上接线 |
+| R-A3-3a | 移动端 Android/iOS 中转接线与界面渲染 | **半开（2026-11-03 A3-5 关传输层、A3-6 关参数来源）**：Android 已有 `RelayTunnel`/`TunnelHttp`/`ConnectionStrategy` 且接进 `TurnBridge`（RT-01..RT-13 真跑），配对回执下发四栏后手机**已有参数可连**、状态条显示真实路径（RT-11..RT-13 / TS-01..TS-03 / PH-01..PH-05）。仍缺 ① 事件流 SSE 走中转（R-A3-5b）、② 手动填中转入口（R-A3-6a）、③ iOS 侧（需 Xcode）。闭法：SSE 走隧道 + iOS | 是（传输层 + 参数）/ 否（iOS） | 端上接线 |
 | R-A3-3b | AC-T4-5 ≥95% 成功率需真机统计 | 仍开 | 否 | 真机统计 |
 | R-A3-3c | QUIC 打洞（T4b）不在本片 | 仍开 | 否 | T4b |
 | R-A3-3d | 「能连」≠「配对成功」 | 语义边界 | 是 | 无需关 |
 | R-A3-3e | 端上各实现一套时需金标对齐 | 仍开 | 部分 | 端上金标测试 |
-| R-A3-5a | 手机上没有填中转四栏的界面（只有 prefs / 环境变量） | 仍开 | 部分（prefs 可注入） | A3-6：桌面配对回执下发 `relay` 可选字段 |
-| R-A3-5b | 事件流 SSE 未走隧道（跨网进度按既有语义回退整轮模式） | 仍开 | 是（假 box 可测 chunked 长连接） | A3-6 |
-| R-A3-5c | 一 CONNECT 一隧道、无连接复用（每条消息多一次握手往返） | 设计取舍 | 是 | A3-6 一起量 |
+| R-A3-5a | 手机上没有填中转四栏的界面（只有 prefs / 环境变量） | **已关闭（2026-11-03 A3-6）**：不需要用户填了 —— 桌面在配对回执里下发四栏（`relay` 可选字段），手机解析后落 prefs（`PH-01..PH-05` / `RT-11..RT-13` 真跑）。「手动填」这个入口仍未做，单列为 R-A3-6a | 是 | — |
+| R-A3-5b | 事件流 SSE 未走隧道（跨网进度按既有语义回退整轮模式） | **仍开（A3-6 没做，别当已交付）**：跨网时**回合**走中转，进度仍是诚实回退。`TunnelHttp` 只做定长/chunked 一次性响应，SSE 是不结束的 chunked 流，要先设计「隧道上读流 + 断线续订 + Last-Event-ID」 | 是（假 box 可测 chunked 长连接） | 需单独一刀 |
+| R-A3-5c | 一 CONNECT 一隧道、无连接复用（每条消息多一次握手往返） | 设计取舍（A3-6 未动） | 是 | 与 R-A3-5b 同一刀量 |
+| R-A3-6a | 手机无「手动填中转」入口：参数只能从配对回执来 | 仍开（A3-6 取舍） | 是 | 「配不上对就等于没配中转」——已配对的老用户要重配一次才拿到四栏 |
+| R-A3-6b | 跨网每条消息多一次握手往返（含一次中转鉴权） | 设计取舍 | 是 | 与 R-A3-5c 合并，等 SSE 也走隧道后再量 |
+| R-A3-6c | 真机跨网一次都没跑过（本机无 Android SDK / KVM） | 仍开 | 否 | 真机 + 真中继，归 R-A2-1 / R-A3-3b |
+| R-A3-6d | 桌面侧没把中转四栏读进来（无设置面/无配置文件，只有 `BITBOT_RELAY_*` 环境变量） | 仍开（A3-6 只做了「有配置就下发」） | 是 | 桌面设置面 + 落地配置；`client_token` 存法要先想清楚 |
+| R-A3-6e | 桌面没有以 box 角色连中转做 `REGISTER`（仓库只有服务端 + 进程内 `registerBox`） | 仍开 | 是 | 补四栏也仍会回 NOBOX —— box 客户端（含重连/心跳） |
 
-**回填结论**：W2 七条、W3 五条、W4 二十条共 32 条残留里，**可本机验证的**（R-A1-3、R-A2-7/8/9、
+**回填结论**：W2 七条、W3 五条、W4 二十条共 32 条残留，加 A3-6 新增五条（R-A3-6a/b/c/d/e）共 **37 条**里，
+**可本机验证的**（R-A1-3、R-A2-7/8/9、
 R-A3-1c/d、R-A3-2a/c/d/e、R-A3-3d、R-A3-5c）已在各门禁或数据层里钉住语义。**2026-11-03 本机补证又关两条**：
 R-A2-6（MC-13 本机实跑 `PASS=15 FAIL=0 SKIP=0`，此前判 SKIP 是误判——`hasDisplay` 在 macOS 恒 true）、
 R-A3-1f（真 Docker build + 起容器 + 宿主可达，`prove_relay_docker.sh` PASS，顺带修 bind 127.0.0.1→0.0.0.0
-的生产级 bug）。加上 R-A3-1e（随 A3-2 关闭），**共关闭 4 条**。真正卡住的只剩**真机 / 真公网 / cert /
+的生产级 bug）。加上 R-A3-1e（随 A3-2 关闭）、**R-A3-5a（随 A3-6 关闭：参数不再由用户填，改由配对回执下发）**，
+**共关闭 5 条**。真正卡住的只剩**真机 / 真公网 / cert /
 移动端 SDK / T2 契约**：要推进「路线 A 整体交付」，仍需 ① 一台 Android 真机 + 真网络样本
 （R-A2-1/R-A3-3a/b），或 ② 真公网 + TLS 控制面（R-A3-1a/b）。
 
 **A3-5 之后补一句**：跨网这件事端上已经不是「零」了 —— 手机侧会 `AUTH`/`CONNECT`/`TUNNEL`、能在隧道上跑
 `/v1/turn`（CI `193 用例 0 失败`、本机 `OK (10 tests)`）。但**还差最后一段用户能摸到的路**：配对回执不下发中转
 参数、手机没有填中转的界面、事件流也没走隧道 —— 这就是下一刀 A3-6 的三件套（R-A3-5a/R-A3-5b + 配对走中转）。
+
+**A3-6 之后补一句（2026-11-03）**：那条「用户能摸到的路」在**端上**通了 —— 配对成功时桌面把
+`{host, port, box_id, client_token}` 四栏随回执下发（没配就不出现，回包逐字节不变），手机当场落 prefs，
+回合结束后状态条显示的是**真实走过的那条路**（「已配对 · 中转 · 320ms」）。**但跨网本身仍不成立**，
+而且缺口不在手机上：① **R-A3-6d** 桌面侧根本没把四栏读进来（只有 `BITBOT_RELAY_*` 环境变量，没设置面、
+没落地配置）⇒ 普通用户跑起来回执里不会有 `relay`；② **R-A3-6e** 桌面没有以 box 角色连中转做 `REGISTER`
+（仓库只有服务端 + 测试用的进程内 `registerBox`）⇒ 就算四栏配好，真跨网 `CONNECT` 也是 `NOBOX`；
+③ **R-A3-5b** 进度事件流（SSE）仍走诚实回退。所以下一刀不该再去动手机，而是补桌面的
+「配置 → 下发 → 登记」这一整段（R-A3-6d/e），再做 SSE 走隧道，最后才谈 ≥95% 成功率统计。
+把「G-82 绿了」读成「跨网可以了」是这一刀最容易犯的错，所以这三条写进总表而不是脚注。
