@@ -132,7 +132,7 @@ ICP 备案 / 增值电信许可 / 长期基础设施与 SLA 全部由用户侧�
 | A3-1 | 中转服务的最小可运行镜像：一个 Dockerfile + 一个入口进程（成员凭证签发、公钥登记、转发、健康检查） | **已交付 · 接矩阵 G-79**，红绿见 `report.md` §8.66。TCP/TLS 透传模型：控制面 `relay-secret` 鉴权（HMAC 成员凭证，box/client 两类角色）+ `REGISTER`/`CONNECT` 线协议 + 盲 TCP 转发（数据面不解析不落内容）+ HTTP `/healthz` 健康检查；`hosts/shared/relay/relay_server.js` + `relay_keys.js` + `Dockerfile.relay`。诚实残留见 §8.66.4（控制面 TLS 未实跑 / 端到端业务 TLS 不在本片 / registry 仅内存 / A3-2 独立实证待下一刀） |
 | A3-2 | 内容不可见的实证：中转侧日志/抓包无明文正文与附件（AC-T4-3），做成门不是写成承诺 | **已交付 · 接矩阵 G-80**，红绿见 `report.md` §8.67。`hosts/shared/relay/relay_server.js` 加元数据审计日志（`logFile`/`verbose` + `log()` 助手，只记 event/role/memberId/boxId/endpoint/bytes，删防御 token/payload/secret）+ `getAuditLog()`；门禁 `prove_cn_relay_invisible.js` 跑完整透传 canary 证明「日志真实存在且查无明文」（反真空通过），`PASS=6 FAIL=0`。诚实残留见 §8.67.4（端到端业务 TLS 仍不在本片 / 日志落地需按 ADR 0014 约束 / registry 仍仅内存） |
 | A3-3 | 客户端直连优先、失败自动回落中转（局域网直连成功率 ≥95% 时界面显示「直连」，AC-T4-5） | **已交付 · 接矩阵 G-81**，红绿见 `report.md` §8.68。`hosts/shared/connection_strategy.js`（`resolveConnection` 直连优先短路→直连全失败且配了中转则回落 relay→全不可达回 mode:none；`defaultProbe`=net.connect+setTimeout；`describeMode` 回「直连/中转 · Nms」三语）+ 门禁 `prove_cn_connection_strategy.js` `PASS=6 FAIL=0`。诚实残留见 §8.68.4：**移动端（Android/iOS）接线与界面渲染未做**（本机无 SDK/gradle、网络 502，iOS 需 Xcode 模拟器）、≥95% 成功率需真机统计、QUIC 打洞不在本片 |
-| A3-4 | 安装包体积：`prove_pack_artifacts.mjs` 现在棘轮 85 MB、目标 70 MB，中转客户端进包前先确认这条不反弹 |
+| A3-4 | 安装包体积：`prove_pack_artifacts.mjs` 现在棘轮 85 MB、目标 70 MB，中转客户端进包前先确认这条不反弹 | **阻塞 · 前置基线已测（2026-11-03）**：本机 `dist/` 实测 `Bit Bot-0.1.0-arm64-mac.zip = 83.6 MB` / `.dmg = 80.2 MB`，均 ≤ 85 MB 棘轮，但 **zip 距棘轮仅 1.4 MB 余量**、距 70 MB 目标差 10.2–13.6 MB。中转客户端**尚未进包**（依赖 A3-3 移动端接线 R-A3-3a），「进包后不反弹」当前测不了，故本片不可作为红→绿代码片收口。PA-06/PA-07（无源码树启动/跑一轮）本机因 Electron sandbox「Operation not permitted」失败，属**环境限制**（同 MC-13 SKIP 类，非本片引入）。闭法：移动端 relay 客户端接线 + 真实打包后重跑 PA-02，确认 ≤85 MB（1.4 MB 余量很紧，进包前须先量源码增量）。 |
 
 **W4 判据现状（2026-11-03，A3-3 收口）**：路线 A 最后一波的目标是把跨网成功率从 0 抬到 ≥90%，
 用户已拍板「仅自托管镜像、不做国内自建」。A3-1（中转镜像）已交付并接矩阵 **G-79**（`prove_cn_relay_image`
@@ -144,7 +144,10 @@ ICP 备案 / 增值电信许可 / 长期基础设施与 SLA 全部由用户侧�
 A3-3（客户端直连优先+回落）已交付并接矩阵 **G-81**（`prove_cn_connection_strategy` `PASS=6 FAIL=0`，
 见 `report.md` §8.68）：共享 `connection_strategy` 纯逻辑证「可达即直连、不可达即回落、全不可达即离线」，
 但 **Android/iOS 端上接线与界面渲染未做**（本机不可验证）、≥95% 成功率需真机统计。
-A3-4（安装包体积不反弹）仍待认领，依赖中转客户端进包前确认。
+A3-4（安装包体积不反弹）**阻塞**：前置基线已测（zip 83.6 MB / dmg 80.2 MB ≤ 85 MB 棘轮，但 zip 距棘轮仅
+1.4 MB 余量），中转客户端尚未进包（依赖 A3-3 移动端接线），「进包后不反弹」现在测不了；PA-06/07 本机
+因 Electron sandbox 失败属环境限制。故 W4 呈「A3-1/2/3 已交付（含诚实残留）、A3-4 阻塞待移动端接线」，
+**不宣布 W4 完成**——真实跨网 ≥90% 仍需真机/真网络统计（R-A3-3a/b）。
 
 ## 3. 为什么顺序是这个（依赖关系，不是编号顺序）
 
