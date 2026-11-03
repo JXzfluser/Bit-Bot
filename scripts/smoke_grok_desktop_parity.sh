@@ -2022,9 +2022,12 @@ if timeout 1800 node scripts/prove_android_build.mjs > /tmp/g47-build.log 2>&1; 
     grep -q "AB-16 回合不再归某一屏管" /tmp/g47-build.log \
       && ok "G-47 还在路上的回信不跟着上一屏死：协程挪到进程级 TurnCoordinator（SupervisorJob + Main.immediate）、busy/delivery 由那一层管、落盘后 revision++ 让屏幕重读文件、转屏回来补问权限、发送走 submitTurn，5 条用例（TF-01..05）在结果里、AB-16 带七组负向对照" \
       || bad "G-47 AB-16 anchor missing"
-    grep -q "AB-06 JVM 单测真跑：183 用例 0 失败" /tmp/g47-build.log \
-      && ok "G-47 用例数如实涨到 183（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流解析 15 + 三语文案 16 + 渲染级接线 10、A2-3 设备身份金标 9 + 端上接线 7），且 0 失败不是空跑" \
+    grep -q "AB-06 JVM 单测真跑：193 用例 0 失败" /tmp/g47-build.log \
+      && ok "G-47 用例数如实涨到 193（对话落盘 +9、草稿 +3、在路上的回合 +5、A1-4 事件流 15 + 三语 16 + 渲染级 10、A2-3 设备身份 9 + 端上接线 7、A3-5 中转传输层 10），且 0 失败不是空跑" \
       || bad "G-47 AB-06 用例数与本轮不符（见 /tmp/g47-build.log）"
+    grep -q "AB-18 A3-5 手机侧中转传输层接齐" /tmp/g47-build.log \
+      && ok "G-47 跨网那一半补上了：手机侧会 AUTH/CONNECT/TUNNEL、隧道上能跑 HTTP（定长/chunked）、TurnBridge 直连失败才回落中转，RT-01..RT-10 十条真跑 0 失败（五组负向对照全抓到）" \
+      || bad "G-47 AB-18 anchor missing（手机侧中转传输层没有锚点在矩阵里）"
     grep -q "AB-17 A2-3 端上真会签名" /tmp/g47-build.log \
       && ok "G-47 AB-17 端上设备签名那一层被钉住：金标文件 + DI/DT 点名用例 + 三处生产接线锚点（五组负向对照全抓到）" \
       || bad "G-47 AB-17 anchor missing（端上真会签名这件事没有锚点在矩阵里）"

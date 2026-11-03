@@ -25,6 +25,13 @@ object TurnBridge {
   private const val KEY_DESKTOP_PORT = "BITBOT_DESKTOP_PORT"
   private const val DEFAULT_DESKTOP_PORT = 18765
 
+  // A3-5：中转参数四栏。与「配对地址/令牌」同一份 prefs，但刻意用独立键 ——
+  // 中转是**退路**，不是配对地址的替代品：直连先试，通了就不碰中转。
+  private const val KEY_RELAY_HOST = "BITBOT_RELAY_HOST"
+  private const val KEY_RELAY_PORT = "BITBOT_RELAY_PORT"
+  private const val KEY_RELAY_TOKEN = "BITBOT_RELAY_TOKEN"
+  private const val KEY_RELAY_BOX = "BITBOT_RELAY_BOX_ID"
+
   @Volatile private var appContext: Context? = null
 
   fun bind(context: Context) {
@@ -274,6 +281,41 @@ object TurnBridge {
     }
   }
 
+  /**
+   * A3-5：中转四栏。prefs 优先，其次环境变量（dev/测试），四栏缺一即 null。
+   * 回 null 的语义是「没配中转」—— 直连失败时就诚实报直连的错，不拿半套配置去连。
+   */
+  fun relayConfig(): RelayTunnel.RelayConfig? {
+    val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val host = prefs?.getString(KEY_RELAY_HOST, null) ?: System.getenv("BITBOT_RELAY_HOST")
+    val port =
+      if (prefs != null && prefs.contains(KEY_RELAY_PORT)) prefs.getInt(KEY_RELAY_PORT, 0)
+      else System.getenv("BITBOT_RELAY_PORT")?.trim()?.toIntOrNull()
+    val token = prefs?.getString(KEY_RELAY_TOKEN, null) ?: System.getenv("BITBOT_RELAY_TOKEN")
+    val boxId = prefs?.getString(KEY_RELAY_BOX, null) ?: System.getenv("BITBOT_RELAY_BOX_ID")
+    return RelayTunnel.parseConfig(host, port, token, boxId)
+  }
+
+  /** 写中转四栏；四项全空 = 清掉（回到「只用直连」）。 */
+  fun setRelayConfig(host: String?, port: Int?, token: String?, boxId: String?) {
+    val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return
+    val cfg = RelayTunnel.parseConfig(host, port, token, boxId)
+    prefs.edit().apply {
+      if (cfg == null) {
+        remove(KEY_RELAY_HOST)
+        remove(KEY_RELAY_PORT)
+        remove(KEY_RELAY_TOKEN)
+        remove(KEY_RELAY_BOX)
+      } else {
+        putString(KEY_RELAY_HOST, cfg.host)
+        putInt(KEY_RELAY_PORT, cfg.port)
+        putString(KEY_RELAY_TOKEN, cfg.token)
+        putString(KEY_RELAY_BOX, cfg.boxId)
+      }
+      apply()
+    }
+  }
+
   /** Desktop port for pairing scan. Returns stored value or default 18765. */
   fun desktopPort(): Int {
     val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return DEFAULT_DESKTOP_PORT
@@ -329,17 +371,30 @@ object TurnBridge {
     // 差一个换行或一次 charset 改写，真机上就是一条 bad_signature 401（DT-01 钉的就是这件事）。
     val bodyBytes = body.toByteArray(Charsets.UTF_8)
     val deviceHeaders = DeviceIdentity.requestHeaders(appContext, bodyBytes)
+    // 头先攒成一份：直连和中转必须发**完全相同**的字节与头 —— 签名算的是这份，
+    // 两条路各拼一次就会出现「直连能发、中转 401」这种只在跨网时复现的坏味道。
+    val headers =
+      buildList {
+        add("Content-Type" to "application/json; charset=utf-8")
+        turnToken()?.let { add("Authorization" to "Bearer $it") }
+        // bearer 与设备签名同时挂：桌面版本可能比手机旧（不认登记，只认 bearer），
+        // 摘掉 bearer 就把这条路断了；登记表非空时桌面自己忽略 bearer。代价记在 §8.64（R-A2-2）。
+        DeviceIdentity.applyHeaders({ k, v -> add(k to v) }, deviceHeaders)
+      }
+    // A3-5：直连优先（够快、不经第三方）；直连失败且配了中转才走隧道。
+    val direct = runCatching { postDirect(url, headers, bodyBytes) }
+    return direct.getOrElse { directErr -> postViaRelay(url, headers, bodyBytes, directErr) }
+  }
+
+  /** 直连：原有那条路，行为一字未改。 */
+  private fun postDirect(url: URL, headers: List<Pair<String, String>>, bodyBytes: ByteArray): String {
     val conn = (url.openConnection() as HttpURLConnection).apply {
       requestMethod = "POST"
       connectTimeout = 15000
       readTimeout = 120000
       doOutput = true
-      setRequestProperty("Content-Type", "application/json; charset=utf-8")
-      turnToken()?.let { setRequestProperty("Authorization", "Bearer $it") }
-      // bearer 与设备签名同时挂：桌面版本可能比手机旧（不认登记，只认 bearer），
-      // 摘掉 bearer 就把这条路断了；登记表非空时桌面自己忽略 bearer。代价记在 §8.64（R-A2-2）。
-      DeviceIdentity.applyHeaders({ k, v -> setRequestProperty(k, v) }, deviceHeaders)
     }
+    for ((k, v) in headers) conn.setRequestProperty(k, v)
     conn.outputStream.use { it.write(bodyBytes) }
     val code = conn.responseCode
     val stream = if (code in 200..299) conn.inputStream else conn.errorStream
@@ -349,6 +404,47 @@ object TurnBridge {
       error("turn HTTP $code: $out")
     }
     return out.trim()
+  }
+
+  /**
+   * 退路：经中转隧道发同一次 POST（A3-5，补 R-A3-3a 手机侧那一半）。
+   *
+   * 两条路都断时，**两句原因都要留着**：只报中转，用户会以为「直连是好的、只是中转坏了」，
+   * 于是去查一个根本没配的东西。反过来也一样。
+   */
+  private fun postViaRelay(
+    url: URL,
+    headers: List<Pair<String, String>>,
+    bodyBytes: ByteArray,
+    directErr: Throwable,
+  ): String {
+    val cfg = relayConfig() ?: throw directErr
+    val hostHeader = if (url.port > 0) url.host + ":" + url.port else url.host
+    val path = url.path.takeIf { it.isNotEmpty() } ?: "/v1/turn"
+    val tunnel =
+      try {
+        RelayTunnel.open(cfg)
+      } catch (e: RelayTunnel.OpenFailure) {
+        throw IllegalStateException(
+          e.userMessage + "（直连也没通：" + explainHttpReason(directErr.message) + "）",
+          directErr,
+        )
+      }
+    return try {
+      val resp =
+        TunnelHttp.post(
+          tunnel = tunnel,
+          path = path,
+          hostHeader = hostHeader,
+          headers = headers,
+          body = bodyBytes,
+        )
+      if (resp.status !in 200..299) error("turn HTTP ${resp.status}: ${resp.body}")
+      resp.body.trim()
+    } finally {
+      // 一 CONNECT 一隧道：响应读干净就关，不把空闲隧道留成「看不见的连接」。
+      RelayTunnel.closeQuietly(tunnel.socket)
+    }
   }
 
   private fun runTurnLocal(text: String, machineKind: String): String {

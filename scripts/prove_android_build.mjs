@@ -12,8 +12,7 @@
  *          —— 缺声明时框架抛 SecurityException，点「扫描」是崩而不是「没找到桌面」
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 183（防止 test 任务空转假绿；183 = 原 126 + A1-4 客户端 15 +
- *         三语文案 16 + 渲染级接线 10 + A2-3 设备身份金标 9 + A2-3 端上接线 7 —— 这条是棘轮，用例只准涨不准掉）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 193（防止 test 任务空转假绿；193 = 183 + A3-5 中转传输层 10 —— 这条是棘轮，用例只准涨不准掉）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -38,6 +37,10 @@
  *         scope 上（不是 rememberCoroutineScope）、「还在等」由 inFlight 计并能在 finally 里
  *         收回来、落盘后 revision++ 通知屏幕重读、busy/delivery 不再由 composition 持有、
  *         转屏回来补问权限；TF-01..05 真在结果里；七组负向对照逐个摘都要被抓到
+ *   AB-18 手机侧中转传输层接齐（A3-5 · 补 R-A3-3a 端上一半）：线协议（AUTH/CONNECT/TUNNEL、
+ *         DENY/NOBOX/BADCMD）与 relay_server.js 逐字对齐、隧道上真能跑 HTTP（定长与 chunked
+ *         两种回包都读对）、TurnBridge 直连失败才回落中转（relayConfig → RelayTunnel.open →
+ *         TunnelHttp.post）；RT-01..RT-10 真在结果里且 0 失败；五组负向对照逐个摘都要被抓到
  *
  * 诚实边界（不假装做过）：
  *   - 没有 KVM → 起不了 emulator，OS 权限弹窗、真机安装、厂商商店签名都是残留；
@@ -264,7 +267,7 @@ if (badge.status !== 0 || !badgeOut) {
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
   // 棘轮：这个数字只准往上抬。写死下限的意义是「test 任务空转/测试文件被删」也会被抓出来，
   // 所以每次加用例都要同时把这里抬上去（漏了就会出现「用例加了但门还按老数字绿」）。
-  else if (tests < 183) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 193) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -1242,6 +1245,102 @@ if (badge.status !== 0 || !badgeOut) {
   else
     ok(
       "AB-17 A2-3 端上真会签名：金标在、DI/DT 11 条点名用例真跑、三处生产接线（回合 / 事件流 / 配对上行公钥）锚点在（五组负向对照全抓到；无 KVM ⇒ 真机仍属残留）",
+    );
+}
+
+/* AB-18 A3-5 手机侧中转传输层接齐（补 R-A3-3a 的端上一半）。
+ *
+ * 为什么必须有这一条：中继服务端 A3-1/A3-2 早已交付并有门禁（G-80 内容不可见 / G-81 连接策略），
+ * 但手机侧**一直没有客户端** —— `scanForDesktops` 只扫同 /24、`redeemCode` 只 POST 局域网地址。
+ * 于是「离开同一个 Wi-Fi 就连不上」是产品缺口，不是用户设置错，而且**局域网下永远复现不出来**。
+ *
+ * AB-18 钉三层，缺一层跨网就是坏的：
+ *   1. 线协议与 relay 逐字对齐（三行命令 + 三种拒绝），对不上就是「握手成功但一个字都发不出去」；
+ *   2. 隧道上真能跑 HTTP（请求行/头/体、Content-Length 与 chunked 两种回包）；
+ *   3. 生产接线没断：TurnBridge 里直连失败**才**回落中转（中转是退路，不是并行候选）。
+ * RT-01..RT-10 真跑且 0 失败；五组负向对照逐个摘都要被抓到 —— 抓不到就是摆设。
+ *
+ * 诚实边界：事件流（GET /v1/events 的 SSE 长连接）走隧道是 A3-6，本片没做；
+ * 所以跨网时进度会按 EventStreamClient 既有的「诚实回退」退回整轮模式，不假装有实时进度。 */
+{
+  const ANDROID = "hosts/android/BitBotHost/app/src/main/java/com/bitbot/host";
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(REPO, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const relaySrc = read(ANDROID + "/RelayTunnel.kt");
+  const httpSrc = read(ANDROID + "/TunnelHttp.kt");
+  const strategySrc = read(ANDROID + "/ConnectionStrategy.kt");
+  const turnSrc = read(ANDROID + "/TurnBridge.kt");
+
+  const dir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+  const names = [];
+  let rtFailures = 0;
+  let rtFound = false;
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+      const xml = fs.readFileSync(path.join(dir, f), "utf8");
+      for (const m of xml.matchAll(/<testcase\s+name="([^"]+)"/g)) names.push(m[1]);
+      if (f.includes("RelayTransportTest")) {
+        rtFound = true;
+        const suite = xml.match(/<testsuite[^>]*>/);
+        if (suite) {
+          rtFailures += Number((suite[0].match(/failures="(\d+)"/) || [])[1] || 0);
+          rtFailures += Number((suite[0].match(/errors="(\d+)"/) || [])[1] || 0);
+        }
+      }
+    }
+  } catch {
+    /* 结果目录不在这件事 AB-06 已经报过，这里不重复报 */
+  }
+
+  const wantRt = [
+    /RT-01/, /RT-02/, /RT-03/, /RT-04/, /RT-05/,
+    /RT-06/, /RT-07/, /RT-08/, /RT-09/, /RT-10/,
+  ];
+
+  /** 尺子：喂进（可能被改坏的）源码与用例名，返回这一版有什么问题。 */
+  const measure = (src) => {
+    const got = [];
+    if (!rtFound) got.push("RelayTransportTest 的结果文件不在（用例没编译进去）");
+    if (rtFailures > 0) got.push("RT 用例有 " + rtFailures + " 条失败（中转这条路没真通）");
+    const missing = wantRt.filter((re) => !src.names.some((n) => re.test(n)));
+    if (missing.length) got.push("RT 用例不在结果里：" + missing.map(String).join(", "));
+    if (!src.relaySrc.includes("CONNECT ")) got.push("RelayTunnel 不再发 CONNECT（永远拿不到隧道）");
+    if (!src.relaySrc.includes("TUNNEL ")) got.push("RelayTunnel 不再认 TUNNEL 应答（握手必然判错）");
+    if (!src.httpSrc.includes("transfer-encoding"))
+      got.push("TunnelHttp 不再看 Transfer-Encoding（chunked 回包会读成空）");
+    if (!src.httpSrc.includes("content-length"))
+      got.push("TunnelHttp 不再看 Content-Length（定长回包会读成空）");
+    if (!src.turnSrc.includes("relayConfig()")) got.push("TurnBridge 不再读中转配置（回落这条路是空的）");
+    if (!src.turnSrc.includes("RelayTunnel.open(")) got.push("TurnBridge 不再开隧道（跨网永远走不通）");
+    if (!src.turnSrc.includes("TunnelHttp.post(")) got.push("TurnBridge 开了隧道却没在上面发请求");
+    if (!src.strategySrc.includes("Mode.RELAY")) got.push("ConnectionStrategy 里没有中转态（界面没法显示「中转」）");
+    return got;
+  };
+
+  const base = { relaySrc, httpSrc, strategySrc, turnSrc, names };
+  const problems = measure(base);
+
+  // 负向对照：每一处锚点单独拿掉，尺子必须抓到。
+  const muts = [
+    ["1 不发 CONNECT", (s) => ({ ...s, relaySrc: s.relaySrc.replace('"CONNECT "', '"CONNECTX "') })],
+    ["2 不认 TUNNEL", (s) => ({ ...s, relaySrc: s.relaySrc.replace('"TUNNEL "', '"TUNNELX "') })],
+    ["3 不读 chunked", (s) => ({ ...s, httpSrc: s.httpSrc.replace(/transfer-encoding/g, "x-te") })],
+    ["4 不回落中转", (s) => ({ ...s, turnSrc: s.turnSrc.replace("RelayTunnel.open(", "// (injected) 不回落") })],
+    ["5 用例不在结果里", (s) => ({ ...s, names: s.names.filter((n) => !/^RT-04/.test(n)) })],
+  ];
+  const undetected = muts.filter(([, mutate]) => !measure(mutate(base)).length).map(([label]) => label);
+  if (undetected.length) bad("AB-18 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
+
+  if (problems.length) bad("AB-18 手机侧中转这条路没接齐", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-18 A3-5 手机侧中转传输层接齐：线协议三行与 relay 逐字对齐（含 DENY/NOBOX/BADCMD 各自说人话）、隧道上 HTTP 定长与 chunked 都读对、TurnBridge 直连失败才回落中转，RT-01..RT-10 十条真跑 0 失败（五组负向对照全抓到；SSE 走隧道属 A3-6，跨网进度仍走诚实回退）",
     );
 }
 done();
