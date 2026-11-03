@@ -5342,3 +5342,103 @@ $ curl -s http://127.0.0.1:18767/healthz
   （数据面结构性不解析）。A3-2 的「日志/抓包无明文正文与附件」独立门禁是下一刀。
 - **R-A3-1f｜未过真公网 / 真 Docker 构建**：门禁是 Node 级端到端（真实 TCP 控制面 + 真实桩
   box），但没在真 Docker 镜像里跑、没跨真公网。镜像的 `docker build` 验证留待 CI 或用户侧。
+
+## 8.67 A3-2 中转内容不可见实证（W4 第二刀）
+
+路线 A · W4 第二刀。A3-1 把「中转看不见内容」作为架构保证（数据面结构性不解析、不落盘），
+其门禁 EV-6 的逻辑是「没日志所以没明文」——这是**真空通过**：一旦日后有人为排障加日志，
+就可能把 payload 顺手写进去而门禁不报。本刀把「不可见」升级成硬门禁：**中转必须有真实的
+元数据审计日志**（只记 connect/close 等元数据），且日志与任何落盘文件都**查无明文正文与附件**。
+真空通过漏洞由此封堵——没有真实日志时 EV-3 直接红，而不是混过。
+
+### 8.67.1 先写复现红（修复前原文）
+
+按铁律先以「中继无日志能力」状态跑 `scripts/prove_cn_relay_invisible.js`：门禁起带 `logFile` 的
+中继、经线协议透传含唯一 canary 明文正文+附件标记的 payload、close，再断言 6 条。红态下
+`relay_server` 无 `getAuditLog`、日志面为空，干净 FAIL（EV-1/EV-3 红，EV-2/EV-4/EV-5/EV-6 仍绿、
+因为那几条本就不依赖日志）：
+
+```
+  ✗ EV-1 中继暴露 getAuditLog（元数据审计日志能力） — 红：createRelayServer 无 logFile/getAuditLog 支持
+  ✓ EV-2 relay_keys 签发 + 校验成员凭证（client 角色）
+  ✗ EV-3 日志存在且查无明文（反真空通过） — 红：无 getAuditLog，日志面为空＝真空通过漏洞未封堵
+  ✓ EV-4 无旁路落盘文件含明文（受控目录 0 个文件均无 canary）
+  ✓ EV-5 registry 仅含端点、无内容（getRegistry 不含 canary）
+  ✓ EV-6 数据面不缓存 payload（getCapturedPayloads 恒空）
+prove_cn_relay_invisible: PASS=4 FAIL=2
+```
+
+注意红态 `PASS=4` 而非 0——这是设计要点：EV-4/5/6 在红态也成立（无文件可漏、registry 干净、
+不缓存），但 EV-3 的「**反真空通过**」断言要求「必须有真实日志且查无明文」，日志面为空时它红，
+从而把真空通过暴露成红，而不是假装通过。
+
+### 8.67.2 修复说明（改了什么）
+
+只动 `hosts/shared/relay/relay_server.js` 一个文件（A3-1 三件套不变）：
+
+1. **新增 `logFile` / `verbose` 选项 + `log()` 助手**
+   - `createRelayServer({ ..., logFile, verbose })`：可选审计日志路径；`log(event, meta)` 落一条
+     JSON 行（文件）+ 入内存缓冲（`getAuditLog()`），`verbose` 时另打 console。
+   - **删防御**：`log()` 内 `delete rec.token / payload / body / attachment / secret / credential`，
+     即便调用方误传明文/payload/token 字段也一律不落日志。
+
+2. **AUTH / REGISTER / CONNECT 记元数据、绝不记 token/payload**
+   - `AUTH` 核验通过后记 `{event:"auth", role, memberId}`（记的是核验出的身份，**不记 token 原文**）；
+   - `REGISTER` 记 `{event:"register", role:"box", memberId, boxId, endpoint}`；
+   - `CONNECT` 记 `{event:"connect", role:"client", memberId, boxId, endpoint}`。
+
+3. **`openBox` 关连接记 close 元数据**
+   - 双向 pipe 的字节累计进 `connBytes`；`clientSock` 关闭时记
+     `{event:"close", role, memberId, boxId, bytes:connBytes}`（`bytes>0` 即确有数据流过，
+     但只记计数、不记内容）。
+
+4. **暴露 `getAuditLog()`**：返回内存审计缓冲快照，供门禁断言。
+
+5. **入口进程按环境可选落盘**：`BITBOT_RELAY_LOGFILE` / `BITBOT_RELAY_VERBOSE` 控制，默认不落盘
+   （仍保留内存缓冲）；保持「被 require 不触发」，门禁可干净引入。
+
+### 8.67.3 修复后绿（原文）
+
+重新施加修复后跑同一门禁（canary 为运行时生成的唯一正文+附件标记）：
+
+```
+  ✓ EV-1 中继暴露 getAuditLog（元数据审计日志能力）
+  ✓ EV-2 relay_keys 签发 + 校验成员凭证（client 角色）
+  ✓ EV-3 日志存在且查无明文（反真空通过）：含 connect/close 元数据、无 canary 明文
+  ✓ EV-4 无旁路落盘文件含明文（受控目录 1 个文件均无 canary）
+  ✓ EV-5 registry 仅含端点、无内容（getRegistry 不含 canary）
+  ✓ EV-6 数据面不缓存 payload（getCapturedPayloads 恒空）
+prove_cn_relay_invisible: PASS=6 FAIL=0
+```
+
+附带一次人工检视的审计日志原文（透传 `SECRET-PLAINTEXT-12345` 这次会话），证明日志只含元数据、
+零明文、零 token：
+
+```
+{"t":1793709624804,"event":"auth","role":"client","memberId":"cli-9"}
+{"t":1793709624808,"event":"connect","role":"client","memberId":"cli-9","boxId":"box-x","endpoint":"127.0.0.1:52986"}
+{"t":1793709624815,"event":"close","role":"client","memberId":"cli-9","boxId":"box-x","bytes":49}
+```
+
+`node --check` 全量语法通过；`prove_cn_relay_image`（A3-1 门禁）无回归（`PASS=6 FAIL=0`）；
+矩阵新增 **G-80** 跑本门禁并锚 EV-1..EV-6。
+
+### 8.67.4 诚实残留（这一刀没关掉的）
+
+- **R-A3-2a｜「看不见内容」靠真实日志存在 + 查无明文，而非「没日志所以没明文」**：本刀把
+  A3-1 的真空通过封堵成硬门——没有真实审计日志时 EV-3 直接红。但「日志里查无明文」是本轮实证
+  的边界，不等于「内容在中转路径上绝对不可被旁路观测」（见 R-A3-2b/c）。
+- **R-A3-2b｜端到端业务 TLS 仍不在本片**（继承 R-A3-1b）：日志里的 `endpoint` 是 box 可达地址
+  而非密文；客户端↔Box 业务流量在中转路径上尚未端到端加密。审计日志只证明「中转节点自己不记
+  内容」，不证明「链路全程不可被第三方嗅探」。
+- **R-A3-2c｜审计日志落地本身是明文 JSON（仅元数据）**：日志文件不含 token/payload，但含
+  `memberId/boxId/endpoint`——属 ADR 0014 的「元数据」范畴，部署侧须按该 ADR 约束其访问权限与
+  留存周期（默认不落盘，由 `BITBOT_RELAY_LOGFILE` 显式开启）。
+- **R-A3-2d｜registry 仍仅内存、审计缓冲上限 10000 条循环覆盖**：镜像重启即清空，长周期部署需
+  外部采集（如挂 volume + 日志采集）。relay-secret 泄露只影响中转准入、不碰业务内容（数据面盲转发）。
+- **R-A3-2e｜EV-4 只扫受控临时目录**：门禁把日志落盘到自管临时目录后，只扫该目录验证「无 canary
+  明文文件」；若部署侧把抓包/转储放到别处不在本门覆盖范围内。但数据面结构性不缓存（getCapturedPayloads
+  恒 `[]`），操作面本就无明文来源，旁路落盘风险极低。
+- **R-A3-2f｜A3-1 的 R-A3-1a/b/c/d/f 全部继承**：控制面 TLS 未实跑、端到端业务 TLS 不在本片、
+  relay-secret 为共享准入密钥、registry 仅内存、未过真 Docker/真公网——本刀只在「不可见实证」上
+  收口，不重复关这些。

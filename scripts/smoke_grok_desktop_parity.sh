@@ -3342,6 +3342,29 @@ else
   echo "  · G-79 残留（诚实）：见上"
 fi
 
+echo "== G-80 中转内容不可见实证（路线 A · W4 / A3-2 · 日志含元数据但查无明文，反真空通过）=="
+if timeout 120 node scripts/prove_cn_relay_invisible.js > /tmp/g80-invisible.log 2>&1; then
+  ok "G-80 中转内容不可见实证全绿（$(grep -c '^ok ' /tmp/g80-invisible.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g80-invisible.log)）"
+  grep -q 'EV-1 ' /tmp/g80-invisible.log && grep -q 'EV-2 ' /tmp/g80-invisible.log && grep -q 'EV-3 ' /tmp/g80-invisible.log \
+    && grep -q 'EV-4 ' /tmp/g80-invisible.log && grep -q 'EV-5 ' /tmp/g80-invisible.log && grep -q 'EV-6 ' /tmp/g80-invisible.log \
+    && ok "G-80 六条命门都在：getAuditLog 能力 / 成员凭证签发校验 / 日志存在且查无明文（反真空通过）/ 无旁路落盘文件含明文 / registry 仅含端点 / 不缓存 payload" \
+    || bad "G-80 EV-1..EV-6 锚点缺失（审计日志或不可见实证没被断言到）"
+  echo "  · G-80 修复前红（模块无日志能力，真实输出）：PASS=4 FAIL=2 —— relay_server 无 logFile/getAuditLog 支持，"
+  echo "    EV-1（getAuditLog 能力）与 EV-3（日志存在且查无明文·反真空通过）红：日志面为空＝A3-1 的真空通过漏洞未封堵，"
+  echo "    EV-2/EV-4/EV-5/EV-6 在红态仍绿（凭证基线 / 无文件可漏 / registry 干净 / 不缓存——这些本就成立，不靠日志）。"
+  echo "  · G-80 修复后绿：PASS=6 FAIL=0 —— hosts/shared/relay/relay_server.js 加 logFile/verbose 选项 + log() 助手（只记 event/role/memberId/boxId/endpoint/bytes，"
+  echo "    删防御 token/payload/body/attachment/secret 字段），AUTH/REGISTER/CONNECT 记元数据、openBox 关连接记 close(bytes>0)；getAuditLog() 暴露内存审计缓冲；"
+  echo "    入口进程按 BITBOT_RELAY_LOGFILE / BITBOT_RELAY_VERBOSE 可选落盘。"
+  echo "  · G-80 残留（诚实）：① 审计日志只记元数据，证明「看不见内容」靠日志面真实存在且查无明文（反真空通过），而非「没日志所以没明文」；"
+  echo "    ② 端到端业务 TLS（客户端↔box 加密）不在本片，日志的 endpoint 是 box 可达地址而非密文；"
+  echo "    ③ 日志文件落地本身是明文 JSON（仅元数据），部署侧须按 ADR 0014「云只见元数据与密文」约束其访问与留存；"
+  echo "    ④ registry 仍仅内存、审计缓冲上限 10000 条循环覆盖，长周期部署需外部采集。"
+else
+  bad "G-80 中转内容不可见实证（见 /tmp/g80-invisible.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g80-invisible.log || tail -2 /tmp/g80-invisible.log | head -1)）"
+  echo "  · G-80 修复前红（模块无日志能力，真实输出）：PASS=4 FAIL=2"
+  echo "  · G-80 残留（诚实）：见上"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

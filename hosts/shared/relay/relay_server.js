@@ -2,12 +2,15 @@
 /**
  * relay_server.js — A3-1 中转节点（「哑」转发，TCP/TLS 透传）
  *
- * 职责（只这四件，不多做）：
+ * 职责（只这五件，不多做）：
  *  1. 成员凭证签发/校验 —— 复用 relay_keys（box / client 两类角色）；
  *  2. Box 登记可达端点（host:port）；
  *  3. 盲转发 —— 客户端 AUTH 后 CONNECT <boxId>，relay 开一条到该 box 的 TCP，
  *     之后双向 pipe，**绝不解析应用层、绝不缓存 payload、绝不存业务密钥**；
- *  4. 健康检查 —— 独立 HTTP /healthz 供容器探针。
+ *  4. 健康检查 —— 独立 HTTP /healthz 供容器探针；
+ *  5. 元数据审计日志（可选 logFile）—— 只记 auth/register/connect/close 的元数据
+ *     （role/memberId/boxId/endpoint/bytes），**绝不记 token、绝不记 payload/正文/附件**。
+ *     这是 A3-2「内容不可见」的实证面：日志存在且查无明文，比「无日志即无明文」更硬。
  *
  * 转发模型（已锁定）：TCP/TLS 透传。控制面用 relay-secret 鉴权；数据面是端到端不透明的
  * 字节流。因此「内容不可见」（A3-2）是结构性的：relay 根本没有应用层可看，也从不落盘内容。
@@ -19,6 +22,7 @@
 const net = require("net");
 const http = require("http");
 const tls = require("tls");
+const fs = require("fs");
 const { verifyRelayCredential } = require("./relay_keys");
 
 /** "host:port" → {host, port}，非法返回 null */
@@ -35,11 +39,39 @@ function parseEndpoint(s) {
 function createRelayServer(opts) {
   const relaySecret = String((opts && opts.relaySecret) || "");
   const tlsOpts = (opts && opts.tls) || null;
+  const logFile = (opts && opts.logFile) ? String(opts.logFile) : null; // 可选元数据审计日志路径
+  const verbose = Boolean(opts && opts.verbose);
   const registry = new Map(); // boxId -> { endpoint, host, port, registeredAt }
   let connectionsForwarded = 0;
   let bytesForwarded = 0;
   let controlSrv = null;
   let healthSrv = null;
+  const auditLog = []; // 内存审计缓冲，供 getAuditLog()
+
+  // 元数据日志助手（A3-2）：只记事件元数据（event/role/memberId/boxId/endpoint/bytes），
+  // 绝不记 token、绝不记 payload/正文/附件/密钥。写文件（JSON 行）+ 内存缓冲。
+  // delete 防御：即便调用方误传明文/payload/token 字段，也一律不落日志。
+  function log(event, meta) {
+    const rec = Object.assign({ t: Date.now(), event }, meta || {});
+    delete rec.token;
+    delete rec.payload;
+    delete rec.body;
+    delete rec.attachment;
+    delete rec.secret;
+    delete rec.credential;
+    auditLog.push(rec);
+    if (auditLog.length > 10000) auditLog.shift();
+    if (logFile) {
+      try {
+        fs.appendFileSync(logFile, JSON.stringify(rec) + "\n");
+      } catch (_) {}
+    }
+    if (verbose) {
+      try {
+        console.log("[relay:" + event + "] " + JSON.stringify(rec));
+      } catch (_) {}
+    }
+  }
 
   function fail(sock, msg) {
     try {
@@ -49,12 +81,14 @@ function createRelayServer(opts) {
   }
 
   // 开一条到 box 的 TCP，把控制缓冲里的数据面首字节带走，之后双向盲 pipe
-  function openBox(clientSock, target, initialData) {
+  function openBox(clientSock, target, initialData, meta) {
+    let connBytes = initialData ? Buffer.byteLength(initialData, "latin1") : 0;
+    let closed = false;
     const boxSock = net.connect(target.port, target.host, () => {
       connectionsForwarded++;
       if (initialData) {
         boxSock.write(initialData, "latin1");
-        bytesForwarded += Buffer.byteLength(initialData, "latin1");
+        bytesForwarded += connBytes;
       }
     });
     const onBoxErr = () => {
@@ -71,11 +105,23 @@ function createRelayServer(opts) {
     clientSock.on("error", onClientErr);
     boxSock.on("data", (d) => {
       bytesForwarded += d.length;
+      connBytes += d.length;
     });
     clientSock.on("data", (d) => {
       bytesForwarded += d.length;
+      connBytes += d.length;
     });
     clientSock.on("close", () => {
+      // 关闭时记一条 close 元数据（bytes>0 即确有数据流过），绝不记 payload
+      if (!closed) {
+        closed = true;
+        log("close", {
+          role: meta && meta.role,
+          memberId: meta && meta.memberId,
+          boxId: meta && meta.boxId,
+          bytes: connBytes,
+        });
+      }
       try {
         boxSock.destroy();
       } catch (_) {}
@@ -111,6 +157,8 @@ function createRelayServer(opts) {
           const v = verifyRelayCredential(relaySecret, arg);
           if (!v.ok) return fail(sock, "DENY");
           authed = { memberId: v.memberId, role: v.role };
+          // 只记核验通过的元数据：role/memberId，绝不记 token（arg）
+          log("auth", { role: v.role, memberId: v.memberId });
           sock.write("OK\n");
         } else if (!authed) {
           return fail(sock, "DENY");
@@ -121,16 +169,20 @@ function createRelayServer(opts) {
           const ep = parseEndpoint(endpointStr);
           if (!boxId || !ep) return fail(sock, "BADREG");
           registry.set(boxId, { endpoint: endpointStr, host: ep.host, port: ep.port, registeredAt: Date.now() });
+          // 只记 register 元数据：boxId/endpoint，绝不记内容
+          log("register", { role: "box", memberId: authed.memberId, boxId, endpoint: endpointStr });
           sock.write("REGISTERED\n");
           sock.end();
         } else if (authed.role === "client" && cmd === "CONNECT") {
           const target = registry.get(arg);
           if (!target) return fail(sock, "NOBOX");
+          // 只记 connect 元数据：boxId/endpoint，绝不记后续数据面内容
+          log("connect", { role: "client", memberId: authed.memberId, boxId: arg, endpoint: target.endpoint });
           sock.write("TUNNEL " + target.endpoint + "\n");
           tunneled = true;
           const initial = buf; // CONNECT 行之后粘连的数据面首字节
           buf = "";
-          openBox(sock, target, initial);
+          openBox(sock, target, initial, { role: "client", memberId: authed.memberId, boxId: arg });
           return;
         } else {
           return fail(sock, "BADCMD");
@@ -212,6 +264,10 @@ function createRelayServer(opts) {
     getCapturedPayloads() {
       return [];
     },
+    /** A3-2 元数据审计日志：只含 event/role/memberId/boxId/endpoint/bytes，绝不返回 token/payload */
+    getAuditLog() {
+      return auditLog.slice();
+    },
   };
 }
 
@@ -229,6 +285,8 @@ if (require.main === module) {
     controlPort: Number(process.env.BITBOT_RELAY_CONTROL_PORT || 18766),
     healthPort: Number(process.env.BITBOT_RELAY_HEALTH_PORT || 18767),
     relaySecret: secret,
+    logFile: process.env.BITBOT_RELAY_LOGFILE ? String(process.env.BITBOT_RELAY_LOGFILE) : null,
+    verbose: process.env.BITBOT_RELAY_VERBOSE === "1",
   });
   srv
     .start()
