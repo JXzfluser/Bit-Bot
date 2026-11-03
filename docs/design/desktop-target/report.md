@@ -5442,3 +5442,79 @@ prove_cn_relay_invisible: PASS=6 FAIL=0
 - **R-A3-2f｜A3-1 的 R-A3-1a/b/c/d/f 全部继承**：控制面 TLS 未实跑、端到端业务 TLS 不在本片、
   relay-secret 为共享准入密钥、registry 仅内存、未过真 Docker/真公网——本刀只在「不可见实证」上
   收口，不重复关这些。
+
+## 8.68 A3-3 连接策略：直连优先 + 失败回落中转（W4 第三刀）
+
+路线 A · W4 第三刀。AC-T4-5 要求「局域网直连成功率 ≥95%，界面显示『直连』」，T4a-FR4 要求
+「客户端显示连接方式（直连/中转）与延迟」。这一片本质是**客户端侧**能力，代码在 `hosts/android`
+（Kotlin/Compose）与 `hosts/ios`（Swift + XcodeGen）。但本机 Android 跑不了（无 Android SDK、无
+gradle 缓存，wrapper 需联网下载而当前出口 502）、iOS 需 Xcode + 模拟器；能在本机**真实跑红跑绿**
+的，是把「直连优先/超时/回落/模式+延迟」抽成共享纯逻辑模块 + Node 真 socket 门禁。这与 A2-5
+（数据层绿、MC-13 UI SKIP）、A3-1/A3-2 同一套路：可本机验证的语义先钉死，端上接线与真机记诚实残留。
+
+### 8.68.1 先写复现红（修复前原文）
+
+按铁律先以「连接策略模块不存在」状态跑 `scripts/prove_cn_connection_strategy.js`，6 条断言全红，
+干净 FAIL 汇总（`try/require` 兜底，非崩溃）：
+
+```
+  ✗ EV-1 connection_strategy 模块存在且导出 resolveConnection/describeMode/parseEndpoint — 红：模块未实现
+  ✗ EV-2 直连可达选直连且不碰中转 — 红：模块未实现
+  ✗ EV-3 直连不可达回落中转 — 红：模块未实现
+  ✗ EV-4 多候选按优先级逐个试 — 红：模块未实现
+  ✗ EV-5 describeMode 回「直连/中转」+延迟 — 红：模块未实现
+  ✗ EV-6 全不可达且无中转→诚实离线（mode=none） — 红：模块未实现
+prove_cn_connection_strategy: PASS=0 FAIL=6
+```
+
+门禁用真实 socket（live listener + 已关闭端口）跑，不依赖 Docker / 显示环境；EV-3 是「变异敏感」
+断言——若有人去掉回落逻辑，直连失败 + 中转在线时结果会从 `relay` 变 `none`，EV-3 立刻转红。这正是
+本门要钉死的「失败必须回落」行为，不是可选项。
+
+### 8.68.2 修复说明（改了什么）
+
+新增一个共享纯逻辑模块 `hosts/shared/connection_strategy.js`（不依赖 Docker / 显示 / 移动端运行时）：
+
+1. **`resolveConnection({ directCandidates, relay, timeoutMs, probe })`**
+   - 直连候选按优先级逐个探测，**任一可达即返回 `mode:"direct"` 并短路**（不再碰后面的候选或中转，
+     `relayTried` 置 `null`）——这对应「直连优先」；
+   - 直连全失败且配了中转，才探中转，可达回 `mode:"relay"`；
+   - 全不可达（无中转 / 中转也不可达）回 `ok:false, mode:"none"`，并如实带 `directTried` /
+     `relayTried` 与 `reason`——**绝不把连不上包装成直连/中转**；
+   - `probe` 可注入（测试用桩或真实 socket），默认 `defaultProbe`。
+2. **`defaultProbe(host, port, timeoutMs)`**：`net.connect` + `setTimeout`，只测 TCP 连通性，
+   返回 `{ok, latencyMs}` 或 `{ok:false, reason}`；不发送业务字节、不鉴权——连通性是这一层唯一判据。
+3. **`describeMode(result, lang)`**：回「直连/中转/未连接 · Nms」三语（zh / zh-TW / en），
+   满足 AC-T4-5「界面显示直连」与 T4a-FR4「显示连接方式与延迟」。
+4. **`parseEndpoint`**：与 relay 的 `parseEndpoint` 同口径（`host:port`，非法返回 `null`）。
+
+### 8.68.3 修复后绿（原文）
+
+重新施加修复后跑同一门禁（live listener + 已关闭端口，超时 400ms）：
+
+```
+  ✓ EV-1 connection_strategy 模块存在且导出 resolveConnection/describeMode/parseEndpoint
+  ✓ EV-2 直连可达选直连（mode=direct, latency=2ms，未回落）
+  ✓ EV-3 直连不可达回落中转（directTried 有失败 → relayTried.ok）
+  ✓ EV-4 多候选按优先级逐个试（第 1 个失败 → 第 2 个成功）
+  ✓ EV-5 describeMode 回「直连/中转 · Nms」（zh: 直连 · 12ms / 中转 · 40ms；en: Direct · 12ms）
+  ✓ EV-6 全不可达且无中转→诚实离线（ok:false, mode=none，试过 2 个候选）
+prove_cn_connection_strategy: PASS=6 FAIL=0
+```
+
+`node --check` 全量语法通过；`prove_cn_relay_image`（A3-1）/`prove_cn_relay_invisible`（A3-2）无回归；
+矩阵新增 **G-81** 跑本门禁并锚 EV-1..EV-6。
+
+### 8.68.4 诚实残留（这一刀没关掉的）
+
+- **R-A3-3a｜移动端接线未做（本机不可验证）**：本门证的是共享纯逻辑，Android（Kotlin）/ iOS（Swift）
+  客户端网络层**尚未**接入该策略，界面「直连/中转」渲染也未接。本机无 Android SDK / gradle 缓存、
+  出口 502 下不来 gradle，iOS 需 Xcode + 模拟器——端上接线与真机验证是后续工作。
+- **R-A3-3b｜AC-T4-5「直连成功率 ≥95%」需真机统计**：本门只证策略语义正确（可达即直连、不可达即
+  回落、全不可达即离线），**不**断言成功率百分比；95% 是需要在真机/真网络样本上统计的指标。
+- **R-A3-3c｜QUIC 打洞（T4b）不在本片**：直连候选仍是 TCP 可达性探测（局域网/覆盖网地址），未做
+  QUIC 打洞；回落目标是 A3-1 的 TCP 中转。ADR 0014 原就把 T4b 排除在本轮，本片只落地 T4a 语义。
+- **R-A3-3d｜「能连」≠「配对成功」**：`defaultProbe` 只测 TCP 连通性，不做设备鉴权、不发业务字节。
+  连通但配对失败（凭证/吊销/版本不符）不在本门范围，由既有 A2 设备信任链与入站服务负责。
+- **R-A3-3e｜端上各自实现时需对齐单一事实源**：本模块是这段语义的参照实现；若 Android/iOS 各写一套，
+  必须在端上补金标测试对齐（否则「桌面门禁绿、端上行为漂移」）。

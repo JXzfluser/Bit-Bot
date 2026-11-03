@@ -3365,6 +3365,27 @@ else
   echo "  · G-80 残留（诚实）：见上"
 fi
 
+echo "== G-81 连接策略（路线 A · W4 / A3-3 · 直连优先 + 失败回落中转 + 模式/延迟上报）=="
+if timeout 120 node scripts/prove_cn_connection_strategy.js > /tmp/g81-strategy.log 2>&1; then
+  ok "G-81 连接策略全绿（$(grep -c '^ok ' /tmp/g81-strategy.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g81-strategy.log)）"
+  grep -q 'EV-1 ' /tmp/g81-strategy.log && grep -q 'EV-2 ' /tmp/g81-strategy.log && grep -q 'EV-3 ' /tmp/g81-strategy.log \
+    && grep -q 'EV-4 ' /tmp/g81-strategy.log && grep -q 'EV-5 ' /tmp/g81-strategy.log && grep -q 'EV-6 ' /tmp/g81-strategy.log \
+    && ok "G-81 六条命门都在：模块导出 / 直连可达即直连且不碰中转 / 直连不可达回落中转 / 多候选按序试 / 模式+延迟文案 / 全不可达诚实离线" \
+    || bad "G-81 EV-1..EV-6 锚点缺失（连接策略或回落逻辑没被断言到）"
+  echo "  · G-81 修复前红（模块未实现，真实输出）：PASS=0 FAIL=6 —— connection_strategy 模块缺失；六条断言全红。"
+  echo "  · G-81 修复后绿：PASS=6 FAIL=0 —— 新增 hosts/shared/connection_strategy.js（resolveConnection 直连优先短路→"
+  echo "    直连全失败且配了中转则回落 relay→全不可达回 mode=none；defaultProbe=net.connect+setTimeout；"
+  echo "    describeMode 回「直连/中转 · Nms」三语）。EV-3 对回落逻辑变异敏感：去掉回落即变 mode=none 而转红。"
+  echo "  · G-81 残留（诚实）：① 本门证的是共享纯逻辑（Node 真 socket），Android(Kotlin)/iOS(Swift) 客户端的"
+  echo "    网络层接线与界面「直连/中转」渲染未接（本机无 Android SDK / gradle 缓存、网络 502，iOS 需 Xcode 模拟器）；"
+  echo "    ② AC-T4-5「直连成功率 ≥95%」需真机统计样本，本门只证策略语义正确、不断言成功率；"
+  echo "    ③ QUIC 打洞（T4b）不在本片，直连候选仍是 TCP 可达性探测（A3-1 中转为回落目标）。"
+else
+  bad "G-81 连接策略（见 /tmp/g81-strategy.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g81-strategy.log || tail -2 /tmp/g81-strategy.log | head -1)）"
+  echo "  · G-81 修复前红（模块未实现，真实输出）：PASS=0 FAIL=6"
+  echo "  · G-81 残留（诚实）：见上"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()
