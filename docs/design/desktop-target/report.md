@@ -5592,3 +5592,105 @@ prove_relay_docker: PASS
   （`relay_server.js` 自启分支）。这是有意为之，不是缺陷。
 - 仍**未**过真公网 / TLS 控制面：R-A3-1a（控制面 TLS 未实跑）与 R-A3-1b（端到端业务 TLS 不在本片）
   继续挂着，本刀只关「真 Docker 能起来且宿主可达」这一层。
+
+## 8.70 A3-5 手机侧中转传输层（W4 第三刀 · 补 R-A3-3a 端上一半）
+
+背景一句话：中继服务端 A3-1/A3-2 早已交付（G-80 证明「内容不可见」），但**手机侧一个客户端都没有** ——
+`DesktopPairing.scanForDesktops` 只枚举同 /24 网段、`redeemCode` 只 POST 局域网地址。于是「离开同一个
+Wi-Fi 就连不上」是产品缺口而不是用户设置错，而且**局域网下永远复现不出来**。这一刀补端上那一半：
+线协议 + 隧道上的 HTTP + 「直连失败才回落」的判定。
+
+### 8.70.1 先写复现红（修复前原文）
+
+本机没有 Android SDK（`ANDROID_HOME` / `local.properties` 都没有）⇒ `./gradlew :app:test…` 起不来。
+但这一层四个文件只依赖 `java.net` / `java.io` + JUnit4，于是用 maven 中央的 `kotlin-compiler-embeddable`
+（与 CI 同一个 Kotlin 1.9.24）直接编译 + `JUnitCore` 跑，红绿都能在本机拿到原文 —— 脚本
+`scripts/verify_relay_transport_android.sh`，产物落 `.tmpdl/`（已 gitignore）。
+
+修复前（`open` / `post` 是「未实现」桩，其余逻辑已在）：
+
+```
+== VRT-1 编译（4 个文件，纯 JVM，不需要 Android SDK）==
+  ✓ 编译通过（0 error）
+== VRT-2 跑 RT-01..RT-10 ==
+Tests run: 10,  Failures: 5
+1) RT-07 隧道上的 POST：请求行 头 体与回包都对
+   java.lang.UnsupportedOperationException: A3-5 未实现：隧道上的 HTTP 请求/响应
+	at com.bitbot.host.TunnelHttp.post(TunnelHttp.kt:106)
+2) RT-05 DENY 说人话：是凭证不对，不是网络不好
+   java.lang.AssertionError: 应当抛 OpenFailure，实际: java.lang.UnsupportedOperationException:
+   A3-5 未实现：中转隧道握手（AUTH/CONNECT/TUNNEL）
+3) RT-04 真握手三行之后 socket 进入数据面（AUTH 与 CONNECT 逐字正确）
+4) RT-08 隧道上的 chunked 回包要拼回原文
+5) RT-06 NOBOX 说人话：这台桌面没在中转上登记
+```
+
+CI 上还有两条红，也留原文（它们证明的是**尺子自己也有 bug**，不是产品缺功能）：
+
+- **CI 首跑 `a613e73` 红在编译**：`e: … RelayTransportTest.kt:287:23 Unresolved reference: readLineFrom`
+  （×4）+ `> Task :app:compileUniversalDebugUnitTestKotlin FAILED`。原因是 `readLineFrom` 写成了测试类的
+  成员函数，而假中继/假桌面是**嵌套类**，拿不到外层实例成员。修法：提到文件级（`cb46ca9`）。
+
+- **CI 定向红 `cb46ca9`**（尺子修好、产品代码仍是桩）：`193 tests completed, 5 failed`，失败的正是
+  RT-04..RT-08 五条（`java.lang.UnsupportedOperationException at RelayTransportTest.kt:83/141/178`），
+  其余 183 条一条没伤。这一跑同时证了：**新增十条例程没把既有测试带红**。
+
+### 8.70.2 修复说明（改了什么）
+
+新增三个文件 + 一处接线，**全部不引用 Android 类**（所以能在普通 JVM 里红绿）：
+
+| 文件 | 职责 | 关键点（每条都有代价） |
+|---|---|---|
+| `RelayTunnel.kt` | 四栏配置 / 线协议 / 真握手 | `AUTH <token>` → `OK`/`DENY`；`CONNECT <boxId>` → `TUNNEL <host:port>`/`NOBOX`/`BADCMD`（与 `relay_server.js:141-199` 逐字对齐）。**逐字节**读行：带缓冲的 `Reader` 会把 `TUNNEL` 之后的数据面首字节吞进缓冲区，那正是「握手成功但消息不通」的经典坑。进入数据面后 `soTimeout=0` —— `/v1/turn` 能跑几十秒，用 8 秒连接超时去卡它会把正常回合掐死 |
+| `TunnelHttp.kt` | 隧道上跑 HTTP/1.1 | 请求行 + `Host` + `Content-Length` + `Connection: close`；回包体按 `Transfer-Encoding: chunked` / `Content-Length` / 读到 EOF 三种情形分派。`Host`/`Content-Length`/`Connection` **不许**调用方覆盖，否则签名算的字节数和实际发的不一致，真机就是一条 `bad_signature` |
+| `ConnectionStrategy.kt` | 直连优先 → 失败回落 → 全败离线 | 与 `hosts/shared/connection_strategy.js`（A3-3 / G-81）同一套语义与三语文案；直连一旦可达就**短路**，不碰中转（中转是退路，不是并行候选） |
+| `TurnBridge.kt`（接线） | 回合这条路走中转 | 头先攒成**一份**（直连和中转必须发完全相同的字节与头）；直连先试，失败且配了中转才 `RelayTunnel.open` → `TunnelHttp.post`；两条都断时**两句原因都留** —— 只报中转，用户会去查一个根本没配的东西 |
+
+五种失败各有各的人话（`OpenFailure`）：`NotConfigured`（四栏没配齐）/ `Denied`（中转不认这个凭证）/
+`BoxNotRegistered`（这台桌面没在中转上登记）/ `BadCommand`（两端协议版本不一致）/ `Transport`（DNS/拒绝/超时）。
+把 `Denied` 说成「网络不好」，用户就只能瞎试。
+
+### 8.70.3 修复后绿（原文）
+
+本机（同一套脚本）：
+
+```
+== VRT-2 跑 RT-01..RT-10（真 ServerSocket 假中继 / 假桌面）==
+OK (10 tests)
+verify_relay_transport: PASS
+```
+
+CI `f02947e`（Android APK job = success）：
+
+```
+✓ AB-06 JVM 单测真跑：193 用例 0 失败（22 个类）
+✓ AB-18 A3-5 手机侧中转传输层接齐：线协议三行与 relay 逐字对齐（含 DENY/NOBOX/BADCMD 各自说人话）、
+  隧道上 HTTP 定长与 chunked 都读对、TurnBridge 直连失败才回落中转，RT-01..RT-10 十条真跑 0 失败
+  （五组负向对照全抓到；SSE 走隧道属 A3-6，跨网进度仍走诚实回退）
+prove_android_build: PASS=19 FAIL=0 SKIP=0
+```
+
+**门禁自己先红过一次，同样留原文**：`aa17b1f` 那跑 AB-18 主断言已绿，但负向对照挂了 ——
+
+```
+✗ AB-18 负向对照失败：这些走偏尺子抓不到 — 1 不发 CONNECT；2 不认 TUNNEL
+```
+
+原因是锚点写成 `includes("CONNECT ")`，而 KDoc 里那行 `→ CONNECT <boxId>` 也含这串，**注释把尺子撑绿了**。
+收紧到代码字面量（`'"CONNECT " +'` 与 `'startsWith("TUNNEL ")'`）后五组全抓到（`f02947e`）。
+这条留在这里，是因为「负向对照抓不到 = 那条断言是装饰」，必须让人看见它真红过。
+
+### 8.70.4 诚实残留（这一刀没关掉的）
+
+- **R-A3-5a｜手机上还没有填中转四栏的界面**：`relayConfig()` 只从 SharedPreferences / 环境变量读，
+  普通用户没有入口。闭法在下一刀（A3-6）：桌面配对回执下发 `relay`
+  （`cn_inbound_server.js:1038-1049` 那个 `json(res, 200, …)` 里加**可选**字段），手机解析后落 prefs。
+- **R-A3-5b｜事件流 SSE 没走隧道**：跨网时进度按 `EventStreamClient` 既有语义**诚实回退**到整轮模式
+  （界面明说为什么没有实时进度），不假装有进度。属 A3-6。
+- **R-A3-3a 只关了一半**：传输层在，但**配对本身**（`discover` / `redeem`）仍只走局域网 ——
+  跨网的前提仍是「先在同一个 Wi-Fi 下配对过一次」。
+- **本机证不到全量**：本机无 Android SDK，`./gradlew` 起不来；本机只能证这四个文件的编译 + 10 条用例，
+  AGP 编译与 193 条全量只能靠 CI。所以把本机自证做成了脚本，而不是嘴上说「应该没问题」。
+- **没上真机、没上真公网**：假中继/假桌面是本机 `ServerSocket`，真机与真网络仍是 R-A2-1 / R-A3-3b 那一摊。
+- **一 CONNECT 一隧道**：`/v1/turn` 每次请求开一条隧道、读完即关，不复用连接。代价是跨网每条消息多一次
+  握手往返（含一次中转鉴权）。复用到 A3-6 一起做时再量。

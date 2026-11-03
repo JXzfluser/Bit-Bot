@@ -134,6 +134,7 @@ ICP 备案 / 增值电信许可 / 长期基础设施与 SLA 全部由用户侧�
 | A3-2 | 内容不可见的实证：中转侧日志/抓包无明文正文与附件（AC-T4-3），做成门不是写成承诺 | **已交付 · 接矩阵 G-80**，红绿见 `report.md` §8.67。`hosts/shared/relay/relay_server.js` 加元数据审计日志（`logFile`/`verbose` + `log()` 助手，只记 event/role/memberId/boxId/endpoint/bytes，删防御 token/payload/secret）+ `getAuditLog()`；门禁 `prove_cn_relay_invisible.js` 跑完整透传 canary 证明「日志真实存在且查无明文」（反真空通过），`PASS=6 FAIL=0`。诚实残留见 §8.67.4（端到端业务 TLS 仍不在本片 / 日志落地需按 ADR 0014 约束 / registry 仍仅内存） |
 | A3-3 | 客户端直连优先、失败自动回落中转（局域网直连成功率 ≥95% 时界面显示「直连」，AC-T4-5） | **已交付 · 接矩阵 G-81**，红绿见 `report.md` §8.68。`hosts/shared/connection_strategy.js`（`resolveConnection` 直连优先短路→直连全失败且配了中转则回落 relay→全不可达回 mode:none；`defaultProbe`=net.connect+setTimeout；`describeMode` 回「直连/中转 · Nms」三语）+ 门禁 `prove_cn_connection_strategy.js` `PASS=6 FAIL=0`。诚实残留见 §8.68.4：**移动端（Android/iOS）接线与界面渲染未做**（本机无 SDK/gradle、网络 502，iOS 需 Xcode 模拟器）、≥95% 成功率需真机统计、QUIC 打洞不在本片 |
 | A3-4 | 安装包体积：`prove_pack_artifacts.mjs` 现在棘轮 85 MB、目标 70 MB，中转客户端进包前先确认这条不反弹 | **阻塞 · 前置基线已测（2026-11-03）**：本机 `dist/` 实测 `Bit Bot-0.1.0-arm64-mac.zip = 83.6 MB` / `.dmg = 80.2 MB`，均 ≤ 85 MB 棘轮，但 **zip 距棘轮仅 1.4 MB 余量**、距 70 MB 目标差 10.2–13.6 MB。中转客户端**尚未进包**（依赖 A3-3 移动端接线 R-A3-3a），「进包后不反弹」当前测不了，故本片不可作为红→绿代码片收口。PA-06/PA-07（无源码树启动/跑一轮）本机因 Electron sandbox「Operation not permitted」失败，属**环境限制**（非本片引入；注意这与 MC-13 不同——MC-13 已于 2026-11-03 本机跑绿，PA-06/07 是 sandbox 起不来的另一类）。闭法：移动端 relay 客户端接线 + 真实打包后重跑 PA-02，确认 ≤85 MB（1.4 MB 余量很紧，进包前须先量源码增量）。 |
+| A3-5 | 手机侧中转客户端（跨网那一半）：线协议 + 隧道上 HTTP + 直连失败才回落 | **已交付 · 接矩阵 G-47/AB-18**，红绿见 `report.md` §8.70。`RelayTunnel.kt`（`AUTH`/`CONNECT`/`TUNNEL` 与 `relay_server.js:141-199` 逐字对齐，DENY/NOBOX/BADCMD 各自说人话）+ `TunnelHttp.kt`（HTTP/1.1 over socket：定长 / chunked / EOF 三种回包）+ `ConnectionStrategy.kt`（与 A3-3 同语义：直连优先短路→回落→离线，三语文案一致）+ `TurnBridge` 接线（头一次攒齐、直连先试、两条原因都留）。门禁 RT-01..RT-10（真 ServerSocket 假中继/假桌面）本机 `OK (10 tests)`、CI `193 用例 0 失败` / `prove_android_build: PASS=19 FAIL=0 SKIP=0`。**本机无 Android SDK**，故另做 `scripts/verify_relay_transport_android.sh` 走 maven 的 kotlinc 本机自证。残留见 §8.70.4：配对本身仍只走局域网、SSE 未走隧道、手机无填中转的界面（A3-6） |
 
 **W4 判据现状（2026-11-03，A3-3 收口）**：路线 A 最后一波的目标是把跨网成功率从 0 抬到 ≥90%，
 用户已拍板「仅自托管镜像、不做国内自建」。A3-1（中转镜像）已交付并接矩阵 **G-79**（`prove_cn_relay_image`
@@ -214,16 +215,23 @@ A3-4（安装包体积不反弹）**阻塞**：前置基线已测（zip 83.6 MB 
 | R-A3-2d | registry 仅内存、审计缓冲 10000 循环 | 仍开 | 是 | 外部采集 |
 | R-A3-2e | EV-4 只扫受控临时目录 | 已知边界 | 是 | 扩大扫描（低优先） |
 | R-A3-2f | 继承 R-A3-1a/b/c/d/f | 同上 | — | 同上 |
-| R-A3-3a | 移动端 Android/iOS 接线与界面渲染未做 | 仍开 | 否（无 SDK / 需 Xcode） | 端上接线 |
+| R-A3-3a | 移动端 Android/iOS 中转接线与界面渲染 | **半开（2026-11-03 A3-5 关掉传输层那一半）**：Android 已有 `RelayTunnel`/`TunnelHttp`/`ConnectionStrategy` 且接进 `TurnBridge`（RT-01..RT-10 十条真跑，CI `193 用例 0 失败`）。仍缺 ① 配对（discover/redeem）走中转、② 事件流 SSE 走中转、③ 填中转四栏的界面、④ iOS 侧（需 Xcode）。闭法：A3-6 三件套 + iOS | 是（传输层）/ 否（iOS） | 端上接线 |
 | R-A3-3b | AC-T4-5 ≥95% 成功率需真机统计 | 仍开 | 否 | 真机统计 |
 | R-A3-3c | QUIC 打洞（T4b）不在本片 | 仍开 | 否 | T4b |
 | R-A3-3d | 「能连」≠「配对成功」 | 语义边界 | 是 | 无需关 |
 | R-A3-3e | 端上各实现一套时需金标对齐 | 仍开 | 部分 | 端上金标测试 |
+| R-A3-5a | 手机上没有填中转四栏的界面（只有 prefs / 环境变量） | 仍开 | 部分（prefs 可注入） | A3-6：桌面配对回执下发 `relay` 可选字段 |
+| R-A3-5b | 事件流 SSE 未走隧道（跨网进度按既有语义回退整轮模式） | 仍开 | 是（假 box 可测 chunked 长连接） | A3-6 |
+| R-A3-5c | 一 CONNECT 一隧道、无连接复用（每条消息多一次握手往返） | 设计取舍 | 是 | A3-6 一起量 |
 
-**回填结论**：W2 七条、W3 五条、W4 十七条共 29 条残留里，**可本机验证的**（R-A1-3、R-A2-7/8/9、
-R-A3-1c/d、R-A3-2a/c/d/e、R-A3-3d）已在各门禁或数据层里钉住语义。**2026-11-03 本机补证又关两条**：
+**回填结论**：W2 七条、W3 五条、W4 二十条共 32 条残留里，**可本机验证的**（R-A1-3、R-A2-7/8/9、
+R-A3-1c/d、R-A3-2a/c/d/e、R-A3-3d、R-A3-5c）已在各门禁或数据层里钉住语义。**2026-11-03 本机补证又关两条**：
 R-A2-6（MC-13 本机实跑 `PASS=15 FAIL=0 SKIP=0`，此前判 SKIP 是误判——`hasDisplay` 在 macOS 恒 true）、
 R-A3-1f（真 Docker build + 起容器 + 宿主可达，`prove_relay_docker.sh` PASS，顺带修 bind 127.0.0.1→0.0.0.0
 的生产级 bug）。加上 R-A3-1e（随 A3-2 关闭），**共关闭 4 条**。真正卡住的只剩**真机 / 真公网 / cert /
 移动端 SDK / T2 契约**：要推进「路线 A 整体交付」，仍需 ① 一台 Android 真机 + 真网络样本
 （R-A2-1/R-A3-3a/b），或 ② 真公网 + TLS 控制面（R-A3-1a/b）。
+
+**A3-5 之后补一句**：跨网这件事端上已经不是「零」了 —— 手机侧会 `AUTH`/`CONNECT`/`TUNNEL`、能在隧道上跑
+`/v1/turn`（CI `193 用例 0 失败`、本机 `OK (10 tests)`）。但**还差最后一段用户能摸到的路**：配对回执不下发中转
+参数、手机没有填中转的界面、事件流也没走隧道 —— 这就是下一刀 A3-6 的三件套（R-A3-5a/R-A3-5b + 配对走中转）。
