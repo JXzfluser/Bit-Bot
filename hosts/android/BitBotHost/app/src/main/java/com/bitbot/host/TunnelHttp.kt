@@ -102,8 +102,32 @@ object TunnelHttp {
     body: ByteArray,
     readTimeoutMs: Int = 120000,
   ): Response {
-    // A3-5 修复前：这一层还没有实现（门禁 RT-07/RT-08 真红）。
-    throw UnsupportedOperationException("A3-5 未实现：隧道上的 HTTP 请求/响应")
+    val socket = tunnel.socket
+    // 桌面回包可能很慢（一个回合几十秒），但必须有上限：不然隧道断了就是无限等。
+    socket.soTimeout = readTimeoutMs
+    val out = socket.getOutputStream()
+    val inp = socket.getInputStream()
+
+    out.write(buildRequestHead(path, hostHeader, headers, body.size).toByteArray(Charsets.ISO_8859_1))
+    if (body.isNotEmpty()) out.write(body)
+    out.flush()
+
+    val statusLine =
+      RelayTunnel.readLine(inp)
+        ?: throw IllegalStateException("隧道上没有回包（中转或桌面把连接关了）")
+    val status =
+      parseStatusLine(statusLine)
+        ?: throw IllegalStateException("回包状态行读不出来：$statusLine")
+
+    val headerLines = ArrayList<String>()
+    while (true) {
+      val line = RelayTunnel.readLine(inp) ?: break
+      if (line.isEmpty()) break
+      headerLines += line
+    }
+    val parsed = parseHeaderLines(headerLines)
+    val bytes = readBody(inp, parsed)
+    return Response(status, String(bytes, Charsets.UTF_8), parsed)
   }
 
   /* ------------------------------------------------------------ 内部 */

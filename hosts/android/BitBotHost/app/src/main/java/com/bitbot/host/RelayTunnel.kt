@@ -131,8 +131,37 @@ object RelayTunnel {
     replyTimeoutMs: Int = 8000,
   ): Tunnel {
     if (config == null || !config.complete) throw OpenFailure.NotConfigured
-    // A3-5 修复前：这一层还没有实现（门禁 RT-04..RT-08 真红）。
-    throw UnsupportedOperationException("A3-5 未实现：中转隧道握手（AUTH/CONNECT/TUNNEL）")
+    val socket = Socket()
+    try {
+      socket.connect(InetSocketAddress(config.host, config.port), connectTimeoutMs)
+      // 控制面是**行协议**，每条应答都必须有上限：不设 soTimeout 时中继一旦不回话，
+      // 界面就永远停在「连接中」—— 那比报错更坏。
+      socket.soTimeout = replyTimeoutMs
+      val out = socket.getOutputStream()
+      val inp = socket.getInputStream()
+
+      sendLine(out, authLine(config.token))
+      // 认不得的应答一律按拒绝处理：把 Unknown 当 OK，等于跳过凭证校验。
+      if (parseAuthReply(readLine(inp)) !is AuthReply.Ok) throw OpenFailure.Denied
+
+      sendLine(out, connectLine(config.boxId))
+      when (val reply = parseConnectReply(readLine(inp))) {
+        is ConnectReply.Tunneled -> {
+          // 进入数据面：控制面的超时到此为止，之后的长短由 HTTP 自己管
+          // （/v1/turn 可能跑几十秒，用 8 秒的连接超时去卡它会把正常回合掐死）。
+          socket.soTimeout = 0
+          return Tunnel(socket, reply.endpoint)
+        }
+        is ConnectReply.NoBox -> throw OpenFailure.BoxNotRegistered
+        else -> throw OpenFailure.BadCommand
+      }
+    } catch (e: OpenFailure) {
+      closeQuietly(socket)
+      throw e
+    } catch (e: Exception) {
+      closeQuietly(socket)
+      throw OpenFailure.Transport(e.message ?: e.javaClass.simpleName)
+    }
   }
 
   /* ------------------------------------------------------------ 内部 */
