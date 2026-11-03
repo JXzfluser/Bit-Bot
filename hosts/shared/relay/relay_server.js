@@ -41,6 +41,8 @@ function createRelayServer(opts) {
   const tlsOpts = (opts && opts.tls) || null;
   const logFile = (opts && opts.logFile) ? String(opts.logFile) : null; // 可选元数据审计日志路径
   const verbose = Boolean(opts && opts.verbose);
+  // 监听地址：默认 127.0.0.1（本地/门禁安全），容器镜像须设 0.0.0.0（否则端口映射打不进容器回环）
+  const bindHost = String((opts && opts.bindHost) || "127.0.0.1");
   const registry = new Map(); // boxId -> { endpoint, host, port, registeredAt }
   let connectionsForwarded = 0;
   let bytesForwarded = 0;
@@ -207,10 +209,10 @@ function createRelayServer(opts) {
           res.end();
         }
       });
-      healthSrv.listen(opts && opts.healthPort ? opts.healthPort : 0, "127.0.0.1", () => {
+      healthSrv.listen(opts && opts.healthPort ? opts.healthPort : 0, bindHost, () => {
         const mk = tlsOpts ? tls : net;
         controlSrv = mk.createServer(tlsOpts || {}, handleControl);
-        controlSrv.listen(opts && opts.controlPort ? opts.controlPort : 0, "127.0.0.1", () => {
+        controlSrv.listen(opts && opts.controlPort ? opts.controlPort : 0, bindHost, () => {
           resolve({
             controlPort: controlSrv.address().port,
             healthPort: healthSrv.address().port,
@@ -287,6 +289,7 @@ if (require.main === module) {
     relaySecret: secret,
     logFile: process.env.BITBOT_RELAY_LOGFILE ? String(process.env.BITBOT_RELAY_LOGFILE) : null,
     verbose: process.env.BITBOT_RELAY_VERBOSE === "1",
+    bindHost: process.env.BITBOT_RELAY_BIND ? String(process.env.BITBOT_RELAY_BIND) : "127.0.0.1",
   });
   srv
     .start()

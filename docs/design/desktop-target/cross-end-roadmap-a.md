@@ -108,7 +108,7 @@ W2 遗留（下一轮要认领，别混进完成判据）：
 | A2-2 | `deviceStore` 热生效（按需重载或 ≤30 s TTL） | ✅ 已实现（实测 TTL 2 s；「配对完立刻下单」零等待）。门：revoke 一台 → 不重启入站服务，≤30 s 内该设备请求被拒，其他设备不受影响（AC-T4-4）—— WD-03/04/07，注入 `INJ-WD_03_04`/`INJ-WD_07` |
 | A2-3 | 端上真签名：把 `signTurn` 的等价实现下沉到 Kotlin/Swift | ✅ **Android 已实现、iOS 未做**；真机未验。集成门：真 HTTP 服务 + 真验签，覆盖 `missing_signature`/`bad_signature`/`stale_timestamp`/`nonce` 重放 —— 服务端侧 WD-09，端上侧跨语言金标 WD-10 + 源码接线 WD-11 + Robolectric 真 socket 的 DT-01..05（`DeviceIdentityTest` 9 条、`DeviceTrustWiringTest` 7 条），注入 `INJ-WD_10`/`INJ-WD_11` |
 | A2-4 | 消掉 `:854` 那颗地雷（登记非空 ⇒ 只发 Bearer 的端立刻 401） | ✅ 已实现（只加字段：`device_error`/`error_description`/`next_step`，既有 `error` 取值一字未改；端上直接显示桌面给的 `next_step`）。迁移期门：登记表非空 + 客户端只会 Bearer 时，给**可读的 401 文案 + 桌面侧提示**，而不是让它静默连不上 —— WD-08/09，注入 `INJ-WD_08`/`INJ-WD_09`；桌面侧提示仍属 A2-5 |
-| A2-5 | 设备花名册 UI：桌面「移动端远程控制」里列出已登记设备（名称/机器类/最近活跃/吊销按钮） | **已交付 · 接矩阵 G-78**，红绿见 `report.md` §8.65。UI 渲染断言（MC-13）走真 Electron e2e，本机无显示 SKIP、CI 实跑；数据层 + 吊销落盘 + last_seen 跟踪已由 `prove_cn_device_roster.js` 证绿（PASS=6 FAIL=0）。「最近活跃」由设备密钥鉴权成功落 `last_seen_at`，与入站服务写同一份 `data/host/devices.json` |
+| A2-5 | 设备花名册 UI：桌面「移动端远程控制」里列出已登记设备（名称/机器类/最近活跃/吊销按钮） | **已交付 · 接矩阵 G-78**，红绿见 `report.md` §8.65。UI 渲染断言（MC-13）**已于 2026-11-03 本机实跑绿**（`e2e_desktop_mobile_control` PASS=15 FAIL=0 SKIP=0，原先判「本机无显示 SKIP」是误判：macOS `hasDisplay` 恒 true）；数据层 + 吊销落盘 + last_seen 跟踪另由 `prove_cn_device_roster.js` 证绿（PASS=6 FAIL=0）。「最近活跃」由设备密钥鉴权成功落 `last_seen_at`，与入站服务写同一份 `data/host/devices.json` |
 | A2-6 | （W2 收口时新增）把 `:854` 地雷的范围说清楚：`/v1/events` 现在与 `/v1/turn` 同构 ⇒ 登记表非空 + 端上只会 Bearer 时，**连"看不见自己下的单"都算上了**。A2-4 的可读 401 文案与桌面侧提示必须两路一起给 | 已有锚点：`prove_cn_events_sse` EV-7 钉「两路一起 401」；文案与提示仍是 W3 的活，`parity-gaps-next.md` GP-206 |
 
 W3 不做：邮箱/密码/第三方登录、多用户组织架构、跨账号共享。二维码按 ADR 0014 仍排除在外。
@@ -119,7 +119,8 @@ W3 不做：邮箱/密码/第三方登录、多用户组织架构、跨账号共
 **全量矩阵复跑 `PASS=525 FAIL=0`、0 条 `· skip`**、G-71 基线与收尾同为 12 项、收尾零 `tick routines` 残留进程。
 按唯一口径，本节状态是 **服务端 + Android 端上已实现、真机未验**（R-A2-1，本机无 KVM），不是「W3 完成」——
 要盖章仍得有人在真手机上走完 §8.64.10 那份清单。A2-5 设备花名册 UI（含吊销按钮）已于 2026-11-03 交付（G-78），
-其 UI 渲染断言（MC-13）需 CI 有显示才实跑，本机无 KVM 仅证了数据层（PASS=6 FAIL=0）。
+其 UI 渲染断言（MC-13）**已于 2026-11-03 本机实跑绿**（`PASS=15 FAIL=0 SKIP=0`；此前「需 CI 有显示」是误判），
+真机级 R-A2-1 仍需真手机（本机无 KVM）。
 
 ### W4 跨网可达（把成功率从 0 抬起来）
 
@@ -132,7 +133,7 @@ ICP 备案 / 增值电信许可 / 长期基础设施与 SLA 全部由用户侧�
 | A3-1 | 中转服务的最小可运行镜像：一个 Dockerfile + 一个入口进程（成员凭证签发、公钥登记、转发、健康检查） | **已交付 · 接矩阵 G-79**，红绿见 `report.md` §8.66。TCP/TLS 透传模型：控制面 `relay-secret` 鉴权（HMAC 成员凭证，box/client 两类角色）+ `REGISTER`/`CONNECT` 线协议 + 盲 TCP 转发（数据面不解析不落内容）+ HTTP `/healthz` 健康检查；`hosts/shared/relay/relay_server.js` + `relay_keys.js` + `Dockerfile.relay`。诚实残留见 §8.66.4（控制面 TLS 未实跑 / 端到端业务 TLS 不在本片 / registry 仅内存 / A3-2 独立实证待下一刀） |
 | A3-2 | 内容不可见的实证：中转侧日志/抓包无明文正文与附件（AC-T4-3），做成门不是写成承诺 | **已交付 · 接矩阵 G-80**，红绿见 `report.md` §8.67。`hosts/shared/relay/relay_server.js` 加元数据审计日志（`logFile`/`verbose` + `log()` 助手，只记 event/role/memberId/boxId/endpoint/bytes，删防御 token/payload/secret）+ `getAuditLog()`；门禁 `prove_cn_relay_invisible.js` 跑完整透传 canary 证明「日志真实存在且查无明文」（反真空通过），`PASS=6 FAIL=0`。诚实残留见 §8.67.4（端到端业务 TLS 仍不在本片 / 日志落地需按 ADR 0014 约束 / registry 仍仅内存） |
 | A3-3 | 客户端直连优先、失败自动回落中转（局域网直连成功率 ≥95% 时界面显示「直连」，AC-T4-5） | **已交付 · 接矩阵 G-81**，红绿见 `report.md` §8.68。`hosts/shared/connection_strategy.js`（`resolveConnection` 直连优先短路→直连全失败且配了中转则回落 relay→全不可达回 mode:none；`defaultProbe`=net.connect+setTimeout；`describeMode` 回「直连/中转 · Nms」三语）+ 门禁 `prove_cn_connection_strategy.js` `PASS=6 FAIL=0`。诚实残留见 §8.68.4：**移动端（Android/iOS）接线与界面渲染未做**（本机无 SDK/gradle、网络 502，iOS 需 Xcode 模拟器）、≥95% 成功率需真机统计、QUIC 打洞不在本片 |
-| A3-4 | 安装包体积：`prove_pack_artifacts.mjs` 现在棘轮 85 MB、目标 70 MB，中转客户端进包前先确认这条不反弹 | **阻塞 · 前置基线已测（2026-11-03）**：本机 `dist/` 实测 `Bit Bot-0.1.0-arm64-mac.zip = 83.6 MB` / `.dmg = 80.2 MB`，均 ≤ 85 MB 棘轮，但 **zip 距棘轮仅 1.4 MB 余量**、距 70 MB 目标差 10.2–13.6 MB。中转客户端**尚未进包**（依赖 A3-3 移动端接线 R-A3-3a），「进包后不反弹」当前测不了，故本片不可作为红→绿代码片收口。PA-06/PA-07（无源码树启动/跑一轮）本机因 Electron sandbox「Operation not permitted」失败，属**环境限制**（同 MC-13 SKIP 类，非本片引入）。闭法：移动端 relay 客户端接线 + 真实打包后重跑 PA-02，确认 ≤85 MB（1.4 MB 余量很紧，进包前须先量源码增量）。 |
+| A3-4 | 安装包体积：`prove_pack_artifacts.mjs` 现在棘轮 85 MB、目标 70 MB，中转客户端进包前先确认这条不反弹 | **阻塞 · 前置基线已测（2026-11-03）**：本机 `dist/` 实测 `Bit Bot-0.1.0-arm64-mac.zip = 83.6 MB` / `.dmg = 80.2 MB`，均 ≤ 85 MB 棘轮，但 **zip 距棘轮仅 1.4 MB 余量**、距 70 MB 目标差 10.2–13.6 MB。中转客户端**尚未进包**（依赖 A3-3 移动端接线 R-A3-3a），「进包后不反弹」当前测不了，故本片不可作为红→绿代码片收口。PA-06/PA-07（无源码树启动/跑一轮）本机因 Electron sandbox「Operation not permitted」失败，属**环境限制**（非本片引入；注意这与 MC-13 不同——MC-13 已于 2026-11-03 本机跑绿，PA-06/07 是 sandbox 起不来的另一类）。闭法：移动端 relay 客户端接线 + 真实打包后重跑 PA-02，确认 ≤85 MB（1.4 MB 余量很紧，进包前须先量源码增量）。 |
 
 **W4 判据现状（2026-11-03，A3-3 收口）**：路线 A 最后一波的目标是把跨网成功率从 0 抬到 ≥90%，
 用户已拍板「仅自托管镜像、不做国内自建」。A3-1（中转镜像）已交付并接矩阵 **G-79**（`prove_cn_relay_image`
@@ -192,7 +193,7 @@ A3-4（安装包体积不反弹）**阻塞**：前置基线已测（zip 83.6 MB 
 | 编号 | 一句话 | 现状 | 可本机验证 | 关闭条件 |
 |---|---|---|---|---|
 | R-A2-1 | 真机未验（W3 端上已实现、无设备级证据） | 仍开 | 否（无 KVM） | 真机清单（§8.64.10） |
-| R-A2-6 | MC-13 花名册 UI 渲染本机 SKIP | 仍开 | 否（CI 有显示才跑） | CI 带显示环境 |
+| R-A2-6 | MC-13 花名册 UI 渲染（此前误判本机 SKIP） | **已关闭（2026-11-03 本机实跑 PASS=15 FAIL=0 SKIP=0）** | 是（macOS `hasDisplay` 恒 true） | — |
 | R-A2-7 | `last_seen_at` 仅 device-key 路径触发，legacy bearer 不触 | 有意收紧 | 是（数据层已证） | 无需关（设计） |
 | R-A2-8 | 无「取消登记 / 取消吊销」反操作 | 仍开 | 是（数据层语义未实现） | 需要时补 |
 | R-A2-9 | 花名册只读登记表，不读在线心跳 | 语义限制 | 是 | 需要在线态再补心跳 |
@@ -206,7 +207,7 @@ A3-4（安装包体积不反弹）**阻塞**：前置基线已测（zip 83.6 MB 
 | R-A3-1c | `relay-secret` 共享准入密钥 | 设计取舍 | 是 | 密钥轮换/分发 |
 | R-A3-1d | registry 仅内存 | 仍开 | 是（重启清空可测） | 持久化 |
 | R-A3-1e | A3-2 独立实证未做 | **已关闭（§8.67 / G-80）** | 是 | — |
-| R-A3-1f | 未过真 Docker / 真公网 | 仍开 | 否 | CI build / 真公网 |
+| R-A3-1f | 真 Docker build + 起容器 + 宿主可达 | **已关闭（2026-11-03，`prove_relay_docker.sh` PASS；顺带修真 bug：bind 127.0.0.1→0.0.0.0）** | 是（OrbStack docker） | 真公网仍待（R-A3-1a/b） |
 | R-A3-2a | 「看不见」靠真实日志存在 + 查无明文（反真空通过） | 已实现（G-80） | 是 | — |
 | R-A3-2b | 端到端业务 TLS 不在本片（=1b） | 仍开 | 否 | 同 1b |
 | R-A3-2c | 日志落地明文 JSON（仅元数据），按 ADR 0014 约束 | 设计约束 | 是 | 部署侧权限/留存 |
@@ -220,8 +221,9 @@ A3-4（安装包体积不反弹）**阻塞**：前置基线已测（zip 83.6 MB 
 | R-A3-3e | 端上各实现一套时需金标对齐 | 仍开 | 部分 | 端上金标测试 |
 
 **回填结论**：W2 七条、W3 五条、W4 十七条共 29 条残留里，**可本机验证的**（R-A1-3、R-A2-7/8/9、
-R-A3-1c/d、R-A3-2a/c/d/e、R-A3-3d）已在各门禁或数据层里钉住语义；其余全部卡在**真机 / CI 显示 /
-移动端 SDK / 真公网 / cert / T2 契约**上，本机不可跑，**不伪造绿**。R-A3-1e 已随 A3-2 关闭。
-要推进「路线 A 整体交付」，必须先打通以下至少一条真机/CI 通道（否则 ≥90% 跨网、吊销 ≤30s、
-端上看得见三条判据都只能停在「已实现、未验收」）：① 一台 Android 真机 + 真网络样本（R-A2-1/R-A3-3a/b）；
-② CI 带显示环境跑 MC-13（R-A2-6）；③ 真 Docker build 过 relay（R-A3-1f）。
+R-A3-1c/d、R-A3-2a/c/d/e、R-A3-3d）已在各门禁或数据层里钉住语义。**2026-11-03 本机补证又关两条**：
+R-A2-6（MC-13 本机实跑 `PASS=15 FAIL=0 SKIP=0`，此前判 SKIP 是误判——`hasDisplay` 在 macOS 恒 true）、
+R-A3-1f（真 Docker build + 起容器 + 宿主可达，`prove_relay_docker.sh` PASS，顺带修 bind 127.0.0.1→0.0.0.0
+的生产级 bug）。加上 R-A3-1e（随 A3-2 关闭），**共关闭 4 条**。真正卡住的只剩**真机 / 真公网 / cert /
+移动端 SDK / T2 契约**：要推进「路线 A 整体交付」，仍需 ① 一台 Android 真机 + 真网络样本
+（R-A2-1/R-A3-3a/b），或 ② 真公网 + TLS 控制面（R-A3-1a/b）。

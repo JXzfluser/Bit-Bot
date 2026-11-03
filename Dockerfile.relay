@@ -15,7 +15,9 @@ EXPOSE 18766 18767
 
 ENV BITBOT_RELAY_CONTROL_PORT=18766
 ENV BITBOT_RELAY_HEALTH_PORT=18767
-# 必填：中继成员准入密钥。镜像本身不带任何默认值，留空则启动即退出（见 relay_server.js 自启分支）
-ENV BITBOT_RELAY_SECRET=""
+# 容器内必须绑 0.0.0.0，否则只监听容器回环、宿主 `-p` 端口映射打不进来（A3-4 真 Docker 实测踩到）。
+ENV BITBOT_RELAY_BIND=0.0.0.0
+# 必填：中继成员准入密钥。镜像不带默认值，运行须 -e BITBOT_RELAY_SECRET=<密钥>；留空则启动即退出。
+# （不写成 ENV，避免把 secret 固化进镜像层；见 relay_server.js 自启分支）
 
 CMD ["node", "relay/relay_server.js"]

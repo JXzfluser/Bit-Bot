@@ -5238,9 +5238,12 @@ prove_cn_device_roster: PASS=6 FAIL=0
   三者合起来才等于「用户真机上走通」，任何一条单独拿出来说都不算。真机验收清单
   （配对一次→桌面「设备」里看得见这台手机→发消息带签名→锁屏重连不重复帧→桌面上点吊销
   后手机立刻 401 且文案是 `next_step` 那句）仍未逐条打勾。
-- **R-A2-6｜MC-13 本机 SKIP**：UI 渲染断言（行数=接口数、吊销键禁用、已吊销徽标）依赖真
-  Electron + 显示。本机 `hasDisplay()` 为假，走 SKIP，不伪造 PASS。CI 矩阵需带显示环境才能
-  把这一条从 SKIP 转绿。
+- **R-A2-6｜MC-13 本机 SKIP（→ 已关闭，2026-11-03 本机实跑）**：此前判「本机 `hasDisplay()` 为假」是**错的**
+  ——`scripts/electron_env.mjs:182 hasDisplay()` 在非 Linux（macOS / Windows）**恒返回 true**（注释明说
+  「macOS 无 DISPLAY 是正常的，初版写成没 DISPLAY 就跳过是假跳过」）。本机以
+  `ELECTRON_DISABLE_SANDBOX=1 node scripts/e2e_desktop_mobile_control.mjs` 真跑：
+  **`e2e_desktop_mobile_control: PASS=15 FAIL=0 SKIP=0`**，MC-13 绿（花名册 2 台、每行含名称/机器类/
+  吊销键；吊销首台后接口与 UI 同步：徽标 + 禁用）。此条关闭；CI 仍可跑，但不再是「本机只能 SKIP」。
 - **R-A2-7｜`last_seen_at` 仅设备密钥路径触发**：`touchDevice` 只在
   `verifyDeviceTurn` 的 `via === "device_key"` 成功分支调用，legacy bearer 路径无 `device_id`
   不触。即「最近活跃」只反映设备凭证登录，不反映老令牌登录——这是有意收紧，不是疏漏。
@@ -5520,3 +5523,72 @@ prove_cn_connection_strategy: PASS=6 FAIL=0
   连通但配对失败（凭证/吊销/版本不符）不在本门范围，由既有 A2 设备信任链与入站服务负责。
 - **R-A3-3e｜端上各自实现时需对齐单一事实源**：本模块是这段语义的参照实现；若 Android/iOS 各写一套，
   必须在端上补金标测试对齐（否则「桌面门禁绿、端上行为漂移」）。
+
+## 8.69 本机实证补刀：MC-13 真跑 + 真 Docker 起镜像（W4 收口后）
+
+用户点破一件事：**「2 3 不是在本机部署好？」**——此前把 MC-13 与 relay 镜像当成「本机不可验证、
+需 CI/外部环境」是**过度保守**。实测两条都能在本机真跑，且 ③ 还跑出一个生产级 bug。
+
+### 8.69.1 ② MC-13 本机真跑（此前「SKIP」是误判）
+
+`scripts/electron_env.mjs:182 hasDisplay()` 在**非 Linux 恒返回 true**（macOS/Windows 自带窗口系统，
+无 `DISPLAY` 是正常的）。此前把「本机无 DISPLAY/xvfb」当成 SKIP 依据是错的。本机实跑：
+
+```
+$ ELECTRON_DISABLE_SANDBOX=1 node scripts/e2e_desktop_mobile_control.mjs
+  ✓ MC-13 花名册列出 2 台、每行含名称/机器类/吊销键；吊销首台后接口与 UI 同步（徽标+禁用）
+  ...
+e2e_desktop_mobile_control: PASS=15 FAIL=0 SKIP=0
+```
+
+结论：**R-A2-6 关闭**（`§8.65.4` 已标记）；MC-13 不是「本机只能 SKIP」，本机就能跑绿。
+（真机级 R-A2-1 仍需真手机，但「UI 渲染断言」这层本机已能盖章。）
+
+### 8.69.2 ③ 真 Docker：build 成功、起容器、宿主可达 —— 并修掉 bindHost
+
+`node:22-alpine` 拉取后 `docker build -f Dockerfile.relay` 秒过（镜像 `bitbot-relay:smoke`）。
+但**真跑起来才暴露 bug**：容器内进程活着、`docker logs` 有 `[relay] up — control=18766 health=18767`、
+容器内 `wget 127.0.0.1:18767/healthz` 回 `{"ok":true,"boxes":0}`，可**宿主机 curl 映射端口连不上**：
+
+```
+# 修复前红（真实输出）
+$ docker run -d -p 18767:18767 -p 18766:18766 -e BITBOT_RELAY_SECRET=... bitbot-relay:smoke
+$ curl -s -m 3 http://127.0.0.1:18767/healthz
+FAIL: 宿主连不上（符合预期：容器内绑 127.0.0.1）
+$ docker exec relay-smoke wget -qO- http://127.0.0.1:18767/healthz
+{"ok":true,"boxes":0}          # 内部通，证明进程没错，错在绑定地址
+```
+
+**根因**：`relay_server.js` 把 `healthSrv.listen(port, "127.0.0.1", …)` / `controlSrv.listen(port,
+"127.0.0.1", …)` 写死回环。容器里绑 `127.0.0.1` 只监听容器回环，宿主 `-p` 端口映射转发到容器网卡
+地址、打不进回环 ⇒ **镜像起来了却不可用**（这正是「真 Docker」比「源码存在」多抓到的东西）。
+
+**修复**：
+1. `relay_server.js` 新增 `bindHost` 选项（默认 `127.0.0.1`，保本地/门禁安全），两处 `listen` 用它；
+   入口按 `BITBOT_RELAY_BIND` 透传。
+2. `Dockerfile.relay` 增 `ENV BITBOT_RELAY_BIND=0.0.0.0`（镜像必须对外可连）；顺带**移除**
+   `ENV BITBOT_RELAY_SECRET=""`（不把 secret 固化进镜像层，运行时 `-e` 传入）。
+
+修复后绿（真实输出，`scripts/prove_relay_docker.sh`，可复现）：
+
+```
+== RD-1 构建镜像 ==           ✓ docker build 成功（bitbot-relay:prove）
+== RD-2 起容器 ==             ✓ 容器已启动
+== RD-3 健康检查（宿主可达）== ✓ 宿主 curl 映射端口可达：{"ok":true,"boxes":0}（容器内绑 0.0.0.0）
+== RD-4 控制面（宿主 AUTH）== ✓ 控制面 AUTH 从宿主返回 OK
+prove_relay_docker: PASS
+```
+
+结论：**R-A3-1f 关闭**（真 Docker build + 真容器起 + 宿主可达健康检查与控制面）。A3-1/A3-2 门禁
+无回归（`PASS=6 FAIL=0` 各一）。
+
+### 8.69.3 这一刀新增的诚实说明
+
+- **bindHost 默认仍是 `127.0.0.1`**：门禁/本地跑默认回环（安全）；只有镜像显式设 `0.0.0.0`。
+  即「本机安全默认 + 镜像对外」两分，不是把默认开到公网。
+- **两个端口都要 `-p` 映射**：健康检查 18767、控制面 18766；脚本已同时映射并各自取值
+  （只映射一个会出现「健康通、控制面 AUTH 超时」——本脚本调试时踩过）。
+- **镜像未带 secret**：`docker run` 必须 `-e BITBOT_RELAY_SECRET=<密钥>`，留空则进程启动即退出
+  （`relay_server.js` 自启分支）。这是有意为之，不是缺陷。
+- 仍**未**过真公网 / TLS 控制面：R-A3-1a（控制面 TLS 未实跑）与 R-A3-1b（端到端业务 TLS 不在本片）
+  继续挂着，本刀只关「真 Docker 能起来且宿主可达」这一层。
