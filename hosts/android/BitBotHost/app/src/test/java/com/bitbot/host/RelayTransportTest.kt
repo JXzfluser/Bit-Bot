@@ -374,15 +374,17 @@ class RelayTransportTest {
     }
   }
 
-  /** 逐字节读一行（与控制面同一口径：只读必需的那几个字节，不预读数据面）。 */
-  private fun readLineFrom(input: InputStream): String? {
-    val sb = StringBuilder()
-    while (true) {
-      val b = input.read()
-      if (b < 0) return if (sb.isEmpty()) null else sb.toString()
-      if (b == '\n'.code) return sb.toString()
-      if (b != '\r'.code) sb.append(b.toChar())
-      if (sb.length > 8192) return sb.toString()
-    }
+}
+
+/** 逐字节读一行（与控制面同一口径：只读必需的那几个字节，不预读数据面）。
+ *  放文件级而不是类成员 —— 假件是嵌套类，拿不到外层实例成员。 */
+private fun readLineFrom(input: InputStream): String? {
+  val sb = StringBuilder()
+  while (true) {
+    val b = input.read()
+    if (b < 0) return if (sb.isEmpty()) null else sb.toString()
+    if (b == '\n'.code) return sb.toString()
+    if (b != '\r'.code) sb.append(b.toChar())
+    if (sb.length > 8192) return sb.toString()
   }
 }
