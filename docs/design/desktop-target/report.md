@@ -5822,3 +5822,39 @@ HARNESS: PASS=0 FAIL=1
 - **这一刀证的是「参数通路」，不是「跨网通了」**：G-82 绿只说明「桌面会下发 / 手机认得 / 界面显示真实路径」；
   端到端的跨网链路还差 R-A3-6d（桌面配进来）、R-A3-6e（桌面登记上中转）、R-A3-5b（SSE 走隧道）三条。
   写在这里，是为了不让下一个人（或我自己）把「G-82 绿了」读成「跨网可以了」。
+
+### 8.71.5 A3-5 的附带损伤：两条旧尺子和产品脱钩了（AND-06 / INJ-WD_11）
+
+CI `0ef7a72` 的 parity 矩阵不是全绿：`smoke_grok_desktop_parity: PASS=512 FAIL=20`。逐条看下来，
+其中两条是我自己在 A3-5 里**把产品改对、却把旧尺子弄瞎**造成的（属于本系列必须留痕的那一类）：
+
+| 门 | 失败原文 | 真因 | 修法 |
+|---|---|---|---|
+| `G-47` → `e2e_android_turn` | `✗ AND-06 APK↔Host 线路契约 — sent=text,machine_kind,session_id bearer=false serverAccepts=true` | A3-5 把回合的头从「逐条 `setRequestProperty("Authorization", "Bearer …")`」改成「先攒一份 list 再一起发」（直连与中转必须发完全相同的头）。AND-06 只认旧写法 ⇒ **产品明明还在发 bearer，门报 `bearer=false`** | 正则改成 `["']Authorization["']\s*(?:,|\bto\b)\s*["']Bearer`，两种写法都认；负向对照：把 `turnToken()?.let { add("Authorization" to "Bearer $it") }` 那一行摘掉后必须回到 `false`（实测 `current: true / removed-line: false / old-form: true / other-form: true`） |
+| `G-78` → `prove_w3_device_trust` | `✗ INJ-WD_11 注入补丁失效（产品那一句已不在，门与产品脱钩了） — 找 1 处、实到 0 处：DeviceIdentity.applyHeaders({ k, v -> setR…` | 同一处改动：注入补丁的锚点是旧的 `{ k, v -> setRequestProperty(k, v) }`，产品已变成 `{ k, v -> add(k to v) }` | 锚点改到现役那一行（含缩进），并把「锚点为什么会动」写进门的注释里 —— 下次再改这一处，红会指着原因 |
+
+这两条**不是产品坏了**，是「门与产品脱钩」，而门自己把它抓出来了（INJ 的设计目的就是这个）。
+本机复跑：
+
+```
+prove_w3_device_trust: PASS=36 FAIL=1     ← 修前（INJ-WD_11 红，与 CI 一字不差）
+prove_w3_device_trust: PASS=37 FAIL=0     ← 修后（INJ-WD_11 注入仍能把 WD-11a 打回红）
+
+e2e_android_turn: PASS=10 FAIL=1 SKIP=0   ← 修前（AND-06 bearer=false）
+e2e_android_turn: PASS=11 FAIL=0 SKIP=0   ← 修后
+```
+
+### 8.71.6 同一跑里那 18 条 Electron 红：现有证据不足以下结论，已加诊断
+
+同一次 CI 里 `G-16 / G-24 ×4 / G-25 ×4 / G-26 ×4 / G-27 ×3 / G-28 ×2` 共 18 条红，全是
+`e2e_grok_desktop_boot.mjs`（真实 Electron + Playwright）产出的断言「missing」。
+
+- **本机（同一个 Electron 37.10.3，同一份代码）**：`e2e_grok_desktop_boot: PASS=130 FAIL=0`（61s），
+  且 G-24 要的三行原文都在（`E2E GP-116：侧边栏顺序 …` / `E2E GP-118：#sidebar-footer 是侧栏最后一个块 …` /
+  `E2E GP-118：长列表 …`）。所以**不是产品断言写错、也不是我改的四个文件**。
+- **CI 上为什么失败，我没有证据**：`bad` 之后本该跟着 `tail -8 /tmp/e2e-g16.log`，但矩阵日志里
+  **一行 tail 都没出现**，而紧随其后的 `grep` 又能命中同一份日志 —— 这两件事同时成立无法用「脚本抛错」解释，
+  更可能是「那一刻日志还没落地 / 被截断」。不猜，改成可诊断：
+  失败时打印 `bytes=$(wc -c)` + `tail -20`，G-24 块开头打印 `bytes / 通过数 / 失败数 / 末行`。
+- **诚实结论**：这 18 条**不能**写成「环境问题就算了」，也不能写成「产品坏了」。下一跑拿 `bytes` 与末行定位；
+  在那之前，任何「矩阵全绿」的说法都不成立（`smoke_grok_desktop_parity: PASS=512 FAIL=20` 是这一跑的事实）。

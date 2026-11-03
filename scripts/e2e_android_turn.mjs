@@ -359,7 +359,11 @@ server
       const sentKeys = ["text", "machine_kind", "session_id"].filter((key) =>
         new RegExp('put\\("' + key + '"').test(kt),
       );
-      const bearerSent = /Authorization"\s*,\s*"Bearer /.test(kt) || /setRequestProperty\("Authorization", "Bearer/.test(kt);
+      // 两种写法都认：`setRequestProperty("Authorization", "Bearer …")`（A3-5 之前）与
+      // `add("Authorization" to "Bearer …")`（A3-5 起头先攒成一份再发，直连/中转同一份头）。
+      // 只认前者的话，产品明明还在发 bearer，门却报 bearer=false —— 那是尺子与产品脱钩，
+      // 0ef7a72 的 G-47 就是这么红的（原文留在 report §8.71）。
+      const bearerSent = /["']Authorization["']\s*(?:,|\bto\b)\s*["']Bearer/.test(kt);
       const serverAccepts =
         /payload\.machine_kind|\(payload\.machine_kind\b/.test(js) &&
         /payload\.session_id|payload\.sessionId/.test(js) &&

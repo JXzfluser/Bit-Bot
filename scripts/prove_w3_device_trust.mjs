@@ -997,9 +997,14 @@ try {
         [['    Buffer.from(String(deviceId) + "\\n" + String(ts) + "\\n" + String(nonce) + "\\n", "utf8"),',
           '    Buffer.from(String(deviceId) + "\\n" + String(ts) + "\\n", "utf8"),', 1]],
         ["WD-10c"], "hosts/shared/device_keys.js"],
+      // 锚点随产品演进而动过（记在这里，因为「补丁对不上」那次是真红）：
+      // A3-5 把回合的头从「逐条 setRequestProperty」改成「先攒一份 list 再一起发」——
+      // 直连与中转必须发完全相同的头，所以这里从 `{ k, v -> setRequestProperty(k, v) }`
+      // 变成 `{ k, v -> add(k to v) }`。旧锚点因此「实到 0 处」→ INJ-WD_11 变红，
+      // 红的是「门与产品脱钩」，不是产品坏了（CI 0ef7a72 与 §8.71 留了原文）。
       ["INJ-WD_11", "回合照旧签，但签名头不再挂上连接（真机上就是一条 401）",
-        [["      DeviceIdentity.applyHeaders({ k, v -> setRequestProperty(k, v) }, deviceHeaders)",
-          "      // (injected) 忘了挂头：只留 bearer", 1]],
+        [["        DeviceIdentity.applyHeaders({ k, v -> add(k to v) }, deviceHeaders)",
+          "        // (injected) 忘了挂头：只留 bearer", 1]],
         ["WD-11a"], "hosts/android/BitBotHost/app/src/main/java/com/bitbot/host/TurnBridge.kt"],
     ];
     for (const [name, desc, edits, expect, targetRel] of INJ) {

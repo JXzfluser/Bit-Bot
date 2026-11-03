@@ -804,8 +804,11 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if timeout 1500 ${e2e_xvfb[@]+"${e2e_xvfb[@]}"} node scripts/e2e_grok_desktop_boot.mjs >"$e2e_log" 2>&1; then
     ok "G-16 E2E 冷启动+像素断言全绿（$(grep -c '✓' "$e2e_log") 项，$(tail -1 "$e2e_log"))"
   else
-    bad "G-16 E2E 冷启动+像素断言（见 ${e2e_log}）"
-    tail -8 "$e2e_log"
+    # 上一次（CI 0ef7a72）这里只打了 bad，tail 一行都没出来 —— 无法判断是「脚本抛错」
+    # 还是「日志根本没写成」。所以失败时把**体积 + 末尾 20 行**一起打出来：
+    # 空文件会被一眼看到（bytes=0），而不是被当成「没有 traceback 就没有问题」。
+    bad "G-16 E2E 冷启动+像素断言（见 ${e2e_log}；bytes=$(wc -c < "$e2e_log" 2>/dev/null | tr -d ' ')）"
+    tail -20 "$e2e_log" 2>/dev/null || true
   fi
   grep -q "E2E 像素断言 dark" "$e2e_log" && grep -q "E2E 像素断言 light" "$e2e_log" && ok "G-16 GP-70：dark/light 两态 viewport 亮度断言真实执行（非 CSS 字符串检查）" || bad "G-16 GP-70 pixel assertions missing"
   grep -q "重启后 force-dark" "$e2e_log" && ok "G-16 GP-70：重启保持由真实二次 boot 验证" || bad "G-16 restart assertion missing"
@@ -1145,6 +1148,9 @@ grep -q "新增侧边栏文案在 zh-CN / zh-TW / en 三套 i18n 里齐全" /tmp
   && ok "G-24 i18n：新增入口文案三语齐全（不会露出原始 key）" \
   || bad "G-24 i18n keys missing"
 if [ -f /tmp/e2e-g16.log ]; then
+  # 这条 e2e 的日志是本块唯一证据源：先报「多大、多少 ✓、多少 ✗」，
+  # 免得「断言 missing」被读成「产品坏了」——它也可能是「e2e 根本没跑完」。
+  echo "  · G-24 e2e 日志：bytes=$(wc -c < /tmp/e2e-g16.log | tr -d ' ') 通过=$(grep -c '✓' /tmp/e2e-g16.log) 失败=$(grep -c '✗' /tmp/e2e-g16.log) 末行=$(tail -1 /tmp/e2e-g16.log | cut -c1-90)"
   grep -q "E2E GP-116：侧边栏顺序" /tmp/e2e-g16.log \
     && grep -q "E2E GP-118：#sidebar-footer 是侧栏最后一个块" /tmp/e2e-g16.log \
     && grep -q "E2E GP-118：长列表" /tmp/e2e-g16.log \
