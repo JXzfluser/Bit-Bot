@@ -1310,8 +1310,11 @@ if (badge.status !== 0 || !badgeOut) {
     if (rtFailures > 0) got.push("RT 用例有 " + rtFailures + " 条失败（中转这条路没真通）");
     const missing = wantRt.filter((re) => !src.names.some((n) => re.test(n)));
     if (missing.length) got.push("RT 用例不在结果里：" + missing.map(String).join(", "));
-    if (!src.relaySrc.includes("CONNECT ")) got.push("RelayTunnel 不再发 CONNECT（永远拿不到隧道）");
-    if (!src.relaySrc.includes("TUNNEL ")) got.push("RelayTunnel 不再认 TUNNEL 应答（握手必然判错）");
+    // 锚点必须卡在**代码字面量**上：`includes("CONNECT ")` 会被 KDoc 里
+    // 「→ CONNECT <boxId>」那行注释撑绿，负向对照就抓不到「代码里不发 CONNECT」——
+    // 这把尺子第一版正是栽在这里（CI 41653386901 的 AB-18 负向对照真红过）。
+    if (!src.relaySrc.includes('"CONNECT " +')) got.push("RelayTunnel 不再发 CONNECT（永远拿不到隧道）");
+    if (!src.relaySrc.includes('startsWith("TUNNEL ")')) got.push("RelayTunnel 不再认 TUNNEL 应答（握手必然判错）");
     if (!src.httpSrc.includes("transfer-encoding"))
       got.push("TunnelHttp 不再看 Transfer-Encoding（chunked 回包会读成空）");
     if (!src.httpSrc.includes("content-length"))
@@ -1328,8 +1331,8 @@ if (badge.status !== 0 || !badgeOut) {
 
   // 负向对照：每一处锚点单独拿掉，尺子必须抓到。
   const muts = [
-    ["1 不发 CONNECT", (s) => ({ ...s, relaySrc: s.relaySrc.replace('"CONNECT "', '"CONNECTX "') })],
-    ["2 不认 TUNNEL", (s) => ({ ...s, relaySrc: s.relaySrc.replace('"TUNNEL "', '"TUNNELX "') })],
+    ["1 不发 CONNECT", (s) => ({ ...s, relaySrc: s.relaySrc.replace('"CONNECT " +', '"CONNECTX " +') })],
+    ["2 不认 TUNNEL", (s) => ({ ...s, relaySrc: s.relaySrc.replace('startsWith("TUNNEL ")', 'startsWith("TUNNELX ")') })],
     ["3 不读 chunked", (s) => ({ ...s, httpSrc: s.httpSrc.replace(/transfer-encoding/g, "x-te") })],
     ["4 不回落中转", (s) => ({ ...s, turnSrc: s.turnSrc.replace("RelayTunnel.open(", "// (injected) 不回落") })],
     ["5 用例不在结果里", (s) => ({ ...s, names: s.names.filter((n) => !/^RT-04/.test(n)) })],
