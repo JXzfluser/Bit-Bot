@@ -327,6 +327,13 @@ function createRelayBoxClient(opts) {
       } else if (line.startsWith("ACCEPT ")) {
         const streamId = line.slice(7).trim();
         if (streamId && handshook) serveStream(streamId);
+      } else if (line.startsWith("PING ")) {
+        // A3-9：应用层保活。NAT 映射过期时 TCP 不报错，relay 只能靠这行 PONG
+        // 判断盒子还活着；不回就会被清出 registry，手机侧会一直 NOBOX。
+        const nonce = line.slice(5).trim();
+        if (nonce) {
+          try { sock.write("PONG " + nonce + "\n"); } catch (_) {}
+        }
       } else {
         dead(REASON_BADCMD);
       }

@@ -6479,3 +6479,135 @@ R-A3-6h（无设置面 / 配置不热登记 / 凭证明文）、R-A3-5b（SSE �
 R-A3-6a（手机无手动填入口）、R-A3-6c（真机零样本）全部仍开。
 本片**没有改动任何 Android 代码**，A3-6 交付的 APK 仍是当前端上版本，不需要重打。
 下一刀的优先级见路线图「A3-8 之后补一句」。
+
+---
+
+## 8.74 A3-9 反向隧道的活体检测与自愈（部分关 R-A3-8a）
+
+### 8.74.1 这一片补的是「真网络里会死的两个洞」
+
+A3-8 把转发模型改对了，但 §8.73.6 / `R-A3-8a` 里留了两条只在真实网络才咬人的东西：
+
+1. **半开连接**：NAT 映射过期后 TCP 两端都以为还连着，relay 的 registry 里留着一台叫不醒的
+   盒子 —— ACCEPT 发不出去，手机每次都要等 2.5s 拿 `NOBOX`，而且永远这样。TCP 不会报错，
+   `sock.on("close")` 也不会触发，所以 A3-8 的「控制通道断即清表」在这场景下**完全不触发**。
+   闭法：BIND 长连接加应用层 `PING <nonce>` / `PONG <nonce>`，连续 `pingMissLimit` 次
+   没回就清 registry、断链、记审计；默认 5s / 2 次（约 10s 内发现）。
+2. **等 ATTACH 的窗口里 relay 会暂存业务字节**：`c.pending` 分支把手机提前发来的字节攒进
+   用户态 buf，没有上限 —— 大附件能撑爆内存。闭法：`clientSock.pause()` 让 TCP 接收缓冲
+   替 relay 持有，relay 用户态零持有；ATTACH 到了由 `pipe()` 自然 resume。
+
+顺带把 `R-A3-8a` 里那句「reverse 断线重连只写了逻辑、没做断网注入实测」补上：
+门里 `relay.stop()` + 复用同一 `controlPort` 起新 relay（真实世界 relay 重启端口不变，
+这是 A3-7 RB-08 踩过的坑），证盒子自己回来、registry 回来、手机再 `200 OK`。
+
+**这一片没动 Android、没动配置形状、没动 `toHandoff` 四栏**，APK 仍不用重打。
+
+### 8.74.2 交付了什么
+
+| 文件 | 改动 | 为什么 |
+| --- | --- | --- |
+| `hosts/shared/relay/relay_server.js`（改） | `startLiveness()`：BIND 成功后周期发 `PING`、校验 `PONG` nonce、超限清表断链；`PONG` 命令分支；close / stop 清定时器；`livenessEvictions` / `pendingBufferBytes` / `pendingSocketsPaused` 三诊断；`acceptReverse()` 改 `clientSock.pause()` | nonce 必须对得上，否则噪声/重放不算活；`PONG` 绝不回 `BADCMD`（那会误杀长连接）。三个诊断是为让「清掉了」「零持有」「真的 pause 了」各自可观测 |
+| `hosts/shared/relay/relay_box_client.js`（改） | 控制长连接的常驻行泵多认 `PING `，立刻回 `PONG <nonce>` | 不回就会被 relay 清出 registry，手机侧一直 `NOBOX` |
+| `scripts/prove_relay_reverse_resilience.js`（新） | RR-01..RR-09：真 relay + 真 cn_inbound + 真 socket + relay 重启注入 + 32KB canary | 三处反真空正控：RR-01（reverse 本来通）、RR-02b/c（真盒子没被误踢）、RR-05c（canary 确实写进去了） |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-85**（5 条 `ok`，按命门分组） | 与 G-83/G-84 同口径 |
+| `docs/design/desktop-target/*`（改） | 本节 + 路线图 A3-9 行、`R-A3-8a` 改「部分关闭」 | 真公网 + 真 NAT 仍零样本，不能整条关掉 |
+
+### 8.74.3 修复前红原文（**最终门**，产品回退到 A3-8 状态）
+
+把两个产品文件临时换成 `git HEAD`（A3-8 收口态），用含 RR-02c / RR-05 paused 断言的
+**最终门**跑一次，跑完逐字写回并校验工作树：
+
+```
+  ✓ RR-01 正控：BIND 后真 HTTP 端到端 200 OK（127.0.0.1:51012）
+  ✗ RR-02 半开盒子没被清掉（真 NAT 下 registry 会一直留着叫不醒的盒子） — ["box-reverse-live","box-halfopen"]
+  ✓ RR-03 relay 重启 → 自动重连（attempts 1 → 2）→ 手机再 200 OK
+  ✓ RR-04 box.stop() 之后 500ms 内没有重连，registry 保持为空
+  ✗ RR-05 没有 pendingBufferBytes 诊断（无法证「用户态零持有」）
+  ✓ RR-06 没人接 ACCEPT → 明确 NOBOX（pause 没把数据面卡死）
+  ✓ RR-07 旧 dial 路径一字未动，仍 200 OK
+  ✗ RR-08 审计里没有保活元数据（半开被清这件事不可观测）
+  ✓ RR-09 手机四栏仍是 host/port/box_id/client_token（保活参数不外发、不含 box_token）
+prove_relay_reverse_resilience: PASS=6 FAIL=3
+```
+
+六条绿说明门本身跑得起来、且 A3-8 已有的重连/dial/四栏能力没被这一片改坏；
+三条红精确对应「没有保活、没有 pending 零驻留、没有可观测审计」。
+
+**门禁自己也修过一次**：第一版 raw 连接写完 `AUTH+CONNECT` 没消费 AUTH 的 `OK` 行，
+RR-06 报 `✗ … 没拿到明确 NOBOX — OK` —— 那是门读错了行，不是产品红。
+改成写完先读掉 `OK` 再灌字节，才拿到上面这份干净红。
+
+### 8.74.4 十组负向对照（逐个实跑、逐组复原校验，0 真空）
+
+| # | 摘掉的锚点 | 结果 | 抓到的红（摘录） |
+| --- | --- | --- | --- |
+| M01 | BIND 后不启动保活 | 7/2 | `RR-02 半开盒子没被清掉`、`RR-08 审计里没有保活元数据` |
+| M02 | 保活阈值调到永不触发 | 7/2 | 同上 |
+| M03 | box 端不回 `PONG` | 8/1 | `RR-02c 保活误踢了不止一台 — 0 → 2` |
+| M04 | 摘 `clientSock.pause()` | 8/1 | `RR-05 pending 的手机 socket 没被 pause` |
+| M06 | 摘 `pendingSocketsPaused` 诊断 | 8/1 | `RR-05 pending 的手机 socket 没被 pause` |
+| M07 | 摘 `livenessEvictions++` | 8/1 | `RR-02c 保活误踢了不止一台 — 0 → 0` |
+| M08 | 不记 `liveness-timeout` 审计 | 8/1 | `RR-08 审计里没有保活元数据` |
+| M09 | 审计夹带 canary 明文 | 8/1 | `RR-08 审计里出现了 canary / 凭证` |
+| M10 | 摘 `pendingBufferBytes` 诊断 | 8/1 | `RR-05 没有 pendingBufferBytes 诊断` |
+| M11 | 摘断线重连 | 8/1 | `RR-03 relay 重启后盒子没自己回来 — {}` |
+
+**第一版 11 组里有 4 组真空，每一组都逼着门或产品改了一处**，这比一次全绿值钱：
+
+- **M03 原真空**：门只看「900ms 后真盒子还在表里」。真盒子被误踢后 `reconnectMs=120ms`
+  就自动重连回来，把误踢掩盖得干干净净。改成数 `livenessEvictions` 差值**必须恰好 1**。
+- **M04 原真空**：门只看 `pendingBufferBytes === 0`。但「0」既可能是「内核缓冲替我持有」
+  （对），也可能是「字节被 flowing socket 读走**丢了**」（更糟）。这是 A3-7 RB-12 同型的盲断言。
+  补 `pendingSocketsPaused` 诊断（查 socket 真实的 `isPaused()`），两栏一起看才分得开。
+- **M06 原真空（当时是「摘 `a.resume()`」）**：摘掉后门仍全绿，实测证明 `pipe()` 自己会
+  resume 被 pause 的 source —— 那行是冗余的装饰性锚点，**直接从产品里删掉**，
+  不留一个门抓不到的代码。
+- **M05（pending 分支改回累积）**：`clientSock.pause()` 生效后该分支在正常路径上
+  **不可达**，摘掉它门当然绿。这不是「产品没问题」，是「门覆盖不到这条兜底路径」。
+  已把它从「已验证锚点」里移出，**不拿它凑数**，单列为已知盲区（§8.74.6）。
+
+### 8.74.5 修复后绿原文与既有门复跑
+
+```
+  ✓ RR-01 正控：BIND 后真 HTTP 端到端 200 OK
+  ✓ RR-02 半开检测：只清掉不回 PONG 的那一台（livenessEvictions 0 → 1），真盒子没被误踢
+  ✓ RR-03 relay 重启 → 自动重连（attempts 1 → 2）→ 手机再 200 OK
+  ✓ RR-04 box.stop() 之后 500ms 内没有重连，registry 保持为空
+  ✓ RR-05 pending 窗口零驻留：灌入 32786 字节 canary，pendingBufferBytes=0、缓存空、审计查无明文
+  ✓ RR-06 没人接 ACCEPT → 明确 NOBOX（pause 没把数据面卡死）
+  ✓ RR-07 旧 dial 路径一字未动，仍 200 OK
+  ✓ RR-08 审计有保活元数据且查无凭证与 canary（日志非空，反真空成立）
+  ✓ RR-09 手机四栏仍是 host/port/box_id/client_token
+prove_relay_reverse_resilience: PASS=9 FAIL=0
+```
+
+`pause()` 动的是数据面入口，最怕连坐，四个既有 relay 门逐条复跑：
+
+```
+prove_relay_reverse_tunnel:   PASS=15 FAIL=0   （A3-8 全部 RV）
+prove_relay_box_registration: PASS=12 FAIL=0   （A3-7 全部 RB）
+prove_cn_relay_image:         PASS=6  FAIL=0   （A3-1 EV）
+prove_cn_relay_invisible:     PASS=6  FAIL=0   （A3-2 EV，内容不可见）
+```
+
+### 8.74.6 残留（诚实）与已知盲区
+
+| # | 残留 | 说明 |
+| --- | --- | --- |
+| ① | **「零驻留」只指 relay 用户态** | `pause()` 之后字节仍在 TCP / 内核接收缓冲里，**不是端到端零驻留**；大附件是被对端背压挡住，不是被 relay 读进内存。这个口径别读歪 |
+| ② | 已知盲区：`c.pending` 兜底分支不可达 | M05 证不到它。保留作为 `pause()` 失效时的防线，但**门覆盖不到**；要覆盖得先能在门禁里造出「pause 未生效」，当前做不到 |
+| ③ | 保活参数没在真网络调过 | 默认 5s / 连续 2 次（约 10s 发现半开）是经验值；各厂商 NAT 映射超时差异很大，真公网/真 NAT 仍零样本 → `R-A3-8a` 剩余部分 |
+| ④ | 日志量与并发未压测 | 每条 BIND 每周期记一条 `ping` 审计（内存缓冲 10000 条上限）；stream 并发上限、stream 泄漏、背压仍未压测 |
+| ⑤ | 默认仍是 `dial` | 要用 reverse 必须手写 `relay.json` 的 `"mode": "reverse"`（`R-A3-6h`）；SSE 仍不走隧道（`R-A3-5b`），手机仍无手动填中转入口（`R-A3-6a`），`box_token` 仍明文落盘 |
+
+`R-A3-8a` **部分关闭**：断线重连注入实测、半开检测、pending 零驻留这三条已关；
+「真公网 relay + 真 NAT 桌面 + 蜂窝网手机零样本」和「并发/背压压测」仍开，不整条销账。
+
+### 8.74.7 本片验收口径（不等 CI）
+
+按用户要求「先把功能继续处理」，本片**不以 30 分钟 CI 矩阵作为收口前置**：
+验收凭据是本机 `RR 9/0`、四个既有 relay 门 `15/0` / `12/0` / `6/0` / `6/0`、
+十组负向对照 `0 真空`、以及 G-85 挂进总闸后 `bash -n` 通过。
+推送会照常触发 CI（`Desktop Parity Matrix`），结论事后查即可，不在这里假设它绿。
+**门禁绿仍不等于跨网可用** —— 上面五条残留一条没关。

@@ -3523,6 +3523,46 @@ else
   echo "  · G-84 残留（诚实）：见上；这条红的常见原因：BIND/ACCEPT/ATTACH 任一段被改回去、旧 REGISTER 路径被碰坏、或 relay.json 的 reverse 接线被摘掉"
 fi
 
+echo "== G-85 反向隧道活体检测与自愈（路线 A · W4 / A3-9 · 关 R-A3-8a 本机可做的那两条）=="
+if timeout 240 node scripts/prove_relay_reverse_resilience.js > /tmp/g85-resilience.log 2>&1; then
+  ok "G-85 活体检测与自愈全绿（$(grep -c '^  ✓ ' /tmp/g85-resilience.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g85-resilience.log)）"
+  grep -q 'RR-01 ' /tmp/g85-resilience.log && grep -q 'RR-02 ' /tmp/g85-resilience.log \
+    && ok "G-85 半开检测有反真空正控：只 BIND 不回 PONG 的假盒子被清、真盒子不被误踢（不是「谁都踢」），且 livenessEvictions 真会涨" \
+    || bad "G-85 RR-01/RR-02 锚点缺失（半开检测或它的正控没被断言）"
+  grep -q 'RR-03 ' /tmp/g85-resilience.log && grep -q 'RR-04 ' /tmp/g85-resilience.log \
+    && ok "G-85 断网注入实测：relay 重启（端口不变）→ 盒子自动重连 → registry 回来 → 手机再 200 OK；box.stop() 之后不许偷偷重连" \
+    || bad "G-85 RR-03/RR-04 锚点缺失（重连只写了逻辑没证过）"
+  grep -q 'RR-05 ' /tmp/g85-resilience.log && grep -q 'RR-06 ' /tmp/g85-resilience.log \
+    && ok "G-85 pending 窗口零驻留：灌 32KB canary 后 pendingBufferBytes=0、缓存空、审计查无明文；没人 ATTACH 仍明确 NOBOX 不卡死" \
+    || bad "G-85 RR-05/RR-06 锚点缺失（用户态缓冲或数据面卡死没被断言）"
+  grep -q 'RR-07 ' /tmp/g85-resilience.log && grep -q 'RR-08 ' /tmp/g85-resilience.log && grep -q 'RR-09 ' /tmp/g85-resilience.log \
+    && ok "G-85 边界也在：旧 dial 仍 200 OK、审计有保活元数据且查无凭证与 canary、手机四栏不变（保活参数不外发）" \
+    || bad "G-85 RR-07/RR-08/RR-09 锚点缺失"
+  echo "  · G-85 修复前红（原文）：PASS=6 FAIL=3 —— 绿的是 RR-01/03/04/06/07/09（正控与既有能力），"
+  echo "    红的是 '✗ RR-02 半开盒子没被清掉'、'✗ RR-05 没有 pendingBufferBytes 诊断'、'✗ RR-08 审计里没有保活元数据'。"
+  echo "    门禁自己也修过一次：第一版 raw 连接没消费 AUTH 的 OK 行，RR-06 报 '✗ … 没拿到明确 NOBOX — OK'，"
+  echo "    那是门读错了行不是产品红；改成写完 AUTH+CONNECT 先读掉 OK 再灌字节，才拿到干净红。"
+  echo "  · G-85 十组负向对照逐个实跑、逐组复原校验、0 真空（原文见 report.md §8.74.4）：不装保活、阈值永不触发、"
+  echo "    box 不回 PONG（反真空正控）、不 pause、摘 pendingSocketsPaused 诊断、不记 evictions、"
+  echo "    不记超时审计、审计夹带 canary、摘 pendingBufferBytes 诊断、摘断线重连。"
+  echo "    第一版 11 组里有 4 组真空，门自己被改硬过：① 「窗口结束时真盒子还在」看不出它中途被误踢又自动重连"
+  echo "    ⇒ 改成数 livenessEvictions 差值必须恰好 1；② pendingBufferBytes=0 既可能是「内核缓冲持有」也可能是"
+  echo "    「字节被读走丢了」⇒ 补 pendingSocketsPaused 断言；③ 摘掉手写 a.resume() 后门仍绿，"
+  echo "    实测证明 pipe() 自己会 resume，那行是冗余的装饰性锚点，直接从产品里删掉；"
+  echo "    ④ 「pending 分支改回累积」摘的是 pause 生效后不可达的兜底分支，门覆盖不到 —— 不算合格对照，"
+  echo "    已从已验证锚点里移出，单列为已知盲区（见 report.md §8.74.6），不拿它凑数。"
+  echo "  · G-85 残留（诚实）：① 「零驻留」指的是 **relay 用户态**不持有业务字节，pause 之后字节仍在 TCP/内核"
+  echo "    接收缓冲里，不是端到端零驻留；大附件只会被对端背压挡住，不会被 relay 读进内存 —— 这个口径别读歪。"
+  echo "    ② 保活默认 5s / 连续 2 次（约 10s 发现半开）是按经验定的，真 NAT 各厂商映射超时差异很大，没有实测调参。"
+  echo "    ③ 每条 BIND 每周期记一条 ping 审计，盒子多时日志量未压测（内存缓冲有 10000 条上限）。"
+  echo "    ④ stream 并发上限、stream 泄漏与背压仍未压测；真公网 relay + 真 NAT 桌面 + 蜂窝网手机仍零样本。"
+  echo "    ⑤ 默认仍是 dial，要用 reverse 必须手写 relay.json 的 \"mode\": \"reverse\"（R-A3-6h）；"
+  echo "    SSE 仍不走隧道（R-A3-5b），手机仍无手动填中转入口（R-A3-6a）。"
+else
+  bad "G-85 活体检测与自愈（见 /tmp/g85-resilience.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g85-resilience.log || tail -3 /tmp/g85-resilience.log | head -1)）"
+  echo "  · G-85 残留（诚实）：见上；这条红的常见原因：PING/PONG 任一段被摘掉、pause/resume 不成对、或断线重连被改回去"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

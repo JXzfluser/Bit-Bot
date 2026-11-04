@@ -66,6 +66,11 @@ function createRelayServer(opts) {
   // 没人接 ACCEPT 时的等待上限：手机端要拿到明确 NOBOX，不能停在「连接中」。
   // 3s 是产品口径（见 prove_relay_reverse_tunnel.js RV-07），这里留 500ms 余量。
   const attachTimeoutMs = Number((opts && opts.attachTimeoutMs) || 2500);
+  // A3-9 应用层保活：BIND 是长连接，NAT 映射过期会造成「TCP 还连着、盒子其实叫不醒」的半开。
+  // relay 周期性发 PING，连续 pingMissLimit 次没收到 PONG 就清 registry 并断链。
+  // 默认 5s / 2 次（10s 内发现）；门禁把它调快，不靠 sleep 猜状态。
+  const pingIntervalMs = Number((opts && opts.pingIntervalMs) || 5000);
+  const pingMissLimit = Math.max(1, Number((opts && opts.pingMissLimit) || 2));
 
   // boxId -> { kind:"dial"|"reverse", endpoint, host, port, registeredAt, control? }
   // control 是**进程内 socket 引用**，绝不进 getRegistry() 快照（会循环引用 / 泄元数据）。
@@ -75,6 +80,8 @@ function createRelayServer(opts) {
   const controls = new WeakMap(); // socket -> { authed, buf, tunneled, pending }
   const boundBoxId = new WeakMap(); // socket -> boxId（仅 BIND 控制长连接）
   const allSockets = new Set(); // stop() 要主动掐断，否则 server.close 会一直等长连接
+  const liveness = new WeakMap(); // BIND socket -> { awaiting, nonce, missed, timer }
+  let livenessEvictions = 0;
   let connectionsForwarded = 0;
   let bytesForwarded = 0;
   let dialAttempts = 0; // 只有 openBox() 的 net.connect 会 +1：reverse 全程必须不变
@@ -229,6 +236,9 @@ function createRelayServer(opts) {
     b.on("error", close);
     a.on("close", close);
     b.on("close", close);
+    // clientSock.pause() 在等 ATTACH 期间挡住读取；pipe() 会自行 resume 被暂停的
+    // source。M06 负向对照实测：手写 a.resume() 摘掉后门仍全绿 ⇒ 那是冗余代码，已删，
+    // 不留一个「门抓不到的锚点」。
     a.pipe(b);
     b.pipe(a);
   }
@@ -249,13 +259,42 @@ function createRelayServer(opts) {
     } catch (_) {}
   }
 
+  /** A3-9：给 BIND 长连接装应用层心跳。半开（NAT 映射过期）时 TCP 不报错，只能靠它发现。 */
+  function startLiveness(sock, boxId) {
+    const st = { awaiting: false, nonce: "", missed: 0, timer: null };
+    liveness.set(sock, st);
+    const tick = () => {
+      if (sock.destroyed) return;
+      if (st.awaiting) {
+        st.missed++;
+        if (st.missed >= pingMissLimit) {
+          livenessEvictions++;
+          log("liveness-timeout", { role: "box", boxId, missed: st.missed });
+          const cur = registry.get(boxId);
+          if (cur && cur.control === sock) registry.delete(boxId);
+          try { sock.destroy(); } catch (_) {}
+          return;
+        }
+      }
+      st.nonce = crypto.randomBytes(4).toString("hex");
+      st.awaiting = true;
+      log("ping", { role: "box", boxId });
+      try { sock.write("PING " + st.nonce + "\n"); } catch (_) {}
+    };
+    st.timer = setInterval(tick, pingIntervalMs);
+    if (st.timer.unref) st.timer.unref();
+  }
+
   /**
    * reverse 模式：先不回 TUNNEL，沿 BIND 长连接下发 ACCEPT，等盒子用一条**出站**连接
    * ATTACH 回来，才给手机回 TUNNEL 并 pipe。ATTACH 到了才回，是为了「TUNNEL 即通」。
    */
   function acceptReverse(clientSock, target, boxId, memberId) {
     const cc = controls.get(clientSock);
-    if (cc) cc.pending = true; // 等 ATTACH 期间手机可能已开始发数据：只缓存，不解析、不丢
+    if (cc) cc.pending = true;
+    // A3-9：绝不把业务字节攒进 relay 用户态。pause 让 TCP 接收缓冲替我们持有，
+    // ATTACH 到了由 pipe 自然 resume；否则大附件在等 ATTACH 的窗口里能撑爆内存。
+    clientSock.pause();
     const streamId = crypto.randomBytes(8).toString("hex"); // 16 hex，无空白、无凭证
     const control = target.control;
     const timer = setTimeout(() => dropPending(streamId, "NOBOX"), attachTimeoutMs);
@@ -282,11 +321,9 @@ function createRelayServer(opts) {
       // 数据面由 pipe 接管：这里必须直接返回，绝不能把业务字节继续攒进 c.buf
       // （长连接会把整段 HTTP 乃至附件都堆进内存，既是泄漏也违反「不缓存 payload」）。
       if (c.tunneled) return;
-      // pending（等 ATTACH）期间只积字节，绝不解析应用层；ATTACH 到了一次性带走。
-      if (c.pending) {
-        c.buf += chunk.toString("latin1");
-        return;
-      }
+      // pending（等 ATTACH）期间已 pause，这里不该再收到 data；
+      // 万一收到也**绝不攒进 c.buf**（用户态零持有，见 pendingBufferBytes 诊断）。
+      if (c.pending) return;
       c.buf += chunk.toString("latin1"); // latin1：逐字节切行，不解析应用层
       let nl;
       while ((nl = c.buf.indexOf("\n")) >= 0) {
@@ -330,6 +367,7 @@ function createRelayServer(opts) {
           boundBoxId.set(sock, boxId);
           log("bind", { role: "box", memberId: c.authed.memberId, boxId, endpoint: "reverse:" + boxId });
           sock.write("BOUND " + boxId + "\n");
+          startLiveness(sock, boxId);
         } else if (c.authed.role === "client" && cmd === "CONNECT") {
           const target = registry.get(arg);
           if (!target) return fail(sock, "NOBOX");
@@ -368,6 +406,13 @@ function createRelayServer(opts) {
             boxId: p.boxId,
           });
           return;
+        } else if (c.authed.role === "box" && cmd === "PONG") {
+          const st = liveness.get(sock);
+          // nonce 必须对得上，否则是噪声/重放，不算活。绝不回 BADCMD —— 那会误杀长连接。
+          if (st && arg === st.nonce) {
+            st.awaiting = false;
+            st.missed = 0;
+          }
         } else if (boundBoxId.has(sock)) {
           // BIND 长连接上出现未知行：记一条元数据即可。**不 destroy** ——
           // 断掉控制通道会让盒子「在线」状态瞬间消失，代价远大于忽略一行噪声。
@@ -384,6 +429,9 @@ function createRelayServer(opts) {
     });
     sock.on("close", () => {
       allSockets.delete(sock);
+      const lv0 = liveness.get(sock);
+      if (lv0 && lv0.timer) clearInterval(lv0.timer);
+      liveness.delete(sock);
       const bid = boundBoxId.get(sock);
       if (bid) {
         const cur = registry.get(bid);
@@ -431,6 +479,8 @@ function createRelayServer(opts) {
       for (const [, p] of pendingStreams) clearTimeout(p.timer);
       pendingStreams.clear();
       for (const s of Array.from(allSockets)) {
+        const lv = liveness.get(s);
+        if (lv && lv.timer) clearInterval(lv.timer);
         try {
           s.destroy();
         } catch (_) {}
@@ -475,6 +525,19 @@ function createRelayServer(opts) {
     getDiagnosticState() {
       let reverseBoxes = 0;
       for (const v of registry.values()) if (v.kind === "reverse") reverseBoxes++;
+      // A3-9：等 ATTACH 的窗口里 relay 用户态持有的业务字节数。
+      // 改成 clientSock.pause() 后应恒为 0（CONNECT 行粘连的首包除外）。
+      let pendingBufferBytes = 0;
+      let pendingSocketsPaused = 0;
+      for (const p of pendingStreams.values()) {
+        const pc = controls.get(p.clientSock);
+        if (pc) pendingBufferBytes += Buffer.byteLength(pc.buf, "latin1");
+        // 「0 字节」有两种可能：内核缓冲替我们持有（对），或字节被读走丢了（错）。
+        // 只看 pendingBufferBytes 会把后者当绿 —— 必须同时看 socket 真的处于 paused。
+        if (p.clientSock && typeof p.clientSock.isPaused === "function" && p.clientSock.isPaused()) {
+          pendingSocketsPaused++;
+        }
+      }
       return {
         boxes: registry.size,
         connectionsForwarded,
@@ -483,6 +546,9 @@ function createRelayServer(opts) {
         reverseBoxes,
         activeStreams: pendingStreams.size,
         streamsServed,
+        livenessEvictions,
+        pendingBufferBytes,
+        pendingSocketsPaused,
       };
     },
     /** 数据面永不缓存内容 —— 恒返回空数组，供门禁证明不落明文 */
