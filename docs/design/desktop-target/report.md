@@ -5932,3 +5932,178 @@ smoke_grok_desktop_parity: PASS=539 FAIL=0
 
 `539 - 521 = 18`：正好是那 18 条「因为日志被截断而判 missing」的断言 —— 它们从来不是产品红。
 这条留在报告里，是因为「一次挂死能把 18 条红伪装成 18 个产品缺陷」这件事，比任何单条 bug 都危险。
+
+## 8.72 A3-7 桌面自己挂上中转（关 R-A3-6d / R-A3-6e；顺手暴露 R-A3-6g）
+
+### 8.72.1 这一片不是「修红」，是「补一段没人做过的路」
+
+§8.71.4 里点名两条缺口，A3-6 一条都没碰：
+
+- **R-A3-6d**：`main.js` 的 `ensureCnInbound()` 从不传 `relayHandoff`，配置只有一个来源 ——
+  终端里 `export BITBOT_RELAY_*`。普通用户双击打开桌面，回执里永远没有 `relay`。
+- **R-A3-6e**：仓库里能 REGISTER 的只有测试用的**进程内** `registerBox()`。中转活着、四栏正确，
+  真发一条 `CONNECT` 仍然回 `NOBOX` —— 因为没有任何进程说过「这台盒子在线」。
+
+所以这一片没有「修复前红」可留（功能本来不存在，门禁会直接 `RB-00 加载失败`）。替代物是
+**十一组负向对照**：每摘掉一处锚点都必须被抓到（§8.72.4 是逐个实跑的原文）。这比一句「修复前红」
+更硬 —— 它证明的是「这把尺子确实会响」，而不是「尺子曾经响过一次」。
+
+### 8.72.2 交付了什么
+
+| 位置 | 内容 | 关键取舍 |
+|---|---|---|
+| `hosts/shared/relay/relay_config.js`（新） | 配置的**唯一事实源**：`data/desktop/relay.json` 优先、`BITBOT_RELAY_*` 兜底；`normalizeRelayConfig` 半套/端口越界/`enabled:false` 一律 `null`；`toHandoff` 只产出手机那四栏 | **两把钥匙不混**：`box_token`（桌面自己 REGISTER 用）绝不下发，下发的只有 `client_token`。文件优先于环境变量，因为文件是用户显式写下的意图 |
+| `hosts/shared/relay/relay_box_client.js`（新） | box 角色登记器：`AUTH` → `REGISTER`，一次一行、一次一条短连接；默认 30s 心跳；失败不抛，`getState()` 区分 `not-configured/denied/badreg/badcmd/transport/bad_config` | **不做指数退避**：这类失败通常是「relay 还没起来」，退避只会让恢复更慢，而一条 AUTH+REGISTER 只有两个短包。**必须心跳**：registry 是 relay 的内存表，重启即空 |
+| `hosts/desktop/main.js`（改） | `ensureCnInbound()` 传 `relayHandoff: () => currentRelayHandoff()`（**每次兑换现读**，改完 JSON 不必重启）；拿住 `await cnInbound.start()` 的真实端口再 `syncRelayBoxRegistration(started)`；`BITBOT_CN_INBOUND=0` 与 `before-quit` 都把心跳停掉 | 登记失败**绝不连坐**局域网配对；远端 relay + 缺省 endpoint 时打一条 WARN（否则现场只有一个查不出来的 `NOBOX`） |
+| `scripts/prove_relay_box_registration.js`（新） | RB-01..RB-12：真 `relay_server` + 真 `cn_inbound` + 真 socket + 打包配置 | 静态锚点只补「模块与产品的 join」，运行时语义一律用真 socket 证（§8.72.5） |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-83**（RB-01..RB-11 全挂，含每组断言与残留） | 与 G-82 同口径：绿要能说出「哪几条命门在」，红要能说出「见哪个 log」 |
+
+### 8.72.3 门禁绿原文（本机，真 relay + 真 cn_inbound + 真 socket）
+
+```
+  ✓ RB-01 没配置：load → null、toHandoff → null、配对回执无 relay（形状不变）
+  ✓ RB-02 配齐 → 五栏读得全，下发给手机的只有 host/port/box_id/client_token（box_token 不外泄）
+  ✓ RB-11 正控：配置文件 → 回执 relay 四栏与配置一致（127.0.0.1:52615 / box-gate-home）
+  ✓ RB-03 AUTH + REGISTER 走通：registry[box-gate-home] = 127.0.0.1:52616
+  ✓ RB-04 穿过隧道打到真 cn_inbound：GET /v1/pair/discover → HTTP/1.1 200 OK
+  ✓ RB-05 错 box 凭证 → reason=denied、registry 无此盒（正控：好凭证先登记成功）
+  ✓ RB-06 三种半套（缺 client_token / 缺 box_token / port 越界）一律回 null，不下发也不登记
+  ✓ RB-07 旧 relay 上登记成功 → 换新 relay（确认为空）→ 心跳把盒子重登记回来（184ms）
+  ✓ RB-08 审计日志有 register 事件且查无凭证（只记 boxId/endpoint）
+  ✓ RB-09 五处接线都在：四栏传入 / 服务端真读 / 拿住 started / 登记接 started / 退出停心跳
+  ✓ RB-10 默认路径 = <repoRoot>/data/desktop/relay.json，只给 repoRoot 读得到；endpoint 不外发
+  ✓ RB-12 装机接缝在：打包把 hosts/shared 整棵拷进 shared/，两个新模块都在树里，main.js 有 ../shared 兜底
+prove_relay_box_registration: PASS=12 FAIL=0
+```
+
+RB-11 是**反真空**的那一条：RB-01 断言「没配时回执里不出现 `relay`」，而「不出现」这句话只有在
+「配齐了确实出现」成立时才有意义。它走真 HTTP（真配置文件 → `loadRelayConfig` → `toHandoff` → 兑换回执），
+与 A3-6 的 PH-01..PH-05 口径不同（那条门用的是自己拼的 `relayHandoff`），两边都要在。
+
+RB-07 的形状被改过两次，两次都是**门自己的错**：
+
+1. 第一版是**真空通过** —— 客户端在**新 relay 启动之后**才 `start()`，它那一次「立即登记」就把断言
+   撑绿（实测 `61ms`/`62ms` 就回来了）。改成「先跑在旧 relay 上并确认登记成功 → 换新空 relay
+   （**反真空：先确认 registry 真的空了**）→ 等心跳把它带回来」，实测 `183ms`。
+2. 第二版把 RB-08 连坐打红（`relay 没有记到任何 register 事件`）：重启换了**新端口**，而真实世界
+   relay 重启端口不变。改成 `createRelayServer({ ..., controlPort: oldPort })` 复用旧端口。
+
+### 8.72.4 十一组负向对照（这一片的「修复前红」替代物）
+
+| # | 摘掉/改坏什么 | 期望被抓 | 实测原文 |
+|---|---|---|---|
+| ① | `toHandoff` 夹带 `box_token` | RB-02 | `✗ RB-02 下发给手机的必须正好四栏（不许夹带 box_token） — box_id,box_token,client_token,host,port` |
+| ② | 半套也认（三栏也返回对象） | RB-06 | `✗ RB-06 …` |
+| ③ | `DENY` 当成功 | RB-05 | `✗ RB-05 错凭证居然登记成功 — {"ok":true}` |
+| ④ | 摘掉 `relayHandoff: () => currentRelayHandoff(),` | RB-09 | `✗ RB-09 桌面接线缺了 1 处：四栏没接进 createCnInboundServer（R-A3-6d 原地）` |
+| ⑤ | 退回 `return cnInbound.start()` | RB-09 | `✗ RB-09 ensureCnInbound 还是老写法 `return cnInbound.start()` —— 盒子拿不到端口，登记无从下手` |
+| ⑥ | 只摘 `before-quit` 里的 `relayBox.stop()` | RB-09 | `✗ RB-09 桌面接线缺了 1 处：before-quit 里没停心跳（中转上会留一台拨不通的盒子）` |
+| ⑦ | `DEFAULT_REL` 挪到 `data/relay.json` | RB-10 | `✗ RB-10 默认配置路径不是 data/desktop/relay.json（现场按文档放的文件读不到） — …/data/relay.json` |
+| ⑧ | 服务端读了 `opts.relayHandoff` 却恒回 `null` | RB-11 | `✗ RB-11 配了中转，回执里却没有 relay —— 手机拿不到参数，跨网无从开始 — {"ok":true,…}` |
+| ⑨ | 心跳摘掉（第一版） | 门禁自身崩 | `Cannot read properties of null (reading 'unref')` —— 产品里塞负向补丁会把补丁残留下来，已改为 RB-07 的形状（§8.72.3），不再依赖产品补丁 |
+| ⑩ | 打包 `filter` 从 `**/*` 收窄成 `*.js` | RB-12 | **第一版没抓住**：`✓ RB-12 装机接缝在…` / `PASS=12 FAIL=0` —— 因为排除项 `!**/*.map` 里也有 `**`，`filters.some(f => f.includes("**"))` 恒真。这是**门自己的盲断言**，不是产品问题 |
+| ⑪ | 同上，修完 RB-12 再跑 | RB-12 | `✗ RB-12 shared 的包含项里没有递归通配 —— 新增的 relay/ 子目录进不了 asar — ["*.js","!**/*.map"]` |
+
+第 ⑦ 组顺带修掉一个**自指盲点**：RB-10 原来「写」和「读」都走 `defaultRelayConfigPath()`，
+默认路径整体挪错位置也照样绿 —— 补了一条字面路径断言（`<repoRoot>/data/desktop/relay.json`）才变红。
+第 ⑩/⑪ 组是同一处改动跑了两次：第一次**门自己绿着**，说明「写了负向对照」不等于「负向对照有效」；
+把包含项与排除项分开（`filters.filter(f => !f.startsWith("!"))`）之后，同一处改动才被打回红。
+
+### 8.72.5 最值钱的一条证据：产品坏着，静态锚点照样是绿的
+
+第 ⑧ 组实测里出现的，是这一片最该记住的一句话：
+
+```
+  ✗ RB-11 配了中转，回执里却没有 relay —— 手机拿不到参数，跨网无从开始 — {"ok":true,...}
+  ✓ RB-09 五处接线都在：四栏传入 / 服务端真读 / 拿住 started / 登记接 started / 退出停心跳
+```
+
+`RB-09` 是**静态锚点**（读 `main.js` / `cn_inbound_server.js` 的文本）。产品被改成「读了却恒回 null」
+的时候，它一个字符都没变红 —— 因为它只证「这行代码在」，不证「这行代码有用」。
+
+所以静态锚点不能单独存在：同一个门里必须有 RB-11（真 HTTP 兑换）与 RB-03..RB-05（真 socket）。
+静态锚点只补那个**join**（模块绿 ≠ 产品会调用它）。这条与 §8.71.5 的两条旧尺子（AND-06 只认
+`setRequestProperty`、INJ-WD_11 锚点还停在 `setRequestProperty`）是同一个病的两种表现：
+**门与产品脱钩**。区别只是这次脱钩不是历史遗留，而是新写的门——写的时候就该把这条写进门注释里。
+
+### 8.72.6 残留（诚实）
+
+| 编号 | 一句话 | 为什么这一刀闭不了 |
+|---|---|---|
+| **R-A3-6g**（新） | **relay 是「它自己拨」到 box 登记的 `host:port`** ⇒ 云端 relay 拨不进 NAT 后面的桌面 | 这不是配置问题，是拓扑问题。`relay_server.js:89` 的 `net.connect(target.port, target.host)` 决定了 relay 必须能主动连到盒子。今天真能通的形态只有「relay 与桌面同宿主」（docker sidecar；缺省 endpoint = `127.0.0.1:<inbound 端口>`，`prove_relay_docker.sh` 已证这条路）。要支持「公网 relay + 家里的电脑」必须补**反向隧道**（box 持长连接，relay 把 CONNECT 的数据面喂给那条连接）—— 那是改转发模型的一刀，不在本片 |
+| **R-A3-6h**（新） | 没有中转设置界面；`box_token` 明文落盘 | 本片只做了「读」。写配置要用户手编 JSON，凭证该进钥匙串/0600 文件 |
+| R-A3-5b（仍开） | SSE 仍不走隧道 | 跨网时回合走中转，进度事件流仍是诚实回退 |
+| R-A3-6a（仍开） | 手机无「手动填中转」入口 | 参数只能从配对回执来；已配对的老用户要重配一次 |
+| R-A3-6c（仍开） | 真机/真公网一次都没跑过 | 本机无 Android SDK / KVM |
+
+**这一刀证的是「桌面自己会读配置、会上线、会心跳」，不是「跨网可用」。** 把 G-83 绿读成
+「跨网通了」是本片最容易犯的错，而且比上次更容易犯：这次连登记都真的成功了（registry 里真有那台盒子），
+唯一缺的是「relay 能不能拨到它」—— 而那一步在本机永远成立，在真实拓扑里往往不成立。
+
+### 8.72.7 装机接缝，以及一次「只有本机才撞得到」的既有脚本 bug
+
+**装机接缝（RB-12）**：`main.js` 先试 `./shared/relay/...` 再退 `../shared/relay/...`。源码树里
+`hosts/desktop/shared/` 根本不存在，走的是第二条；装机包里 `main.js` 被放到 `desktop/main.js`，
+`../shared/` 才是 `hosts/desktop/package.json` 里 `build.files` 从 `../shared` 整棵拷过去的那个目录。
+**只要那份 filter 从 `**/*` 被改成文件白名单，新增的 `hosts/shared/relay/` 子目录就不会进 asar** ——
+本机怎么跑都绿，用户双击打不开。RB-12 钉住这个接缝（`from/to`、递归包含项、两个模块在树里、兜底 require 都在）。
+这一条自己的盲断言是怎么被抓到的，见 §8.72.4 第 ⑩/⑪ 组。
+
+**全量矩阵本机第一跑（13 分 22 秒）在 G-70 中断，与 A3-7 无关**：
+
+```
+scripts/smoke_grok_desktop_parity.sh: line 3187: g70_sum?: unbound variable
+EXIT=1
+```
+
+真因是 macOS 自带 **bash 3.2** + `LANG=C.UTF-8` + 脚本第 5 行 `set -u`：
+`"$g70_sum，$(grep …)"` 里紧跟变量的**中文全角逗号**被 bash 当成变量名的一部分，
+于是去查一个叫 `g70_sum\xEF\xBC\x8C` 的变量，查无此变量直接终止整个脚本。最小复现：
+
+```
+$ bash -c 'set -u; v=ok; echo "$v，中文"'
+bash: v?: unbound variable
+$ bash -c 'set -u; v=ok; echo "${v}，中文"'
+ok，中文
+```
+
+全脚本扫出 **7 处**同类写法（第 58/66/3184/3187/3241/3244/3246 行），统一改成 `${var}`；
+`bash -n` 通过、再次扫描剩 0 处。CI 是 Linux/新版 bash，不会撞到，所以此前 `PASS=539` 是真的 ——
+这条修的是**「全量矩阵在本机也跑得完」**，不是把 A3-7 撑绿。但它和 §8.71.7 是同一类教训：
+**矩阵的死法本身会伪装成产品结论**，脚本挂在 G-70，日志末行看起来就像「G-70 之后的门全没跑」。
+
+### 8.72.8 本机两跑与 27 条环境红的逐条归因（CI 仍是权威）
+
+修完 §8.72.7 的 `set -u` 之后，本机把全量矩阵跑完了（14 分 13 秒）：
+
+```
+smoke_grok_desktop_parity: PASS=491 FAIL=27
+
+✓ G-83 桌面挂中转全绿（12 项断言，PASS=12 FAIL=0）
+✓ G-82 配对回执中转参数全绿（5 项断言，PASS=5 FAIL=0）
+```
+
+**这 27 条不是 27 个产品缺陷，也不是 0 个**。按日志原文逐条归因：
+
+| 类 | 条数 | 落在哪 | 原文证据 | 与 A3-7 的关系 |
+|---|---|---|---|---|
+| 宿主 `safe-delete` shim 累计 50 次删除后拒绝 e2e 清理自建临时目录 | **21** | G-46（5）、G-47（5）、G-51（3）、G-60（6）、G-67（2） | `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":50,"threshold":50,"scope":"turn","targets":["…/SingletonCookie"]}`，堆栈止于 `Object.rmSync`；下游 `anchors missing` 全是**连坐红** | 无关。两跑同一位置、同一原因；CI（Linux）没有该 shim |
+| WorkBuddy 沙箱拒绝读门禁脚本 | 1（内含 11 个子红） | G-78 | `✗ INJ-WD_08 注入跑不动 — Brokered host copy source refused by file policy: prompt`，`prove_w3_device_trust: PASS=26 FAIL=11` | 无关。被拒的是 `scripts/prove_w3_device_trust.mjs` 的**文件读**，不是产品逻辑 |
+| Python 缺 Pillow | 1 | G-64 | `ModuleNotFoundError: No module named 'PIL'`（`scripts/host_h5_media.py:39`） | 无关。本机 Python 环境 |
+| MoonBit 内核打包失败 | 2 | G-57 | `[gate] pack-box.sh failed: [pack-box] building the MoonBit kernel (profile=debug)…`、`pass=0 fail=1` | 无关。本机能跑 `moon`，但这一步的构建在本机没起来 |
+| macOS `pgrep` 口径 | 1 | G-46 尺子自证 | `✗ PC-2 主进程计数错`，`prove_gate_proc_count: PASS=3 FAIL=1`（同门自己注明「本机 pgrep 是否连 `sh -c` 一起数见平台差异」） | 无关 |
+| DM 请求体串进群上下文 | 1 | G-53 | `✗ DM 载荷带群上下文 — …当前群聊：UJAbc / 群成员：…`，`e2e_desktop_user_journeys: PASS=69 FAIL=1` | **唯一一条看起来像产品断言的红**。CI `053e7ea` 同一套门是 `PASS=539 FAIL=0`（该条绿），本机两跑都红 ⇒ 暂判为本机污染（provider stub 记录文件 / 并发 Electron 残留在同一个 `REC_MAIN`）。**不写成产品绿，也不凭一次本机红判产品坏**，等本轮 CI 复核 |
+
+合计 `21+1+1+2+1+1 = 27`。
+
+**为什么仍以 CI 为准**：`053e7ea` 的 CI 是 `PASS=539 FAIL=0`（整轮 32 分钟），上述 9 组门在 CI 全绿；
+本片只新增 G-83 的 5 条 `ok`，所以本轮 CI 的期望值在 **544 上下**。本机这一跑的用途是证明
+「A3-7 自己那条门（G-83）在真 socket / 真 relay / 真 cn_inbound 上是 12/0」以及
+「A3-6 的 G-82 没被改坏」，**不是用来宣布整本账全绿**。
+
+G-83 块在改完 RB-12 锚点与说明文字后，又单独抽出整块跑过一次（不等 14 分钟）：
+`G-83-block: PASS=5 FAIL=0`，其中首条 `✓ G-83 桌面挂中转全绿（12 项断言，PASS=12 FAIL=0）`。
+`bash -n scripts/smoke_grok_desktop_parity.sh` 通过。
+
+**边界重申**：这里的「环境红」是归因结论，不是免罪符。若本轮 CI 上 G-53 或任何一条也红，
+就必须按产品红处理，不能拿本节当挡箭牌。

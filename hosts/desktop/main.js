@@ -151,6 +151,22 @@ try {
   createCnInboundServer = require("../shared/cn_inbound_server").createCnInboundServer;
 }
 
+// A3-7（关 R-A3-6d/e）：桌面的「我接在哪个中转上」与「以 box 角色登记上去」。
+// 这两个模块放在 hosts/shared/relay/ 而不是 desktop/ 里，因为服务器侧（box_main）
+// 与门禁都要用同一份归一逻辑 —— 两处各写一遍就会出现「门禁认、产品不认」。
+let relayConfigMod;
+try {
+  relayConfigMod = require("./shared/relay/relay_config");
+} catch (_e) {
+  relayConfigMod = require("../shared/relay/relay_config");
+}
+let relayBoxMod;
+try {
+  relayBoxMod = require("./shared/relay/relay_box_client");
+} catch (_e) {
+  relayBoxMod = require("../shared/relay/relay_box_client");
+}
+
 // Pairing-v1: shared code manager (IPC + HTTP routes see the same instance).
 let createPairingCodeManager;
 try {
@@ -4159,8 +4175,84 @@ ipcMain.handle("bitbot:openArtifact", async (_event, artifactPath) => {
   };
 });
 
+/* ---------- A3-7：中转的「配置 → 下发 → 登记」--------------------------- *
+ * A3-6 把「有配置就下发」做完了，但配置从哪来、盒子怎么让中转知道自己在线，两件都空着：
+ *  - R-A3-6d：`main.js` 从不传 `relayHandoff`，唯一来源是终端里 export 环境变量 ⇒
+ *    普通用户双击打开桌面，配对回执里永远没有 `relay`，手机仍只在同一个 Wi-Fi 能用；
+ *  - R-A3-6e：能 REGISTER 的只有门禁里的进程内 `registerBox()` ⇒ 四栏配好、中转活着，
+ *    真发一条 CONNECT 也只会拿到 NOBOX（没有任何进程说过「这台盒子在线」）。
+ * ------------------------------------------------------------------------ */
+
+/** 现读一次配置并折成给手机的四栏；读不出来就 null（回执逐字节不变）。 */
+function currentRelayHandoff() {
+  try {
+    return relayConfigMod.toHandoff(relayConfigMod.loadRelayConfig({ repoRoot: REPO_ROOT }));
+  } catch (_e) {
+    return null; // 配置读坏不该把配对拖死 —— 最坏就是这轮没有跨网参数
+  }
+}
+
+let relayBox = null;
+let relayBoxKey = null;
+
+/**
+ * 让这台盒子在中转上「在线」。幂等：同一份配置 + 同一个端口重复调用不会多开一个心跳。
+ * 没配置就**不启动**，并停掉旧的那个 —— 留一个「看起来在跑」的客户端比没有更坏。
+ */
+function syncRelayBoxRegistration(status) {
+  const port = Number(status && status.port);
+  const cfg = relayConfigMod.loadRelayConfig({ repoRoot: REPO_ROOT });
+  if (!cfg || !Number.isInteger(port) || port <= 0) {
+    if (relayBox) {
+      relayBox.stop();
+      relayBox = null;
+      relayBoxKey = null;
+    }
+    return null;
+  }
+  const endpoint = cfg.endpoint || `127.0.0.1:${port}`;
+  const key = [cfg.host, cfg.port, cfg.boxId, endpoint].join("|");
+  if (relayBox && relayBoxKey === key) return relayBox;
+  if (relayBox) relayBox.stop();
+
+  // 远端 relay + 缺省 endpoint：地址是 relay 拨不到的回环。不拦（用户可能就是把 relay
+  // 跑在本机的另一个网段），但要说出来 —— 否则现场只有一个查不出来的 NOBOX。
+  const loopbackHost = endpoint.startsWith("127.") || endpoint.startsWith("localhost:");
+  const localRelay = cfg.host === "127.0.0.1" || cfg.host === "localhost" || cfg.host === "::1";
+  if (loopbackHost && !localRelay) {
+    process.stderr.write(
+      `[relay-box] WARN 登记的 ${endpoint} 是回环地址，而 relay 在 ${cfg.host} —— ` +
+        "除非 relay 与本机同宿主，否则拨不进来（见 R-A3-6g）。relay.json 里加 \"endpoint\" 可改。\n",
+    );
+  }
+
+  relayBox = relayBoxMod.createRelayBoxClient({
+    host: cfg.host,
+    port: cfg.port,
+    boxId: cfg.boxId,
+    boxToken: cfg.boxToken,
+    endpoint,
+    log: (reason) => {
+      // 只打原因，不打凭证；「凭证不对」与「网络不好」必须能分开看。
+      process.stderr.write(`[relay-box] register failed: ${reason} endpoint=${endpoint}\n`);
+    },
+  });
+  relayBoxKey = key;
+  relayBox.start();
+  process.stdout.write(
+    `[relay-box] registering box=${cfg.boxId} -> ${cfg.host}:${cfg.port} endpoint=${endpoint}\n`,
+  );
+  return relayBox;
+}
+
 async function ensureCnInbound() {
   if (process.env.BITBOT_CN_INBOUND === "0") {
+    // 入站关了就没有可登记的端口 —— 顺手收掉心跳，别让中转上留一台永远拨不通的盒子。
+    if (relayBox) {
+      relayBox.stop();
+      relayBox = null;
+      relayBoxKey = null;
+    }
     return { ok: false, skipped: true, reason: "BITBOT_CN_INBOUND=0" };
   }
   if (!cnInbound) {
@@ -4238,9 +4330,22 @@ async function ensureCnInbound() {
       // 真实事件库（之前这里没传 → 路由一直诚实 503）。关默认开关时 readHandle()
       // 返回 null，路由继续 503、零足迹。
       eventLog: turnMirror ? turnMirror.readHandle() : null,
+      // A3-7（关 R-A3-6d）：兑换回执里的 relay 四栏从这里来。**每次兑换时现读**，
+      // 用户改完 relay.json 不必重启桌面；没配 / 半套一律 null，回执逐字节不变。
+      relayHandoff: () => currentRelayHandoff(),
     });
   }
-  return cnInbound.start();
+  const started = await cnInbound.start();
+  // A3-7（关 R-A3-6e）：入站真的起来了才知道端口 → 这时才拿得到能登记出去的 endpoint。
+  // 登记失败只是后台状态（relay 没起、凭证不对），绝不把「手机连不上局域网」连坐。
+  try {
+    syncRelayBoxRegistration(started);
+  } catch (err) {
+    process.stderr.write(
+      `[relay-box] setup failed: ${err && err.message ? err.message : err}\n`,
+    );
+  }
+  return started;
 }
 
 /* ---------- 手机配对（移动版 · ADR 0008） -------------------------------- *
@@ -4697,6 +4802,13 @@ app.on("before-quit", () => {
   stopRoutineDaemon("SIGTERM");
   // 常驻内核同理：先请它自己收摊（关 stdin），will-quit 再兜底。
   stopResidentKernel();
+  // A3-7：心跳是 setTimeout + unref 的，退出时本来也不会拖住进程；这里显式停一下，
+  // 让「盒子下线」这件事发生在进程真的消失之前，而不是等中转自己发现拨不通。
+  if (relayBox) {
+    relayBox.stop();
+    relayBox = null;
+    relayBoxKey = null;
+  }
 });
 
 app.on("will-quit", () => {

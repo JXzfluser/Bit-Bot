@@ -55,7 +55,7 @@ gate_llm_restore() {
     if [ -f "$GATE_LLM_ACTIVE" ] && ! cmp -s "$GATE_LLM_ACTIVE_SNAP" "$GATE_LLM_ACTIVE"; then
       cp "$GATE_LLM_ACTIVE" "$GATE_LLM_ACTIVE_PARK"
       cp "$GATE_LLM_ACTIVE_SNAP" "$GATE_LLM_ACTIVE"
-      echo "已还原（被门改写过，改写前的值备份在 $GATE_LLM_ACTIVE_PARK）"
+      echo "已还原（被门改写过，改写前的值备份在 ${GATE_LLM_ACTIVE_PARK}）"
     elif [ -f "$GATE_LLM_ACTIVE" ]; then
       echo "未变动"
     else
@@ -63,7 +63,7 @@ gate_llm_restore() {
     fi
   elif [ -f "$GATE_LLM_ACTIVE" ]; then
     mv "$GATE_LLM_ACTIVE" "$GATE_LLM_ACTIVE_PARK"
-    echo "开局没有、门跑出来了 → 挪走（不是删除，备份在 $GATE_LLM_ACTIVE_PARK）"
+    echo "开局没有、门跑出来了 → 挪走（不是删除，备份在 ${GATE_LLM_ACTIVE_PARK}）"
   else
     echo "开局没有、现在也没有"
   fi
@@ -3181,10 +3181,10 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     bad "G-70 真机双写对账没有汇总行（见 /tmp/g70-dualwrite-live.log；无汇总 = 中途死掉，不算跑过）"
     tail -8 /tmp/g70-dualwrite-live.log 2>/dev/null | while IFS= read -r line; do echo "    | ${line}"; done
   elif ! echo "$g70_sum" | grep -q 'FAIL=0 SKIP=0'; then
-    bad "G-70 真机双写对账未达成（$g70_sum；SKIP ≠ PASS）"
+    bad "G-70 真机双写对账未达成（${g70_sum}；SKIP ≠ PASS）"
     grep -E '✗|SKIP' /tmp/g70-dualwrite-live.log 2>/dev/null | head -6 | while IFS= read -r line; do echo "    ${line}"; done
   else
-    ok "G-70 真机双写对账全绿（$g70_sum，$(grep -c '✓' /tmp/g70-dualwrite-live.log) 项打勾）"
+    ok "G-70 真机双写对账全绿（${g70_sum}，$(grep -c '✓' /tmp/g70-dualwrite-live.log) 项打勾）"
   fi
   grep -q '✓ L-01' /tmp/g70-dualwrite-live.log 2>/dev/null \
     && grep -q '✓ L-02' /tmp/g70-dualwrite-live.log 2>/dev/null \
@@ -3238,12 +3238,12 @@ g72_after=$(gate_llm_restore)
 # 白名单外，于是矩阵自己造了一条假红（本轮 493/9 里就有它）。
 # 收尾状态 == 开局状态 才算过：absent→absent，present→内容与快照逐字节相同。
 if [ "$GATE_LLM_STATE_BEFORE" = "absent" ] && [ ! -f "$GATE_LLM_ACTIVE" ]; then
-  ok "G-72 provider 状态归还：开局 absent → 收尾「$g72_after」（用户没有 active.json，跑完也没有）"
+  ok "G-72 provider 状态归还：开局 absent → 收尾「${g72_after}」（用户没有 active.json，跑完也没有）"
 elif [ "$GATE_LLM_STATE_BEFORE" = "present" ] && [ -f "$GATE_LLM_ACTIVE" ] \
   && cmp -s "$GATE_LLM_ACTIVE_SNAP" "$GATE_LLM_ACTIVE"; then
-  ok "G-72 provider 状态归还：开局 present → 收尾「$g72_after」（内容与开局快照逐字节一致）"
+  ok "G-72 provider 状态归还：开局 present → 收尾「${g72_after}」（内容与开局快照逐字节一致）"
 else
-  bad "G-72 provider 状态没回到开局值（开局 $GATE_LLM_STATE_BEFORE → 收尾「$g72_after」）——去看 $GATE_LLM_ACTIVE"
+  bad "G-72 provider 状态没回到开局值（开局 $GATE_LLM_STATE_BEFORE → 收尾「${g72_after}」）——去看 $GATE_LLM_ACTIVE"
 fi
 echo "  · G-72 为什么必须有一道门：本轮上一轮跑被打断后，data/llm/active.json 留在 qwen，"
 echo "    而 resolveLlmConfig()（host_ffi.js:5289）的优先级是「provider 自己的 env >"
@@ -3437,6 +3437,50 @@ else
   bad "G-82 配对回执中转参数（见 /tmp/g82-handoff.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g82-handoff.log || tail -2 /tmp/g82-handoff.log | head -1)）"
   echo "  · G-82 修复前红（真实输出）：PASS=1 FAIL=4 —— PH-02/03/04/05 红，PH-01 绿（反向对照本来就成立）"
   echo "  · G-82 残留（诚实）：SSE 长连接仍未走隧道（R-A3-5b）、手机无手动填中转入口、真机跨网未跑"
+fi
+
+echo "== G-83 桌面自己挂上中转（路线 A · W4 / A3-7 · 配置 → 下发 → 登记：关 R-A3-6d/e）=="
+if timeout 180 node scripts/prove_relay_box_registration.js > /tmp/g83-relay-box.log 2>&1; then
+  ok "G-83 桌面挂中转全绿（$(grep -c '^  ✓ ' /tmp/g83-relay-box.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g83-relay-box.log)）"
+  grep -q 'RB-01 ' /tmp/g83-relay-box.log && grep -q 'RB-11 ' /tmp/g83-relay-box.log && grep -q 'RB-03 ' /tmp/g83-relay-box.log \
+    && ok "G-83 三条命门都在：没配时不下发也不登记、配齐时回执四栏与配置一致（正控，防「不该出现」真空绿）、AUTH+REGISTER 之后 registry 里真有这台盒子" \
+    || bad "G-83 RB-01/RB-11/RB-03 锚点缺失（下发或登记没被断言到）"
+  grep -q 'RB-04 ' /tmp/g83-relay-box.log && grep -q 'RB-05 ' /tmp/g83-relay-box.log \
+    && ok "G-83 不是「登记了个名字」：client 角色 CONNECT 穿过隧道打到真 cn_inbound（200 OK）；错 box 凭证回 denied 且 registry 无此盒（先正控：好凭证能登记）" \
+    || bad "G-83 RB-04/RB-05 锚点缺失（隧道是否真通、错凭证是否真拒，有一条没断言）"
+  grep -q 'RB-06 ' /tmp/g83-relay-box.log && grep -q 'RB-07 ' /tmp/g83-relay-box.log && grep -q 'RB-08 ' /tmp/g83-relay-box.log \
+    && ok "G-83 现场会踩的三种坑都钉住：半套配置一律当没配（不下发也不登记）、relay 重启后心跳把盒子带回来、审计日志有 register 但查无任何凭证原文" \
+    || bad "G-83 RB-06/RB-07/RB-08 锚点缺失"
+  grep -q 'RB-09 ' /tmp/g83-relay-box.log && grep -q 'RB-10 ' /tmp/g83-relay-box.log && grep -q 'RB-12 ' /tmp/g83-relay-box.log \
+    && ok "G-83 接线也被钉住（模块绿≠产品会用）：四栏传入 / 服务端真读 / 拿住 started / 登记接 started / before-quit 停心跳；默认配置路径是 <repoRoot>/data/desktop/relay.json；装机包确实把新模块拷进 shared/" \
+    || bad "G-83 RB-09/RB-10/RB-12 锚点缺失（模块与产品、源码与装机包之间的 join 没被断言）"
+  echo "  · G-83 这一片是**新增能力**而不是修既有红，所以「修复前红」用**十一组负向对照**替代 —— 每摘掉一处锚点都必须被抓到"
+  echo "    （逐个实跑，原文摘录）：① toHandoff 夹带 box_token → '✗ RB-02 下发给手机的必须正好四栏（不许夹带 box_token）— box_id,box_token,client_token,host,port'；"
+  echo "    ② 半套也认 → RB-06 红；③ DENY 当成功 → '✗ RB-05 错凭证居然登记成功'；④ 摘掉 relayHandoff 传入 → '✗ RB-09 桌面接线缺了 1 处：四栏没接进 createCnInboundServer'；"
+  echo "    ⑤ 退回 return cnInbound.start() → '✗ RB-09 ensureCnInbound 还是老写法'；⑥ 只摘 before-quit 里的 stop → '✗ RB-09 缺 1 处：before-quit 里没停心跳'；"
+  echo "    ⑦ DEFAULT_REL 挪到 data/relay.json → '✗ RB-10 默认配置路径不是 data/desktop/relay.json'；⑧ 服务端读了 opts.relayHandoff 却恒回 null → '✗ RB-11 配了中转，回执里却没有 relay'；"
+  echo "    ⑨ 心跳补丁残留（门禁自身崩）；⑩/⑪ 打包 filter 从 **/* 收窄成 *.js —— 第一次 RB-12 自己绿着（排除项 !**/*.map 里也有 **，是门的盲断言），"
+  echo "    把包含项与排除项分开后才红：'✗ RB-12 shared 的包含项里没有递归通配 —— 新增的 relay/ 子目录进不了 asar'。"
+  echo "  · G-83 最值钱的一条证据（第 ⑧ 组实测）：产品坏着，**RB-09 静态锚点照样是绿的** —— 它只证「这行代码在」，不证「这行代码有用」。"
+  echo "    所以 RB-09 不能单独存在：必须有 RB-11（真 HTTP 兑换）与 RB-03..RB-05（真 socket）在同一门里，静态锚点只补那个 join。"
+  echo "  · G-83 修复前红（RB-07 的形状被改过两次，原文留在这里）：第一版是真空通过 —— 客户端在**新 relay 启动之后**才 start()，"
+  echo "    它那一次「立即登记」就把断言撑绿（实测 61ms/62ms 就回来）；改成「先跑在旧 relay 上确认登记成功 → 换新空 relay（反真空：确认为空）→ 等心跳带回来」后是 183ms。"
+  echo "    第二版把 RB-08 连坐打红（'relay 没有记到任何 register 事件'）：重启换了新端口，而真实世界 relay 重启端口不变 —— 改成复用旧端口。"
+  echo "  · G-83 残留（诚实）：① relay 的转发是**它自己拨**到 box 登记的 host:port，缺省 endpoint 只能是 127.0.0.1:<inbound 端口> ⇒"
+  echo "    只有「relay 与桌面同宿主（docker sidecar）」这一种形态今天真能通；relay 在公网、桌面在 NAT 后面拨不进来，"
+  echo "    要补反向隧道（box 持长连接），记为 R-A3-6g，本片未做。② 没做桌面设置面：配置是手写 data/desktop/relay.json"
+  echo "    （或 BITBOT_RELAY_* 环境变量），普通用户改不了 → R-A3-6h。③ box 凭证是明文落在本机 JSON 里的，"
+  echo "    文件权限/钥匙串加密未做。④ 真机 + 真公网 relay 一次都没跑过（本机无 Android SDK/KVM），归 R-A2-1/R-A3-3b。"
+  echo "  · G-83 一句话边界：这一刀让「桌面自己会读配置、会上线、会心跳」，**不等于跨网已经可用** —— SSE 仍不走隧道（R-A3-5b），"
+  echo "    手机仍无手动填中转入口（R-A3-6a），真机/真公网仍是零（R-A3-6c）。"
+  echo "  · G-83 本机全量矩阵复跑说明（诚实）：本机两跑在这条门上都是 12/0，但整本账不是绿的 ——"
+  echo "    第一跑死在 G-70 的 bash 3.2 + set -u（\$g70_sum， 的中文标点被当成变量名，已统一改成花括号形式）；"
+  echo "    第二跑 PASS=491 FAIL=27，27 条全落在宿主环境：safe-delete shim 累计 50 次删除后拦住 e2e 清理自建临时目录（21 条）、"
+  echo "    沙箱拒绝读 prove_w3_device_trust.mjs（G-78）、Python 缺 PIL（G-64）、moon 内核打包失败（G-57）、"
+  echo "    macOS pgrep 口径（G-46 尺子自证）、G-53 一条 DM 群上下文串味（CI 同版为绿）。**CI 才是权威**，见 report §8.72.8。"
+else
+  bad "G-83 桌面挂中转（见 /tmp/g83-relay-box.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g83-relay-box.log || tail -3 /tmp/g83-relay-box.log | head -1)）"
+  echo "  · G-83 残留（诚实）：见上；这条红的常见原因：模块被删（RB-00）、relay 端口被占、或 main.js 接线被改回去（RB-09）"
 fi
 
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
