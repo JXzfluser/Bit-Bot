@@ -4211,18 +4211,22 @@ function syncRelayBoxRegistration(status) {
     return null;
   }
   const endpoint = cfg.endpoint || `127.0.0.1:${port}`;
-  const key = [cfg.host, cfg.port, cfg.boxId, endpoint].join("|");
+  // A3-8：reverse 下最后一跳连的是**本机** cn_inbound，不是 relay 拨回来的那个地址。
+  const localEndpoint = cfg.localEndpoint || `127.0.0.1:${port}`;
+  const mode = cfg.mode || "dial";
+  // mode / localEndpoint 变了必须重建客户端 —— 否则改完 relay.json 仍是旧拓扑在跑。
+  const key = [cfg.host, cfg.port, cfg.boxId, endpoint, mode, localEndpoint].join("|");
   if (relayBox && relayBoxKey === key) return relayBox;
   if (relayBox) relayBox.stop();
 
-  // 远端 relay + 缺省 endpoint：地址是 relay 拨不到的回环。不拦（用户可能就是把 relay
-  // 跑在本机的另一个网段），但要说出来 —— 否则现场只有一个查不出来的 NOBOX。
+  // 远端 relay + 缺省 endpoint：地址是 relay 拨不到的回环。**只在 dial 下有意义** ——
+  // reverse 压根不拨这个地址，照打这条警告反而会把用户引去改一个无关字段。
   const loopbackHost = endpoint.startsWith("127.") || endpoint.startsWith("localhost:");
   const localRelay = cfg.host === "127.0.0.1" || cfg.host === "localhost" || cfg.host === "::1";
-  if (loopbackHost && !localRelay) {
+  if (mode === "dial" && loopbackHost && !localRelay) {
     process.stderr.write(
       `[relay-box] WARN 登记的 ${endpoint} 是回环地址，而 relay 在 ${cfg.host} —— ` +
-        "除非 relay 与本机同宿主，否则拨不进来（见 R-A3-6g）。relay.json 里加 \"endpoint\" 可改。\n",
+        "除非 relay 与本机同宿主，否则拨不进来。公网 relay + NAT 后的桌面请在 relay.json 里写 \"mode\": \"reverse\"。\n",
     );
   }
 
@@ -4232,15 +4236,17 @@ function syncRelayBoxRegistration(status) {
     boxId: cfg.boxId,
     boxToken: cfg.boxToken,
     endpoint,
+    mode: cfg.mode,
+    localEndpoint,
     log: (reason) => {
       // 只打原因，不打凭证；「凭证不对」与「网络不好」必须能分开看。
-      process.stderr.write(`[relay-box] register failed: ${reason} endpoint=${endpoint}\n`);
+      process.stderr.write(`[relay-box] ${mode} failed: ${reason} endpoint=${endpoint}\n`);
     },
   });
   relayBoxKey = key;
   relayBox.start();
   process.stdout.write(
-    `[relay-box] registering box=${cfg.boxId} -> ${cfg.host}:${cfg.port} endpoint=${endpoint}\n`,
+    `[relay-box] ${mode} box=${cfg.boxId} -> ${cfg.host}:${cfg.port} endpoint=${endpoint}\n`,
   );
   return relayBox;
 }

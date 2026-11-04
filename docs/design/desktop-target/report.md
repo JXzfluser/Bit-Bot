@@ -6183,3 +6183,269 @@ R-A3-6h（无设置面 / 配置不热登记 / 凭证明文）、R-A3-5b（SSE �
 R-A3-6a（手机无手动填入口）、R-A3-6c（真机与真公网零样本）全部仍开；
 下一刀的优先级见路线图「A3-7 之后补一句」。本片**没有改动任何 Android 代码**，
 A3-6 交付的 APK 仍是当前端上版本，不需要重打。
+
+> 上面这句「R-A3-6g 仍开」是 **A3-7 收口当时**的状态陈述，保留不改。它已由下一片 §8.73 关闭。
+
+---
+
+## 8.73 A3-8 反向隧道：公网 relay 服务 NAT 后的桌面（关 R-A3-6g；暴露 R-A3-8a）
+
+### 8.73.1 这一片改的是**转发模型**，不是补配置
+
+A3-7 把「桌面读配置 → 下发四栏 → 自己登记 + 心跳」补齐了，但转发模型还是 A3-1 锁定的那一条：
+relay **自己拨**到 box 登记的 `host:port`（`relay_server.js` 的 `net.connect`）。
+公网 relay 拨不进 `192.168.x` / 运营商 NAT 后面的机器 —— 这不是配置错、也不是端点写错，
+是**拓扑不成立**。§8.72.6 已经把「缺省 endpoint 只在同网络命名空间的宿主进程下成立」说清了，
+但那时只能建议用户手写 endpoint；对最常见的「云上 relay + 家里桌面」，写什么都没用。
+
+所以这一片不动配置面的**形状**，只加第二条转发路径：
+
+```
+dial（A3-1..A3-7，一字保留）   REGISTER <boxId> <host:port> → relay 主动拨 → 双向 pipe
+reverse（本片新增）            AUTH / BIND <boxId>          → BOUND（长连接，不关）
+                               phone CONNECT → relay 沿长连接下发 ACCEPT <streamId>
+                               box 新开一条出站 TCP：AUTH / ATTACH <streamId>
+                               box：ATTACH 连接 ⇄ 本机 cn_inbound 双向 pipe
+                               relay：ATTACH 到了才回 TUNNEL <label>，再 phone ⇄ ATTACH 双向 pipe
+```
+
+三个刻意的设计决定：
+
+1. **旧路径一字不动**：`REGISTER` / `registerBox()` / `getRegistry()` / `getAuditLog()` / 主动拨
+   全部保留。A3-1/A3-2/A3-7 的六道门都压在这条路上，改一处就会连坐，RV-01 与 RV-10 专门钉它。
+2. **手机端协议零改动**：relay 仍只回一行 `TUNNEL <非空 token>`（`reverse:<boxId>`）。
+   `RelayTunnel.parseConnectReply()` 只检查 `startsWith("TUNNEL ")` 且 label 非空，
+   `boxEndpoint` 只用于显示、从不拿去连接 —— 所以 **APK 不需要重打**，A3-6 的端上版本仍有效。
+3. **ATTACH 到了才回 TUNNEL**：否则手机拿到 `TUNNEL` 却没后端，界面会停在「连接中」。
+   2.5s 内没人 ATTACH（盒子假死/半路掉了）就明确回 `NOBOX`，RV-07 卡 3s 上限。
+
+反真空的三处正控：RV-01 先让**旧模式**在这个门里真打通一次；RV-05a 真证「relay 拨不可达端点会断」；
+RV-05c 先证 `dialAttempts` 这个计数器**真的会动**，否则「reverse 期间恒为 0」是一句永远为真的空话。
+
+**诚实边界**：本机同宿主造不出真 NAT，用不可达端点 `192.0.2.1:1`（TEST-NET-1）等价建模。
+本片证的是「relay 零主动拨，且数据面端到端通」，**不是**「真公网 + 真 NAT 已可用」→ R-A3-8a。
+
+### 8.73.2 交付了什么
+
+| 文件 | 改动 | 为什么 |
+| --- | --- | --- |
+| `hosts/shared/relay/relay_server.js`（改） | 新增 `BIND` / `BOUND` / `ACCEPT` / `ATTACH`：`reverseBoxes` / `activeStreams` / `dialAttempts` / `streamsServed` 诊断、`accept` / `attach` / `unbind` 审计、控制长连接断开即清 registry、pending stream 超时回 `NOBOX`；`bridge()` 做双端盲 pipe | `dialAttempts` 只在 `openBox()` 的 `net.connect` 前 +1，reverse 分支**提前 return**，结构性地不可能主动拨；`c.tunneled` 时 data handler 直接返回，绝不把业务字节攒进内存（既防泄漏也守住「不缓存 payload」） |
+| `hosts/shared/relay/relay_box_client.js`（改） | 新增 `mode: "reverse"`：常驻行泵读 `OK`/`BOUND`/`ACCEPT`，每条 stream 新开**出站** ATTACH ⇄ 本机 `localEndpoint`；`reconnectMs`（默认 2s）断线重连；`getState()` 多 `mode` / `streamsServed` / `running` | 旧的 `registerOnce()` **逐字未动**；reverse 控制连接是长连接，逐行读必须换成常驻行泵，否则 `OK\nBOUND…\nACCEPT…\n` 挤在一个 chunk 里会丢行 |
+| `hosts/shared/relay/relay_config.js`（改） | 可选 `mode` / `local_endpoint`（环境变量 `BITBOT_RELAY_MODE` / `BITBOT_RELAY_LOCAL_ENDPOINT`）；只有字面 `reverse` 才切换，写错一律回落 `dial`；`toHandoff` **仍只四栏** | 默认不能变 —— A3-7 的部署形态不许被静默升级；拓扑信息也不该下发给手机 |
+| `hosts/desktop/main.js`（改） | `createRelayBoxClient` 传 `mode` / `localEndpoint`，幂等 key 加入这两栏；「回环端点拨不通」的警告只在 `mode === "dial"` 时打 | 改了 mode 不重建客户端就会「配置改了、旧拓扑还在跑」；reverse 下那条警告会把用户引去改一个根本不参与转发的字段 |
+| `scripts/prove_relay_reverse_tunnel.js`（新） | RV-01..RV-13：真 relay + 真 cn_inbound + 真 socket + 真配置文件 + 静态 join 锚点 | 13 条断言覆盖正控、负向对照、端到端、掉线、超时、并发、审计、向后兼容、配置接线 |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-84**（5 条 `ok`，按命门分组）；顺手纠正 G-83 残留里「R-A3-6g 本片未做」的口径 | 与 G-83 同口径：绿要能说出「哪几条命门在」，红要能说出「见哪个 log」 |
+| `docs/design/desktop-target/*`（改） | 本节 + 路线图 A3-8 行、关闭 `R-A3-6g`、新增 `R-A3-8a`，残留 40 → 41、关闭 7 → 8 | 「A3-8 之后补一句」把下一刀从补代码换成真环境验收 |
+
+**没动的东西**（同等重要）：Android 侧一行未改，A3-6 的 APK 仍是当前端上版本；
+`relay_keys.js` 两把钥匙的角色分离不变；`box_token` 仍不下发、审计仍不记凭证与正文。
+
+**行号口径提醒**：§8.70、§8.72.6 与 `RelayTunnel.kt` 注释里写的
+`relay_server.js:141-199`（`handleControl`）和 `relay_server.js:89`（`net.connect`）是
+**A3-1 / A3-5 / A3-7 当时**的行号。A3-8 在这个文件里插入了 `bridge()` / `acceptReverse()` /
+`toDataPlane()` 等函数，行号整体下移。这些历史原文按「当时状态」保留不改，
+日后请以**命令名与函数名**（`REGISTER` / `openBox()` / `BIND` / `acceptReverse()`）定位，
+不要拿旧行号去对现在的文件 —— 这也是本片坚持「旧路径一字不动」而不是「按行号重写」的原因。
+
+### 8.73.3 修复前红原文（**最终门** RV-01..RV-13，产品回退到 A3-7 状态）
+
+第一次拿到的红是在 13 条门的版本上留的；后来为配置面补了 RV-12/RV-13，
+红绿两栏就不是同一把尺子了。所以把四个产品文件临时换成 `git HEAD`（A3-7 收口态）的内容，
+用**最终门**重跑一次，跑完逐字写回并校验工作树：
+
+```
+  ✓ RV-01 正控：旧 REGISTER + 主动拨模式仍端到端打通（127.0.0.1:57516 → 200 OK）
+  ✓ RV-05a 负向对照：relay 主动拨 192.0.2.1:1 → 隧道断（(error) http over tunnel timeout）
+  ✗ RV-05c 反真空前置：getDiagnosticState 没有 dialAttempts 计数器（「恒为 0」会是真空绿）
+  ✗ RV-02 box 客户端没有进入 reverse 模式（{"ok":false,"boxId":"box-reverse-home",…"running":true}）
+  ✗ RV-03 registry 里这台盒子不是 reverse 条目 — {"endpoint":"192.0.2.1:1","registeredAt":…}
+  ✗ RV-04 反向隧道没把请求送到 cn_inbound — (error) http over tunnel timeout
+  ✗ RV-05b 缺 dialAttempts，无法证「relay 零主动拨」
+  ✗ RV-06 控制通道断了，registry 里还留着这台盒子（手机会拿到一个拨不通的隧道）
+  ✗ RV-07 前置失败：假盒子 BIND 没拿到 BOUND — BADCMD
+  ✗ RV-08 并发两条隧道没有都打通 — ["(error) http over tunnel timeout","(error) http over tunnel timeout"]
+  ✗ RV-09 审计里缺 accept/attach 事件（反向隧道的元数据没留痕）
+  ✓ RV-10 旧 REGISTER + 主动拨路径一字未动，仍 200 OK
+  ✓ RV-11 回给手机的仍是 `TUNNEL 192.0.2.1:1`（RelayTunnel.kt 零改动）
+  ✗ RV-12 配置里的 reverse/local_endpoint 没读到 — {"host":"127.0.0.1",…,"endpoint":""}
+  ✗ RV-13 不写 mode 时没回落 dial（旧部署被静默切成另一种转发模型）
+prove_relay_reverse_tunnel: PASS=4 FAIL=11
+```
+
+四条正控全绿，说明**门本身跑得起来**；11 条红逐条对应「reverse 能力不存在」或「配置面没接线」，
+不是「门写崩了」。
+
+**门禁自己先崩过一次，原文也留着**（这一条不能抹掉）：
+
+```
+  ✗ 门禁自身异常：Error: read line timeout
+      at Timeout._onTimeout (/Users/zfl/Downloads/bitbot/scripts/prove_relay_reverse_tunnel.js:70:14)
+prove_relay_reverse_tunnel: PASS=0 FAIL=1
+```
+
+真因不是产品：`AUTH …\nCONNECT …\n` 一次 write，relay 回的 `OK\nTUNNEL …\n` 常常落在
+**同一个 TCP chunk**，而旧 `readLineFrom()` 每读一行就 `removeListener("data")`，
+第一行之后的字节被永久丢掉，第二次读只能干等到超时。
+改成「一条 socket 一个常驻行读取器」（`createTunnelReader`：唯一 data 监听 + 共享 buf +
+`readLine` / `readHttpHeaders` 两类 waiter）后才跑出上面那份干净红。
+`phoneConnect()` 同时把握手失败收敛成 `{ok:false,error}` 而不是让整门崩掉 ——
+NOBOX / 半截应答 / 直接断开都是**被测行为**，不该升级成「门禁自身异常」。
+
+### 8.73.4 十八组负向对照（逐个实跑、逐组复原校验，0 组真空）
+
+脚本做法：备份 → 定点替换（断言锚点命中且只命中 1 处）→ 真跑门 → 留红原文 →
+逐字写回并校验 4 个文件一致。判定比 A3-7 更严：**必须同时有红行、且有 `PASS=/FAIL=` 收尾行**，
+否则算无效对照（第一版就是栽在这里，见下方 M02）。
+
+| # | 摘掉的锚点 | 结果（PASS/FAIL） | 抓到的红（摘录） |
+| --- | --- | --- | --- |
+| M01 | `dialAttempts++` | 14/1 | `RV-05c … dialAttempts 还是 0（计数器不会动，不能拿来证「零主动拨」）` |
+| M02 | CONNECT 退回主动拨（**同时**补合法但不可达的端点） | 10/5 | `RV-05b reverse 期间 relay 仍然发起了主动拨 — 2 → 3` |
+| M03 | BIND 条目 `kind` 改回 `dial` | 9/6 | `RV-03 registry 里这台盒子不是 reverse 条目` |
+| M04 | 控制通道断开不清 registry | 14/1 | `RV-06 … registry 里还留着这台盒子` |
+| M05 | 不下发 `ACCEPT` | 10/5 | `RV-04 CONNECT 没拿到 TUNNEL … — NOBOX`、`RV-09 审计里缺 accept/attach` |
+| M06 | ATTACH 后不回 `TUNNEL` | 11/4 | `RV-04 手机侧连不上（read line timeout）` |
+| M07 | 不记 `accept` 审计 | 14/1 | `RV-09 审计里缺 accept/attach 事件` |
+| M08 | 审计夹带 `GET /v1/pair/discover` 明文 | 14/1 | `RV-09 审计里出现了凭证或 HTTP 明文` |
+| M09 | `TUNNEL` label 夹空格 | 14/1 | `RV-11 TUNNEL 行不满足手机端 parseConnectReply — TUNNEL reverse:… extra` |
+| M10 | box 客户端 `mode` 恒 `dial` | 8/7 | `RV-02 box 客户端没有进入 reverse 模式` 等 7 条 |
+| M11 | `streamId` 固定常量 | 14/1 | `RV-08 并发两条隧道没有都打通 — ["(no tunnel)","HTTP/1.1 200 OK"]` |
+| M12 | 不剥 ATTACH 上的 `OK` 控制应答 | 13/2 | `RV-04 … HTTP/1.1 400 Bad Request`（§8.73.5 的真 bug 回归） |
+| M13 | 旧 `REGISTER` 回 `BADREG` | 14/1 | `RV-10 旧 REGISTER 线协议被改坏了 — (register failed) {"ok":false,"reason":"badreg"}` |
+| M14 | ACCEPT 超时放宽到 8s | 14/1 | `RV-07 没人接 ACCEPT 时，client 没拿到明确 NOBOX — (error) read line timeout` |
+| M15 | `main.js` 不传 `mode` | 14/1 | `RV-12 桌面接线缺了 1 处：main.js 没把 mode 传给盒子客户端` |
+| M16 | `main.js` 不传 `localEndpoint` | 14/1 | `RV-12 桌面接线缺了 1 处：main.js 没把 localEndpoint 传给盒子客户端` |
+| M17 | 配置归一 `mode` 恒 `dial` | 14/1 | `RV-12 配置里的 reverse/local_endpoint 没读到` |
+| M18 | `toHandoff` 夹带 `mode` | 13/2 | `RV-12 toHandoff 被撑大了 — box_id,client_token,host,mode,port` |
+
+```
+无效/真空组数 = 0 / 18
+```
+
+**第一版的真空也要留痕**：v1 的 M02 只把 `if (target.kind === "reverse")` 改成 `if (false)`，
+没给 registry 条目补 `host/port`，`openBox()` 拿 `undefined` 去 `net.connect`，
+门被带崩、只留 `(no summary)` —— 那不是「门抓到了回退」，是「门死了」。
+v2 给这组补上合法但不可达的 `192.0.2.1:1`，让「退回主动拨」**真的发生**（`dialAttempts 2 → 3`），
+门才真的红；同时把 runner 的判定加严为「无收尾行一律不算合格对照」。
+A3-7 在 RB-12 上吃过一次「排除项 `!**/*.map` 也含 `**`」的盲断言亏，这次是同型：
+**门自己的失败方式也算证据，不能只统计有没有红行。**
+
+### 8.73.5 修复过程中抓到的**真 bug**：`HTTP/1.1 400 Bad Request`
+
+产品第一版改完后的首跑不是全绿，而是：
+
+```
+  ✗ RV-04 反向隧道没把请求送到 cn_inbound — HTTP/1.1 400 Bad Request
+  ✗ RV-08 并发两条隧道没有都打通 — ["HTTP/1.1 400 Bad Request","HTTP/1.1 400 Bad Request"]
+prove_relay_reverse_tunnel: PASS=11 FAIL=2
+```
+
+不是门的问题，也不是隧道没通 —— 请求确实打到了 `cn_inbound`，只是它把 `OK` 当成了请求行。
+原因：ATTACH 连接**复用作数据面**，但 relay 对它那句 `AUTH` 仍按统一协议回了一行 `OK\n`；
+盒子把 attachSock 一路 pipe 到本机 HTTP 服务，`OK` 就成了 HTTP 请求的第一行。
+旧的 `REGISTER` 是独立短连接，控制应答从来没有机会混进数据面，所以这个坑只在 reverse 出现。
+
+修法刻意选了保守的一边：**不**改 relay 的 AUTH 语义（那会动到 A3-1 的线协议与所有旧门），
+而在盒子端 `serveStream()` 里先用常驻 `onHandshake` 消费掉这一行，
+`removeListener` 后显式 `pause()`（摘掉最后一个 data 监听不会自动暂停，否则 pipe 前的字节会在
+flowing 态丢掉），再把同一 chunk 里粘连的数据面首字节按序喂给本地服务，
+最后等「attach 连上 + 本地连上 + 控制应答已剥」三件事齐了才 `pipe()`。
+M12 就是这条修复的回归负向对照：把剥离摘掉，RV-04/RV-08 立刻回 400。
+
+### 8.73.6 残留（诚实）与部署口径
+
+| # | 残留 | 现状 / 闭法 |
+| --- | --- | --- |
+| ① | **真公网 + 真 NAT 一次都没跑过** | 本机同宿主造不出 NAT，用 `192.0.2.1:1` 等价建模。→ `R-A3-8a`：一台公网 relay + 一台 NAT 后桌面 + 一台蜂窝网手机，按 `real-device-checklist.md` §4 逐条打勾 |
+| ② | **默认仍是 `dial`**，要用 reverse 必须手写 `data/desktop/relay.json` 的 `"mode": "reverse"` | 无设置面；运行中改配置**仍不触发重新登记**（四栏现读、登记只在入站启动 / 切开关时）→ `R-A3-6h`。**「有四栏却 NOBOX」的老症状在没切 reverse 时照样会出现** |
+| ③ | reverse 控制长连接断线后按 `reconnectMs`（默认 2s）重连，但**这条重连路径没做断网注入实测**；BIND 长连接没有应用层保活 | 只能靠 TCP 断线事件 + 重连；NAT 静默丢包的半开连接可能要等到 TCP keepalive 才发现 → 归 `R-A3-8a` |
+| ④ | 每条 stream 在盒子上要开**两条**出站连接（ATTACH + 本地 cn_inbound），并发上限、stream 泄漏与背压**未压测**；relay 在**等 ATTACH 的窗口内**会暂存手机提前发出的首包（`c.pending` 分支，≤2.5s）且**没有字节上限** | RV-08 只证两条并发不串线，不是压测。这段缓冲不解析、不落盘、不进审计/诊断，`getCapturedPayloads()` 恒空，A3-2 的实证仍成立 —— 但严格讲不是「relay 用户态零字节驻留」，且大附件提前灌入会造成内存放大。闭法：改成 `clientSock.pause()` 让 TCP 接收缓冲替 relay 持有、ATTACH 到了由 `pipe()` 自然 `resume()`，并加一条「pending 窗口内 relay 不持有业务字节」的断言 → 归 `R-A3-8a` |
+| ⑤ | 端到端业务 TLS 仍未做；控制面 TLS 也未实跑 | 沿用 A3-1/A3-2 的诚实边界 |
+| ⑥ | SSE 事件流仍不走隧道（`R-A3-5b`）、手机仍无手动填中转入口（`R-A3-6a`）、`box_token` 仍明文落盘（`R-A3-6h`）、真机跨网零样本（`R-A3-6c`） | 全部仍开 |
+
+**三种部署形态，别再混着说**：
+
+| 形态 | 该用哪个 mode | 关键点 |
+| --- | --- | --- |
+| relay 与桌面**同一网络命名空间的宿主进程**（本机 / host 网络 sidecar） | `dial`（默认即可） | 缺省 `endpoint = 127.0.0.1:<inbound 端口>` 成立 |
+| relay 在**容器桥接网络 / 另一台同网段机器** | `dial` + 显式 `endpoint` | 容器里的 `127.0.0.1` 是容器自己；`prove_relay_docker.sh` 只证宿主打得到容器，没证容器拨得到宿主 |
+| relay 在**公网**、桌面在 NAT 后面 | **`reverse`** | 桌面只发起出站连接；`endpoint` 只作展示，`local_endpoint` 缺省 `127.0.0.1:<inbound 端口>` |
+
+配置示例（`data/desktop/relay.json`，两把钥匙仍按 §8.72.6 用 `relay_keys` 分别签发）：
+
+```json
+{ "host": "relay.example.com", "port": 18766, "box_id": "my-desktop",
+  "box_token": "<role=box 凭证>", "client_token": "<role=client 凭证>",
+  "mode": "reverse" }
+```
+
+**给手机的四栏仍是 `host` / `port` / `box_id` / `client_token`，没有 `mode`、没有 `box_token`**
+（RV-12/RV-13 与 RB-02 双重钉住）。这一片**没有改动任何 Android 代码**，A3-6 的 APK 不需要重打。
+
+### 8.73.7 修复后绿原文（本机，最终门）
+
+```
+  ✓ RV-01 正控：旧 REGISTER + 主动拨模式仍端到端打通（127.0.0.1:56420 → 200 OK）
+  ✓ RV-05a 负向对照：relay 主动拨 192.0.2.1:1 → 隧道断（(error) http over tunnel timeout）
+  ✓ RV-05c 反真空前置：旧模式跑过之后 dialAttempts=2（计数器确实会动）
+  ✓ RV-02 reverse 能力在场：box 客户端 mode=reverse、relay 有 reverseBoxes 诊断
+  ✓ RV-03 AUTH + BIND 走通：registry[box-reverse-home] 是 reverse 条目，且查无凭证
+  ✓ RV-04 端到端：phone → relay → ACCEPT → box ATTACH → cn_inbound，GET /v1/pair/discover → HTTP/1.1 200 OK
+  ✓ RV-05b 同一个不可达端点 192.0.2.1:1：dial 断、reverse 通，dialAttempts 全程 2 不变
+  ✓ RV-06 控制通道断开 → registry 立刻清空 → CONNECT 明确回 NOBOX
+  ✓ RV-07 ACCEPT 无人接 → 2503ms 内明确回 NOBOX（不卡死）
+  ✓ RV-08 并发两条 CONNECT 各自 200 OK，box streamsServed=2（streamId 不串）
+  ✓ RV-09 审计有 accept/attach 元数据且查无凭证与请求明文
+  ✓ RV-10 旧 REGISTER + 主动拨路径一字未动，仍 200 OK
+  ✓ RV-11 回给手机的仍是 `TUNNEL reverse:box-reverse-home`（RelayTunnel.kt 零改动）
+  ✓ RV-12 配置面接通：relay.json 写 reverse → 读得出、四栏不变、main.js 四处接线都在
+  ✓ RV-13 老配置不写 mode → 仍是 dial + 四栏不变（A3-7 形态不被静默升级）
+prove_relay_reverse_tunnel: PASS=15 FAIL=0
+```
+
+**既有门复跑**（改 `relay_server.js` 最怕连坐，必须逐条看）：
+
+```
+prove_cn_relay_image:      PASS=6 FAIL=0   （EV-1..EV-6：镜像 / 健康检查 / registry / 盲转发 / 不落明文）
+prove_cn_relay_invisible:  PASS=6 FAIL=0   （EV-1..EV-6：审计存在且查无 canary / registry 只含端点）
+prove_relay_box_registration: PASS=12 FAIL=0（RB-01..RB-12：A3-7 的配置→下发→登记全链）
+```
+
+`getRegistry()` 只多了 `kind` 字段（旧条目为 `dial`）、`getDiagnosticState()` 只多四个计数器，
+都是纯附加；既有门查的是 `endpoint` 与「不含 canary」，所以一条没蹭红、也没蹭绿。
+
+### 8.73.8 本机全量矩阵 `PASS=492 FAIL=31`（14m28s）与 31 条环境红的逐条归因
+
+本轮全量矩阵 `smoke_grok_desktop_parity: PASS=492 FAIL=31`（`EXIT=1`）。
+**G-84 在这跑里是 `PASS=15 FAIL=0`、五条 `ok` 全绿**（/tmp 日志原文可复核）。
+31 条红**逐条**归到宿主环境，没有一条落在这一刀碰过的代码上：
+
+| 门 | 红数 | 真因 |
+| --- | --- | --- |
+| G-46 / G-47 / G-51 / G-60 / G-67 | 6 + 5 + 3 + 6 + 2 = **22** | WorkBuddy 宿主注入的 `node-safe-delete-shim.cjs` 在本轮累计删除达到 50 次后抛 `SAFE_DELETE_BULK_CONFIRM_REQUIRED`，e2e 清理自建临时目录被挡、进程带着 `Node.js v22.22.2` 崩掉、日志截断 ⇒ 下游 anchors missing；另 1 条是 G-46 尺子自证撞 macOS `pgrep` 口径。与 §8.72.8 的 21 条同型 |
+| **G-75（本轮新增的 4 条）** | **4** | 同一个 shim，只是这轮「第 50 次删除」落在了 G-75：`targets:["…/bitbot-e2e-ud-remote-progress/SingletonCookie"]`，`e2e_remote_progress_stream` 崩在 `fs.rmSync` → 日志截断 → RP-02/03/05、RP-06/07/08、RP-09 四组锚点连坐 |
+| G-78 | 1 | 沙箱拒绝读 `scripts/prove_w3_device_trust.mjs`（`Brokered host copy source refused by file policy: prompt`），内含 11 个子红但矩阵只记 1 条 |
+| G-64 | 1 | 本机 Python 缺 PIL：`ModuleNotFoundError: No module named 'PIL'` |
+| G-57 | 2 | MoonBit 内核打包失败（`pack-box.sh` / `prove_box_routine_sweep pass=0 fail=1`），本机工具链问题 |
+| G-53 | 1 | DM 载荷带群上下文；**并发矩阵里唯一像产品的红**，单独复跑见下 |
+| **合计** | **31** | |
+
+与 A3-7 的 `491/27` 对得上：`27 → 31` 多的正好是 G-75 那 4 条；
+`491 → 492` 只多 1 条绿，是因为那 4 条本该产出的 `ok` 被日志截断吞了，
+而 G-84 新增的 5 条 `ok` 里也只落账了部分 —— **`492 + 31 = 523`，比 CI 的 544 少 21 条，
+少跑的断言不算绿**，所以本机数字只用来归因，不用来宣布交付。
+
+**两条单独复跑的正控**（同一份代码，只差不在并发矩阵里；先 `pkill -9 -f "dist/[e]lectron"` 清残留）：
+
+```
+G-53  e2e_desktop_user_journeys:     PASS=70 FAIL=0 SKIP=0   EXIT=0（3m30s 量级）
+G-75  e2e_remote_progress_stream:   PASS=9  FAIL=0 SKIP=0   EXIT=0
+```
+
+G-53 单独绿 ⇒ DM 群上下文那条确实是共享 provider stub / 并发 Electron 残留串味，不是产品红
+（与 §8.72.8 结论一致，本轮重跑确认没退化）。G-75 单独绿 ⇒ 那 4 条纯属 shim 打断。
+**如果单独也红，就必须按产品红处理，不能拿「环境」当免罪符** —— 这是这两条正控存在的理由。
+
+口径说明：本机这跑的 G-84 `echo` 还是「修复前红 `PASS=4 FAIL=9`」的早期文案；
+矩阵跑完后把该文案校准成最终门的 `PASS=4 FAIL=11`（§8.73.3），
+**只改说明文字、不动任何断言与门逻辑**，`bash -n` 通过。CI 覆盖的是校准后的版本。

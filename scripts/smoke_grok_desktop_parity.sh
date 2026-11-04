@@ -3468,7 +3468,8 @@ if timeout 180 node scripts/prove_relay_box_registration.js > /tmp/g83-relay-box
   echo "    第二版把 RB-08 连坐打红（'relay 没有记到任何 register 事件'）：重启换了新端口，而真实世界 relay 重启端口不变 —— 改成复用旧端口。"
   echo "  · G-83 残留（诚实）：① relay 的转发是**它自己拨**到 box 登记的 host:port，缺省 endpoint 只能是 127.0.0.1:<inbound 端口> ⇒"
   echo "    缺省 endpoint 只在「relay 与桌面同网络命名空间的宿主进程」下成立（容器桥接网络的 127.0.0.1 是容器自己，要显式写 endpoint）；"
-  echo "    relay 在公网、桌面在 NAT 后面拨不进来，要补反向隧道（box 持长连接），记为 R-A3-6g，本片未做。② 没做桌面设置面：配置是手写 data/desktop/relay.json"
+  echo "    relay 在公网、桌面在 NAT 后面拨不进来 —— 这条已由下一片 A3-8 补上反向隧道（G-84 / §8.73），R-A3-6g 关闭；
+    但**默认仍是 dial**，要用 reverse 必须在 relay.json 里显式写 "mode": "reverse"。② 没做桌面设置面：配置是手写 data/desktop/relay.json"
   echo "    （或 BITBOT_RELAY_* 环境变量），普通用户改不了 → R-A3-6h。③ box 凭证是明文落在本机 JSON 里的，"
   echo "    文件权限/钥匙串加密未做。④ 真机 + 真公网 relay 一次都没跑过（本机无 Android SDK/KVM），归 R-A2-1/R-A3-3b。"
   echo "  · G-83 一句话边界：这一刀让「桌面自己会读配置、会上线、会心跳」，**不等于跨网已经可用** —— SSE 仍不走隧道（R-A3-5b），"
@@ -3481,6 +3482,45 @@ if timeout 180 node scripts/prove_relay_box_registration.js > /tmp/g83-relay-box
 else
   bad "G-83 桌面挂中转（见 /tmp/g83-relay-box.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g83-relay-box.log || tail -3 /tmp/g83-relay-box.log | head -1)）"
   echo "  · G-83 残留（诚实）：见上；这条红的常见原因：模块被删（RB-00）、relay 端口被占、或 main.js 接线被改回去（RB-09）"
+fi
+
+echo "== G-84 反向隧道：公网 relay 服务 NAT 后的桌面（路线 A · W4 / A3-8 · 关 R-A3-6g）=="
+if timeout 240 node scripts/prove_relay_reverse_tunnel.js > /tmp/g84-reverse-tunnel.log 2>&1; then
+  ok "G-84 反向隧道全绿（$(grep -c '^  ✓ ' /tmp/g84-reverse-tunnel.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g84-reverse-tunnel.log)）"
+  grep -q 'RV-01 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-05a ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-05c ' /tmp/g84-reverse-tunnel.log \
+    && ok "G-84 反真空三件套都在：旧模式真打通（正控）、不可达端点真断（负向对照）、dialAttempts 真会动（否则「零主动拨」是恒 0 的真空绿）" \
+    || bad "G-84 RV-01/RV-05a/RV-05c 锚点缺失（门的真/假都分不出来）"
+  grep -q 'RV-03 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-04 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-05b ' /tmp/g84-reverse-tunnel.log \
+    && ok "G-84 命门钉住：BIND 登记成 reverse 条目、phone → ACCEPT → box ATTACH → cn_inbound 真 200 OK、同一个不可达端点 dial 断而 reverse 通且 dialAttempts 不涨" \
+    || bad "G-84 RV-03/RV-04/RV-05b 锚点缺失（「零主动拨且数据面端到端通」没被断言）"
+  grep -q 'RV-06 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-07 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-08 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-09 ' /tmp/g84-reverse-tunnel.log \
+    && ok "G-84 现场会踩的坑都钉住：控制通道断 → 立刻 NOBOX（不卡死）、ACCEPT 无人接 3s 内 NOBOX、并发两条 stream 不串线、审计有 accept/attach 且查无凭证与明文" \
+    || bad "G-84 RV-06/RV-07/RV-08/RV-09 锚点缺失"
+  grep -q 'RV-10 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-11 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-12 ' /tmp/g84-reverse-tunnel.log && grep -q 'RV-13 ' /tmp/g84-reverse-tunnel.log \
+    && ok "G-84 兼容与接线也在：旧 REGISTER 线协议仍 200 OK、手机端 TUNNEL 一行格式不变（零改动）、relay.json 写 reverse 真读得出且四栏不变、老配置不写 mode 仍回落 dial" \
+    || bad "G-84 RV-10/RV-11/RV-12/RV-13 锚点缺失（向后兼容或配置接线没被断言）"
+  echo "  · G-84 修复前红（最终门 RV-01..RV-13，把四个产品文件临时换成 A3-7 态跑，跑完逐字复原）：PASS=4 FAIL=11 ——"
+  echo "    绿的是 RV-01/RV-05a/RV-10/RV-11 四条正控（门本身跑得起来）；红的是 RV-05c「没有 dialAttempts 计数器」、"
+  echo "    RV-02「box 客户端没有进入 reverse 模式」、RV-03「registry 里这台盒子不是 reverse 条目」、RV-04「反向隧道没把请求送到 cn_inbound」、"
+  echo "    RV-07「BIND 没拿到 BOUND — BADCMD」、RV-12/RV-13「配置面没接线」等。原文见 report.md §8.73.3。"
+  echo "    门禁自身的第一次异常：'✗ 门禁自身异常：Error: read line timeout' —— 一次 write 发 AUTH+CONNECT 时 OK 与 TUNNEL 挤在同一个 TCP chunk，"
+  echo "    旧 readLineFrom 每读一行就摘监听，第二行被永久吞掉。改成一条 socket 一个常驻行读取器后才跑出上面的干净红。"
+  echo "  · G-84 修复过程中抓到的**真 bug**（不是门的问题）：首跑 PASS=11 FAIL=2，RV-04/RV-08 回 'HTTP/1.1 400 Bad Request'。"
+  echo "    ATTACH 连接复用作数据面，relay 对它 AUTH 回的那行 OK 被盒子一路 pipe 进 cn_inbound，HTTP 服务把 OK 当请求行解析。"
+  echo "    旧 REGISTER 是独立短连接，从没把控制应答混进数据面 —— 这个坑只在 reverse 出现，盒子端在建立 pipe 前先剥掉这一行才修好。"
+  echo "  · G-84 十八组负向对照逐个实跑、逐组复原校验（原文见 report.md §8.73.4）：摘 dialAttempts、退回主动拨、kind 改 dial、"
+  echo "    不断开不清表、不下发 ACCEPT、不回 TUNNEL、不记 accept 审计、审计夹带明文、label 夹空格、mode 恒 dial、streamId 固定、"
+  echo "    不剥 OK 行、旧 REGISTER 回 BADREG、超时放宽到 8s、main.js 不传 mode / localEndpoint、配置 mode 恒 dial、toHandoff 夹带 mode。"
+  echo "    第一版有 1 组真空：M02 把 reverse 条目改回 dial 却没给 host/port，openBox 拿 undefined 去 connect 直接把门带崩（'(no summary)'），"
+  echo "    重做时补上合法但不可达的端点，让「退回主动拨」真的发生、门真的红，而不是崩 —— 门本身也加严：没有 PASS/FAIL 收尾行一律不算合格对照。"
+  echo "  · G-84 残留（诚实）：① 本机同宿主造不出真 NAT，用不可达端点 192.0.2.1:1 等价建模；真公网 + 真 NAT 一次都没跑过 → R-A3-8a。"
+  echo "    ② 默认仍是 dial，要用 reverse 必须手写 relay.json 的 \"mode\": \"reverse\"（无设置面，R-A3-6h）；运行中改配置仍不触发重登记（R-A3-6h）。"
+  echo "    ③ reverse 控制长连接断线后按 2s 重连，这个重连路径本门未做断网注入实测；BIND 长连接没有应用层保活，靠 TCP keepalive/断线重连。"
+  echo "    ④ 每条 stream 在盒子上要开两条出站连接（ATTACH + 本地 cn_inbound），并发上限、stream 泄漏与背压未做压测。⑤ 端到端业务 TLS 仍未做。"
+  echo "    ⑥ 手机端协议零改动、APK 不需要重打；SSE 仍不走隧道（R-A3-5b），手机仍无手动填中转入口（R-A3-6a）。"
+else
+  bad "G-84 反向隧道（见 /tmp/g84-reverse-tunnel.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g84-reverse-tunnel.log || tail -3 /tmp/g84-reverse-tunnel.log | head -1)）"
+  echo "  · G-84 残留（诚实）：见上；这条红的常见原因：BIND/ACCEPT/ATTACH 任一段被改回去、旧 REGISTER 路径被碰坏、或 relay.json 的 reverse 接线被摘掉"
 fi
 
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="

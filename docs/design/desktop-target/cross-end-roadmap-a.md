@@ -138,6 +138,8 @@ ICP 备案 / 增值电信许可 / 长期基础设施与 SLA 全部由用户侧�
 | A3-6 | 跨网参数这条路接通：桌面配对回执下发中转四栏 → 手机解析落 prefs → 状态条显示「直连/中转 · Nms」 | **已交付 · 接矩阵 G-82 / G-47·AB-19**，红绿见 `report.md` §8.71。桌面：redeem 成功回执**可选**挂 `relay: {host, port, box_id, client_token}`（`currentRelayHandoff()`：`opts.relayHandoff` 优先、否则读 `BITBOT_RELAY_*`；半套一律回 null），没配时回包逐字节不变。手机：`RelayTunnel.parseRelayHandoff`（没键/不齐/坏 JSON 一律 null）+ `DesktopPairing` 成功即落 prefs（没给就清旧）+ `TransportStatus` 记**真实走过的那条路**（两条都断回 NONE）+ 状态条优先显示连接方式（`labelOrNull`，NONE 时回 null 不盖掉「已配对」）。门禁 `prove_pairing_relay_handoff.js` PH-01..PH-05 本机 `PASS=1 FAIL=4 → PASS=5 FAIL=0`（PH-04/PH-05 先加正控才变红，防真空通过）；RT-11..RT-13 + TS-01..TS-03 本机 `Tests run: 16, Failures: 1`（仅 RT-11）→ `OK (16 tests)`；AB-19 五组负向对照本机先验 `base: []` / `undetected: []`。残留见 §8.71.4：**SSE 仍不走隧道（R-A3-5b）**、无手动填中转入口、真机跨网未跑 |
 | A3-7 | 桌面自己挂上中转：读配置 → 下发四栏 → 以 box 角色登记 + 心跳重登记 | **已交付 · 接矩阵 G-83**，红绿见 `report.md` §8.72。新增两个模块：`hosts/shared/relay/relay_config.js`（配置唯一事实源：`data/desktop/relay.json` 优先、`BITBOT_RELAY_*` 兜底、半套一律 null、`toHandoff` 只给手机四栏**不含 box_token**）与 `relay_box_client.js`（`AUTH`/`REGISTER` 与 `relay_server.js:158-199` 逐字对齐，一次 REGISTER 一条短连接，默认 30s 心跳，失败不抛但 `getState()` 区分 not-configured/denied/badreg/badcmd/transport）。`main.js` 的 `ensureCnInbound()` 传 `relayHandoff: () => currentRelayHandoff()`（**每次兑换现读**，改完配置即可下发；登记仍需重启 / 切局域网开关）、拿住 `await cnInbound.start()` 的真实端口再接 `syncRelayBoxRegistration(started)`、`before-quit` 停心跳。门禁 `prove_relay_box_registration.js` RB-01..RB-12 本机 `PASS=12 FAIL=0`（真 relay + 真 cn_inbound + 真 socket；十一组负向对照逐个验过）。残留见 §8.72.6：**relay 拨 box ⇒ NAT 后拨不进（R-A3-6g）**、无设置面且凭证明文落盘（R-A3-6h）、SSE 仍不走隧道（R-A3-5b）。**收口：CI `9c6c5dd` `PASS=544 FAIL=0`（G-83 12/0，`539+5`）** |
 
+| A3-8 | 反向隧道：公网 relay 服务 NAT 后面的桌面（关 R-A3-6g） | **已交付 · 接矩阵 G-84**，红绿见 `report.md` §8.73。`relay_server.js` 新增 `BIND`/`BOUND`/`ACCEPT`/`ATTACH` 反向模式（relay **全程零主动拨**，ATTACH 到了才回 `TUNNEL`，2.5s 没人接明确回 `NOBOX`），**旧 `REGISTER` + 主动拨路径一字保留**；`relay_box_client.js` 新增 `mode: "reverse"`（BIND 长连接 + 每条 stream 一条**出站** ATTACH ⇄ 本机 cn_inbound，控制面 `OK` 行先剥掉再 pipe，否则 cn_inbound 会回 400）；`relay_config.js` 加可选 `mode` / `local_endpoint`（默认仍是 dial、`toHandoff` 仍只四栏）；`main.js` 按 mode 接线且幂等 key 含 mode/localEndpoint。门禁 `prove_relay_reverse_tunnel.js` RV-01..RV-13 本机 `PASS=15 FAIL=0`（真 relay + 真 cn_inbound + 真 socket；18 组负向对照逐个实跑、逐组复原校验）；既有 relay 三门复跑 `6/0`、`6/0`、`12/0`。**手机端协议零改动**（仍是一行 `TUNNEL <label>`），APK 不用重打。残留见 §8.73.6：**真公网 + 真 NAT 一次都没跑过（R-A3-8a）**、默认仍需手写 `"mode": "reverse"`（R-A3-6h）、reverse 断线重连未做断网注入、stream 并发/背压未压测。CI 收口见 §8.73.9 |
+
 **W4 判据现状（2026-11-03，A3-3 收口）**：路线 A 最后一波的目标是把跨网成功率从 0 抬到 ≥90%，
 用户已拍板「仅自托管镜像、不做国内自建」。A3-1（中转镜像）已交付并接矩阵 **G-79**（`prove_cn_relay_image`
 `PASS=6 FAIL=0`，红绿原文与诚实残留见 `report.md` §8.66）：一个 `node:22-alpine` 镜像，控制面
@@ -231,16 +233,17 @@ A3-4（安装包体积不反弹）**阻塞**：前置基线已测（zip 83.6 MB 
 | R-A3-6d | 桌面侧没把中转四栏读进来（无设置面/无配置文件，只有 `BITBOT_RELAY_*` 环境变量） | **已关闭（2026-11-04 A3-7）**：`relay_config.js` 读 `data/desktop/relay.json`（文件 > 环境变量），`main.js` 把它接进 `relayHandoff`（RB-01/RB-02/RB-10/RB-11）。**仍没有设置界面** —— 那半条单列为 R-A3-6h | 是 | — |
 | R-A3-6e | 桌面没有以 box 角色连中转做 `REGISTER`（仓库只有服务端 + 进程内 `registerBox`） | **已关闭（2026-11-04 A3-7）**：`relay_box_client.js` 真发 `AUTH`/`REGISTER` + 30s 心跳重登记（RB-03/RB-04/RB-07 真 socket），`ensureCnInbound` 接线（RB-09） | 是 | — |
 | R-A3-6f | CI 上 `e2e_grok_desktop_boot` 里的 `moon run` 卡住不回（本机 1–2s，CI 25 分钟被杀） | 仍开（已加 240s 上限 + 诊断，红不再连坐） | 否（CI 环境） | 看下一跑的 `moon` 路径/stderr 尾部再定位 |
-| R-A3-6g | **relay 是「它自己拨」到 box 登记的 host:port** ⇒ 云端 relay 拨不进 NAT 后面的桌面 | 仍开（A3-7 暴露，未做） | 是（可测 `NOBOX`/连不上） | 反向隧道：box 持长连接、relay 把 CONNECT 数据面**喂给**那条连接。缺省 endpoint 只在「relay 与桌面同网络命名空间的宿主进程」时成立；容器/别的机器要显式写 endpoint + 桌面绑 0.0.0.0 |
-| R-A3-6h | 桌面没有中转设置界面，配置靠手写 `data/desktop/relay.json`；`box_token` 明文落盘；**运行中写配置不触发重新登记**（四栏现读、登记只在入站启动时） | 仍开（A3-7 只做了「读」） | 是 | 设置面 + 配置热生效（重登记）+ 凭证走钥匙串/0600 文件 |
+| R-A3-6g | **relay 是「它自己拨」到 box 登记的 host:port** ⇒ 云端 relay 拨不进 NAT 后面的桌面 | **已关闭（2026-11-04 A3-8）**：新增 `BIND`/`ACCEPT`/`ATTACH` 反向模式，relay 零主动拨、盒子只发起出站连接；`RV-05b` 用**同一个不可达端点**证「dial 断、reverse 通、`dialAttempts` 全程不涨」。旧 dial 路径保留给同网部署（G-84 / RV-01..RV-11） | 是（不可达端点等价建模） | **真公网 + 真 NAT 未实跑 → R-A3-8a** |
+| R-A3-6h | 桌面没有中转设置界面，配置靠手写 `data/desktop/relay.json`；`box_token` 明文落盘；**运行中写配置不触发重新登记**（四栏现读、登记只在入站启动时） | 仍开（A3-7 只做了「读」；A3-8 新增的 `mode` 同样只能手写、同样不热登记） | 是 | 设置面 + 配置热生效（重登记）+ 凭证走钥匙串/0600 文件 |
+| R-A3-8a | 真公网 relay + 真 NAT 后面的桌面一次都没跑过；reverse 的长连接断线重连（2s）只写了逻辑，没做断网注入实测 | 仍开（A3-8 新增） | 否（本机同宿主造不出真 NAT） | 一台有公网 IP 的 relay + 一台 NAT 后的桌面 + 一台蜂窝网手机，跑 `real-device-checklist.md` §4；另补控制长连接断开后自动重连的注入测试 |
 
-**回填结论**：W2 七条、W3 五条、W4 二十条共 32 条残留，加 A3-6 新增六条（R-A3-6a/b/c/d/e/f）**再加 A3-7 新增两条（R-A3-6g/h）共 40 条**里，
+**回填结论**：W2 七条、W3 五条、W4 二十条共 32 条残留，加 A3-6 新增六条（R-A3-6a/b/c/d/e/f）、A3-7 新增两条（R-A3-6g/h）**再加 A3-8 新增一条（R-A3-8a）共 41 条**里，
 **可本机验证的**（R-A1-3、R-A2-7/8/9、
 R-A3-1c/d、R-A3-2a/c/d/e、R-A3-3d、R-A3-5c）已在各门禁或数据层里钉住语义。**2026-11-03 本机补证又关两条**：
 R-A2-6（MC-13 本机实跑 `PASS=15 FAIL=0 SKIP=0`，此前判 SKIP 是误判——`hasDisplay` 在 macOS 恒 true）、
 R-A3-1f（真 Docker build + 起容器 + 宿主可达，`prove_relay_docker.sh` PASS，顺带修 bind 127.0.0.1→0.0.0.0
 的生产级 bug）。加上 R-A3-1e（随 A3-2 关闭）、**R-A3-5a（随 A3-6 关闭：参数不再由用户填，改由配对回执下发）**、
-**R-A3-6d 与 R-A3-6e（随 A3-7 关闭：桌面自己读配置、自己上线心跳）**，**共关闭 7 条**。真正卡住的只剩**真机 / 真公网 / cert /
+**R-A3-6d 与 R-A3-6e（随 A3-7 关闭：桌面自己读配置、自己上线心跳）**、**R-A3-6g（随 A3-8 关闭：反向隧道）**，**共关闭 8 条**。真正卡住的只剩**真机 / 真公网 / cert /
 移动端 SDK / T2 契约**：要推进「路线 A 整体交付」，仍需 ① 一台 Android 真机 + 真网络样本
 （R-A2-1/R-A3-3a/b），或 ② 真公网 + TLS 控制面（R-A3-1a/b）。
 
@@ -269,3 +272,22 @@ R-A3-1f（真 Docker build + 起容器 + 宿主可达，`prove_relay_docker.sh` 
 CONNECT 的数据面喂给那条连接）。缺省 endpoint 只在「relay 与桌面同网络命名空间的宿主进程」下成立 —— 容器桥接网络里 `127.0.0.1` 是容器自己，`prove_relay_docker.sh` 只证了「宿主打得到容器」，没证「容器拨得到宿主」。
 所以下一刀**不该再补配置面**（R-A3-6h 的设置界面、R-A3-6a 的手动填中转都排在它后面）：
 先把 relay 拨不进 NAT 这件事解决，否则再多配置也只是把 `NOBOX` 换一种说法。
+
+**A3-8 之后补一句（2026-11-04）**：上面点名的拓扑问题补上了 —— relay 现在有两条转发路径，
+`dial` 原样保留、`reverse` 下盒子持 BIND 长连接、按需用出站 ATTACH 接回来，relay 全程零主动拨。
+`RV-05b` 是最硬的一条：拿**同一个不可达端点** `192.0.2.1:1` 先证旧模式确实断、再证 reverse 确实通，
+且 `dialAttempts` 全程 `2 → 2` 不涨；`RV-01/RV-10` 同时钉住旧模式没被改坏。手机端仍只收一行 `TUNNEL <label>`，
+**这一刀没动任何 Android 代码，A3-6 的 APK 仍是当前端上版本**。R-A3-6g 关闭，见 `report.md` §8.73。
+
+**但「拓扑成立」≠「跨网可用」**，而且这次的边界比上一刀更容易被误读：
+① **默认仍是 `dial`** —— 不显式在 `relay.json` 写 `"mode": "reverse"`，NAT 后面的桌面照样拨不进去；
+这半截属于设置面缺失（R-A3-6h），不是本片没做完转发。② 本机同宿主造不出真 NAT，用不可达端点
+等价建模；**真公网 relay + 真 NAT 桌面 + 蜂窝网手机零样本**（R-A3-8a / R-A3-6c），
+≥90% 成功率这句判据仍然一次都没量过。③ SSE 事件流仍不走隧道（R-A3-5b），
+手机仍无手动填中转入口（R-A3-6a），`box_token` 仍明文落盘、运行中改配置仍不热登记（R-A3-6h）。
+④ reverse 的断线重连只写了逻辑没做断网注入，每条 stream 两条出站连接的并发上限与背压未压测。
+
+所以下一刀的优先级换了：不再是「补代码让某条路通」，而是**去真环境把这条路走一遍**
+（R-A3-8a：一台公网 relay + 一台 NAT 后桌面 + 一台蜂窝网手机，按 `real-device-checklist.md` §4 逐条打勾）。
+在那之前，SSE 走隧道（R-A3-5b）与设置面/热生效（R-A3-6h）都还在后面排队 ——
+把「G-84 绿了」读成「跨网可以了」是这一刀最容易犯的错，所以这四条写进总表而不是脚注。

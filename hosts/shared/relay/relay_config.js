@@ -17,16 +17,24 @@
  * 配置形状（`data/desktop/relay.json`）：
  *   { "host": "relay.example.com", "port": 18766,
  *     "box_id": "box-home", "box_token": "<role=box 凭证>", "client_token": "<role=client 凭证>",
- *     "endpoint": "192.168.1.20:41000",   // 可选：relay 拨得回来的地址
+ *     "mode": "reverse",                  // 可选，缺省 "dial"（A3-7 老行为）
+ *     "local_endpoint": "127.0.0.1:41000", // 可选，reverse 下桌面本机 cn_inbound 的地址
+ *     "endpoint": "192.168.1.20:41000",   // 可选，dial 下 relay 拨得回来的地址
  *     "enabled": true }
  *
- * `endpoint` 为什么单独一栏：relay 的转发是**它自己拨**到 box 登记的那个 `host:port`。
- * 缺省值只能是 `127.0.0.1:<inbound 端口>` —— 那要求 relay 和桌面在同一个宿主上（docker
- * sidecar 就是这样跑的）。relay 在别的机器上时，不显式写这一栏，登记的地址就是 relay
- * 永远拨不到的回环地址，症状是手机侧 `NOBOX`/超时而不是「配置错」。
+ * `endpoint` 为什么单独一栏：dial 模式下 relay 的转发是**它自己拨**到 box 登记的那个
+ * `host:port`。缺省值只能是 `127.0.0.1:<inbound 端口>` —— 那要求 relay 和桌面在同一个
+ * 网络命名空间的宿主进程（docker sidecar 就是这样跑的）。relay 在别的机器上时，
+ * 不显式写这一栏，登记的地址就是 relay 永远拨不到的回环地址。
+ *
+ * A3-8：`mode: "reverse"` 换成反向隧道 —— 桌面持一条 BIND 长连接，relay 通过 ACCEPT
+ * 下发 stream，桌面再用**出站** ATTACH 连接接回来。这时 relay 全程零主动拨，
+ * `endpoint` 只作展示、`local_endpoint` 才是最后那一跳的真实目标。
+ * 公网 relay + NAT 后面的桌面请直接用 reverse；dial 保留给「relay 与桌面同网」的部署。
  *
  * 口径与 A3-6 的 `normalizeRelayHandoff` 一致：**缺一栏就当没配**。给一半比不给更坏 ——
- * 手机拿半套去连，报出来的是一个查不出来的错。
+ * 手机拿半套去连，报出来的是一个查不出来的错。`mode` / `local_endpoint` 是**可选**的，
+ * 不改变「五栏齐才算配齐」这条老规则，也不进 `toHandoff`（手机不需要知道拓扑）。
  */
 
 const fs = require("fs");
@@ -56,12 +64,17 @@ function normalizeRelayConfig(raw) {
   // 或别的机器里就必须显式写这里 —— `127.0.0.1` 在容器里指的是容器自己。
   // （见 R-A3-6g：云端 relay 拨不进 NAT 后的盒子）。
   const endpoint = String(raw.endpoint || "").trim();
+  // 只有字面 "reverse" 才切反向；写错/写空一律回落 dial（A3-7 老行为），
+  // 绝不因为一个拼写错误把用户切到另一种转发模型上。
+  const mode = String(raw.mode || "").trim().toLowerCase() === "reverse" ? "reverse" : "dial";
+  // reverse 时桌面最后一跳连的**本机**地址；空则 main.js 用 `127.0.0.1:<inbound 实际端口>` 兜底。
+  const localEndpoint = String(raw.local_endpoint || raw.localEndpoint || "").trim();
   if (!host) return null;
   // `Number("abc")` 是 NaN，`18766.5` 也不是端口 —— 两者都必须在这里挡住，
   // 否则端上会拿一个连不上的端口去建连，用户看到的是「网络不好」。
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
   if (!boxId || !boxToken || !clientToken) return null;
-  return { host, port, boxId, boxToken, clientToken, endpoint };
+  return { host, port, boxId, boxToken, clientToken, endpoint, mode, localEndpoint };
 }
 
 function relayConfigFromEnv(env) {
@@ -72,6 +85,8 @@ function relayConfigFromEnv(env) {
     box_id: e.BITBOT_RELAY_BOX_ID,
     box_token: e.BITBOT_RELAY_BOX_TOKEN,
     client_token: e.BITBOT_RELAY_CLIENT_TOKEN,
+    mode: e.BITBOT_RELAY_MODE,
+    local_endpoint: e.BITBOT_RELAY_LOCAL_ENDPOINT,
   });
 }
 
