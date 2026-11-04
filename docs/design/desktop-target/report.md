@@ -6092,7 +6092,7 @@ smoke_grok_desktop_parity: PASS=491 FAIL=27
 | Python 缺 Pillow | 1 | G-64 | `ModuleNotFoundError: No module named 'PIL'`（`scripts/host_h5_media.py:39`） | 无关。本机 Python 环境 |
 | MoonBit 内核打包失败 | 2 | G-57 | `[gate] pack-box.sh failed: [pack-box] building the MoonBit kernel (profile=debug)…`、`pass=0 fail=1` | 无关。本机能跑 `moon`，但这一步的构建在本机没起来 |
 | macOS `pgrep` 口径 | 1 | G-46 尺子自证 | `✗ PC-2 主进程计数错`，`prove_gate_proc_count: PASS=3 FAIL=1`（同门自己注明「本机 pgrep 是否连 `sh -c` 一起数见平台差异」） | 无关 |
-| DM 请求体串进群上下文 | 1 | G-53 | `✗ DM 载荷带群上下文 — …当前群聊：UJAbc / 群成员：…`，`e2e_desktop_user_journeys: PASS=69 FAIL=1` | **唯一一条看起来像产品断言的红**。CI `053e7ea` 同一套门是 `PASS=539 FAIL=0`（该条绿），本机两跑都红 ⇒ 暂判为本机污染（provider stub 记录文件 / 并发 Electron 残留在同一个 `REC_MAIN`）。**不写成产品绿，也不凭一次本机红判产品坏**，等本轮 CI 复核 |
+| DM 请求体串进群上下文 | 1 | G-53 | `✗ DM 载荷带群上下文 — …当前群聊：UJAbc / 群成员：…`，`e2e_desktop_user_journeys: PASS=69 FAIL=1` | **唯一一条看起来像产品断言的红**。**单独复跑坐实是并发污染**：`pkill -9 -f 'dist/[e]lectron'; node scripts/e2e_desktop_user_journeys.mjs` → `PASS=70 FAIL=0 SKIP=0`（EXIT=0，3m30s）。同一份代码，只差「不在并发矩阵里」⇒ 红来自共享的 provider stub 记录文件 / 并发 Electron 残留，不是产品逻辑 |
 
 合计 `21+1+1+2+1+1 = 27`。
 
@@ -6105,5 +6105,8 @@ G-83 块在改完 RB-12 锚点与说明文字后，又单独抽出整块跑过�
 `G-83-block: PASS=5 FAIL=0`，其中首条 `✓ G-83 桌面挂中转全绿（12 项断言，PASS=12 FAIL=0）`。
 `bash -n scripts/smoke_grok_desktop_parity.sh` 通过。
 
-**边界重申**：这里的「环境红」是归因结论，不是免罪符。若本轮 CI 上 G-53 或任何一条也红，
+G-53 这条单独复跑是**正控**：如果它单独也红，就必须按产品红处理，不能拿「环境」当挡箭牌。
+实测绿了，归因才成立。
+
+**边界重申**：这里的「环境红」是归因结论，不是免罪符。若本轮 CI 上任何一条也红，
 就必须按产品红处理，不能拿本节当挡箭牌。

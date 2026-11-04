@@ -3477,7 +3477,7 @@ if timeout 180 node scripts/prove_relay_box_registration.js > /tmp/g83-relay-box
   echo "    第一跑死在 G-70 的 bash 3.2 + set -u（\$g70_sum， 的中文标点被当成变量名，已统一改成花括号形式）；"
   echo "    第二跑 PASS=491 FAIL=27，27 条全落在宿主环境：safe-delete shim 累计 50 次删除后拦住 e2e 清理自建临时目录（21 条）、"
   echo "    沙箱拒绝读 prove_w3_device_trust.mjs（G-78）、Python 缺 PIL（G-64）、moon 内核打包失败（G-57）、"
-  echo "    macOS pgrep 口径（G-46 尺子自证）、G-53 一条 DM 群上下文串味（CI 同版为绿）。**CI 才是权威**，见 report §8.72.8。"
+  echo "    macOS pgrep 口径（G-46 尺子自证）、G-53 一条 DM 群上下文串味 —— 该条单独复跑 PASS=70 FAIL=0，坐实是并发污染而非产品红。**CI 才是权威**，见 report §8.72.8。"
 else
   bad "G-83 桌面挂中转（见 /tmp/g83-relay-box.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g83-relay-box.log || tail -3 /tmp/g83-relay-box.log | head -1)）"
   echo "  · G-83 残留（诚实）：见上；这条红的常见原因：模块被删（RB-00）、relay 端口被占、或 main.js 接线被改回去（RB-09）"
