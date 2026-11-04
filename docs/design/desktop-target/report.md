@@ -6611,3 +6611,79 @@ prove_cn_relay_invisible:     PASS=6  FAIL=0   （A3-2 EV，内容不可见）
 十组负向对照 `0 真空`、以及 G-85 挂进总闸后 `bash -n` 通过。
 推送会照常触发 CI（`Desktop Parity Matrix`），结论事后查即可，不在这里假设它绿。
 **门禁绿仍不等于跨网可用** —— 上面五条残留一条没关。
+
+---
+
+## 8.75 A3-10 真机验收准备（修正过时清单 + 开跑前自检）
+
+### 8.75.1 为什么先做这一片
+
+用户说「本地就可以，手机也准备好了」，准备直接跑 `R-A3-8a` 真机验收。
+开工前查了两处现状，发现**照旧清单跑会直接走错路**：
+
+1. `docs/design/desktop-target/real-device-checklist.md` 开头仍写着
+   「当前 APK 只支持同一局域网、跨网中继客户端还没接进 Android（R-A3-3a）」，
+   §3 写着「跨网当前不可用，别浪费时间」。那是 **A3-4 之前**的状态。
+   A3-5/A3-6 早已把 `RelayTunnel` / `TunnelHttp` / `ConnectionStrategy` / `TransportStatus`
+   接进 APK，A3-7~A3-9 只改桌面与 relay，**APK 不用重打**。
+2. `DesktopPairing.kt:365` 的 `redeemCode()` 仍是 `http://<局域网 IP>:18765/v1/pair/redeem`，
+   **配对本身只走局域网**。中继四栏是配对成功回执里顺带下发的。
+   所以顺序必须是「同一 Wi-Fi 配对 → 拿到四栏 → 再关 Wi-Fi 切蜂窝」；
+   一上来关 Wi-Fi 必然「连不上桌面」，而那不是产品坏了。
+
+现场最费时间的也不是产品 bug，而是「`mode` 没写 reverse」「两把钥匙混成一把」
+「relay 只绑了 127.0.0.1」「桌面 app 根本没在跑」—— 在手机上它们全长得一样。
+
+### 8.75.2 交付
+
+| 文件 | 改动 |
+| --- | --- |
+| `docs/design/desktop-target/real-device-checklist.md`（重写） | 更新到 A3-9 口径；§0 把三种场景分开（**只有场景 C：relay 在公网 + 桌面在 NAT 后 + 手机蜂窝，才能关 R-A3-8a**）；§1 写死配对顺序；§2 给可复制的密钥签发 / relay 启动 / `relay.json` / 桌面开关 / 自检命令；§3 手机步骤；§4 保留局域网六条；**§5 新增跨网十条逐条打勾**（含 ⑨ ≥90% 成功率、⑩ SSE 必然回退的诚实边界）；§6 观测点与「审计里绝对不该出现什么」；§7 排错表 |
+| `scripts/verify_real_device_readiness.js`（新） | 开跑前 30 秒自检 RD-01..RD-08：配置合法 / 五栏齐且 `mode=reverse` / 两把钥匙角色正确且不同 / `toHandoff` 正好四栏且不含 `box_token` / relay 控制端口真连 / **`client_token` 真 `AUTH`** / **`box_token` 真 `BIND`**（探针盒子用完即断、registry 自动清）/ 桌面入站真 HTTP 200 |
+| 同上 `--self-test` | 自己起本地 relay + 假桌面入站 + 临时配置，8 组自证（1 组正控 + 7 组改坏配置必须红），**可挂 CI** |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-86**，只挂 `--self-test` |
+| `docs/design/desktop-target/cross-end-roadmap-a.md`（改） | A3-10 交付行 |
+
+### 8.75.3 红 → 绿 → 负向对照
+
+**修复前红不是产品红，是一次 harness 事故**（原文留痕）：
+
+```
+== --self-test：用真 relay + 临时配置自证自检工具 ==
+  ✗ ST-01 完整配置 → 自检全绿（正控） — exit=1；
+    … ✗ RD-06 client_token 真 AUTH 失败 — (reply) read line timeout
+      ✗ RD-07 box_token 真 BIND 失败 — (reply) read line timeout
+      ✗ RD-08 桌面入站没在接待 — http timeout
+self-test: PASS=7 FAIL=1
+```
+
+真因：`--self-test` 用 `spawnSync` 起子进程，而 relay 与假桌面入站都跑在**父进程的事件循环里**；
+同步 spawn 把父进程整个阻塞，TCP 握手内核能完成、应用层永远没人应答。
+改成异步 `spawn` 后：
+
+```
+  ✓ ST-01 完整配置 → 自检全绿（正控）
+  ✓ ST-02 去掉 mode → RD-02 红          ✓ ST-03 两把钥匙混成一把 → RD-03 红
+  ✓ ST-04 半套配置 → RD-02 红            ✓ ST-05 错 client_token → RD-06 红
+  ✓ ST-06 错 box_token → RD-07 红        ✓ ST-07 relay 端口没监听 → RD-05 红
+  ✓ ST-08 桌面入站没起 → RD-08 红
+self-test: PASS=8 FAIL=0
+```
+
+**再验一层工具自身的锚点**：把 RD-02 的 `mode` 检查、RD-03 的角色/同钥匙检查、
+RD-05 的 TCP 可达、RD-06 的真握手、RD-08 的 HTTP 探活逐个摘掉，
+`--self-test` 五组全部报红（对应 ST-02/03/07/05/08 失效），`0 真空`。
+另外用 `.mjs` 首跑还撞过一次 `ReferenceError: require is not defined in ES module scope`，
+改回仓库通行的 `.js` + CommonJS。
+
+### 8.75.4 诚实边界（这一片最容易被误读的地方）
+
+- **G-86 验的是自检工具，不是真机、不是跨网**。默认模式要连真实 relay 和运行中的桌面 app，
+  CI 没有那两样，**故意不挂进总闸**；只有 `--self-test` 纯本机、可挂 CI。
+- **场景 B（relay 与桌面同机 / 同一网络命名空间）不能关 R-A3-8a** —— NAT 根本没出现。
+  A3-9 的不可达端点只是等价建模。
+- §5 ⑩「SSE 事件流走隧道」**当前必然回退**（`R-A3-5b`），写进表里是免得现场误判成 bug。
+- ≥90% 成功率是**待量目标**，不是已有结论；`R-A3-8a` 在这一片**没有关闭**，
+  只是把验收清单和工具备齐，等真机样本回来才能销账。
+- `RD-04`（四栏形状）在本工具的自证里覆盖不到（`toHandoff` 由 `relay_config.js` 决定，
+  配置层改不动它）；它由 A3-7 `RB-02` 与 A3-8 `RV-12` 覆盖，不重复造门，记为已知分工。

@@ -3563,6 +3563,36 @@ else
   echo "  · G-85 残留（诚实）：见上；这条红的常见原因：PING/PONG 任一段被摘掉、pause/resume 不成对、或断线重连被改回去"
 fi
 
+echo "== G-86 真机验收前自检工具自证（路线 A · W4 / A3-10 · R-A3-8a 准备）=="
+if timeout 180 node scripts/verify_real_device_readiness.js --self-test > /tmp/g86-readiness.log 2>&1; then
+  ok "G-86 自检工具自证全绿（$(grep -c '^  ✓ ' /tmp/g86-readiness.log) 项，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g86-readiness.log)）"
+  grep -q 'ST-01 ' /tmp/g86-readiness.log \
+    && ok "G-86 反真空正控在：完整配置确实让自检 PASS=8 FAIL=0（不是「工具从来只会报红」）" \
+    || bad "G-86 ST-01 正控缺失"
+  grep -q 'ST-02 ' /tmp/g86-readiness.log && grep -q 'ST-03 ' /tmp/g86-readiness.log && grep -q 'ST-04 ' /tmp/g86-readiness.log \
+    && ok "G-86 现场三大坑都钉住：没写 mode=reverse、两把钥匙混成一把、半套配置 —— 自检必须逐条报红" \
+    || bad "G-86 ST-02/03/04 锚点缺失"
+  grep -q 'ST-05 ' /tmp/g86-readiness.log && grep -q 'ST-06 ' /tmp/g86-readiness.log \
+    && ok "G-86 钥匙一致性靠**真握手**：错 client_token 的 AUTH、错 box_token 的 BIND 都必须被抓到（不是静态字段比对）" \
+    || bad "G-86 ST-05/ST-06 锚点缺失"
+  grep -q 'ST-07 ' /tmp/g86-readiness.log && grep -q 'ST-08 ' /tmp/g86-readiness.log \
+    && ok "G-86 可达性也钉住：relay 端口没监听、桌面入站没起，都要明确报红而不是 SKIP 当绿" \
+    || bad "G-86 ST-07/ST-08 锚点缺失"
+  echo "  · G-86 诚实边界（最容易误读的一条）：这里验的是**自检工具本身**，不是真机、不是跨网。"
+  echo "    --self-test 自己起本地 relay + 临时配置，所以能挂 CI；默认模式要连真实 relay 和运行中的桌面 app，"
+  echo "    CI 没有那两样，**故意不挂进总闸**。真公网 + 真 NAT + 蜂窝网手机那十条仍需人工逐条打勾，"
+  echo "    见 docs/design/desktop-target/real-device-checklist.md §5。"
+  echo "  · G-86 首跑抓到的真 bug：--self-test 用 spawnSync 起子进程，而 relay 与假桌面入站都跑在父进程事件循环里，"
+  echo "    同步 spawn 把父进程整个阻塞 —— TCP 握手内核能完成、应用层永远没人应答，RD-06/07/08 全 timeout。"
+  echo "    改成异步 spawn 后 8/8 全绿。留在这里免得以后又把「工具坏了」当成「产品坏了」。"
+  echo "  · G-86 同时修了一份过时文档：旧 real-device-checklist.md 还写着「跨网不可用、Android relay 客户端没接」，"
+  echo "    那是 A3-4 之前的状态。新清单按 A3-9 口径重写，并写明**配对必须先在同一 Wi-Fi 完成**"
+  echo "    （redeemCode 仍是局域网 POST），拿到回执四栏后才能关 Wi-Fi 切蜂窝。"
+else
+  bad "G-86 自检工具自证（见 /tmp/g86-readiness.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g86-readiness.log || tail -3 /tmp/g86-readiness.log | head -1)）"
+  echo "  · G-86 残留（诚实）：见上；这条红说明自检工具不可信，别拿它验真机"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()
