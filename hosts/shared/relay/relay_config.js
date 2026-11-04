@@ -52,7 +52,8 @@ function normalizeRelayConfig(raw) {
   const boxToken = String(raw.box_token || raw.boxToken || "").trim();
   const clientToken = String(raw.client_token || raw.clientToken || "").trim();
   // 可选：中转**拨回来**的地址。缺省时由 main.js 用 `127.0.0.1:<inbound 实际端口>` 填，
-  // 那只在「relay 与桌面同宿主」时成立；relay 在别的机器/局域网里就必须显式写这里
+  // 那只在「relay 与桌面同网络命名空间的宿主进程」时成立；relay 在容器（桥接网络）
+  // 或别的机器里就必须显式写这里 —— `127.0.0.1` 在容器里指的是容器自己。
   // （见 R-A3-6g：云端 relay 拨不进 NAT 后的盒子）。
   const endpoint = String(raw.endpoint || "").trim();
   if (!host) return null;

@@ -4331,7 +4331,9 @@ async function ensureCnInbound() {
       // 返回 null，路由继续 503、零足迹。
       eventLog: turnMirror ? turnMirror.readHandle() : null,
       // A3-7（关 R-A3-6d）：兑换回执里的 relay 四栏从这里来。**每次兑换时现读**，
-      // 用户改完 relay.json 不必重启桌面；没配 / 半套一律 null，回执逐字节不变。
+      // 用户改完 relay.json 不必重启就能下发；但**登记只在入站启动 / 切局域网开关时**
+      // 发生（syncRelayBoxRegistration），运行中才写配置会得到「有四栏却 NOBOX」—— R-A3-6h。
+      // 没配 / 半套一律 null，回执逐字节不变。
       relayHandoff: () => currentRelayHandoff(),
     });
   }

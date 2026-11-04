@@ -5954,9 +5954,9 @@ smoke_grok_desktop_parity: PASS=539 FAIL=0
 |---|---|---|
 | `hosts/shared/relay/relay_config.js`（新） | 配置的**唯一事实源**：`data/desktop/relay.json` 优先、`BITBOT_RELAY_*` 兜底；`normalizeRelayConfig` 半套/端口越界/`enabled:false` 一律 `null`；`toHandoff` 只产出手机那四栏 | **两把钥匙不混**：`box_token`（桌面自己 REGISTER 用）绝不下发，下发的只有 `client_token`。文件优先于环境变量，因为文件是用户显式写下的意图 |
 | `hosts/shared/relay/relay_box_client.js`（新） | box 角色登记器：`AUTH` → `REGISTER`，一次一行、一次一条短连接；默认 30s 心跳；失败不抛，`getState()` 区分 `not-configured/denied/badreg/badcmd/transport/bad_config` | **不做指数退避**：这类失败通常是「relay 还没起来」，退避只会让恢复更慢，而一条 AUTH+REGISTER 只有两个短包。**必须心跳**：registry 是 relay 的内存表，重启即空 |
-| `hosts/desktop/main.js`（改） | `ensureCnInbound()` 传 `relayHandoff: () => currentRelayHandoff()`（**每次兑换现读**，改完 JSON 不必重启）；拿住 `await cnInbound.start()` 的真实端口再 `syncRelayBoxRegistration(started)`；`BITBOT_CN_INBOUND=0` 与 `before-quit` 都把心跳停掉 | 登记失败**绝不连坐**局域网配对；远端 relay + 缺省 endpoint 时打一条 WARN（否则现场只有一个查不出来的 `NOBOX`） |
+| `hosts/desktop/main.js`（改） | `ensureCnInbound()` 传 `relayHandoff: () => currentRelayHandoff()`（**每次兑换现读**，改完 JSON 不必重启即可下发；登记仍需重启 / 切开关，见 §8.72.6）；拿住 `await cnInbound.start()` 的真实端口再 `syncRelayBoxRegistration(started)`；`BITBOT_CN_INBOUND=0` 与 `before-quit` 都把心跳停掉 | 登记失败**绝不连坐**局域网配对；远端 relay + 缺省 endpoint 时打一条 WARN（否则现场只有一个查不出来的 `NOBOX`） |
 | `scripts/prove_relay_box_registration.js`（新） | RB-01..RB-12：真 `relay_server` + 真 `cn_inbound` + 真 socket + 打包配置 | 静态锚点只补「模块与产品的 join」，运行时语义一律用真 socket 证（§8.72.5） |
-| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-83**（RB-01..RB-11 全挂，含每组断言与残留） | 与 G-82 同口径：绿要能说出「哪几条命门在」，红要能说出「见哪个 log」 |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-83**（RB-01..RB-12 全挂，含每组断言与残留）；另修 7 处 `set -u` 下会被中文标点误判的变量展开（§8.72.7） | 与 G-82 同口径：绿要能说出「哪几条命门在」，红要能说出「见哪个 log」 |
 
 ### 8.72.3 门禁绿原文（本机，真 relay + 真 cn_inbound + 真 socket）
 
@@ -6030,7 +6030,9 @@ RB-07 的形状被改过两次，两次都是**门自己的错**：
 
 | 编号 | 一句话 | 为什么这一刀闭不了 |
 |---|---|---|
-| **R-A3-6g**（新） | **relay 是「它自己拨」到 box 登记的 `host:port`** ⇒ 云端 relay 拨不进 NAT 后面的桌面 | 这不是配置问题，是拓扑问题。`relay_server.js:89` 的 `net.connect(target.port, target.host)` 决定了 relay 必须能主动连到盒子。今天真能通的形态只有「relay 与桌面同宿主」（docker sidecar；缺省 endpoint = `127.0.0.1:<inbound 端口>`，`prove_relay_docker.sh` 已证这条路）。要支持「公网 relay + 家里的电脑」必须补**反向隧道**（box 持长连接，relay 把 CONNECT 的数据面喂给那条连接）—— 那是改转发模型的一刀，不在本片 |
+| **R-A3-6g**（新） | **relay 是「它自己拨」到 box 登记的 `host:port`** ⇒ 云端 relay 拨不进 NAT 后面的桌面 | 这不是配置问题，是拓扑问题。`relay_server.js:89` 的 `net.connect(target.port, target.host)` 决定了 relay 必须能主动连到盒子。**缺省 endpoint 只在「relay 是与桌面同一个网络命名空间的宿主进程」时成立**（RB-03/RB-04 就是这个形状）。
+`prove_relay_docker.sh` 只证了「镜像能 build、宿主打得到容器」，**没证容器能反拨宿主** —— 桥接网络下容器里的 `127.0.0.1` 是容器自己，
+必须显式写 `endpoint`（`host.docker.internal:<port>` 或局域网 IP）且桌面绑 `0.0.0.0`。要支持「公网 relay + 家里的电脑」必须补**反向隧道**（box 持长连接，relay 把 CONNECT 的数据面喂给那条连接）—— 那是改转发模型的一刀，不在本片 |
 | **R-A3-6h**（新） | 没有中转设置界面；`box_token` 明文落盘 | 本片只做了「读」。写配置要用户手编 JSON，凭证该进钥匙串/0600 文件 |
 | R-A3-5b（仍开） | SSE 仍不走隧道 | 跨网时回合走中转，进度事件流仍是诚实回退 |
 | R-A3-6a（仍开） | 手机无「手动填中转」入口 | 参数只能从配对回执来；已配对的老用户要重配一次 |
@@ -6039,6 +6041,45 @@ RB-07 的形状被改过两次，两次都是**门自己的错**：
 **这一刀证的是「桌面自己会读配置、会上线、会心跳」，不是「跨网可用」。** 把 G-83 绿读成
 「跨网通了」是本片最容易犯的错，而且比上次更容易犯：这次连登记都真的成功了（registry 里真有那台盒子），
 唯一缺的是「relay 能不能拨到它」—— 而那一步在本机永远成立，在真实拓扑里往往不成立。
+
+**现场怎么配（R-A3-6h 没做设置面之前的临时办法）**：三种部署形态，只有前两种今天有路，
+而本门只证过第一种：
+
+| 形态 | `endpoint` 填什么 | 今天能通吗 |
+|---|---|---|
+| A. relay 与桌面是**同一网络命名空间的宿主进程** | 不填 → 自动 `127.0.0.1:<inbound 端口>` | ✅ RB-03/RB-04 就是这个形状（真 socket + 真隧道） |
+| B. relay 在**容器 / 局域网另一台机器** | 必须显式填 relay 拨得到的地址（docker `host.docker.internal:<port>`、局域网 `IP:port`），且桌面 `BITBOT_BIND_LAN=1` 绑 `0.0.0.0` | ⚠️ 有路，但**本片没端到端证过** —— `prove_relay_docker.sh` 只证了「宿主打得到容器」，没证反方向 |
+| C. relay 在**公网**、桌面在 NAT 后面 | 无解，公网拨不进私网 | ❌ 需 R-A3-6g 的反向隧道 |
+
+形态 A 的最小步骤（两把钥匙 `role` 不能混，`box_token` 绝不下发）：
+
+```bash
+export BITBOT_RELAY_SECRET='<自己生成的一串随机值>'
+node -e '
+const { issueRelayCredential } = require("./hosts/shared/relay/relay_keys");
+const s = process.env.BITBOT_RELAY_SECRET;
+console.log("box_token="    + issueRelayCredential(s, "my-desktop", "box"));
+console.log("client_token=" + issueRelayCredential(s, "my-phone",   "client"));
+'
+BITBOT_RELAY_SECRET="$BITBOT_RELAY_SECRET" node hosts/shared/relay/relay_server.js
+```
+
+```json
+{ "host": "127.0.0.1", "port": 18766, "box_id": "my-desktop",
+  "box_token": "<上一步的 box_token>", "client_token": "<上一步的 client_token>" }
+```
+
+把上面这份写成 `data/desktop/relay.json`（权限 `0600`），然后**重启桌面**（或切一次
+「允许手机连接」开关）—— 盒子登记挂在 `ensureCnInbound()` 上，只在这两个时机发生；启动日志出现
+`[relay-box] registering box=my-desktop -> 127.0.0.1:18766 endpoint=127.0.0.1:<port>`。
+手机要**重新配对一次**才拿得到四栏（R-A3-6a：已配对的老会话不会自动补参数）。
+
+**一处行为不对称，别踩**：回执里的四栏是**每次兑换现读**的（改完 `relay.json` 不必重启就能下发），
+但**登记只在入站启动时做**。所以「运行中才写配置」会得到「手机拿到四栏、relay 却回 `NOBOX`」
+这种最难查的组合。要么重启，要么等后续把登记也做成配置热生效 —— 这半条并入 R-A3-6h。
+
+一个容易忽略的安全口径：`relay_keys.js` 的校验**不看 `iat`**、也没有轮换（R-A3-1c），
+这两把钥匙是长期有效的 —— 所以 `0600` 不是建议，是前提。
 
 ### 8.72.7 装机接缝，以及一次「只有本机才撞得到」的既有脚本 bug
 
@@ -6110,3 +6151,35 @@ G-53 这条单独复跑是**正控**：如果它单独也红，就必须按产�
 
 **边界重申**：这里的「环境红」是归因结论，不是免罪符。若本轮 CI 上任何一条也红，
 就必须按产品红处理，不能拿本节当挡箭牌。
+
+### 8.72.9 收口：CI `PASS=544 FAIL=0`（`9c6c5dd` / run `41826129797`）
+
+```
+Desktop Parity Matrix  ✓ success   matrix in 36m48s
+smoke_grok_desktop_parity: PASS=544 FAIL=0
+
+✓ G-83 桌面挂中转全绿（12 项断言，PASS=12 FAIL=0）
+✓ G-82 配对回执中转参数全绿（5 项断言，PASS=5 FAIL=0）
+✓ G-16 E2E 冷启动+像素断言全绿（130 项，e2e_grok_desktop_boot: PASS=130 FAIL=0)
+✓ G-47 e2e_android_turn 全绿（11 项，e2e_android_turn: PASS=11 FAIL=0 SKIP=0）
+✓ G-78 W3 设备信任门全绿（prove_w3_device_trust: PASS=37 FAIL=0）
+· G-77 端上真跑的单测：AB-06 JVM 单测真跑：199 用例 0 失败
+```
+
+`544 - 539 = 5`：正好是新增 G-83 的五条 `ok`，其余门的计数一条没动 ——
+说明这一刀**没有把任何既有门蹭绿或蹭红**，A3-6 收口时的 `053e7ea` 与这一跑是同一本账加一页。
+
+两跑 CI 的关系要写清楚：`0da458c` 触发的 `41825349601` 跑到 6m34s 时，被我随后推送
+`9c6c5dd` 触发的更高优先级请求**取消**（`Canceling since a higher priority waiting request
+… exists`）。所以权威结论是第二跑 `41826129797`，它覆盖的正是含 G-53 正控修正的**最终代码状态**。
+这是操作代价，不是 CI 波动；留在这里免得以后翻日志时把那条 `cancelled` 当成产品红。
+
+本机 `PASS=491 FAIL=27` 与 CI `544/0` 并不矛盾：本机落账 `491+27=518` 条，比 CI 少 26 条，
+那是被 shim / 沙箱打断的门本该产出的 `ok`。**少跑的断言不算绿**，所以本机数字只用来归因，
+不用来宣布交付 —— 这也是 §8.72.8 逐条留原文的原因。
+
+**边界**：CI 绿 = 门禁绿，仍然**不等于跨网可用**。R-A3-6g（relay 拨不进 NAT）、
+R-A3-6h（无设置面 / 配置不热登记 / 凭证明文）、R-A3-5b（SSE 不走隧道）、
+R-A3-6a（手机无手动填入口）、R-A3-6c（真机与真公网零样本）全部仍开；
+下一刀的优先级见路线图「A3-7 之后补一句」。本片**没有改动任何 Android 代码**，
+A3-6 交付的 APK 仍是当前端上版本，不需要重打。
