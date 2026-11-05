@@ -380,6 +380,13 @@ contextBridge.exposeInMainWorld("bitbot", {
     setLan: (enabled) => ipcRenderer.invoke("bitbot:pairing:lan", enabled),
     code: (payload) => ipcRenderer.invoke("bitbot:pairing:code", payload),
   },
+  // A3-14 跨网中转设置：get 只回掩码视图，save 把两把凭证交给主进程的
+  // secret vault（渲染端拿不到明文，也不会把明文写回 DOM）。
+  relaySettings: {
+    get: () => ipcRenderer.invoke("bitbot:relay:settings:get"),
+    save: (patch) => ipcRenderer.invoke("bitbot:relay:settings:save", patch || {}),
+    disable: () => ipcRenderer.invoke("bitbot:relay:settings:disable"),
+  },
   // A2-5 设备花名册：只读列出已登记设备（含最近活跃），吊销走主进程写同一份文件。
   devices: {
     list: () => ipcRenderer.invoke("bitbot:devices:list"),

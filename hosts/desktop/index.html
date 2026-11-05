@@ -3225,7 +3225,68 @@
             <p class="mc-note" id="mc-roster-error" hidden></p>
             <ul class="mc-roster" id="mc-roster-list"></ul>
           </section>
+          <!-- A3-14 跨网中转（部分关 R-A3-6h）：这一屏是手机配对主路，MC-02 硬要求
+               零令牌控件（6 位配对码就是主路），所以这里只放入口与状态，
+               表单在独立的 #relay-settings-modal 里。 -->
+          <section class="mc-card" id="mc-relay-entry-card">
+            <div class="mc-card-head">
+              <span id="mc-relay-dot" class="mc-dot" data-state="off" aria-hidden="true"></span>
+              <span class="mc-card-title" data-i18n="mcRelayTitle">跨网中转</span>
+            </div>
+            <div id="mc-relay-status" class="mc-status" data-i18n="mcRelayEmpty">尚未配置</div>
+            <p class="mc-note" data-i18n="mcRelayNote">公网 relay + NAT 后的桌面请选 reverse；两把凭证只填一次，之后留空即沿用。保存后自动重新登记，不用重启 app。</p>
+            <div class="mc-actions">
+              <button type="button" id="mc-relay-open" class="bb-btn bb-btn-sm" data-i18n="mcRelayOpen">配置中转</button>
+            </div>
+          </section>
         </div>
+      </div>
+    </div>
+    <!-- A3-14 独立的中转设置弹窗：与手机配对主路分开，MC-02 的「零令牌控件」口径
+         只管 #mobile-control-modal。凭证框是 password 且永不预填明文。 -->
+    <div id="relay-settings-modal" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="mc-relay-modal-title" style="display:none">
+      <div class="bb-sheet bb-sheet-lg">
+        <div class="bb-sheet-head">
+          <div class="bb-sheet-title" id="mc-relay-modal-title" data-i18n="mcRelayTitle">跨网中转设置</div>
+          <button type="button" id="mc-relay-close" class="bb-btn bb-close" data-i18n="settingsClose">关闭</button>
+        </div>
+        <section class="mc-card" id="mc-relay-card">
+          <p class="mc-note" data-i18n="mcRelayNote">公网 relay + NAT 后的桌面请选 reverse；两把凭证只填一次，之后留空即沿用。保存后自动重新登记，不用重启 app。</p>
+          <div class="mc-form" style="display:grid;gap:6px;margin:8px 0">
+            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
+              <span data-i18n="mcRelayHost">中转地址</span>
+              <input class="bb-control" id="mc-relay-host" type="text" autocomplete="off" spellcheck="false">
+            </label>
+            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
+              <span data-i18n="mcRelayPort">端口</span>
+              <input class="bb-control" id="mc-relay-port" type="number" min="1" max="65535">
+            </label>
+            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
+              <span data-i18n="mcRelayBoxId">盒子 ID</span>
+              <input class="bb-control" id="mc-relay-box" type="text" autocomplete="off" spellcheck="false">
+            </label>
+            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
+              <span data-i18n="mcRelayMode">模式</span>
+              <select class="bb-control" id="mc-relay-mode">
+                <option value="reverse">reverse · 反向隧道（推荐）</option>
+                <option value="dial">dial · 主动拨（同网部署）</option>
+              </select>
+            </label>
+            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
+              <span data-i18n="mcRelayBoxToken">桌面凭证</span>
+              <input class="bb-control" id="mc-relay-box-token" type="password" autocomplete="new-password" data-i18n-ph="mcRelayKeep" placeholder="留空沿用">
+            </label>
+            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
+              <span data-i18n="mcRelayClientToken">手机凭证</span>
+              <input class="bb-control" id="mc-relay-client-token" type="password" autocomplete="new-password" data-i18n-ph="mcRelayKeep" placeholder="留空沿用">
+            </label>
+          </div>
+          <div class="mc-actions">
+            <button type="button" id="mc-relay-save" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mcRelaySave">保存并生效</button>
+            <button type="button" id="mc-relay-disable" class="bb-btn bb-btn-sm" data-i18n="mcRelayDisable">关闭中转</button>
+          </div>
+          <div id="mc-relay-note" class="mc-note" hidden></div>
+        </section>
       </div>
     </div>
     <div id="agent-info-panel" class="bb-card bb-inset" style="display:none">
@@ -12673,6 +12734,124 @@
      * 以前这两样只在 README 里 —— 界面给不出来的话，「手机走通」就只是文档。
      * 状态、开关、令牌、复制都只读 window.bitbot.pairing，端口与地址不写死。
      * -------------------------------------------------------------------- */
+    /* ---------- A3-14 跨网中转设置面 --------------------------------------
+     * 视图只回掩码；两把凭证框永远不预填（placeholder「留空沿用」），
+     * 保存时只把用户**实际输入**的 token 交给主进程，其余沿用现有配置。
+     * 主进程保存后主动重登记，A3-11 的观察器再兜一层热生效。
+     * -------------------------------------------------------------------- */
+    (function initRelaySettings() {
+      const $ = (id) => document.getElementById(id);
+      const relayModal = $("relay-settings-modal");
+      function openRelay() {
+        if (relayModal) relayModal.style.display = "flex";
+        load();
+      }
+      function closeRelay() {
+        if (relayModal) relayModal.style.display = "none";
+      }
+      const relayOpenBtn = $("mc-relay-open");
+      if (relayOpenBtn) relayOpenBtn.addEventListener("click", openRelay);
+      const relayCloseBtn = $("mc-relay-close");
+      if (relayCloseBtn) relayCloseBtn.addEventListener("click", closeRelay);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && relayModal && relayModal.style.display !== "none") closeRelay();
+      });
+      function tr(key, fallback) {
+        try {
+          return (typeof wavegT === "function" && wavegT(key)) || fallback;
+        } catch (_) {
+          return fallback;
+        }
+      }
+      function say(text, isError) {
+        const n = $("mc-relay-note");
+        if (!n) return;
+        n.hidden = false;
+        n.textContent = text;
+        n.dataset.state = isError ? "error" : "ok";
+      }
+      function render(v) {
+        if (!v) return;
+        const put = (id, val) => { const el = $(id); if (el) el.value = val == null ? "" : String(val); };
+        put("mc-relay-host", v.host);
+        put("mc-relay-port", v.port);
+        put("mc-relay-box", v.boxId);
+        put("mc-relay-mode", v.mode || "dial");
+        // 两个 password 框刻意不碰 value —— 明文绝不回填到 DOM。
+        const st = $("mc-relay-status");
+        if (st) {
+          st.textContent = v.configured
+            ? String(v.mode || "dial") + " · " + String(v.host || "") + ":" + String(v.port || "") +
+              " · " + String(v.boxTokenMask || "") +
+              (v.hasPlaintextTokens ? " · " + tr("mcRelayPlainWarn", "当前文件仍是明文格式") : "")
+            : tr("mcRelayEmpty", "尚未配置");
+        }
+        const dot = $("mc-relay-dot");
+        if (dot) dot.dataset.state = v.configured ? "on" : "off";
+      }
+      async function load() {
+        try {
+          const v = await window.bitbot.relaySettings.get();
+          render(v);
+        } catch (e) {
+          say(String((e && e.message) || e), true);
+        }
+      }
+      const saveBtn = $("mc-relay-save");
+      if (saveBtn) {
+        saveBtn.addEventListener("click", async () => {
+          const patch = {
+            host: ($("mc-relay-host") || {}).value || "",
+            port: Number(($("mc-relay-port") || {}).value || 0),
+            box_id: ($("mc-relay-box") || {}).value || "",
+            mode: ($("mc-relay-mode") || {}).value || "reverse",
+          };
+          const bt = String(($("mc-relay-box-token") || {}).value || "").trim();
+          const ct = String(($("mc-relay-client-token") || {}).value || "").trim();
+          if (bt) patch.box_token = bt;
+          if (ct) patch.client_token = ct;
+          saveBtn.disabled = true;
+          try {
+            const r = await window.bitbot.relaySettings.save(patch);
+            render(r && r.view);
+            say(r && r.ok
+              ? tr("mcRelaySaved", "已保存并重新登记")
+              : tr("mcRelayFailed", "保存失败") + " · " + String((r && r.reason) || "unknown"),
+              !(r && r.ok));
+          } catch (e) {
+            say(String((e && e.message) || e), true);
+          } finally {
+            saveBtn.disabled = false;
+            put_empty();
+          }
+        });
+      }
+      function put_empty() {
+        // 保存成功后清空两个密码框，避免明文一直留在 DOM 的 value 里。
+        ["mc-relay-box-token", "mc-relay-client-token"].forEach((id) => {
+          const el = $(id);
+          if (el) el.value = "";
+        });
+      }
+      const disableBtn = $("mc-relay-disable");
+      if (disableBtn) {
+        disableBtn.addEventListener("click", async () => {
+          try {
+            const r = await window.bitbot.relaySettings.disable();
+            render(r && r.view);
+            say(tr("mcRelayDisabled", "中转已关闭"), !(r && r.ok));
+          } catch (e) {
+            say(String((e && e.message) || e), true);
+          }
+        });
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", load);
+      } else {
+        load();
+      }
+    })();
+
     let pairingSnapshot = null;
 
     function pairingStatusEl() {
@@ -15820,6 +15999,23 @@
         pairingCodeFail: "配对码没生成 · {err}（没有码，手机就只能走手动那一栏）",
         apRemote: "移动端远程控制",
         mcTitle: "移动端远程控制",
+        mcRelayTitle: "跨网中转",
+        mcRelayOpen: "配置中转",
+        mcRelayNote: "公网 relay + NAT 后的桌面请选 reverse；两把凭证只填一次，之后留空即沿用。保存后自动重新登记，不用重启 app。",
+        mcRelayHost: "中转地址",
+        mcRelayPort: "端口",
+        mcRelayBoxId: "盒子 ID",
+        mcRelayMode: "模式",
+        mcRelayBoxToken: "桌面凭证",
+        mcRelayClientToken: "手机凭证",
+        mcRelaySave: "保存并生效",
+        mcRelayDisable: "关闭中转",
+        mcRelayEmpty: "尚未配置",
+        mcRelaySaved: "已保存并重新登记",
+        mcRelayFailed: "保存失败",
+        mcRelayDisabled: "中转已关闭",
+        mcRelayPlainWarn: "当前文件仍是明文格式",
+        mcRelayKeep: "留空沿用",
         mcPairTitle: "手机连接这台桌面",
         mcReading: "配对状态：读取中…",
         mcHint: "手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。",
@@ -16628,6 +16824,23 @@
         pairingCodeFail: "配對碼未產生 · {err}（沒有碼，手機就只能走手動那一欄）",
         apRemote: "移動端遠端控制",
         mcTitle: "移動端遠端控制",
+        mcRelayTitle: "跨網中轉",
+        mcRelayOpen: "設定中轉",
+        mcRelayNote: "公網 relay + NAT 後的桌面請選 reverse；兩把憑證只填一次，之後留空即沿用。儲存後自動重新登記，不用重啟 app。",
+        mcRelayHost: "中轉位址",
+        mcRelayPort: "連接埠",
+        mcRelayBoxId: "盒子 ID",
+        mcRelayMode: "模式",
+        mcRelayBoxToken: "桌面憑證",
+        mcRelayClientToken: "手機憑證",
+        mcRelaySave: "儲存並生效",
+        mcRelayDisable: "關閉中轉",
+        mcRelayEmpty: "尚未設定",
+        mcRelaySaved: "已儲存並重新登記",
+        mcRelayFailed: "儲存失敗",
+        mcRelayDisabled: "中轉已關閉",
+        mcRelayPlainWarn: "目前檔案仍是明文格式",
+        mcRelayKeep: "留空沿用",
         mcPairTitle: "手機連接這台桌面",
         mcReading: "配對狀態：讀取中…",
         mcHint: "手機和桌面在同一個 Wi-Fi 下，輸入 6 位配對碼就能連上這台大腦，不需要手填長權杖。",
@@ -17436,6 +17649,23 @@
         pairingCodeFail: "No pairing code issued · {err} (without one the phone has to fall back to manual entry)",
         apRemote: "Mobile remote control",
         mcTitle: "Mobile remote control",
+        mcRelayTitle: "Cross-network relay",
+        mcRelayOpen: "Configure relay",
+        mcRelayNote: "Pick reverse when the relay is public and the desktop is behind NAT. Enter both credentials once; leave them blank afterwards to keep the stored ones. Saving re-registers automatically — no restart needed.",
+        mcRelayHost: "Relay host",
+        mcRelayPort: "Port",
+        mcRelayBoxId: "Box ID",
+        mcRelayMode: "Mode",
+        mcRelayBoxToken: "Desktop credential",
+        mcRelayClientToken: "Phone credential",
+        mcRelaySave: "Save & apply",
+        mcRelayDisable: "Turn off relay",
+        mcRelayEmpty: "Not configured",
+        mcRelaySaved: "Saved and re-registered",
+        mcRelayFailed: "Save failed",
+        mcRelayDisabled: "Relay turned off",
+        mcRelayPlainWarn: "Config file still holds plaintext credentials",
+        mcRelayKeep: "Leave blank to keep",
         mcPairTitle: "Connect your phone to this desktop",
         mcReading: "Pairing state: loading…",
         mcHint: "On the same Wi-Fi, the phone just types a 6-digit pairing code to reach this brain — no long token to paste.",

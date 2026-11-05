@@ -3684,6 +3684,36 @@ else
   echo "  · G-89 残留（诚实）：见上；这条红的常见原因：上限检查被摘、拒绝没回 NOBOX、或放过了主动拨"
 fi
 
+echo "== G-90 桌面中转设置面（路线 A · W4 / A3-14 · 再部分关 R-A3-6h）=="
+if timeout 180 node scripts/prove_relay_settings.js > /tmp/g90-settings.log 2>&1; then
+  ok "G-90 设置面全绿（$(grep -c '^  ✓ ' /tmp/g90-settings.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g90-settings.log)）"
+  grep -q 'RS2-01 ' /tmp/g90-settings.log && grep -q 'RS2-03 ' /tmp/g90-settings.log && grep -q 'RS2-04 ' /tmp/g90-settings.log \
+    && ok "G-90 视图只回掩码：未配置说没配、保存后查无明文、只改地址时 token 留空沿用（不用每次重贴两把钥匙）" \
+    || bad "G-90 RS2-01/03/04 锚点缺失"
+  grep -q 'RS2-05 ' /tmp/g90-settings.log && grep -q 'RS2-06 ' /tmp/g90-settings.log && grep -q 'RS2-07 ' /tmp/g90-settings.log && grep -q 'RS2-08 ' /tmp/g90-settings.log \
+    && ok "G-90 不撒谎：首次缺 token 明确拒绝、非法字段逐条挡住、关闭中转写 enabled:false、半套/坏 JSON 一律未配置" \
+    || bad "G-90 RS2-05/06/07/08 锚点缺失"
+  grep -q 'RS2-09 ' /tmp/g90-settings.log && grep -q 'RS2-10 ' /tmp/g90-settings.log && grep -q 'RS2-12 ' /tmp/g90-settings.log && grep -q 'RS2-13 ' /tmp/g90-settings.log \
+    && ok "G-90 产品接线也在：preload 三通道 / main.js 三 handler / 保存后主动重登记；表单+密码框+13 个三语词条；新增 UI JS 可编译；IA 边界守住" \
+    || bad "G-90 RS2-09/10/12/13 锚点缺失"
+  echo "  · G-90 修复前红（门写完后产品 UI 一行沒接）：PASS=9 FAIL=2 —— 运行时八条全绿，"
+  echo "    红的只有 'RS2-09 桌面接线缺了 9 处' 与 'RS2-10 HTML 缺元素'，正是「模块能用但产品没界面」。"
+  echo "  · G-90 十一组负向对照逐个实跑、逐组复原校验、0 真空（原文见 report.md §8.79.4）。"
+  echo "    其中 M03 第一版真空：摘掉 save handler 里的重登记后门仍绿 —— RS2-09 用 main.includes 全文搜，"
+  echo "    被 disable handler 里同款调用撑绿（A3-7 RB-09 同型坑），改成切 saveBlock 再查才红。"
+  echo "  · G-90 真机门也复跑过：e2e_desktop_mobile_control 首次 PASS=14 FAIL=1 ——"
+  echo "    'MC-02 这一屏还摆着令牌控件 — mc-relay-box-token,mc-relay-client-token'。"
+  echo "    这不是环境红也不是门误报：**产品 IA 冲突**，MC-02 硬要求手机配对弹窗零令牌控件（6 位码才是主路）。"
+  echo "    改成「配对弹窗只留入口卡片、表单放独立 #relay-settings-modal」后 MC 15/0，并补 RS2-13 把边界钉在本门里。"
+  echo "  · G-90 残留（诚实）：① **R-A3-6h 仍未整条关闭** —— OS 钥匙串没接，vault 密钥还在本机磁盘；"
+  echo "    ② 设置面只做了中转这一段，没有统一的「设置」页重构；③ 独立弹窗走自带的 display/Esc，"
+  echo "    没接项目的 sheet 栈（MC-06/12 只管配对弹窗，本机门已绿）；"
+  echo "    ④ 三语文案是新增词条，未做真机切语言肉眼验收；⑤ 真机/真公网仍零样本。"
+else
+  bad "G-90 设置面（见 /tmp/g90-settings.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g90-settings.log || tail -3 /tmp/g90-settings.log | head -1)）"
+  echo "  · G-90 残留（诚实）：见上；这条红的常见原因：preload/IPC 接线被摘、视图把明文回给渲染端、或表单被搬回配对弹窗"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

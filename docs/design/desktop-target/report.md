@@ -6995,3 +6995,92 @@ verify_real_device_readiness --self-test: PASS=8 FAIL=0
 - SSE 仍不走隧道（`R-A3-5b`）；设置界面 / OS 钥匙串仍是 `R-A3-6h` 剩余。
 
 **边界**：这一刀给内存与 fd 封了顶，**不等于跨网可用、也不等于做过压测**。
+
+---
+
+## 8.79 A3-14 桌面中转设置面（再部分关 R-A3-6h）
+
+### 8.79.1 从「手写 JSON」到「有地方能配」
+
+`R-A3-6h` 最初三条：配置不热生效（A3-11 关）、凭证明文（A3-12 关）、**没有设置界面**（这一刀）。
+真机清单 §2.3 一直让用户手写 `data/desktop/relay.json`，A3-12 后又多了一条
+`node -e` 转换命令 —— 能用，但不是产品。
+
+架构照旧分两层：`hosts/shared/relay/relay_settings.js` 是可测的读写模块，
+`main.js` / `preload.js` / `index.html` 只做接线。
+**给 UI 的视图只回掩码**（`****后四位`），渲染端连明文都拿不到；
+两个凭证输入框是 `type="password"` 且**永不预填**，placeholder 写「留空沿用」。
+
+### 8.79.2 一次真红的 IA 冲突（这一片最值钱的部分）
+
+第一版把中转表单直接加进「移动端远程控制」弹窗的 `mc-grid`。
+本机跑 `e2e_desktop_mobile_control.mjs` 得到：
+
+```
+  ✗ MC-02 这一屏还摆着令牌控件（抄 64 位令牌仍是必经路） — mc-relay-box-token,mc-relay-client-token
+e2e_desktop_mobile_control: PASS=14 FAIL=1 SKIP=0
+```
+
+查 MC-02 的实现（`win.evaluate` 取 `#mobile-control-modal` 内所有 id 含 `token` 的元素）
+与它的注释后判定：**这不是环境红，也不是门误报，是产品设计错了** ——
+那一屏的 IA 约定是「6 位配对码是主路、零令牌控件」，中转配置属于桌面侧高级设置，
+不该混在手机配对弹窗里。
+
+处理方式是**改产品、不动既有门**：配对弹窗里只留入口卡片（状态 + 「配置中转」按钮），
+表单整体搬到独立的 `#relay-settings-modal`。改完 `MC 15/0`。
+并在本片门里补 RS2-13 把这条边界钉住（配对弹窗零令牌控件、凭证框全在独立弹窗里），
+免得以后搬回去只有另一个 Electron 门会红。
+
+### 8.79.3 交付
+
+| 文件 | 改动 |
+| --- | --- |
+| `hosts/shared/relay/relay_settings.js`（新） | `readRelaySettings()` 掩码视图（绝不回明文）、`saveRelaySettings()` 校验 + 沿用旧 token + 走 `writeRelayConfigSecure()`、`disableRelaySettings()` 写 `enabled:false` |
+| `hosts/desktop/main.js`（改） | 三个 `ipcMain.handle("bitbot:relay:settings:*")`；save / disable 后**主动** `syncRelayBoxRegistration(...)` —— A3-11 的观察器最多 2s 也会发现，但点了「保存并生效」就该立刻生效 |
+| `hosts/desktop/preload.js`（改） | `window.bitbot.relaySettings` 的 get / save / disable 三通道 |
+| `hosts/desktop/index.html`（改） | 配对弹窗里入口卡片；独立中转设置弹窗（6 个字段、两个 password 框、保存/关闭）；JS 读写与显式掩码渲染；zh-CN / zh-TW / en 三语各 17 个词条 |
+| `scripts/prove_relay_settings.js`（新） | RS2-01..RS2-13：真 vault + 真临时文件跑读写，静态 join 钉 UI，RS2-12 编译新增 UI JS，RS2-13 守 IA 边界 |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-90**（4 条 `ok`） |
+
+### 8.79.4 红 → 绿 → 负向对照
+
+```
+修复前红（门写完、产品 UI 一行没接）：PASS=9  FAIL=2
+  ✗ RS2-09 桌面接线缺了 9 处；✗ RS2-10 HTML 缺元素（运行时八条全绿）
+修复后绿：                          PASS=13 FAIL=0
+```
+
+十一组负向对照逐个实跑、逐组复原校验、**0 真空**：摘 preload / save handler / 重登记、
+摘 HTML 卡片、凭证框改明文 text、三语缺一门、视图回显明文、首次缺 token 放行、
+HTML 不接 IPC、写坏 UI JS 语法、把令牌控件搬回配对弹窗。
+
+两处**门自身被改硬**（留痕）：
+- **M03 真空**：摘掉 save handler 里的重登记后门仍绿，因为 RS2-09 用
+  `main.includes("syncRelayBoxRegistration(relayConfigWatchStatus)")` 全文搜，
+  被 disable handler 里同款调用撑绿 —— 与 A3-7 RB-09 同型。改成切 `saveBlock` 再查。
+- **RS2-12**：静态锚点只证「代码在」，写错一行 JS 整个面板就哑了。
+  新增一条 `new Function(片段)` 编译断言，M10 实测写坏语法会红。
+
+另有两组 runner 的 SETUP-FAIL（M03 的行在两个 handler 里都有、M10 的 `$` 定义在文件里出现两次），
+补上下文后精确落点，不算真空。
+
+### 8.79.5 复跑
+
+```
+prove_relay_settings:            PASS=13 FAIL=0
+e2e_desktop_mobile_control:      PASS=15 FAIL=0 SKIP=0   （真 Electron，MC-02 回到绿）
+prove_ui_tokens:                 PASS=9  FAIL=0
+其余九道 relay 门：12/0、11/0、11/0、8/0、9/0、15/0、12/0、6/0、6/0、8/0（全绿）
+```
+
+### 8.79.6 残留（诚实）
+
+| # | 残留 | 说明 |
+| --- | --- | --- |
+| ① | **`R-A3-6h` 仍未整条关闭** | 关掉的是「没有设置界面」；**OS 钥匙串仍没接**，vault 密钥文件还在本机磁盘。上一轮说「设置面做完就能整条关闭」不准确，在此更正 |
+| ② | 独立弹窗走自带 `display` / Esc | 没接项目的 sheet 栈；MC-06/12 只管配对弹窗，本机门已绿，但叠加打开两层时的栈行为未做 e2e |
+| ③ | 三语文案只做了词条与静态覆盖 | 没在真机切 zh-TW / en 肉眼验收 |
+| ④ | 设置面只做中转这一段 | 没有统一的「设置」页重构；`endpoint` / `local_endpoint` 两个可选字段没进表单 |
+| ⑤ | 真机 / 真公网仍零样本 | `R-A3-8a`；SSE 仍不走隧道 `R-A3-5b` |
+
+**边界**：这一刀让用户不用再手写 JSON，**不等于钥匙串已接、也不等于跨网可用**。

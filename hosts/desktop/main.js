@@ -181,6 +181,13 @@ try {
 } catch (_e) {
   relaySecretsMod = require("../shared/relay/relay_secrets");
 }
+// A3-14（关 R-A3-6h 的「没有设置界面」）：给 UI 用的掩码视图与保存逻辑。
+let relaySettingsMod;
+try {
+  relaySettingsMod = require("./shared/relay/relay_settings");
+} catch (_e) {
+  relaySettingsMod = require("../shared/relay/relay_settings");
+}
 
 // Pairing-v1: shared code manager (IPC + HTTP routes see the same instance).
 let createPairingCodeManager;
@@ -4650,6 +4657,35 @@ ipcMain.handle("bitbot:pairing:copy", async (_e, what) => {
     return { ok: false, error: err && err.message ? err.message : String(err) };
   }
   return { ok: true, kind, length: String(text).length };
+});
+
+/* ---------- A3-14：桌面中转设置面（部分关 R-A3-6h）---------------------- *
+ * 三个 handler 都是薄壳：读写逻辑在 hosts/shared/relay/relay_settings.js，
+ * 视图只回掩码，凭证绝不进渲染端。保存 / 关闭之后**主动**触发一次重新登记 ——
+ * A3-11 的观察器最多 2s 也会发现变化，但用户点了「保存并生效」就该立刻生效。
+ * ------------------------------------------------------------------------ */
+ipcMain.handle("bitbot:relay:settings:get", async () => {
+  return relaySettingsMod.readRelaySettings({ repoRoot: REPO_ROOT, vault: relayVault });
+});
+
+ipcMain.handle("bitbot:relay:settings:save", async (_e, patch) => {
+  const r = relaySettingsMod.saveRelaySettings({
+    repoRoot: REPO_ROOT, vault: relayVault, patch: patch || {},
+  });
+  if (r.ok) {
+    try {
+      syncRelayBoxRegistration(relayConfigWatchStatus);
+    } catch (_) { /* 登记失败不该让保存看起来失败 */ }
+  }
+  return r;
+});
+
+ipcMain.handle("bitbot:relay:settings:disable", async () => {
+  const r = relaySettingsMod.disableRelaySettings({ repoRoot: REPO_ROOT, vault: relayVault });
+  try {
+    syncRelayBoxRegistration(relayConfigWatchStatus);
+  } catch (_) {}
+  return r;
 });
 
 /**
