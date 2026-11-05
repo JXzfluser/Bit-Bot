@@ -3714,6 +3714,40 @@ else
   echo "  · G-90 残留（诚实）：见上；这条红的常见原因：preload/IPC 接线被摘、视图把明文回给渲染端、或表单被搬回配对弹窗"
 fi
 
+echo "== G-91 公网跨网接线（路线 A · W4 / A3-15 · 连接地址与下发地址分离）=="
+if timeout 180 node scripts/prove_public_relay_setup.js > /tmp/g91-pubsetup.log 2>&1; then
+  ok "G-91 公网接线全绿（$(grep -c '^  ✓ ' /tmp/g91-pubsetup.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g91-pubsetup.log)）"
+  grep -q 'PU-01 ' /tmp/g91-pubsetup.log && grep -q 'PU-02 ' /tmp/g91-pubsetup.log \
+    && ok "G-91 地址拆分成立：connect_host 读得出且老配置缺省为空；手机四栏仍是公网 host、形状一字不变、不夹带 connect_host/box_token" \
+    || bad "G-91 PU-01/PU-02 锚点缺失"
+  grep -q 'PU-03 ' /tmp/g91-pubsetup.log && grep -q 'PU-04 ' /tmp/g91-pubsetup.log && grep -q 'PU-05 ' /tmp/g91-pubsetup.log && grep -q 'PU-06 ' /tmp/g91-pubsetup.log \
+    && ok "G-91 不脱钩：安全格式保留 connect_host 且无明文、设置面保存不丢它、真 socket 出站 BIND 成功、不可达公网端点确实连不上（证拆分必要）" \
+    || bad "G-91 PU-03/04/05/06 锚点缺失"
+  grep -q 'PU-07 ' /tmp/g91-pubsetup.log && grep -q 'PU-08 ' /tmp/g91-pubsetup.log && grep -q 'PU-09 ' /tmp/g91-pubsetup.log && grep -q 'PU-10 ' /tmp/g91-pubsetup.log && grep -q 'PU-11 ' /tmp/g91-pubsetup.log \
+    && ok "G-91 部署与接线也在：setup 拒绝回环/私网 host、start 绑 0.0.0.0 且共用 secret、main.js 真用 connect_host、既有六处锚点未动、四个凭证文件全被 .gitignore 覆盖" \
+    || bad "G-91 PU-07/08/09/10/11 锚点缺失"
+  echo "  · G-91 修复前红（最终门 + 4 个既有文件回退 A3-14 态）：PASS=7 FAIL=4 ——"
+  echo "    '✗ PU-01 connect_host 没读出来'、'✗ PU-03 安全格式不对'、'✗ PU-04 保存后 connect_host 丢了'、"
+  echo "    '✗ PU-09 桌面没用 connect_host'。八组负向对照逐个实跑、0 真空（原文见 report.md §8.80.4）；"
+  echo "    收口自查还抓到 relay-secret 未被 .gitignore 覆盖（会被误提交），补规则并加 PU-11 钉住。"
+  echo "  · G-91 现场实测（真 relay + 真桌面 app，不是门造的桩）："
+  echo "    [relay-box] reverse box=my-desktop -> 14.155.111.69:18766；relay /healthz boxes:1；"
+  echo "    审计 connect→accept→attach→close 同一 streamId；隧道上 GET /v1/pair/discover → HTTP/1.1 200 OK + bitbot-desktop JSON。"
+  echo "  · G-91 诚实边界：① 这证的是「手机够得到 relay 时整条链路通」，**不等于公网入口已存在** ——"
+  echo "    本机网卡 10.201.107.104 在 NAT 后、无 UPnP/隧道工具，TCP 18766 是否映射需路由器侧配置；"
+  echo "    桌面连自己的公网出口实测超时，正是 connect_host 拆分的原因。② 手机仍需**先同一 Wi-Fi 配对一次**"
+  echo "    才能拿到四栏（redeem 只走局域网，R-A3-5b/R-A3-6a 未做） → 之后才能关 Wi-Fi 走蜂窝。"
+  echo "    ③ 若 relay 部署在另一台公网机器，setup 要带 --connect-host <那台机器地址>，勿留 127.0.0.1。"
+  echo "    ④ 真公网 + 真 NAT + 蜂窝网样本仍为零，R-A3-8a 未关闭。"
+  echo "  · G-91 收口还修掉 A3-14 那跑 CI 的唯一真红（run 42029684165，PASS=576 FAIL=1）："
+  echo "    '✗ G-89 BP-05/06/08/09 锚点缺失' —— 门把 BP-06/07 合并输出成 'BP-06/07'，"
+  echo "    总闸按 'BP-06 ' grep 失配（斜杠不是空格）。拆成两条独立 ok 后门 9/0、四条 grep 全命中，"
+  echo "    A3-13 七组负向对照重跑仍 0 真空。详见 report.md §8.80.7。"
+else
+  bad "G-91 公网接线（见 /tmp/g91-pubsetup.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g91-pubsetup.log || tail -3 /tmp/g91-pubsetup.log | head -1)）"
+  echo "  · G-91 残留（诚实）：见上；这条红的常见原因：地址拆分被摘、四栏误用 connect_host、或部署脚本绑回 127.0.0.1"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

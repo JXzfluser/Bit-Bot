@@ -32,6 +32,9 @@ agent-tools/
 /data/voice/media/
 /data/secrets/
 /data/host/turn-token
+# A3-15：relay 主密钥（setup_public_relay.js 生成，mode 0600）。
+# 它没有扩展名，/data/**/*.json 那条通配盖不住 —— 漏掉就等于把准入密钥提交进仓库。
+/data/desktop/relay-secret
 # K-1/K-3: the agent context is conversation state, not source.
 /data/agent-context/
 # The same context lands in ./agent-context/ whenever DATA_ROOT is unset

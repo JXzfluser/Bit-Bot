@@ -45,6 +45,7 @@ function readRelaySettings(opts) {
     port: cfg ? cfg.port : "",
     boxId: cfg ? cfg.boxId : "",
     mode: cfg ? cfg.mode : "dial",
+    connectHost: cfg ? (cfg.connectHost || "") : "",
     secure: info.exists ? info.secure : true,
     hasPlaintextTokens: Boolean(info.hasPlaintextTokens),
     boxTokenMask: cfg ? mask(cfg.boxToken) : "",
@@ -65,7 +66,8 @@ function parsePatch(patch) {
   const clientToken = String(p.client_token || p.clientToken || "").trim();
   const endpoint = String(p.endpoint || "").trim();
   const localEndpoint = String(p.local_endpoint || p.localEndpoint || "").trim();
-  return { host, port, boxId, mode, boxToken, clientToken, endpoint, localEndpoint };
+  const connectHost = String(p.connect_host || p.connectHost || "").trim();
+  return { host, port, boxId, mode, boxToken, clientToken, endpoint, localEndpoint, connectHost };
 }
 
 /**
@@ -78,6 +80,8 @@ function saveRelaySettings(opts) {
   const current = relaySecrets.loadRelayConfigSecure(o);
   const boxToken = p.boxToken || (current ? current.boxToken : "");
   const clientToken = p.clientToken || (current ? current.clientToken : "");
+  // 设置面没有 connect_host 输入框，保存其它字段时必须沿用，否则桌面会退回连公网 IP。
+  const connectHost = p.connectHost || (current ? (current.connectHost || "") : "");
 
   const view = () => readRelaySettings(o);
   if (!p.host) return { ok: false, reason: "missing_host", view: view() };
@@ -99,6 +103,7 @@ function saveRelaySettings(opts) {
   };
   if (p.endpoint) cfg.endpoint = p.endpoint;
   if (p.localEndpoint) cfg.local_endpoint = p.localEndpoint;
+  if (connectHost) cfg.connect_host = connectHost;
 
   const written = relaySecrets.writeRelayConfigSecure(Object.assign({}, o, { cfg }));
   if (!written.ok) return { ok: false, reason: written.reason, view: view() };

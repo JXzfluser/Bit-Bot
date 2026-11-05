@@ -153,6 +153,50 @@ node scripts/verify_real_device_readiness.js
 
 ---
 
+### 2.6 A3-15：一条命令接线（当前这台机器**已经跑好**）
+
+上面的 2.1–2.5 是分散步骤，容易漏。现在有一条命令把桌面侧全部做完：
+
+```bash
+node scripts/setup_public_relay.js --host 14.155.111.69 --connect-host 127.0.0.1
+bash scripts/start_public_relay.sh        # 另一个终端，保持运行
+```
+
+`--host` 是**下发给手机**的公网地址（脚本会拒绝 `127.0.0.1` / `10.x` / `192.168.x`，
+免得把手机连不上的地址写进回执）；`--connect-host` 是**桌面自己**连 relay 用的地址 ——
+relay 和桌面在同一台机器时填 `127.0.0.1`，因为桌面连自己的公网出口实测不通（NAT 回环）。
+**若 relay 部署在另一台公网机器，`--connect-host` 要填那台机器的地址，不能留 127.0.0.1。**
+
+脚本会：生成/复用 `data/desktop/relay-secret`(0600) → 签发两把角色不同的凭证 →
+经已有的 secret vault 写**安全格式** `relay.json`（只留 `*_token_ref`、`mode: reverse`、
+含 `connect_host`、mode 0600）→ 打印掩码视图。A3-11 的观察器 ≤2s 自动重新登记，**不用重启 app**。
+
+当前本机的实测状态（2026-11-05）：
+
+```
+relay /healthz : {"ok":true,"boxes":1}
+桌面日志       : [relay-box] reverse box=my-desktop -> 14.155.111.69:18766
+真握手         : client AUTH → OK ; box AUTH/BIND → OK / BOUND my-desktop
+四栏           : host=14.155.111.69, port=18766, box_id=my-desktop, client_token（不含 box_token）
+端到端隧道     : TUNNEL reverse:my-desktop → GET /v1/pair/discover → HTTP/1.1 200 OK
+审计           : connect → accept → attach → close（同一 streamId）
+```
+
+**唯一还差的、代码做不了的一步**：`14.155.111.69` 是本机**出口** IP，不在网卡上
+（网卡是 `10.201.107.104`）。要手机蜂窝网够得到，需要三选一：
+
+1. 路由器把 TCP **18766**（及可选 18767）映射到 `10.201.107.104`；
+2. 或把 `data/desktop/relay-secret` + `start_public_relay.sh` 放到一台有公网 IP 的机器上跑，
+   再用 `--host <那台地址> --connect-host <那台地址>` 重新接线；
+3. 或装 Tailscale / 内网穿透把 18766 暴露出去（本机当前没装）。
+
+**映射是否生效，用手机关 Wi-Fi、走蜂窝时测**：浏览器打开
+`http://14.155.111.69:18767/healthz`，应看到 `{"ok":true,"boxes":1}`。
+打不开就是入口没通，先解决它；这一步通了，后面的连接代码侧已经全部就绪。
+
+⚠️ 顺序不变：**手机先连同一 Wi-Fi 配对一次**（redeem 只走局域网，四栏只在配对回执里下发），
+拿到四栏后才能关 Wi-Fi 切蜂窝。详见 §1。
+
 ## 3. 手机侧步骤
 
 1. 装 **A3-6 构建的 APK**（A3-7/8/9 没改 Android，不用重打、不用更新）。

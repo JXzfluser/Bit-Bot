@@ -180,7 +180,11 @@ async function main() {
     } else if (audit.includes(boxToken) || audit.includes(clientToken)) {
       bad("BP-06 审计里出现了凭证");
     } else {
-      ok("BP-06/07 审计非空、有 stream-reject 元数据且查无两把凭证");
+      // 两条各自独立输出：总闸 G-89 按 `BP-06 ` / `BP-07 ` 逐条 grep 锚点，
+      // 合并成「BP-06/07」会让 grep 失配 —— A3-14 的 CI 就只红了这一条
+      // （PASS=576 FAIL=1，✗ G-89 BP-05/06/08/09 锚点缺失），不是产品坏。
+      ok("BP-06 审计有 stream-reject 元数据且查无两把凭证");
+      ok("BP-07 审计日志非空（「查无凭证」不在空日志上真空通过）");
     }
   }
 

@@ -4276,7 +4276,7 @@ function syncRelayBoxRegistration(status) {
   }
 
   relayBox = relayBoxMod.createRelayBoxClient({
-    host: cfg.host,
+    host: cfg.connectHost || cfg.host, // A3-15：本机 relay 走 127.0.0.1；手机仍拿公网 host
     port: cfg.port,
     boxId: cfg.boxId,
     boxToken: cfg.boxToken,

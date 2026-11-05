@@ -69,12 +69,15 @@ function normalizeRelayConfig(raw) {
   const mode = String(raw.mode || "").trim().toLowerCase() === "reverse" ? "reverse" : "dial";
   // reverse 时桌面最后一跳连的**本机**地址；空则 main.js 用 `127.0.0.1:<inbound 实际端口>` 兜底。
   const localEndpoint = String(raw.local_endpoint || raw.localEndpoint || "").trim();
+  // A3-15：relay 与桌面在同一台机器时，桌面连自己的公网 IP 往往不通（NAT 回环不可用）。
+  // connect_host 让「盒子连哪」与「手机连哪」分开；它是可选字段，不参与「五栏齐」判定。
+  const connectHost = String(raw.connect_host || raw.connectHost || "").trim();
   if (!host) return null;
   // `Number("abc")` 是 NaN，`18766.5` 也不是端口 —— 两者都必须在这里挡住，
   // 否则端上会拿一个连不上的端口去建连，用户看到的是「网络不好」。
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
   if (!boxId || !boxToken || !clientToken) return null;
-  return { host, port, boxId, boxToken, clientToken, endpoint, mode, localEndpoint };
+  return { host, port, boxId, boxToken, clientToken, endpoint, mode, localEndpoint, connectHost };
 }
 
 function relayConfigFromEnv(env) {

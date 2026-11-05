@@ -7084,3 +7084,118 @@ prove_ui_tokens:                 PASS=9  FAIL=0
 | ⑤ | 真机 / 真公网仍零样本 | `R-A3-8a`；SSE 仍不走隧道 `R-A3-5b` |
 
 **边界**：这一刀让用户不用再手写 JSON，**不等于钥匙串已接、也不等于跨网可用**。
+
+---
+
+## 8.80 A3-15 公网跨网接线（连接地址与下发地址分离）
+
+### 8.80.1 起因：真机现场暴露的一个结构性缺口
+
+用户要的是**公网连接**（手机走蜂窝也能连），不是同 Wi-Fi。本机探查：
+公网出口 `14.155.111.69`，网卡却是 `10.201.107.104`（NAT 后），
+无 Tailscale / ngrok / cloudflared / UPnP 工具；桌面 app 与 relay 都在同一台机器。
+
+把 relay 按公网姿势跑起来（`0.0.0.0:18766`）后实测：
+
+```
+14.155.111.69:18766 -> 不通 (timeout)     ← NAT 回环不可用 / 未做端口映射
+127.0.0.1:18766     -> 可连
+```
+
+而 A3-7 以来的 `relay.json` 只有**一个** `host`：既给桌面连 relay，又随配对回执下发手机。
+于是本机部署必然二选一地错：填公网 IP → 桌面自己登记不上；填 127.0.0.1 → 手机拿到一个
+连不上的地址。这不是配置写错，是字段不够。
+
+### 8.80.2 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `hosts/shared/relay/relay_config.js` | 新增**可选** `connect_host`（归一进 cfg，缺省空 → 老配置行为一字不变）；`toHandoff` 四栏形状不变，`host` 仍是公网地址 |
+| `hosts/shared/relay/relay_secrets.js` | 安全格式保留 `connect_host`（非敏感），写入仍查无明文 / 0600 |
+| `hosts/shared/relay/relay_settings.js` | 视图带 `connectHost`；保存其它字段时**沿用**它（否则改一次地址就退回连公网） |
+| `hosts/desktop/main.js` | `host: cfg.connectHost || cfg.host`（没有则维持原行为） |
+| `scripts/setup_public_relay.js`（新） | 一条命令完成：生成/复用 `relay-secret`(0600) → 签发两把角色不同的凭证 → 经 vault 写安全格式 `relay.json`（`mode: reverse` + `connect_host`）→ 输出掩码视图；**拒绝**回环/私网 host，避免下发给手机一个连不上的地址 |
+| `scripts/start_public_relay.sh`（新） | 用**同一个** secret 文件启动 `relay_server.js`，绑 `0.0.0.0`、开审计日志、控制面 18766 / 健康检查 18767 |
+| `scripts/prove_public_relay_setup.js`（新） | PU-01..PU-10 |
+| `scripts/smoke_grok_desktop_parity.sh` / `.gitignore` | 新增 **G-91**（4 条 `ok`）；补 `/data/desktop/relay-secret` 忽略规则（无扩展名，通配 `*.json` 盖不住） |
+
+### 8.80.3 现场实测（真 relay + 真桌面 app，不是门造的桩）
+
+```
+== 公网中转接线完成 ==
+  relay host   : 14.155.111.69:18766（下发给手机）
+  connect_host : 127.0.0.1（桌面连它）
+  box_token    : ****Ii-s（只进 vault）   client_token : ****7-wY（下发手机）
+  relay.json   : 安全格式、查无明文、mode 0600
+
+[relay-box] reverse box=my-desktop -> 14.155.111.69:18766
+relay /healthz : {"ok":true,"boxes":1}
+真握手        : client AUTH → OK ；box AUTH/BIND → OK / BOUND my-desktop
+四栏          : box_id,client_token,host,port ；host=14.155.111.69 ；不含 box_token
+端到端隧道    : OK / TUNNEL reverse:my-desktop
+                GET /v1/pair/discover → HTTP/1.1 200 OK + {"ok":true,"service":"bitbot-desktop",...}
+审计          : connect → accept → attach → close，同一 streamId= bab2d3814bdd8977
+```
+
+即：**只要手机够得到 relay，整条「手机 → relay → 反向隧道 → 桌面」链路是通的**。
+
+### 8.80.4 红 → 绿 → 负向对照
+
+```
+修复前红（最终门 + 4 个既有文件回退 A3-14 态）：PASS=7 FAIL=4
+  ✗ PU-01 connect_host 没读出来；✗ PU-03 安全格式不对
+  ✗ PU-04 保存后 connect_host 丢了；✗ PU-09 桌面没用 connect_host
+修复后绿：PASS=11 FAIL=0
+```
+
+八组负向对照逐个实跑、逐组复原校验、**0 真空**：摘归一、`toHandoff` 错用
+`connectHost`、安全格式不写、设置面不沿用、`main.js` 改回只连公网、
+setup 不拒绝私网、start 改绑 127.0.0.1、删掉 `relay-secret` 的 ignore 规则。
+PU-06 是门内负向对照：不可达公网端点确实连不上，证「拆分不是多余的」。
+PU-10 钉住 `toHandoff` 四栏 / 半套 null / RB-09 / RH-10 六处既有锚点一字未动；
+PU-11 钉住四个凭证文件（含无扩展名的 `relay-secret`）全部被 `.gitignore` 覆盖 ——
+这条是收口时自查抓到的真问题：该密钥原本**没被忽略**，`git status` 里已冒出 `?? data/desktop/`，
+一旦 `git add -A` 就会把准入密钥提交进仓库。M08 实测删掉规则会红。
+
+### 8.80.5 唯一剩下的缺口（基础设施，代码做不了）
+
+`14.155.111.69` 是**出口** IP，不在本机网卡上。要让手机蜂窝网够得到 18766，
+需要下列之一：
+
+1. 路由器把 TCP `18766`（及可选 `18767`）映射到 `10.201.107.104`；
+2. 或把 `data/desktop/relay-secret` + `start_public_relay.sh` 放到一台**有公网 IP** 的机器上跑，
+   再用 `node scripts/setup_public_relay.js --host <那台地址> --connect-host <那台地址>`
+   重新接线（远端部署时 `connect_host` 不能留 127.0.0.1）；
+3. 或装 Tailscale/内网穿透，把 relay 的控制面暴露出去（本机当前没装）。
+
+验证方式（手机**关 Wi-Fi、走蜂窝**时）：浏览器打开
+`http://14.155.111.69:18767/healthz` 应看到 `{"ok":true,"boxes":1}`。
+
+**另有一个绕不开的顺序约束**：手机必须**先在同一 Wi-Fi 配对一次**，
+因为 `redeemCode()` 仍是局域网 POST，四栏只在配对成功回执里下发；
+拿到四栏后才能关 Wi-Fi 走蜂窝（`R-A3-5b` / `R-A3-6a` 未做）。
+
+### 8.80.6 残留（诚实）
+
+- 真公网 + 真 NAT + 蜂窝网**零样本**，`R-A3-8a` 未关闭；上面的端到端是本机等价链路。
+- 桌面状态条「已配对」不做探活、`missing mobile_host runner` 泄漏到正式 UI、
+  `invalid_token` 文案误导 —— 三条 Android 问题仍未修（等真机验收后重打 APK）。
+- `R-A3-6h` 只剩 OS 钥匙串；SSE 仍不走隧道 `R-A3-5b`。
+- 本片新增的两个脚本是**运维工具**，不挂进 CI 的「真环境」路径；G-91 验的是可复现的拆分逻辑与接线。
+- 生成出来的 `relay-secret` / `relay.json` / vault 都是本机运行时产物，已被 `.gitignore` 覆盖（PU-11 钉住）。
+
+### 8.80.7 收口时查出并修掉的 CI 唯一红（A3-14 那跑）
+
+查 `run 42029684165`（A3-14）得到 `smoke_grok_desktop_parity: PASS=576 FAIL=1`，唯一真红是：
+
+```
+  ✗ G-89 BP-05/06/08/09 锚点缺失
+```
+
+真因：A3-13 的门把 BP-06/07 **合并**输出成一条 `✓ BP-06/07 …`，
+而总闸 G-89 按 `grep -q 'BP-06 '` 逐条钉锚点 —— `BP-06/` 后面是斜杠不是空格，
+grep 失配。**不是产品红，是门与总闸的文案脱钩**，又一种「静态锚点只证形状」的变体。
+
+修法：拆成两条独立 `ok`（BP-06 审计有 `stream-reject`、BP-07 日志非空的反真空），
+门从 `PASS=8 FAIL=0` 变 `PASS=9 FAIL=0`；四条 grep 逐条复验全命中，
+A3-13 的七组负向对照重跑仍 `0 真空`。历史章节里 A3-13 当时的 `8/0` 按惯例保留不改。

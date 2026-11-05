@@ -66,6 +66,7 @@ function writeRelayConfigSecure(opts) {
   if (cfg.mode === "reverse") body.mode = "reverse";
   if (cfg.endpoint) body.endpoint = cfg.endpoint;
   if (cfg.localEndpoint) body.local_endpoint = cfg.localEndpoint;
+  if (cfg.connectHost) body.connect_host = cfg.connectHost;
 
   const text = JSON.stringify(body, null, 2) + "\n";
   if (text.includes(cfg.boxToken) || text.includes(cfg.clientToken)) {
