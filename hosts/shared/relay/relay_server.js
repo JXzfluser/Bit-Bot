@@ -71,6 +71,9 @@ function createRelayServer(opts) {
   // 默认 5s / 2 次（10s 内发现）；门禁把它调快，不靠 sleep 猜状态。
   const pingIntervalMs = Number((opts && opts.pingIntervalMs) || 5000);
   const pingMissLimit = Math.max(1, Number((opts && opts.pingMissLimit) || 2));
+  // A3-13：同时在等 ATTACH 的 stream 上限。没有它，一堆没人接的 CONNECT 会各自
+  // 挂着一个 2.5s 定时器和一条暂停的 socket，内存/ fd 都无上界。超限明确回 NOBOX。
+  const maxPendingStreams = Math.max(1, Number((opts && opts.maxPendingStreams) || 64));
 
   // boxId -> { kind:"dial"|"reverse", endpoint, host, port, registeredAt, control? }
   // control 是**进程内 socket 引用**，绝不进 getRegistry() 快照（会循环引用 / 泄元数据）。
@@ -82,6 +85,7 @@ function createRelayServer(opts) {
   const allSockets = new Set(); // stop() 要主动掐断，否则 server.close 会一直等长连接
   const liveness = new WeakMap(); // BIND socket -> { awaiting, nonce, missed, timer }
   let livenessEvictions = 0;
+  let pendingRejected = 0; // A3-13：被并发上限挡掉的 CONNECT 数
   let connectionsForwarded = 0;
   let bytesForwarded = 0;
   let dialAttempts = 0; // 只有 openBox() 的 net.connect 会 +1：reverse 全程必须不变
@@ -290,6 +294,16 @@ function createRelayServer(opts) {
    * ATTACH 回来，才给手机回 TUNNEL 并 pipe。ATTACH 到了才回，是为了「TUNNEL 即通」。
    */
   function acceptReverse(clientSock, target, boxId, memberId) {
+    // A3-13：先挡并发上限，别让一堆没人接的 CONNECT 各挂一条定时器 + 暂停 socket。
+    // 拒绝时**不能** pause / 进 pending，直接明确回 NOBOX，手机端已有对应人话。
+    if (pendingStreams.size >= maxPendingStreams) {
+      pendingRejected++;
+      log("stream-reject", {
+        role: "client", memberId, boxId,
+        active: pendingStreams.size, limit: maxPendingStreams,
+      });
+      return fail(clientSock, "NOBOX");
+    }
     const cc = controls.get(clientSock);
     if (cc) cc.pending = true;
     // A3-9：绝不把业务字节攒进 relay 用户态。pause 让 TCP 接收缓冲替我们持有，
@@ -549,6 +563,8 @@ function createRelayServer(opts) {
         livenessEvictions,
         pendingBufferBytes,
         pendingSocketsPaused,
+        pendingRejected,
+        maxPendingStreams,
       };
     },
     /** 数据面永不缓存内容 —— 恒返回空数组，供门禁证明不落明文 */

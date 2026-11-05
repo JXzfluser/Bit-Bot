@@ -3656,6 +3656,34 @@ else
   echo "  · G-88 残留（诚实）：见上；这条红的常见原因：安全写入把明文写回磁盘、vault 没接上、或四栏夹带 box_token"
 fi
 
+echo "== G-89 反向隧道 stream 并发上限与背压（路线 A · W4 / A3-13 · R-A3-8a 本机可做的那一半）=="
+if timeout 180 node scripts/prove_relay_stream_backpressure.js > /tmp/g89-backpressure.log 2>&1; then
+  ok "G-89 并发上限全绿（$(grep -c '^  ✓ ' /tmp/g89-backpressure.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g89-backpressure.log)）"
+  grep -q 'BP-01 ' /tmp/g89-backpressure.log && grep -q 'BP-03 ' /tmp/g89-backpressure.log \
+    && ok "G-89 反真空两件套在：上限内确实进 pending（不是「什么都拒」）、上限调大后 5 条全部进 pending" \
+    || bad "G-89 BP-01/BP-03 锚点缺失"
+  grep -q 'BP-02 ' /tmp/g89-backpressure.log && grep -q 'BP-04 ' /tmp/g89-backpressure.log \
+    && ok "G-89 命门钉住：超限明确 NOBOX 且 pendingRejected 可观测、超时释放后新 CONNECT 还能进（动态上限而非一次性熔断、无 stream 泄漏）" \
+    || bad "G-89 BP-02/BP-04 锚点缺失"
+  grep -q 'BP-05 ' /tmp/g89-backpressure.log && grep -q 'BP-06 ' /tmp/g89-backpressure.log && grep -q 'BP-08 ' /tmp/g89-backpressure.log && grep -q 'BP-09 ' /tmp/g89-backpressure.log \
+    && ok "G-89 边界也在：dialAttempts 全程 0、审计有 stream-reject 且查无凭证、旧 dial 仍 200 OK、上限按实例可配" \
+    || bad "G-89 BP-05/06/08/09 锚点缺失"
+  echo "  · G-89 修复前红（最终门 + relay_server.js 回退 A3-12 态）：PASS=4 FAIL=4 ——"
+  echo "    '✗ BP-01 上限内的 CONNECT 没进 pending — activeStreams:5'、'✗ BP-02 超限的 CONNECT 没都拿到明确 NOBOX — 收到 NOBOX 的条数=0'、"
+  echo "    '✗ BP-06 审计里没有 stream-reject 元数据'、'✗ BP-09 上限不是按实例配置的'。"
+  echo "    第一版基线红是 3/5：BP-03 用 pendingRejected !== 0 判定，把「字段还不存在(undefined)」"
+  echo "    也算成了「被拒」，门自己有水份；改成 > 0 后基线红变成干净的 4/4。"
+  echo "  · G-89 七组负向对照逐个实跑、逐组复原校验、0 真空（原文见 report.md §8.78.4）："
+  echo "    摘上限检查、上限恒不触发、摘 pendingRejected 计数、不记 stream-reject 审计、"
+  echo "    超限直接断开不回 NOBOX、诊断摘掉两个计数、上限写成全局常量。"
+  echo "  · G-89 残留（诚实）：① 默认 64 是经验值，没在真公网压过；② 上限只管**等 ATTACH 的 pending**，"
+  echo "    已建立的 ATTACH 数据面连接数仍无上限；③ 只测了 5 条并发，不是压测；"
+  echo "    ④ 真公网 + 真 NAT + 蜂窝网手机仍零样本（R-A3-8a 剩余）；⑤ SSE 仍不走隧道。"
+else
+  bad "G-89 并发上限（见 /tmp/g89-backpressure.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g89-backpressure.log || tail -3 /tmp/g89-backpressure.log | head -1)）"
+  echo "  · G-89 残留（诚实）：见上；这条红的常见原因：上限检查被摘、拒绝没回 NOBOX、或放过了主动拨"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

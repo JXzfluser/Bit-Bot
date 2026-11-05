@@ -6918,3 +6918,80 @@ verify_real_device_readiness --self-test: PASS=8 FAIL=0
 | ⑤ | 真机 / 真公网仍零样本；SSE 仍不走隧道 | `R-A3-8a` / `R-A3-5b` 未关闭 |
 
 **边界**：这一刀让凭证不再以明文躺在磁盘上，**不等于有设置界面、也不等于跨网可用**。
+
+---
+
+## 8.78 A3-13 反向隧道 stream 并发上限（再部分关 R-A3-8a）
+
+### 8.78.1 补的是「pending 窗口没有上界」
+
+A3-9 已经让等 ATTACH 的窗口在 relay 用户态**零持有业务字节**（`clientSock.pause()`），
+但 §8.73.6 ④ 还留着一句「stream 并发上限、泄漏与背压未压测」：
+一堆没人接的 `CONNECT` 会各自挂一个 2.5s 定时器 + 一条暂停的 socket，
+内存与 fd 都不封顶。这一刀给 relay 加 `maxPendingStreams`（默认 64、每实例可配），
+超限**直接**回 `NOBOX` 并记 `stream-reject` 审计，不进 pending、不 pause、不挂定时器。
+
+### 8.78.2 交付
+
+| 文件 | 改动 |
+| --- | --- |
+| `hosts/shared/relay/relay_server.js`（改） | `maxPendingStreams` 参数、`acceptReverse()` 开头超限即拒、`pendingRejected` 计数、`stream-reject` 审计；`getDiagnosticState()` 暴露 `pendingRejected` / `maxPendingStreams` |
+| `scripts/prove_relay_stream_backpressure.js`（新） | BP-01..BP-09：真 relay + 5 条并发 CONNECT + 假盒子（回 PONG 但不 ATTACH） |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-89**（4 条 `ok`） |
+
+三处反真空：BP-01（上限内确实进 pending）、BP-03（上限调到 8 后 5 条**全部**进 pending）、
+BP-04（超时释放后新 CONNECT 还能进，说明是动态上限不是一次性熔断、无 stream 泄漏）。
+另有 BP-05 钉住 `dialAttempts=0`（加并发上限不许把 reverse 退回主动拨）、
+BP-08 用桩 box 证旧 dial 路径仍 `200 OK`。
+
+### 8.78.3 修复前红（最终门 + `relay_server.js` 回退到 A3-12 态）
+
+```
+  ✗ BP-01 上限内的 CONNECT 没进 pending — {"...","activeStreams":5,...}
+  ✗ BP-02 超限的 CONNECT 没都拿到明确 NOBOX — 收到 NOBOX 的条数=0
+  ✗ BP-06 审计里没有 stream-reject 元数据（拒绝这件事不可观测）
+  ✗ BP-09 上限不是按实例配置的 — undefined / undefined
+prove_relay_stream_backpressure: PASS=4 FAIL=4
+```
+
+**第一版基线红是 `PASS=3 FAIL=5`，多出来的那条是门自身的水份**：
+BP-03 用 `pendingRejected !== 0` 判定，把「回退后字段还不存在（`undefined`）」
+也算成了「发生过拒绝」。改成 `> 0` 后基线红变成上面这份干净的 `4/4`。
+留在这里是因为「门的判定把缺失当成失败」和「门把缺失当成通过」一样，
+都会让红绿两栏不能用同一把尺子读。
+
+### 8.78.4 七组负向对照（逐个实跑、逐组复原校验，0 真空）
+
+| # | 摘掉的锚点 | 结果 |
+| --- | --- | --- |
+| M01 | 并发上限检查 `if (pendingStreams.size >= …)` | 5/3，BP-01/02 等红 |
+| M02 | 上限设成恒不触发 | 4/4，BP-01/02 等红 |
+| M03 | `pendingRejected++` | 7/1，`BP-02` 红 |
+| M04 | `log("stream-reject", …)` | 7/1，`BP-06` 红 |
+| M05 | 超限直接 destroy、不回 NOBOX | 7/1，`BP-02` 红 |
+| M06 | 诊断里摘掉 `pendingRejected` / `maxPendingStreams` | 6/2，BP-02/09 红 |
+| M07 | 上限写成全局常量 3 | 6/2，`BP-09` 红 |
+
+### 8.78.5 修复后绿与既有门复跑
+
+```
+prove_relay_stream_backpressure:  PASS=8  FAIL=0
+prove_relay_secure_config:        PASS=11 FAIL=0
+prove_relay_config_hot_reload:    PASS=11 FAIL=0
+prove_relay_reverse_resilience:   PASS=9  FAIL=0
+prove_relay_reverse_tunnel:       PASS=15 FAIL=0
+prove_relay_box_registration:     PASS=12 FAIL=0
+prove_cn_relay_image:             PASS=6  FAIL=0
+prove_cn_relay_invisible:         PASS=6  FAIL=0
+verify_real_device_readiness --self-test: PASS=8 FAIL=0
+```
+
+### 8.78.6 残留（诚实）
+
+- 默认 `64` 是经验值，**没在真公网压过**；门里只跑了 5 条并发，不是压测。
+- 上限只管**等 ATTACH 的 pending**；已经建立起来的 ATTACH 数据面连接数仍无上限。
+- `R-A3-8a` 再部分关闭，但**真公网 + 真 NAT + 蜂窝网手机仍零样本**，
+  保活参数也没在真 NAT 上调过 —— 这两样只能等现场。
+- SSE 仍不走隧道（`R-A3-5b`）；设置界面 / OS 钥匙串仍是 `R-A3-6h` 剩余。
+
+**边界**：这一刀给内存与 fd 封了顶，**不等于跨网可用、也不等于做过压测**。
