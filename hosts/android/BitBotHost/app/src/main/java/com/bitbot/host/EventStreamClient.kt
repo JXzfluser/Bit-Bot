@@ -85,6 +85,8 @@ object EventStreamClient {
     private val closed = AtomicBoolean(false)
     private var connection: HttpURLConnection? = null
     private var reader: BufferedReader? = null
+    /** R-A3-5b：走中转时的隧道。`close()` 必须把它一起关掉，否则切后台会漏一条连接。 */
+    private var relayTunnel: RelayTunnel.Tunnel? = null
 
     /** 最后收到的 seq（用于断言与调试）。 */
     fun lastSeq(): Long = lastSeq.get()
@@ -150,10 +152,15 @@ object EventStreamClient {
       if (closed.getAndSet(true)) return
       val rdr = reader
       val conn = connection
+      val tunnel = relayTunnel
       reader = null
       connection = null
+      relayTunnel = null
       Thread {
         runCatching { conn?.disconnect() }
+        // R-A3-5b：走中转的那条订阅没有 HttpURLConnection，只有一条裸 socket ——
+        // 不关它就会在切后台之后一直挂着（用户看到的是「回来之后进度还是上次的」）。
+        runCatching { tunnel?.let { RelayTunnel.closeQuietly(it.socket) } }
         // disconnect 之后 socket 已断，阻塞中的 read 会拿到 EOF/异常并退出；
         // 再关 reader 收尾（它可能仍在等那把锁）。
         runCatching { rdr?.close() }
@@ -169,14 +176,42 @@ object EventStreamClient {
       sessionId?.takeIf { it.isNotEmpty() }?.let {
         qs.add("session_id=" + URLEncoder.encode(it, "UTF-8"))
       }
-      val urlStr = "$baseUrl/v1/events" + (if (qs.isEmpty()) "" else "?" + qs.joinToString("&"))
+      val path = "/v1/events" + (if (qs.isEmpty()) "" else "?" + qs.joinToString("&"))
+      val urlStr = baseUrl + path
 
-      val url = URL(urlStr)
       // 每次连接尝试都现签：GET 没有请求体，签的就是「deviceId\nts\nnonce\n」这三行前缀
       // （服务端把空 body 直接拼进去，见 device_keys.js:signingPayload）。
       // 放在循环里而不是外面，是因为 nonce 用第二次就是 nonce_reused —— 401 之后走回退，
       // 用户看到的是「一直没有实时进度」，而日志里只有一条看不懂的码。
       val deviceHeaders = DeviceIdentity.requestHeaders(identityContext, ByteArray(0))
+
+      // R-A3-5b：**直连优先，跨网回落隧道**。
+      // 直连失败有两种，处理完全不同：
+      //  · 传输层失败（连接被拒/超时）⇒ 说明手机不在同一局域网，这正是中转存在的理由，回落；
+      //  · 桌面给了权威答复（401/503/其他 HTTP 码）⇒ 走中转也是同一句，回落只会把
+      //    「凭证不对」拖成几十秒超时后再报同一件事，所以直接抛。
+      var directErr: Exception? = null
+      try {
+        readViaDirect(urlStr, deviceHeaders)
+        return
+      } catch (e: SseUnauthorizedException) {
+        throw e
+      } catch (e: SseUnavailableException) {
+        throw e
+      } catch (e: SseHttpException) {
+        throw e
+      } catch (e: Exception) {
+        directErr = e
+      }
+
+      val cfg = TurnBridge.relayConfig()
+      if (cfg == null) throw directErr ?: IllegalStateException("直连失败且没有配中转")
+      readViaRelay(cfg, path, deviceHeaders)
+    }
+
+    /** 老那条直连路径，行为一字未改（抽出来只为让跨网回落有个明确的接缝）。 */
+    private fun readViaDirect(urlStr: String, deviceHeaders: DeviceRequestHeaders?) {
+      val url = URL(urlStr)
       val conn = (url.openConnection() as HttpURLConnection).apply {
         requestMethod = "GET"
         connectTimeout = 15000
@@ -227,6 +262,68 @@ object EventStreamClient {
       this.reader = rdr
 
       parseSseStream(rdr)
+    }
+
+    /**
+     * R-A3-5b：**事件流走 relay 隧道**。
+     *
+     * 这条以前不存在，于是跨网时「回合能发出去、进度永远看不到」—— 界面看起来像卡死。
+     * 隧道是 TCP 透传，所以在上面跑 GET + chunked 与局域网里没有区别；
+     * 关键只在 [TunnelHttp.openEventStream] 要**惰性**解 chunked，否则要等到
+     * 整条流结束才看得到第一帧（那就不是实时进度了）。
+     *
+     * 生命周期：隧道**不还池**。事件流是长连接，借出去就要等这条流自己结束
+     * （turn_ended / 用户离开）。还池了下一回合会拿到一条还挂着上一个订阅的连接。
+     */
+    private fun readViaRelay(
+      cfg: RelayTunnel.RelayConfig,
+      path: String,
+      deviceHeaders: DeviceRequestHeaders?,
+    ) {
+      val tunnel =
+        try {
+          RelayTunnel.open(cfg)
+        } catch (e: RelayTunnel.OpenFailure) {
+          throw SseTransportException(e.userMessage, e)
+        }
+      this.relayTunnel = tunnel
+      val headers = buildList {
+        add("Accept" to "text/event-stream")
+        add("Cache-Control" to "no-cache")
+        if (lastSeq.get() > 0) add("Last-Event-ID" to lastSeq.get().toString())
+        token?.let { add("Authorization" to "Bearer $it") }
+        DeviceIdentity.applyHeaders({ k, v -> add(k to v) }, deviceHeaders)
+      }
+      val resp =
+        try {
+          TunnelHttp.openEventStream(
+            tunnel = tunnel,
+            path = path,
+            hostHeader = cfg.host,
+            headers = headers,
+            // 0 = 不限：SSE 本来就是等服务端推，设了超时会在安静的时候被误判成断线。
+            readTimeoutMs = 0,
+          )
+        } catch (e: Exception) {
+          RelayTunnel.closeQuietly(tunnel.socket)
+          this.relayTunnel = null
+          throw SseTransportException(e.message ?: "隧道上没有回包", e)
+        }
+      if (resp.status == 503) {
+        RelayTunnel.closeQuietly(tunnel.socket)
+        throw SseUnavailableException("event_log_unavailable", "")
+      }
+      if (resp.status == 401) {
+        RelayTunnel.closeQuietly(tunnel.socket)
+        throw SseUnauthorizedException("unauthorized", "")
+      }
+      if (resp.status !in 200..299) {
+        RelayTunnel.closeQuietly(tunnel.socket)
+        throw SseHttpException(resp.status, "")
+      }
+      setState(SubscriptionState.CONNECTED, null)
+      this.reader = resp.reader
+      parseSseStream(resp.reader)
     }
 
     /**
@@ -300,6 +397,9 @@ object EventStreamClient {
       return e is SseUnavailableException ||
         e is SseUnauthorizedException ||
         (e is SseHttpException && e.code in listOf(401, 503))
+      // R-A3-5b：SseTransportException **不算**该回退 —— 它说的是「这一条路没通」，
+      // 而回退是把实时进度彻底关掉。跨网抖动几十秒就永久降级成整轮模式，
+      // 用户会以为「跨网就是没有进度」，其实再连一次就好了。让它走退避重连。
     }
 
     private fun fallbackReason(e: Exception): String {
@@ -307,6 +407,8 @@ object EventStreamClient {
         is SseUnavailableException -> "event_stream_unavailable"
         is SseUnauthorizedException -> "event_stream_unauthorized"
         is SseHttpException -> "event_stream_http_${e.code}"
+        // 跨网失败要说清楚是「中转这条路」，否则用户分不清是桌面没开会话还是手机没网。
+        is SseTransportException -> "event_stream_transport"
         else -> "event_stream_error"
       }
     }
@@ -328,6 +430,16 @@ object EventStreamClient {
   /** SSE HTTP 错误。 */
   class SseHttpException(val code: Int, body: String) :
     Exception("SSE HTTP $code, body=$body")
+
+  /**
+   * R-A3-5b：这一条**传输路**没通（直连断、或中转隧道打不开）。
+   *
+   * 与上面三种刻意分开：那三种是桌面给的权威答复（凭据不对/事件库没开），
+   * 换条路重试也是同一句；这一种只是「这次没连上」，应该退避重连而不是
+   * 把实时进度永久降级成整轮模式。
+   */
+  class SseTransportException(message: String, cause: Throwable? = null) :
+    Exception(message, cause)
 
   /** 创建订阅（不启动）。 */
   fun createSubscription(

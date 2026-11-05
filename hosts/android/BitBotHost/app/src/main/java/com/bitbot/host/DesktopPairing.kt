@@ -342,6 +342,142 @@ object DesktopPairing {
   }
 
   /**
+   * 配对请求体 —— **直连与隧道必须发完全相同的字节**。
+   *
+   * 抽出来是 A3-18 的直接后果：跨网兑换走的是另一条传输（relay 隧道），
+   * 如果两条路各拼一次 body，就会出现「局域网配得上、跨网配不上」这种
+   * 只在蜂窝下复现的坏味道。设备公钥也在里面，拼错一次桌面就读不成。
+   */
+  fun buildRedeemBody(
+    code: String,
+    deviceName: String,
+    identity: DeviceCredentials?,
+  ): String {
+    val json = JSONObject()
+      .put("code", code.trim())
+      .put("device_name", deviceName)
+      .put("machine_kind", "android")
+    // A2-1/A2-3：配对这一步顺带把**这台手机的公钥**交出去（私钥永不出设备）。
+    if (identity != null) json.put("device_public_key", identity.publicKeyPem.trim())
+    return json.toString()
+  }
+
+  /**
+   * 兑换成功的回执 → [RedeemSuccess]。**直连与隧道共用**，只认回执原文。
+   */
+  fun parseRedeemSuccess(responseBody: String, identityContext: android.content.Context?, identity: DeviceCredentials?): Result<RedeemSuccess> =
+    try {
+      val obj = JSONObject(responseBody.trim())
+      if (!obj.optBoolean("ok", false)) {
+        Result.failure(RedeemFailure.BadRequest)
+      } else {
+        val turnToken = obj.optString("turn_token", "")
+        val baseUrl = obj.optString("base_url", "")
+        val baseUrlScope = obj.optString("base_url_scope", "private")
+        if (turnToken.isEmpty() || baseUrl.isEmpty()) {
+          Result.failure(RedeemFailure.BadRequest)
+        } else {
+          // 设备这条只认**回执原文**：桌面说 registered 才算登记上，桌面派发的 id 才是身份。
+          // 端上一律不许「自己配对成功 ⇒ 推断自己已经是设备」—— 那正是把这颗地雷咽掉的写法。
+          val deviceObj = obj.optJSONObject("device")
+          val deviceRegistered = deviceObj?.optBoolean("registered", false) ?: false
+          val issuedDeviceId = deviceObj?.field("id")?.takeIf { it.isNotEmpty() }
+          val requiresCredential = obj.optBoolean("requires_device_credential", false)
+          if (deviceRegistered && issuedDeviceId != null && identity != null && identity.deviceId != issuedDeviceId) {
+            identityContext?.let { DeviceIdentity.save(it, identity.copy(deviceId = issuedDeviceId)) }
+          }
+          Result.success(
+            RedeemSuccess(
+              baseUrl = baseUrl,
+              turnToken = turnToken,
+              baseUrlScope = baseUrlScope,
+              deviceRegistered = deviceRegistered,
+              deviceId = issuedDeviceId,
+              requiresDeviceCredential = requiresCredential,
+              // A3-6：只认回执原文里那四栏；没有 / 不齐都回 null（理由见 parseRelayHandoff）。
+              relay = RelayTunnel.parseRelayHandoff(responseBody),
+            ),
+          )
+        }
+      }
+    } catch (e: Exception) {
+      Result.failure(RedeemFailure.NetworkError(e.message ?: "unknown"))
+    }
+
+  /**
+   * A3-18：**经 relay 隧道兑换配对码** —— 手机不连同一个 Wi-Fi 也能配对（关 R-A3-6a）。
+   *
+   * 为什么这条能成立：relay 是 TCP 透传，隧道尽头就是桌面的 cn_inbound，
+   * 因此 `/v1/pair/redeem` 和局域网里那条是同一个 handler、同一份逻辑
+   * （A3-15 已实测隧道上 `GET /v1/pair/discover` 回 200）。
+   *
+   * 失败语义与直连一致：HTTP 非 2xx 走 [mapRedeemFailure]，隧道打不开走
+   * [RelayTunnel.OpenFailure.userMessage] —— 「中转不认凭证」和「配对码不对」
+   * 是两个不同的问题，混成一句话用户就只能瞎试。
+   */
+  fun redeemCodeViaRelay(
+    relay: RelayTunnel.RelayConfig,
+    code: String,
+    deviceName: String,
+    identityContext: android.content.Context? = TurnBridge.context(),
+    openTunnel: (RelayTunnel.RelayConfig) -> RelayTunnel.Tunnel = { RelayTunnel.open(it) },
+  ): Result<RedeemSuccess> {
+    if (!isValidPairingCode(code)) {
+      return Result.failure(IllegalArgumentException("配对码必须是 6 位数字"))
+    }
+    val identity = identityContext?.let { DeviceIdentity.loadOrCreate(it) }
+    val body = buildRedeemBody(code, deviceName, identity).toByteArray(Charsets.UTF_8)
+    val tunnel =
+      try {
+        openTunnel(relay)
+      } catch (e: RelayTunnel.OpenFailure) {
+        return Result.failure(RedeemFailure.NetworkError(e.userMessage))
+      } catch (e: Exception) {
+        return Result.failure(RedeemFailure.NetworkError(e.message ?: "unknown"))
+      }
+    return try {
+      val resp =
+        TunnelHttp.post(
+          tunnel = tunnel,
+          path = "/v1/pair/redeem",
+          // 隧道里没有真实的主机名语义，但桌面若按 Host 做校验，这里必须给一个像样的值。
+          // 用 relay 端点而不是局域网 IP —— 手机此刻根本不知道桌面在哪个网段。
+          hostHeader = relay.host,
+          headers = listOf("Content-Type" to "application/json; charset=utf-8"),
+          body = body,
+          readTimeoutMs = 15000,
+        )
+      if (resp.status in 200..299) {
+        parseRedeemSuccess(resp.body, identityContext, identity)
+      } else {
+        Result.failure(mapRedeemFailure(resp.status, resp.body))
+      }
+    } catch (e: Exception) {
+      Result.failure(RedeemFailure.NetworkError(e.message ?: "unknown"))
+    } finally {
+      RelayTunnel.closeQuietly(tunnel.socket)
+    }
+  }
+
+  /**
+   * 兑换后落地：写 prefs（配对地址/令牌 + 中转四栏）。
+   * 直连与隧道两条成功路径共用 —— 分开写一次就会出现「跨网配完了但没存中转参数」。
+   */
+  fun persistPairing(success: RedeemSuccess): RedeemSuccess {
+    TurnBridge.setHostUrl(success.baseUrl)
+    TurnBridge.setTurnToken(success.turnToken)
+    // A3-6：桌面是**中转参数的唯一事实源**。它这次没给（没配中转 / 从配了改成没配）
+    // 就把本机旧的清掉 —— 留着旧配置只会在跨网时指向一个已经不存在的登记。
+    val relay = success.relay
+    if (relay != null) {
+      TurnBridge.setRelayConfig(relay.host, relay.port, relay.token, relay.boxId)
+    } else {
+      TurnBridge.setRelayConfig(null, null, null, null)
+    }
+    return success
+  }
+
+  /**
    * Redeem a pairing code with the Desktop.
    *
    * @param desktopIp IP address of the Desktop
@@ -368,12 +504,7 @@ object DesktopPairing {
     // 身份文件存在但读坏了 ⇒ loadOrCreate 回 null ⇒ 不发公钥：宁可这次不登记设备，
     // 也不悄悄换一把钥匙把桌面上已登记的那台丢掉。
     val identity = identityContext?.let { DeviceIdentity.loadOrCreate(it) }
-    val json = JSONObject()
-      .put("code", code.trim())
-      .put("device_name", deviceName)
-      .put("machine_kind", "android")
-    if (identity != null) json.put("device_public_key", identity.publicKeyPem.trim())
-    val body = json.toString()
+    val body = buildRedeemBody(code, deviceName, identity)
 
     val conn = url.openConnection() as HttpURLConnection
     conn.connectTimeout = 10000
@@ -390,37 +521,7 @@ object DesktopPairing {
       val responseBody = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
 
       if (responseCode in 200..299) {
-        val obj = JSONObject(responseBody.trim())
-        if (!obj.optBoolean("ok", false)) {
-          return Result.failure(RedeemFailure.BadRequest)
-        }
-        val turnToken = obj.optString("turn_token", "")
-        val baseUrl = obj.optString("base_url", "")
-        val baseUrlScope = obj.optString("base_url_scope", "private")
-        if (turnToken.isEmpty() || baseUrl.isEmpty()) {
-          return Result.failure(RedeemFailure.BadRequest)
-        }
-        // 设备这条只认**回执原文**：桌面说 registered 才算登记上，桌面派发的 id 才是身份。
-        // 端上一律不许「自己配对成功 ⇒ 推断自己已经是设备」—— 那正是把这颗地雷咽掉的写法。
-        val deviceObj = obj.optJSONObject("device")
-        val deviceRegistered = deviceObj?.optBoolean("registered", false) ?: false
-        val issuedDeviceId = deviceObj?.field("id")?.takeIf { it.isNotEmpty() }
-        val requiresCredential = obj.optBoolean("requires_device_credential", false)
-        if (deviceRegistered && issuedDeviceId != null && identity != null && identity.deviceId != issuedDeviceId) {
-          identityContext?.let { DeviceIdentity.save(it, identity.copy(deviceId = issuedDeviceId)) }
-        }
-        Result.success(
-          RedeemSuccess(
-            baseUrl = baseUrl,
-            turnToken = turnToken,
-            baseUrlScope = baseUrlScope,
-            deviceRegistered = deviceRegistered,
-            deviceId = issuedDeviceId,
-            requiresDeviceCredential = requiresCredential,
-            // A3-6：只认回执原文里那四栏；没有 / 不齐都回 null（理由见 parseRelayHandoff）。
-            relay = RelayTunnel.parseRelayHandoff(responseBody),
-          ),
-        )
+        parseRedeemSuccess(responseBody, identityContext, identity)
       } else {
         Result.failure(mapRedeemFailure(responseCode, responseBody))
       }
@@ -447,25 +548,33 @@ object DesktopPairing {
   ): Result<RedeemSuccess> {
     val result = redeemCode(desktop.ip, desktop.port, code, deviceName, identityContext)
     return result.fold(
-      onSuccess = { success ->
-        TurnBridge.setHostUrl(success.baseUrl)
-        TurnBridge.setTurnToken(success.turnToken)
-        // A3-6：桌面是**中转参数的唯一事实源**。它这次没给（没配中转 / 从配了改成没配）
-        // 就把本机旧的清掉 —— 留着旧配置只会在跨网时指向一个已经不存在的登记。
-        val relay = success.relay
-        if (relay != null) {
-          TurnBridge.setRelayConfig(relay.host, relay.port, relay.token, relay.boxId)
-        } else {
-          TurnBridge.setRelayConfig(null, null, null, null)
-        }
-        Result.success(success)
-      },
+      onSuccess = { success -> Result.success(persistPairing(success)) },
       onFailure = { error ->
         if (error is RedeemFailure) {
           Result.failure(error)
         } else {
           Result.failure(RedeemFailure.NetworkError(error.message ?: "unknown"))
         }
+      }
+    )
+  }
+
+  /**
+   * A3-18：跨网配对的完整流程（粘贴配对串 → 隧道兑换 → 落 prefs）。
+   */
+  fun completePairingViaRelay(
+    relay: RelayTunnel.RelayConfig,
+    code: String,
+    deviceName: String,
+    identityContext: android.content.Context? = TurnBridge.context(),
+    openTunnel: (RelayTunnel.RelayConfig) -> RelayTunnel.Tunnel = { RelayTunnel.open(it) },
+  ): Result<RedeemSuccess> {
+    val result = redeemCodeViaRelay(relay, code, deviceName, identityContext, openTunnel)
+    return result.fold(
+      onSuccess = { success -> Result.success(persistPairing(success)) },
+      onFailure = { error ->
+        if (error is RedeemFailure) Result.failure(error)
+        else Result.failure(RedeemFailure.NetworkError(error.message ?: "unknown"))
       }
     )
   }

@@ -7333,3 +7333,136 @@ audit: {"kind":"private","isLocalInterface":false,"level":"error",
    没做对比度实测。
 6. **R-A3-8a 仍未关闭**：真公网 + 真 NAT + 蜂窝网样本依旧为零。
 
+## 8.82 路线 A 端侧收口（A3-17 / A3-18 / R-A3-5b / R-A3-6b / R-A3-6c / R-A3-6h / 公网入口）
+
+### 8.82.1 这一刀为什么不按「一刀一主题」划
+
+用户的原话是：**「不要让我做选择，需要全部进行实现，而不是这样一阶段一阶段的来。」**
+所以这一轮的范围不是按主题划的，而是按**「还有哪些项卡着跨网这件事」**划的 —— 七项一起做：
+
+| 原排队项 | 结论 | 证据 |
+| --- | --- | --- |
+| R-A3-5b 事件流不走隧道 | **关闭** | `TunnelHttp.openEventStream` + `ChunkedInputStream` 惰性解码；SX-01..03 |
+| R-A3-5c / R-A3-6b 每回合重开隧道 | **关闭** | `RelayTunnelPool` 借/还/废 + 配置指纹作废；TP-01..06 |
+| R-A3-6a 必须先回同一个 Wi-Fi 配一次 | **关闭** | 跨网配对串；RBI-01..10 / G-93 |
+| R-A3-6h 密钥躺在本机磁盘 | **关闭** | 可注入 protector + 迁移 + 解不开不重建；VK-01..10 / G-94 |
+| R-A3-6c 真机样本一次都没有 | **部分** | `ConnectionStats` + TC-01..04；真 relay / 蜂窝仍零样本 |
+| A3-17 「已配对」≠「连得上」 | **关闭** | `LinkStatus` 两维度 + 探活；LS-01..11 |
+| R-A3-8a 公网入口靠手填 | **部分** | `detect_public_ip` / `upnp_map` / `setup_public_relay --auto`；PE-01..12 / G-95 |
+
+### 8.82.2 三个真问题（都不是「缺功能」，是「会骗人」）
+
+**①「已配对」证明的是你填过，不是现在通（A3-17）。**
+旧实现里 `paired` 只有一处判断：`hostUrl() != null && turnToken() != null` —— 两个 prefs 字符串非空，
+界面就敢写「已配对」。于是三种完全不同的现场长得一模一样：桌面关机 / 桌面在线但手机换了网络 /
+桌面在线、网络也对但凭证被拒。三者要做的事分别是「开机」「换网」「重新配对」，
+分不清就只能瞎试。而且探活打的是 `/healthz`（不需要凭证），它通只说明网络和进程在，
+**401 才是业务面的结论** —— 把两者合成一个布尔值，就会出现「健康检查通过、发消息全 401」
+这种最误导人的组合，正是用户踩的那个坑。
+
+**②跨网配对的结构性死锁（R-A3-6a）。**
+`redeemCode` 只 POST 局域网地址（`http://<ip>:18765/v1/pair/redeem`），
+而中转四栏**只有配对成功之后**才下发。于是「在蜂窝网下配第一次」在结构上不可能 ——
+必须先回同一个 Wi-Fi 配一次，才拿得到跨网参数。这不是漏了一个按钮，是两条路径互为前提。
+
+**③跨网时「回合能发出去、进度永远看不到」（R-A3-5b）。**
+诚实回退（整轮模式）不算骗人，但用户看到的是「点了发送，屏幕上什么都没发生」——
+和卡死的观感一模一样。另外每回合都 `AUTH → CONNECT → 干活 → 关`，
+连续发三条就要付三次握手 + 三次中继鉴权（R-A3-5c / R-A3-6b）。
+
+### 8.82.3 改动
+
+**桌面端**
+* `hosts/desktop/secret_vault.js`：protector 可注入（Electron `safeStorage`），旧明文 `vault.key`
+  迁移成 `vault.key.protected` 并删明文；`inspectKeyStorage` 如实报 `file` / `os-keychain` 与 `migrated`；
+  **解不开时绝不自动重建**（宁可让用户重配，也不静默丢凭证）。
+* `hosts/desktop/main.js`：vault 改**惰性**创建（`safeStorage.isEncryptionAvailable()` 在 app ready 前恒 false，
+  模块顶层构造会把「不可用」钉死）；新增 `bitbot:relay:bootstrap` handler；
+  `currentRelayHandoff()` 自检不过 `return null`（A3-16 的延续）。
+* `hosts/desktop/preload.js`：`relaySettings.bootstrap()`。
+* `hosts/desktop/index.html`：`#mc-relay-bootstrap` 按钮 + 只读输出框 + 复制键 + 三语提示
+  （明确写「含这台桌面的手机凭证，请当密码对待，别发到群里」）。
+* `hosts/shared/relay/relay_settings.js`：`buildRelayBootstrap()` —— **只出 `client_token`**，
+  `box_token` 绝不出门；地址自检不过就拒绝生成（不给一段连不上的串）。
+
+**手机端（5 个新文件 + 8 处改动）**
+* 新增：`LinkStatus.kt`（Presence/Auth 两维度 + 60s 保鲜期）、`LinkProbe.kt`（`/healthz` 探活，
+  可注入 transport）、`RelayBootstrap.kt`（配对串解析/生成/摘要）、`RelayTunnelPool.kt`（隧道池）、
+  `ConnectionStats.kt`（连接统计）。
+* 改动：`TurnBridge.kt`（`DevRunnerUnavailable` 类型 + 401 记「在线但被拒」+ 失败也记账 + 走池）、
+  `DesktopPairing.kt`（`buildRedeemBody`/`parseRedeemSuccess` 抽出共用 + `redeemCodeViaRelay`）、
+  `TunnelHttp.kt`（`openEventStream` + 惰性 `ChunkedInputStream` + `StaleTunnelException`）、
+  `EventStreamClient.kt`（直连失败才回落 `readViaRelay`）、`MainActivity.kt`（探活副作用 + 配对串 +
+  统计）、`ui/Sheets.kt`（配对串输入 + 统计行）、`ui/Components.kt` / `ui/HomeScreen.kt`（状态条接结论）。
+
+**脚本**
+* `scripts/prove_relay_bootstrap.js`（RBI-01..10）、`scripts/prove_vault_keychain.js`（VK-01..10，子代理）、
+  `scripts/prove_public_entry.js`（PE-01..12，子代理）、`scripts/detect_public_ip.js`、`scripts/upnp_map.js`、
+  `scripts/setup_public_relay.js --auto`。
+* `scripts/prove_android_build.mjs` 新增 AB-20（探活/凭证/统计）与 AB-21（SSE 隧道/池/配对串），
+  AB-06 棘轮 199 → 230。
+
+### 8.82.4 红 → 绿（含「本机根本没有 Android SDK」这一层）
+
+前面几刀一直写着「本机无 Android SDK，端上改动只过源码锚点」—— 这一轮把它解决了，
+过程本身也是证据：
+
+1. **gradle wrapper 两次坏在下载上**：先是缓存里那份 48MB 的 `gradle-8.7-bin.zip`
+   `zip END header not found`（截断），重下又在 120s 处 `Read timed out`。
+   改从腾讯镜像下一份 134,184,980 字节的包，**用 wrapper 自己抓到的官方 sha256 校验**
+   （`544c35d6bd849ae8a5ed0bcea39ba677dc40f49df7d1835561582da2009b961d`，与镜像包逐位相同）才装进去 ——
+   没校验就塞进 dists 目录，等于把「能不能编译」建在一个来源不明的 zip 上。
+2. **SDK**：`commandlinetools-mac` + `platforms;android-34` + `build-tools;34.0.0`（与 `compileSdk = 34` 对齐），
+   `local.properties` 写 `sdk.dir`（该文件本来就在 `.gitignore` 里，`git check-ignore` 确认过）。
+3. **第一跑 8 处编译错**，全是真错不是配置问题：
+   * `DesktopPairing.kt` 两处 `DeviceIdentity.Identity` —— 根本不存在这个嵌套类型，应该是 `DeviceCredentials`；
+   * `EventStreamClient.kt` 四处 `Map<String,String>` / `DeviceRequestHeaders?` 混用（头对象不是 Map）；
+   * `RelayBootstrap.kt` 对 `String?` 调非空扩展（`map["t"]` 是可能缺的键）。
+4. **第二跑 229 用例 3 红**，其中两条是**产品的问题被新用例抓出来**：
+   * `LS-05`：`online()` 把 `detail` 清成 null，于是「先被拒、再探活通过」会把 `invalid_token`
+     抹成光秃秃的「凭证被拒」。探活只该改 presence，不该碰凭证那半边的话 → 加 `keepRejectDetail()`。
+   * `LS-06`：404 原本判 `ONLINE`（理由「端口上确实有东西在听」）。但界面会因此写「已配对 · 在线」，
+     而用户发消息**必然失败** —— 这正是 A3-17 要消灭的形态。改成 `OFFLINE` + 人话 detail。
+   * `TurnBridgeAddressTest`：旧断言要求 `unpairedText("missing mobile_host runner")` **必须把这串念给用户**。
+     这与 A3-17 直接冲突（真机上用户看到它只会以为是自己的问题）。处理方式是**改强不改松**：
+     拆成两条 —— 「真的错误原因要留着」（用 `turn failed (1): boom` 证）＋「内部路径必须消失」（用原来那串证）。
+5. **终跑：230 用例 / 26 个类 / 0 失败**（`BUILD SUCCESSFUL`）。
+   AB-06 的棘轮同步抬到 230 —— 用例加了不抬数字，下次删掉测试文件门也照样绿。
+
+### 8.82.5 门禁
+
+| 门 | 内容 | 结果 |
+| --- | --- | --- |
+| G-92 | A3-16 中转地址自检 | `PASS=14 FAIL=0` |
+| G-93 | A3-18 跨网配对串（新增） | `PASS=12 FAIL=0` |
+| G-94 | R-A3-6h OS 钥匙串（新增） | `PASS=10 FAIL=0` |
+| G-95 | 公网入口自动化（新增） | `PASS=12 FAIL=0` |
+| AB-20 | A3-17 探活/凭证 + R-A3-6c 统计（新增） | 见 §8.82.4 终跑 |
+| AB-21 | R-A3-5b / R-A3-6b / A3-18 端上接线（新增） | 见 §8.82.4 终跑 |
+
+**这一轮最该记住的两件事，都是「门自己错」而不是「产品错」**：
+
+1. **RBI-03 第一版是假红**。我先用 `saveRelaySettings` 写 `192.168.1.5`，被 A3-16 的准入闸拦下；
+   于是文件里留下的还是上一份好配置，生成器**理所当然**吐出好串，门却判它红。
+   真正要证的是另一件事：用户机器上那个 `192.168.1.5` 是**历史残留**，它不会重新经过 save 这条路。
+   改成直接改盘上的 `relay.json`，再问生成器「你会不会照着死地址发一段串」——这才问对了。
+2. **RBI-06 的对照一度是恒真的**。第一版写成「把源码里的字符串替换掉，再检查副本里没有那个字符串」，
+   这种对照永远绿（和 AE-07/AE-08 那次的病一样）。改成把判据抽成 `measureWire(kt, jsSrc)`，
+   拿**同一个判据**去跑被改坏的输入：SCHEME `v1→v2`、键名 `b→box`、去掉 `#` 的转义，三种走偏必须全部翻红。
+   随后又发现 `measureWire` 自己也太松 —— 只查 `replace("#"` 在不在，把映射改坏成 `replace("#", "#")` 仍然绿，
+   于是改成连**映射目标值**一起钉住（`%25` / `%26` / `%23`）。
+
+### 8.82.6 残留（诚实）
+
+1. **真公网 + 真 NAT + 蜂窝网依旧零样本**（R-A3-8a / R-A3-6c）。「跨网成功率 ≥90%」这句判据
+   到现在**一次都没有分母**；这一轮只做到「让分母开始被记录」，没做到「有样本」。
+2. **本机出网探测曾经超时**（`api.ipify.org` exit 28），所以 `detect_public_ip` 的多源回退
+   只在失败路径上被验过；UPnP 在运营商光猫 / 双 NAT 下仍可能不适用。
+3. **`safeStorage` 三平台形态未逐一实跑**：只验了「注入 protector」这一层抽象；
+   macOS Keychain / Windows DPAPI 的真机行为、以及升级前那段明文窗口，都还得靠用户升级覆盖。
+4. **事件流隧道不还池**（长连接借出去要等流自己结束）。断线时会不会在中继上留一条看不见的连接，
+   没有做压测；`MAX_IDLE=1` 也只是「多留没意义」的取舍，不是量出来的最优值。
+5. **APK 只在本机产出**，真机安装 / 厂商商店签名未做；端上观感（圆角、字距、深色）依旧只能真机验收。
+6. **iOS 侧为零**（R-A3-3a 剩下那一半需要 Xcode）。
+7. 三语新词条（配对串、统计行）未做切语言肉眼验收；`statsLine` 只用 `BitBotMonoStyle` 排了一行，
+   没做长文案（如 0 样本 + 跨网未试过）的换行观感验收。

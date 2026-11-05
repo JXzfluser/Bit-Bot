@@ -248,6 +248,9 @@ class MainActivity : ComponentActivity() {
     startupLines = runCatching { chatStore.load() }.getOrDefault(emptyList())
     // 没发出去的那半稿同理从盘上读回来（不是从实例字段）。
     draftNow = runCatching { chatStore.loadDraft() }.getOrDefault("")
+    // R-A3-6c：连接统计从盘上读回来。读不出就当 0（不抛、不猜）——
+    // 「这次安装以来一共试过几次」要比「本次打开 app 试过几次」有用得多。
+    runCatching { ConnectionStats.load() }
     // A1-4: SSE 文案的语言取系统配置。上一版 EventStreamMessages.currentLocale
     // 是个从没被赋值过的 var，于是繁体/英文分支全是死代码，非简体用户读到简体字。
     run {
@@ -267,6 +270,9 @@ class MainActivity : ComponentActivity() {
         // 回来时若这一轮还没结束，从上次游标接着订：不接着做用户会以为卡住了，
         // 从头再订则会把看过的帧重播一遍。
         if (event == Lifecycle.Event.ON_START) TurnCoordinator.resumeEventStreamSubscription()
+        // A3-17：每次回到前台重新探一次活 —— 「已配对」是历史，用户要看的是现在。
+        // 只加一个计数器，真正的探活在组合里跑（那里才有 IO 调度器可用）。
+        if (event == Lifecycle.Event.ON_START) linkEpoch++
       }
     )
     setContent { BitBotTheme { HomeShell() } }
@@ -274,6 +280,14 @@ class MainActivity : ComponentActivity() {
 
   /** 配对状态：只在真的保存/配对成功后刷新，不在 Composable 里现读全局。 */
   private fun pairedNow(): Boolean = TurnBridge.hostUrl() != null && TurnBridge.turnToken() != null
+
+  /**
+   * A3-17：每次回到前台 +1，组合里据此重新探活。
+   *
+   * 为什么不做定时轮询：手机上的「在线」只在对用户可见时才有意义，
+   * 后台每 30 秒打一次桌面纯属耗电。用户切回来那一刻探一次，既准又省。
+   */
+  private var linkEpoch by mutableStateOf(0)
 
   /** 状态点旁边那串字：只显示主机部分，端口在凭证里看。 */
   private fun hostLabelNow(): String? =
@@ -330,6 +344,33 @@ class MainActivity : ComponentActivity() {
       val need = TurnCoordinator.takePendingPermissions()
       if (need.isNotEmpty()) permissionLauncher.launch(need.toTypedArray())
     }
+
+    /**
+     * A3-17：探活。
+     *
+     * 三个触发点，都是「结论可能已经变了」的时刻：
+     *  ① 回到前台（`linkEpoch`）—— 换了 Wi-Fi、关了 VPN、桌面被关掉，都在这个时刻生效；
+     *  ② 配对状态变化 —— 刚配对完必须立刻验证一次，否则用户看到的是未经验证的「已配对」；
+     *  ③ 回合结束（`revision`）—— 一次真实往返比任何探针都可靠，成功/401 都已记进 LinkStatus。
+     *
+     * `linkVersion` **不是**这个 LaunchedEffect 的 key —— 它是探完之后用来触发重组的。
+     * 把自己当 key 会变成「探活 → 重组 → 再探活」的死循环，而且每次循环都发一次网络请求。
+     */
+    var linkVersion by remember { mutableStateOf(0) }
+    LaunchedEffect(linkEpoch, paired, revision) {
+      if (paired) {
+        withContext(Dispatchers.IO) { runCatching { LinkProbe.probe(TurnBridge.hostUrl()) } }
+      } else {
+        LinkStatus.reset()
+      }
+      linkVersion++
+    }
+    val linkLabel = remember(linkVersion, paired) { LinkStatus.label(paired) }
+    val dotTone = remember(linkVersion, paired) { LinkStatus.tone(paired) }
+    // R-A3-6c：统计行只在凭证面板里出现。statsVersion 是「清零」后重读的那根线 ——
+    // 不加它，按了清零屏幕上的数字还是旧的（统计藏在 object 里，Compose 看不见）。
+    var statsVersion by remember { mutableStateOf(0) }
+    val statsLine = remember(statsVersion) { ConnectionStats.describe() }
 
     /** 「清空对话」：屏幕与盘一起清，只清一个的话转个身旧话又回来了。 */
     fun clearChat() {
@@ -396,6 +437,9 @@ class MainActivity : ComponentActivity() {
       fallbackMessage = fallbackMessage,
       // A3-6：走的是直连还是中转（真实发生过的那条路），未连过为 null
       transportLabel = TransportStatus.labelOrNull(EventStreamMessages.currentLocale),
+      // A3-17：探活结论压过地址/延迟 —— 「现在通不通」比「上次走的哪条路」要紧
+      linkLabel = linkLabel,
+      dotTone = dotTone,
     )
 
     if (showMenu) {
@@ -432,6 +476,13 @@ class MainActivity : ComponentActivity() {
           showCredentials = false
         },
         onOpenPairing = { showCredentials = false; showPairing = true },
+        // R-A3-6c：真实样本数摆出来。分母为 0 时它自己说「还没有连接样本」，
+        // 不会假装 100%（只记成功的那种统计是自我安慰，不是统计）。
+        statsLine = statsLine,
+        onResetStats = {
+          ConnectionStats.reset()
+          statsVersion++
+        },
         onDismiss = { showCredentials = false },
       )
     }
@@ -483,6 +534,10 @@ class MainActivity : ComponentActivity() {
     var codeInput by remember { mutableStateOf("") }
     var redeemState by remember { mutableStateOf<PairingRedeemState>(PairingRedeemState.Idle) }
     var portInput by remember { mutableStateOf(TurnBridge.desktopPort().toString()) }
+    // A3-18：跨网配对的输入与状态，和局域网那条路分开存 —— 两条路可以同时准备好，
+    // 用户点哪个就走哪个，不必先把另一个清空。
+    var bootstrapInput by remember { mutableStateOf("") }
+    var bootstrapState by remember { mutableStateOf<PairingRedeemState>(PairingRedeemState.Idle) }
     val scope = rememberCoroutineScope()
 
     fun startScan() {
@@ -573,6 +628,58 @@ class MainActivity : ComponentActivity() {
       }
     }
 
+    /**
+     * A3-18：经中转配对。
+     *
+     * 与局域网那条路唯一的区别是「兑换怎么送过去」——一个走 TCP 直连，
+     * 一个走 relay 隧道。成功之后落 prefs 的逻辑是同一个函数
+     * （`DesktopPairing.persistPairing`），所以不存在「跨网配完了却没存中转参数」。
+     */
+    fun redeemViaRelay() {
+      val parsed = RelayBootstrap.parse(bootstrapInput)
+      if (parsed !is RelayBootstrap.Parsed.Ok) {
+        bootstrapState =
+          PairingRedeemState.Error(
+            when (parsed) {
+              is RelayBootstrap.Parsed.Incomplete -> "配对串还缺：" + parsed.missing.joinToString("、")
+              RelayBootstrap.Parsed.NotBootstrap -> "这不像跨网配对串：要以 bitbot-relay://v1? 开头"
+              else -> "先把桌面生成的跨网配对串粘进来"
+            }
+          )
+        return
+      }
+      if (!DesktopPairing.isValidPairingCode(codeInput)) {
+        bootstrapState = PairingRedeemState.Error(DesktopPairing.RedeemFailure.BadRequest.userMessage)
+        return
+      }
+      scope.launch {
+        bootstrapState = PairingRedeemState.Redeeming
+        val deviceName = android.os.Build.MODEL ?: "Android Device"
+        val result =
+          withContext(Dispatchers.IO) {
+            DesktopPairing.completePairingViaRelay(parsed.config, codeInput, deviceName)
+          }
+        result.fold(
+          onSuccess = { ok ->
+            val warning = ok.scopeWarning
+            val trust = ok.deviceTrustNotice
+            val head = if (warning != null) "跨网配对成功，但注意：$warning" else "跨网配对成功！现在不连 Wi-Fi 也能用"
+            bootstrapState =
+              PairingRedeemState.Success(if (trust != null) "$head\n$trust" else head, warning)
+            delay(1200)
+            onPaired()
+          },
+          onFailure = { error ->
+            bootstrapState =
+              PairingRedeemState.Error(
+                if (error is DesktopPairing.RedeemFailure) error.userMessage
+                else error.message ?: "跨网配对失败"
+              )
+          }
+        )
+      }
+    }
+
     PairingSheet(
       scanState = scanState,
       discovered = found.map { PairingDesktop(it.name, it.ip, it.port, it.codeActive) },
@@ -591,6 +698,13 @@ class MainActivity : ComponentActivity() {
       onRedeem = { redeem() },
       onOpenCredentials = onOpenCredentials,
       onDismiss = onDismiss,
+      bootstrapInput = bootstrapInput,
+      onBootstrapChange = {
+        bootstrapInput = it
+        if (bootstrapState is PairingRedeemState.Error) bootstrapState = PairingRedeemState.Idle
+      },
+      bootstrapState = bootstrapState,
+      onRedeemViaRelay = { redeemViaRelay() },
     )
   }
 }

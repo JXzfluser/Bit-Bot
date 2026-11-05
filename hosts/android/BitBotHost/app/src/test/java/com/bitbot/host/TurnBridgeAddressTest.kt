@@ -2,6 +2,7 @@ package com.bitbot.host
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -64,10 +65,27 @@ class TurnBridgeAddressTest {
 
   @Test
   fun `未配对的报错点名凭证入口而不是甩锅网络`() {
-    val msg = TurnBridge.unpairedText("missing mobile_host runner")
+    val msg = TurnBridge.unpairedText("turn failed (1): boom")
     assertTrue("要说要干什么：实际「$msg」", msg.contains("凭证"))
     assertTrue("要点名配对地址与令牌：实际「$msg」", msg.contains("配对地址") && msg.contains("配对令牌"))
-    assertTrue("dev runner 失败原因要留着：实际「$msg」", msg.contains("missing mobile_host runner"))
+    // 本机开发通道真的报了个错（仓库里跑 host 的场景）—— 这句话要留着，开发同学靠它定位。
+    assertTrue("本机开发通道的失败原因要留着：实际「$msg」", msg.contains("turn failed (1): boom"))
+  }
+
+  /**
+   * A3-17 新增：**同一句文案在真机上不许泄露内部路径**。
+   *
+   * 这条替换了原来那句「dev runner 失败原因要留着」的写法 —— 原写法用
+   * `unpairedText("missing mobile_host runner")` 断言这串**内部标识**必须出现在
+   * 用户面前，而那正是 A3-17 要消灭的东西（真机上用户看到「missing mobile_host
+   * runner」只会以为是自己的问题）。所以判据不是「放松成什么都收」，而是拆成两条更强的：
+   * 真的错误原因要留（上一条），内部路径必须消失（这一条）。
+   */
+  @Test
+  fun `A3-17 未配对时把内部路径咽下去，但仍然指向凭证入口`() {
+    val msg = TurnBridge.unpairedText("missing mobile_host runner")
+    assertFalse("不许把内部路径念给用户：实际「$msg」", msg.contains("mobile_host"))
+    assertTrue("但仍要指向凭证入口：实际「$msg」", msg.contains("凭证"))
   }
 
   @Test

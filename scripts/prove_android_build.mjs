@@ -12,7 +12,7 @@
  *          —— 缺声明时框架抛 SecurityException，点「扫描」是崩而不是「没找到桌面」
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 199（防止 test 任务空转假绿；199 = 193 + A3-6 回执四栏解析 3 + 连接方式文案 3 —— 这条是棘轮，用例只准涨不准掉）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 230（防止 test 任务空转假绿；230 = 199 + A3-17 探活 11 + A3-18 配对串 6 + 隧道池/chunked/统计 13 + A3-17 文案拆分 1 —— 这条是棘轮，用例只准涨不准掉）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -270,7 +270,7 @@ if (badge.status !== 0 || !badgeOut) {
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
   // 棘轮：这个数字只准往上抬。写死下限的意义是「test 任务空转/测试文件被删」也会被抓出来，
   // 所以每次加用例都要同时把这里抬上去（漏了就会出现「用例加了但门还按老数字绿」）。
-  else if (tests < 199) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 230) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -1278,6 +1278,9 @@ if (badge.status !== 0 || !badgeOut) {
   const httpSrc = read(ANDROID + "/TunnelHttp.kt");
   const strategySrc = read(ANDROID + "/ConnectionStrategy.kt");
   const turnSrc = read(ANDROID + "/TurnBridge.kt");
+  // A3-18 之后「开隧道」这个动作搬进了 RelayTunnelPool，TurnBridge 里不再有 `RelayTunnel.open(`。
+  // 所以这条判据要认两条路：直接开，或者从池里借（池内部开）。
+  const poolSrc = read(ANDROID + "/RelayTunnelPool.kt");
 
   const dir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
   const names = [];
@@ -1323,13 +1326,18 @@ if (badge.status !== 0 || !badgeOut) {
     if (!src.httpSrc.includes("content-length"))
       got.push("TunnelHttp 不再看 Content-Length（定长回包会读成空）");
     if (!src.turnSrc.includes("relayConfig()")) got.push("TurnBridge 不再读中转配置（回落这条路是空的）");
-    if (!src.turnSrc.includes("RelayTunnel.open(")) got.push("TurnBridge 不再开隧道（跨网永远走不通）");
+    // 只钉字面量 `RelayTunnel.open(` 是钉形状（RS-09 的老坑）：A3-18 把它挪进池子后这里会假红。
+    // 改钉**这件事**：回合要么直接开、要么借池子而池子会开。
+    const opensTunnel =
+      src.turnSrc.includes("RelayTunnel.open(") ||
+      (src.turnSrc.includes("RelayTunnelPool.borrow(") && src.poolSrc.includes("RelayTunnel.open("));
+    if (!opensTunnel) got.push("TurnBridge 不再开隧道（跨网永远走不通）");
     if (!src.turnSrc.includes("TunnelHttp.post(")) got.push("TurnBridge 开了隧道却没在上面发请求");
     if (!src.strategySrc.includes("Mode.RELAY")) got.push("ConnectionStrategy 里没有中转态（界面没法显示「中转」）");
     return got;
   };
 
-  const base = { relaySrc, httpSrc, strategySrc, turnSrc, names };
+  const base = { relaySrc, httpSrc, strategySrc, turnSrc, poolSrc, names };
   const problems = measure(base);
 
   // 负向对照：每一处锚点单独拿掉，尺子必须抓到。
@@ -1337,7 +1345,15 @@ if (badge.status !== 0 || !badgeOut) {
     ["1 不发 CONNECT", (s) => ({ ...s, relaySrc: s.relaySrc.replace('"CONNECT " +', '"CONNECTX " +') })],
     ["2 不认 TUNNEL", (s) => ({ ...s, relaySrc: s.relaySrc.replace('startsWith("TUNNEL ")', 'startsWith("TUNNELX ")') })],
     ["3 不读 chunked", (s) => ({ ...s, httpSrc: s.httpSrc.replace(/transfer-encoding/g, "x-te") })],
-    ["4 不回落中转", (s) => ({ ...s, turnSrc: s.turnSrc.replace("RelayTunnel.open(", "// (injected) 不回落") })],
+    [
+      "4 不回落中转",
+      (s) => ({
+        ...s,
+        // 两条路都要摘：只摘一条的话另一条会让门继续绿（正是这次要防的「走偏抓不到」）。
+        turnSrc: s.turnSrc.replace(/RelayTunnel\.open\(/g, "// (injected)").replace(/RelayTunnelPool\.borrow\(/g, "// (injected)"),
+        poolSrc: s.poolSrc.replace(/RelayTunnel\.open\(/g, "// (injected)"),
+      }),
+    ],
     ["5 用例不在结果里", (s) => ({ ...s, names: s.names.filter((n) => !/^RT-04/.test(n)) })],
   ];
   const undetected = muts.filter(([, mutate]) => !measure(mutate(base)).length).map(([label]) => label);
@@ -1423,4 +1439,241 @@ if (badge.status !== 0 || !badgeOut) {
       "AB-19 A3-6 跨网参数接通：回执四栏被解析（RT-11..13）、配对成功即落 prefs、回合后记真实路径（直连/中转 · Nms，TS-01..03）、状态条优先显示它（五组负向对照全抓到；Compose 渲染这一跳只有源码锚点，没跑渲染用例）",
     );
 }
+
+/* AB-20 A3-17 / R-A3-6c：**探活与凭证是两个维度**，外加真机统计。
+ *
+ * 为什么单独一条：用户报的「连不上」在上一版界面里只有两种显示 ——
+ * 「已配对」（历史事实）和一片沉默。于是三种完全不同的现场长得一模一样：
+ *   ① 桌面关了机；② 桌面在线但手机不在同一网络；③ 桌面在线、网络也对，但凭证被拒。
+ * 三者要做的事完全不同（开机 / 换网 / 重新配对），分不清就只能瞎试。
+ *
+ * AB-20 钉的：
+ *  - 探活结论与凭证结论**分开存**（LS-04/05：401 证明桌面在线，不是掉线）；
+ *  - 探活是**回到前台时**跑的，不是定时轮询（手机上后台轮询纯耗电）；
+ *  - 文案真的接到了状态条（写了 LinkStatus 但界面不读 ＝ 用户看不到）；
+ *  - 统计**带分母**：一次没试过就说「还没有样本」，绝不允许只记成功凑出 100%。
+ *
+ * 六组负向对照逐个摘都要被抓到 —— 抓不到就是装饰。
+ * 诚实边界：Compose 渲染这一跳只有源码锚点与 LS/TC 用例，没有像素级渲染用例。 */
+{
+  const ANDROID = "hosts/android/BitBotHost/app/src/main/java/com/bitbot/host";
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(REPO, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const linkSrc = read(ANDROID + "/LinkStatus.kt");
+  const probeSrc = read(ANDROID + "/LinkProbe.kt");
+  const statsSrc = read(ANDROID + "/ConnectionStats.kt");
+  const turnSrc = read(ANDROID + "/TurnBridge.kt");
+  const actSrc = read(ANDROID + "/MainActivity.kt");
+  const compSrc = read(ANDROID + "/ui/Components.kt");
+  const homeSrc = read(ANDROID + "/ui/HomeScreen.kt");
+  const sheetsSrc = read(ANDROID + "/ui/Sheets.kt");
+
+  const dir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+  const names = [];
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+      for (const m of fs.readFileSync(path.join(dir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+        names.push(m[1]);
+      }
+    }
+  } catch {
+    /* 结果目录不在时 AB-06 已报 */
+  }
+
+  const want = [
+    /LS-01/, /LS-02/, /LS-03/, /LS-04/, /LS-05/, /LS-06/, /LS-07/, /LS-08/, /LS-09/, /LS-10/, /LS-11/,
+    /TC-01/, /TC-02/, /TC-03/, /TC-04/,
+  ];
+
+  const measure = (src) => {
+    const got = [];
+    const missing = want.filter((re) => !src.names.some((n) => re.test(n)));
+    if (missing.length) got.push("用例不在结果里：" + missing.map(String).join(", "));
+    // 探活与凭证必须是两个结论：合成一个字段，401 就必然被写成「掉线」。
+    if (!src.linkSrc.includes("enum class Presence")) got.push("LinkStatus 没有「在线/离线」这个维度");
+    if (!src.linkSrc.includes("enum class Auth")) got.push("LinkStatus 没有「凭证认不认」这个维度（两件事被合成了一个）");
+    if (!/STALE_AFTER_MS\s*[:=]/.test(src.linkSrc)) got.push("探活结论不会过期（「已配对」这种历史事实会被当成现在）");
+    if (!src.probeSrc.includes("healthz")) got.push("LinkProbe 不打 /healthz（探的不是活）");
+    if (!/fun probe\(/.test(src.probeSrc)) got.push("LinkProbe 没有可注入的 probe（门禁与单测没法替身）");
+    // 探活必须由「回到前台」驱动，不是定时器。
+    if (!src.actSrc.includes("linkEpoch++")) got.push("MainActivity 没有在回到前台时重新探活（「已配对」会被当成现在）");
+    if (!src.actSrc.includes("LinkProbe.probe(")) got.push("MainActivity 定义了探活却没人跑（界面永远是 UNKNOWN）");
+    // 文案真的接到状态条上。
+    if (!src.compSrc.includes("linkLabel")) got.push("状态条不显示探活结论（分不清「关机」与「凭证被拒」）");
+    if (!src.homeSrc.includes("linkLabel")) got.push("HomeScreen 没把探活结论传下去");
+    if (!src.actSrc.includes("LinkStatus.label(")) got.push("MainActivity 没把结论交给界面");
+    // 401/403 要记「凭证被拒」，且**不进失败率**。
+    if (!src.turnSrc.includes("LinkStatus.authRejected(")) got.push("回合 401 时不改凭证结论（界面还会说「一切正常」）");
+    if (!src.turnSrc.includes("ConnectionStats.recordAuthRejected()")) got.push("凭证被拒没有单独计数（会被混进失败率）");
+    // 统计必须有「失败也记」的那一半，否则成功率恒为 100%。
+    if (!/ConnectionStats\.recordDirect\(false/.test(src.turnSrc)) got.push("直连失败不记账（成功率永远 100%）");
+    if (!/ConnectionStats\.recordRelay\(false/.test(src.turnSrc)) got.push("中转失败不记账（成功率永远 100%）");
+    if (!src.statsSrc.includes("还没有连接样本")) got.push("0 样本时不说话（会显示一个凭空的成功率）");
+    // 统计真的出现在界面上，否则用户与我们都读不到。
+    if (!src.sheetsSrc.includes("statsLine")) got.push("凭证面板不显示统计（记了没人看）");
+    if (!src.actSrc.includes("ConnectionStats.describe()")) got.push("MainActivity 没把统计传给面板");
+    if (!src.actSrc.includes("ConnectionStats.load()")) got.push("重启后统计会清零（load 没接）");
+    return got;
+  };
+
+  const base = { linkSrc, probeSrc, statsSrc, turnSrc, actSrc, compSrc, homeSrc, sheetsSrc, names };
+  const problems = measure(base);
+
+  const muts = [
+    // 注意：上一版写成 `enum class Auth` → `enum class AuthRemoved`，而判据是 includes("enum class Auth")，
+    // 改完**仍然命中**，于是对照恒绿。名字要整段换掉，判据才可能翻红。
+    ["1 摘掉凭证那个维度", (s) => ({ ...s, linkSrc: s.linkSrc.replace("enum class Auth", "enum class CredMode") })],
+    ["2 不再重新探活", (s) => ({ ...s, actSrc: s.actSrc.replace(/linkEpoch\+\+/g, "linkEpochUnused()") })],
+    ["3 状态条不接结论", (s) => ({ ...s, compSrc: s.compSrc.replace(/linkLabel/g, "hostLabelOnly") })],
+    ["4 401 不改凭证结论", (s) => ({ ...s, turnSrc: s.turnSrc.replace(/LinkStatus\.authRejected\(/g, "// (injected) 不改") })],
+    [
+      "5 失败也记成成功",
+      (s) => ({
+        ...s,
+        turnSrc: s.turnSrc
+          .replace(/ConnectionStats\.recordDirect\(false, /g, "ConnectionStats.recordDirect(true, ")
+          .replace(/ConnectionStats\.recordRelay\(false, /g, "ConnectionStats.recordRelay(true, "),
+      }),
+    ],
+    ["6 面板不显示统计", (s) => ({ ...s, sheetsSrc: s.sheetsSrc.replace(/statsLine/g, "unusedStatsLine") })],
+  ];
+  const undetected = muts.filter(([, mutate]) => !measure(mutate(base)).length).map(([label]) => label);
+  if (undetected.length) bad("AB-20 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
+
+  if (problems.length) bad("AB-20 探活/凭证/统计没接齐", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-20 A3-17 探活与凭证分开：Presence/Auth 两个维度、结论会过期、回到前台才探、401 记「在线但被拒」、状态条显示结论；R-A3-6c 统计带分母（失败也记、0 样本说「还没有样本」）并显示在凭证面板（六组负向对照全抓到；像素级渲染仍属真机残留）",
+    );
+}
+
+/* AB-21 R-A3-5b / R-A3-6b / A3-18：跨网这条路上三处「后端已通、端上没接」。
+ *
+ * 为什么三条合成一条：它们的失败形态是同一个 —— 功能「在」但用户感觉不到：
+ *  · R-A3-5b 进度帧不走隧道 ⇒ 跨网时整轮没有进度，看着像卡死；
+ *  · R-A3-6b 每回合重开隧道 ⇒ 建立成本全摊在「发出去」那一下，连发三条付三次；
+ *  · A3-18 没有跨网配对串 ⇒ 手机必须先回同一个 Wi-Fi 配一次才拿到中转四栏（R-A3-6a 的死结）。
+ *
+ * AB-21 钉七件事：SSE 真在隧道上、chunked 惰性解码、池子真被借/还/废、配置变整池作废、
+ * 配对串在手机上真被解析并真的走隧道 redeem、且串里没有桌面那把 box token。
+ * 六组负向对照逐个摘都要被抓到。
+ * 诚实边界：没有真 relay + 真蜂窝样本，「粘过去能用」仍属 R-A3-6a 残留。 */
+{
+  const ANDROID = "hosts/android/BitBotHost/app/src/main/java/com/bitbot/host";
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(REPO, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const httpSrc = read(ANDROID + "/TunnelHttp.kt");
+  const poolSrc = read(ANDROID + "/RelayTunnelPool.kt");
+  const sseSrc = read(ANDROID + "/EventStreamClient.kt");
+  const turnSrc = read(ANDROID + "/TurnBridge.kt");
+  const bootSrc = read(ANDROID + "/RelayBootstrap.kt");
+  const pairSrc = read(ANDROID + "/DesktopPairing.kt");
+  const actSrc = read(ANDROID + "/MainActivity.kt");
+  const sheetsSrc = read(ANDROID + "/ui/Sheets.kt");
+  /**
+   * 剥掉注释再判。理由和解不掉的那一课（AE-06）：RelayBootstrap 的 KDoc 里有一句
+   * 「只带 client_token，绝不带 box_token」—— 直接对源码跑 `/box_token/` 会命中这句注释，
+   * 于是「手机端出现了 box token」这条判据**被自己的说明文字撑绿**，负向对照也抓不到。
+   * 过时的一句注释同样能把真 bug 撑绿，所以这里统一剥注释，而不是给它加例外。
+   */
+  const stripComments = (t) =>
+    t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
+  const dir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+  const names = [];
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+      for (const m of fs.readFileSync(path.join(dir, f), "utf8").matchAll(/<testcase\s+name="([^"]+)"/g)) {
+        names.push(m[1]);
+      }
+    }
+  } catch {
+    /* 结果目录不在时 AB-06 已报 */
+  }
+
+  const want = [
+    /TP-01/, /TP-02/, /TP-03/, /TP-04/, /TP-05/, /TP-06/,
+    /SX-01/, /SX-02/, /SX-03/,
+    /RB-01/, /RB-02/, /RB-03/, /RB-04/, /RB-05/, /RB-06/,
+  ];
+
+  const measure = (src) => {
+    const got = [];
+    const missing = want.filter((re) => !src.names.some((n) => re.test(n)));
+    if (missing.length) got.push("用例不在结果里：" + missing.map(String).join(", "));
+    // R-A3-5b：SSE 必须真的有一条「走隧道」的路径。
+    if (!src.httpSrc.includes("fun openEventStream(")) got.push("TunnelHttp 没有 openEventStream（跨网拿不到帧）");
+    if (!src.httpSrc.includes("ChunkedInputStream")) got.push("TunnelHttp 不认识 chunked（SSE 回包读成空）");
+    if (!src.sseSrc.includes("readViaRelay")) got.push("EventStreamClient 没有走隧道那条路径");
+    if (!/relayTunnel/.test(src.sseSrc)) got.push("EventStreamClient 不持有隧道（开了也没人用）");
+    // R-A3-6b：借/还/废三处都要在 —— 只借不还等于每回合都在中继上攒连接。
+    if (!src.turnSrc.includes("RelayTunnelPool.borrow(")) got.push("回合不借池子里的隧道（每回合重开）");
+    if (!src.turnSrc.includes("RelayTunnelPool.release(")) got.push("用完不还（中继上会攒连接）");
+    if (!src.turnSrc.includes("RelayTunnelPool.invalidate(")) got.push("坏隧道不废弃（下一回合会再撞一次）");
+    if (!src.poolSrc.includes("StaleTunnelException")) got.push("池子没把「隧道过期」与「网络抖动」分开");
+    if (!/fingerprint/.test(src.poolSrc)) got.push("配置变了不整池作废（改了地址还连老地方）");
+    // A3-18：配对串要真被用上，不是只定义了一个 parser。
+    if (!src.bootSrc.includes('"bitbot-relay://v1"')) got.push("配对串的协议前缀不见了（两端对不上）");
+    if (!src.sheetsSrc.includes("bootstrapInput")) got.push("配对面板没有粘配对串的入口");
+    if (!src.actSrc.includes("RelayBootstrap.parse(")) got.push("MainActivity 没解析配对串");
+    if (!src.actSrc.includes("completePairingViaRelay(")) got.push("解析了却不走跨网配对（还是得回同网）");
+    if (!/fun redeemCodeViaRelay\(/.test(src.pairSrc)) got.push("DesktopPairing 没有跨网 redeem");
+    // 手机端绝不接受 box token：串里只有 client token，桌面那把不出门。
+    // 判之前先剥注释 —— 这条注释本身写着「绝不带 box_token」，不剥就是自己把自己撑绿。
+    if (/box_token|boxToken/.test(stripComments(src.bootSrc))) got.push("手机端配对串里出现了 box token（等于把「冒充桌面」交出去）");
+    return got;
+  };
+
+  const base = { httpSrc, poolSrc, sseSrc, turnSrc, bootSrc, pairSrc, actSrc, sheetsSrc, names };
+  const problems = measure(base);
+
+  const muts = [
+    ["1 SSE 不走隧道", (s) => ({ ...s, sseSrc: s.sseSrc.replace(/readViaRelay/g, "readViaDirectOnly") })],
+    ["2 回合不借池子", (s) => ({ ...s, turnSrc: s.turnSrc.replace(/RelayTunnelPool\.borrow\(/g, "RelayTunnelPool.openDirect(") })],
+    ["3 用完不还", (s) => ({ ...s, turnSrc: s.turnSrc.replace(/RelayTunnelPool\.release\(/g, "RelayTunnelPool.keepForever(") })],
+    ["4 配置变了不作废", (s) => ({ ...s, poolSrc: s.poolSrc.replace(/fingerprint/g, "fpDisabled") })],
+    ["5 配对串不解析", (s) => ({ ...s, actSrc: s.actSrc.replace(/RelayBootstrap\.parse\(/g, "RelayBootstrap.ignore(") })],
+    ["6 解析了不走隧道", (s) => ({ ...s, actSrc: s.actSrc.replace(/completePairingViaRelay\(/g, "completePairingLanOnly(") })],
+  ];
+  const undetected = muts.filter(([, mutate]) => !measure(mutate(base)).length).map(([label]) => label);
+  if (undetected.length) bad("AB-21 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
+
+  const poolFailures = (() => {
+    try {
+      const p = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+      for (const f of fs.readdirSync(p)) {
+        if (!f.includes("RelayResilienceTest")) continue;
+        const xml = fs.readFileSync(path.join(p, f), "utf8");
+        const suite = xml.match(/<testsuite[^>]*>/);
+        if (!suite) continue;
+        const fail = Number((suite[0].match(/failures="(\d+)"/) || [])[1] || 0);
+        const err = Number((suite[0].match(/errors="(\d+)"/) || [])[1] || 0);
+        if (fail + err > 0) return fail + err;
+      }
+    } catch {
+      /* 结果目录不在时 AB-06 已报 */
+    }
+    return 0;
+  })();
+  if (poolFailures > 0) bad("AB-21 隧道池/统计用例有 " + poolFailures + " 条失败（池子真行为不对）");
+
+  if (problems.length) bad("AB-21 跨网三处没接齐", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-21 跨网补齐：SSE 真走隧道且 chunked 惰性解码（SX-01..03）、隧道借/还/废与配置指纹作废（TP-01..06）、配对串在手机上被解析并走隧道 redeem（RB-01..06），且串里只有 client token（六组负向对照全抓到；真蜂窝零样本仍属 R-A3-6a 残留）",
+    );
+}
+
 done();

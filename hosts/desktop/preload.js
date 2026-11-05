@@ -386,6 +386,9 @@ contextBridge.exposeInMainWorld("bitbot", {
     get: () => ipcRenderer.invoke("bitbot:relay:settings:get"),
     save: (patch) => ipcRenderer.invoke("bitbot:relay:settings:save", patch || {}),
     disable: () => ipcRenderer.invoke("bitbot:relay:settings:disable"),
+    // A3-18：跨网配对串（含 client_token 明文）。刻意与 get 分开：
+    // get 那条路永远只有掩码，只有用户显式点「生成」才会走到这里。
+    bootstrap: () => ipcRenderer.invoke("bitbot:relay:bootstrap"),
   },
   // A2-5 设备花名册：只读列出已登记设备（含最近活跃），吊销走主进程写同一份文件。
   devices: {

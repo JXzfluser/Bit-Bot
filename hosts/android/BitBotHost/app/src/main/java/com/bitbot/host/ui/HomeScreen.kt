@@ -47,6 +47,9 @@ fun HomeScreen(
   fallbackMessage: String? = null,
   // A3-6：上一次实际走的连接方式（直连/中转 · Nms），null = 还没连过
   transportLabel: String? = null,
+  // A3-17：探活结论（「已配对 · 在线/凭证被拒/桌面未响应」）与状态点语义
+  linkLabel: String? = null,
+  dotTone: String? = null,
 ) {
   Column(
     modifier
@@ -61,6 +64,8 @@ fun HomeScreen(
       onOpenStatus = { if (paired) onOpenCredentials() else onOpenPairing() },
       onOpenMenu = onOpenMenu,
       transportLabel = transportLabel,
+      linkLabel = linkLabel,
+      dotTone = dotTone,
     )
 
     Box(

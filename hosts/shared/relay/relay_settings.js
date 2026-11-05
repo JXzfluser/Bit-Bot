@@ -136,6 +136,52 @@ function saveRelaySettings(opts) {
   return { ok: true, view: view() };
 }
 
+/**
+ * A3-18：**跨网配对串** —— 手机在蜂窝网下配对时唯一能提前拿到的东西。
+ *
+ * 为什么必须单独开一个出口：`readRelaySettings()` 刻意只回掩码，明文一律不给渲染端。
+ * 但「先配对、再下发四栏」这条链路在跨网时是死锁 —— 手机没配对就拿不到四栏，
+ * 没四栏就走不了隧道，于是永远配不上（R-A3-6a）。破法只能是让桌面**提前**把
+ * 手机那一半凭证交给用户，让他粘到手机上。
+ *
+ * 三条纪律：
+ *  1. **只出 client_token，绝不出 box_token** —— 后者是桌面向 relay 登记的身份，
+ *     给了手机等于允许它冒充这台桌面（`toHandoff` 一直遵守同一条）。
+ *  2. **地址自检不过就拒绝生成**（A3-16 口径）：生成一段注定连不上的串，
+ *     等于把用户推到一个他查不出来的坑里，界面上还会写「已配置」。
+ *  3. 返回值里带 `summary`（不含 token），界面用它告诉用户「这是哪台桌面」。
+ *
+ * @returns {{ok:boolean, reason?:string, bootstrap?:string, summary?:string, audit?:object}}
+ */
+function buildRelayBootstrap(opts) {
+  const o = optsOf(opts);
+  const cfg = relaySecrets.loadRelayConfigSecure(o);
+  if (!cfg) return { ok: false, reason: "not_configured", bootstrap: "", summary: "" };
+  const audit = hostAudit.auditRelayHost({
+    host: cfg.host,
+    port: cfg.port,
+    mode: cfg.mode,
+    interfaces: o.interfaces,
+  });
+  if (hostAudit.shouldRejectSave(audit)) {
+    return { ok: false, reason: audit.code, audit, bootstrap: "", summary: "" };
+  }
+  const esc = (v) => String(v == null ? "" : v).replace(/%/g, "%25").replace(/&/g, "%26").replace(/#/g, "%23");
+  const bootstrap =
+    "bitbot-relay://v1?h=" + esc(cfg.host) +
+    "&p=" + encodeURIComponent(String(cfg.port)) +
+    "&b=" + esc(cfg.boxId) +
+    "&t=" + esc(cfg.clientToken);
+  return {
+    ok: true,
+    bootstrap,
+    summary: cfg.host + ":" + cfg.port + " · " + cfg.boxId,
+    audit,
+    // 与手机端同一句口径：这段串里有凭证，复制后请当作密码对待。
+    contains_credential: true,
+  };
+}
+
 /** 关掉中转：写 enabled:false（不删文件，方便以后改回来）。 */
 function disableRelaySettings(opts) {
   const o = optsOf(opts);
@@ -154,4 +200,4 @@ function disableRelaySettings(opts) {
   return { ok: true, view: readRelaySettings(o) };
 }
 
-module.exports = { readRelaySettings, saveRelaySettings, disableRelaySettings, mask };
+module.exports = { readRelaySettings, saveRelaySettings, disableRelaySettings, buildRelayBootstrap, mask };

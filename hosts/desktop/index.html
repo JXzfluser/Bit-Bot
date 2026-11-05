@@ -3288,6 +3288,16 @@
           <div class="mc-actions">
             <button type="button" id="mc-relay-save" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mcRelaySave">保存并生效</button>
             <button type="button" id="mc-relay-disable" class="bb-btn bb-btn-sm" data-i18n="mcRelayDisable">关闭中转</button>
+            <!-- A3-18：跨网配对。手机在蜂窝网下没法先扫局域网，只能靠用户把这段粘过去。 -->
+            <button type="button" id="mc-relay-bootstrap" class="bb-btn bb-btn-sm" data-i18n="mcRelayBootstrap">生成跨网配对串</button>
+          </div>
+          <div id="mc-relay-bootstrap-box" style="display:none;margin-top:8px">
+            <p class="mc-note" data-i18n="mcRelayBootstrapNote">把下面整段复制到手机「配对 → 跨网配对」里。它含这台桌面的手机凭证，请当密码对待，别发到群里。</p>
+            <textarea id="mc-relay-bootstrap-text" class="bb-control" readonly rows="3"
+              style="width:100%;font:12px/1.4 ui-monospace,monospace;resize:vertical"></textarea>
+            <div class="mc-actions">
+              <button type="button" id="mc-relay-bootstrap-copy" class="bb-btn bb-btn-sm" data-i18n="mcRelayBootstrapCopy">复制</button>
+            </div>
           </div>
           <div id="mc-relay-note" class="mc-note" hidden></div>
         </section>
@@ -12876,8 +12886,59 @@
           if (el) el.value = "";
         });
       }
-      const disableBtn = $("mc-relay-disable");
-      if (disableBtn) {
+      /**
+       * A3-18：跨网配对串。
+       *
+       * 只在用户点按钮时才向主进程要 —— 这是全桌面唯一会读出 client_token 明文的出口，
+       * 不能在 `load()` 里顺手取回来（那样一打开设置页凭证就到渲染进程了）。
+       * 生成失败时优先说自检结论（地址连不到），其次才是「还没配」。
+       */
+      const bootBtn = $("mc-relay-bootstrap");
+      if (bootBtn) {
+        bootBtn.addEventListener("click", async () => {
+          bootBtn.disabled = true;
+          try {
+            const r = await window.bitbot.relaySettings.bootstrap();
+            const box = $("mc-relay-bootstrap-box");
+            const ta = $("mc-relay-bootstrap-text");
+            if (!r || !r.ok) {
+              if (box) box.style.display = "none";
+              if (ta) ta.value = "";
+              const why = r && r.audit
+                ? (tr(MC_AUDIT_KEY[r.audit.code] || "", String(r.audit.note || "")) || String(r.audit.code))
+                : (r && r.reason === "not_configured"
+                    ? tr("mcRelayBootstrapNotConfigured", "还没配中转，先把上面四栏填好并保存")
+                    : String((r && r.reason) || "unknown"));
+              say(tr("mcRelayBootstrapFailed", "生成失败") + " · " + why, true);
+              return;
+            }
+            if (ta) ta.value = r.bootstrap || "";
+            if (box) box.style.display = "block";
+            say(tr("mcRelayBootstrapReady", "已生成，复制到手机即可跨网配对"), false);
+          } catch (e) {
+            say(String((e && e.message) || e), true);
+          } finally {
+            bootBtn.disabled = false;
+          }
+        });
+      }
+      const bootCopy = $("mc-relay-bootstrap-copy");
+      if (bootCopy) {
+        bootCopy.addEventListener("click", async () => {
+          const ta = $("mc-relay-bootstrap-text");
+          const text = String((ta || {}).value || "");
+          if (!text) return;
+          try {
+            await navigator.clipboard.writeText(text);
+            say(tr("mcRelayBootstrapCopy", "复制") + " ✓", false);
+          } catch (_e) {
+            // 剪贴板被拒（无用户手势/权限）时退到「已选中，用户自己按 ⌘C」
+            if (ta && ta.select) ta.select();
+            say(tr("mcRelayBootstrapCopy", "复制") + " · " + tr("mcRelayCopyManual", "请手动复制（已选中）"), true);
+          }
+        });
+      }
+      const disableBtn = $("mc-relay-disable");      if (disableBtn) {
         disableBtn.addEventListener("click", async () => {
           try {
             const r = await window.bitbot.relaySettings.disable();
@@ -16070,6 +16131,13 @@
         mcRelayAuditPublic: "公网地址，手机在蜂窝网下够得到（前提是端口已放通）",
         mcRelayAuditHostname: "域名：解析与端口放通取决于你的 DNS / 防火墙，这里替你验不了",
         mcRelayHandoffHeld: "这个地址手机连不到，本轮回执已扣下跨网参数，手机仍走同网配对",
+        mcRelayBootstrap: "生成跨网配对串",
+        mcRelayBootstrapNote: "把下面整段复制到手机「配对 → 跨网配对」里。它含这台桌面的手机凭证，请当密码对待，别发到群里。",
+        mcRelayBootstrapCopy: "复制",
+        mcRelayBootstrapFailed: "生成失败",
+        mcRelayBootstrapReady: "已生成，复制到手机即可跨网配对",
+        mcRelayBootstrapNotConfigured: "还没配中转，先把上面四栏填好并保存",
+        mcRelayCopyManual: "请手动复制（已选中）",
         mcPairTitle: "手机连接这台桌面",
         mcReading: "配对状态：读取中…",
         mcHint: "手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。",
@@ -16906,6 +16974,13 @@
         mcRelayAuditPublic: "公網位址，手機在蜂窩網下夠得到（前提是埠已放通）",
         mcRelayAuditHostname: "域名：解析與埠放通取決於你的 DNS / 防火牆，這裡替你驗不了",
         mcRelayHandoffHeld: "這個位址手機連不到，本輪回執已扣下跨網參數，手機仍走同網配對",
+        mcRelayBootstrap: "產生跨網配對串",
+        mcRelayBootstrapNote: "把下面整段複製到手機「配對 → 跨網配對」裡。它含這台桌面的手機憑證，請當密碼對待，別發到群裡。",
+        mcRelayBootstrapCopy: "複製",
+        mcRelayBootstrapFailed: "產生失敗",
+        mcRelayBootstrapReady: "已產生，複製到手機即可跨網配對",
+        mcRelayBootstrapNotConfigured: "還沒配中轉，先把上面四欄填好並儲存",
+        mcRelayCopyManual: "請手動複製（已選中）",
         mcPairTitle: "手機連接這台桌面",
         mcReading: "配對狀態：讀取中…",
         mcHint: "手機和桌面在同一個 Wi-Fi 下，輸入 6 位配對碼就能連上這台大腦，不需要手填長權杖。",
@@ -17742,6 +17817,13 @@
         mcRelayAuditPublic: "Public address — reachable over cellular, provided the port is open",
         mcRelayAuditHostname: "Hostname: resolution and port reachability depend on your DNS/firewall; this cannot be verified here",
         mcRelayHandoffHeld: "This address is unreachable for the phone, so cross-network parameters were withheld and the phone falls back to same-network pairing",
+        mcRelayBootstrap: "Create cross-network pairing string",
+        mcRelayBootstrapNote: "Paste the whole string into the phone's Pairing → Cross-network field. It contains this desktop's phone credential — treat it like a password and don't post it in group chats.",
+        mcRelayBootstrapCopy: "Copy",
+        mcRelayBootstrapFailed: "Could not create it",
+        mcRelayBootstrapReady: "Created — copy it to the phone to pair over cellular",
+        mcRelayBootstrapNotConfigured: "Relay is not configured yet — fill the four fields above and save first",
+        mcRelayCopyManual: "Copy it manually (already selected)",
         mcPairTitle: "Connect your phone to this desktop",
         mcReading: "Pairing state: loading…",
         mcHint: "On the same Wi-Fi, the phone just types a 6-digit pairing code to reach this brain — no long token to paste.",

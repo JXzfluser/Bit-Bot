@@ -41,6 +41,15 @@ object TurnBridge {
   /** 配对那一步要往本地身份文件里写服务端派发的 id —— 给它同一个应用上下文，别再传一份。 */
   fun context(): Context? = appContext
 
+  /**
+   * 给同模块的统计/诊断层用的 prefs 句柄。
+   *
+   * 刻意包一层而不是让每个调用方自己 `getSharedPreferences("bitbot_host", ...)`：
+   * 文件名字符串散在四处，改一次就漏一处，最后表现为「统计有时不涨」。
+   */
+  fun prefs(): android.content.SharedPreferences? =
+    appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
   fun hostUrl(): String? {
     val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     val fromPrefs = prefs?.getString(KEY_HOST_URL, null)?.trim().orEmpty()
@@ -80,19 +89,49 @@ object TurnBridge {
     return if (base.endsWith("/v1/turn")) base else "$base/v1/turn"
   }
 
+  /**
+   * A3-17：**本机 dev runner 不存在**。
+   *
+   * `hosts/mobile_host/run.js` 只在仓库检出里存在。真机装了 APK 之后那个路径
+   * 压根不存在 —— 这不是错误，是**正常情况**。旧实现把它当成一次真实失败，
+   * 于是用户为「连不上桌面」看到的原因里夹着一句
+   * `本机 dev runner 也不可用：missing mobile_host runner at /data/.../hosts/mobile_host/run.js`。
+   * 那既解释不了任何事，又把内部路径泄漏到了正式界面。
+   *
+   * 现在把它做成一个**可识别**的类型：调用方据此完全不再提 dev runner，
+   * 而不是靠去匹配 message 里的字符串（那样改一句文案就漏）。
+   */
+  class DevRunnerUnavailable : Exception("dev runner unavailable")
+
+  /**
+   * dev runner 那句话要不要说、怎么说。
+   *
+   * 口径只有一条：**它在才算数**。仓库里跑（`run.js` 存在）时开发同学需要这条线索；
+   * 装了 APK 的真机上它根本不存在，提它只会让用户以为是自己的问题。
+   */
+  private fun devRunnerClause(localErr: Throwable?): String {
+    if (localErr == null || localErr is DevRunnerUnavailable) return ""
+    val msg = localErr.message?.trim().orEmpty()
+    if (msg.isEmpty()) return ""
+    // 兜底：即便哪天又被别处包装成普通异常，也不把内部路径念出来。
+    if (msg.contains("mobile_host")) return ""
+    return "（本机开发通道也失败：$msg）"
+  }
+
   /** 未配对时说什么：点名去「凭证」填什么、去哪儿拿，不甩锅网络。 */
   fun unpairedText(localReason: String?): String {
     val head =
       "还没有配对 Desktop 大脑：点「凭证」填写桌面配对地址与配对令牌" +
         "（桌面：设置 → 凭证 → 手机配对，两项都能复制）。"
-    return if (localReason.isNullOrBlank()) head else "$head（本机 dev runner 也不可用：$localReason）"
+    val clause = devRunnerClause(localReason?.let { Exception(it) })
+    return if (clause.isEmpty()) head else head + clause
   }
 
-  /** 配了但连不上：两次失败的原因都要留着，并把下一步说在人话前面。 */
+  /** 配了但连不上：桌面自己的原因留着，并把下一步说在人话前面。 */
   fun pairingHint(httpReason: String?, localReason: String?): String =
-    "连不上 Desktop 大脑。桌面那边报：${explainHttpReason(httpReason)}；" +
-      "本机 dev runner 也失败：${localReason ?: "unknown"}。" +
-      "在「凭证」核对配对地址与配对令牌（桌面：设置 → 凭证 → 手机配对；同一 Wi-Fi 先点「允许手机连接」）"
+    "连不上 Desktop 大脑。桌面那边报：${explainHttpReason(httpReason)}。" +
+      devRunnerClause(localReason?.let { Exception(it) }) +
+      "在「凭证」里核对配对地址与配对令牌（桌面：设置 → 凭证 → 手机配对；同一 Wi-Fi 先点「允许手机连接」）。"
 
   /** ADR 0008 签名鉴权那几个码 —— 手机配对走的不是这条路，说清楚别让用户去找密钥。 */
   private val SIGNATURE_CODES =
@@ -123,9 +162,17 @@ object TurnBridge {
     }
     val sign = if (code.isEmpty()) status else "$status/$code"
     return when {
+      // A3-17：这句原来写的是「配对令牌不对 → 去桌面重抄一遍整串」，方向是错的。
+      // invalid_token 证明的是**桌面收到了请求、活着、并且拒绝了这个凭证** ——
+      // 不是网络问题，也不一定是「你抄错了」。A2-3 之后手机自己会签，
+      // 桌面一旦有登记表就忽略 bearer；此时出现 invalid_token 说明这次请求
+      // 根本没走设备签名那条路（=这台设备没登记上），真正该做的是**重新配对**，
+      // 而不是让用户去对着 60 多个字符逐个比对。
       status == "401" && code == "invalid_token" ->
-        "配对令牌不对（invalid_token）：去桌面「设置 → 凭证 → 手机配对 → 显示配对令牌」" +
-          "整串重新复制一遍再粘过来，少一个字符或多一个空格都是这个结果。"
+        "桌面收到了请求但拒绝了这个凭证（invalid_token）—— 这不是网络问题。" +
+          "先在这台手机的「凭证」里重新配对一次（配对会把本机的设备公钥重新登记到桌面，" +
+          "之后请求改走设备签名，不再依赖那串长令牌）。" +
+          "如果桌面版本较旧、还不支持设备签名，再去桌面「设置 → 凭证 → 手机配对 → 显示配对令牌」整串重抄一遍。"
       status == "401" && code == "unauthorized" ->
         "桌面没收到配对凭证（unauthorized）：「凭证」里配对令牌那一栏很可能是空的，" +
           "去桌面「设置 → 凭证 → 手机配对 → 显示配对令牌」复制整串。"
@@ -214,6 +261,32 @@ object TurnBridge {
    */
   fun sessionFor(machineKind: String): String = "mobile-" + machineKind
 
+  /**
+   * A3-17：把一次回合的结局记进 [LinkStatus]。
+   *
+   * 为什么回合结果比探活更该被记：探活只证明「端口有人应」，回合才证明
+   * 「桌面认这台手机」。一条成功的回合理所当然说明两件事都成立；
+   * 一条 401/403 说明桌面在线但凭证被拒 —— 那是最需要被界面看见的状态。
+   * 只认 401/403；404/405 是「端口上不是桌面」，属于找错门，不算凭证问题。
+   */
+  fun recordTurnOutcome(rawMessage: String?) {
+    val text = rawMessage?.trim().orEmpty()
+    if (text.isEmpty()) return
+    if (!text.contains("turn HTTP")) return
+    val status = Regex("turn HTTP (\\d{3})").find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return
+    val code = Regex("\"error\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1).orEmpty()
+    when {
+      status in 200..299 -> LinkStatus.authAccepted()
+      status == 401 || status == 403 -> {
+        LinkStatus.authRejected(code.ifBlank { "HTTP $status" })
+        // R-A3-6c：凭证被拒单独计数 —— 它不是「连接失败」，混进失败率会得出
+        // 「跨网很差」这种错误结论（其实网络好好的，只是钥匙不对）。
+        ConnectionStats.recordAuthRejected()
+      }
+      else -> Unit // 404/405 之类：不改凭证结论，否则会把「找错端口」说成「凭证被拒」
+    }
+  }
+
   fun runTurn(text: String, machineKind: String = "android"): String {
     val hostUrl = hostUrl()
     if (hostUrl != null) {
@@ -225,12 +298,17 @@ object TurnBridge {
         if (missingToken != null) Result.failure<String>(IllegalStateException(missingToken))
         else runCatching { runTurnHttp(hostUrl, text, machineKind) }
       return attempted.getOrElse { httpErr ->
+        // A3-17：先记账再说话 —— 界面上的「凭证被拒」靠这一行，不靠用户猜。
+        recordTurnOutcome(httpErr.message)
         // Fall through to local node only if repo is available
         runCatching { runTurnLocal(text, machineKind) }
           .getOrElse { localErr ->
+            // A3-17：dev runner 不存在（真机上的常态）时不留任何痕迹 ——
+            // 「没这条通道」不是一条失败原因，说出来只会误导。
+            val localReason = if (localErr is DevRunnerUnavailable) null else localErr.message
             error(
-              if (missingToken != null) "$missingToken（本机 dev runner 也不可用：${localErr.message}）"
-              else pairingHint(httpErr.message, localErr.message)
+              if (missingToken != null) missingToken + devRunnerClause(localErr)
+              else pairingHint(httpErr.message, localReason)
             )
           }
       }
@@ -238,7 +316,7 @@ object TurnBridge {
     // 一个地址都没配：先试 dev runner（仓库里跑 host 的情况），失败就老实说「未配对」，
     // 不拿一个写死的 emulator 地址假装有机会连上。
     return runCatching { runTurnLocal(text, machineKind) }
-      .getOrElse { error(unpairedText(it.message)) }
+      .getOrElse { error(unpairedText(if (it is DevRunnerUnavailable) null else it.message)) }
   }
 
   /** Prefer final assistant message (post Host llm_chat continue). */
@@ -387,18 +465,30 @@ object TurnBridge {
     val startedAt = System.currentTimeMillis()
     val directResult = runCatching { postDirect(url, headers, bodyBytes) }
     directResult.getOrNull()?.let { out ->
-      TransportStatus.record(ConnectionStrategy.Mode.DIRECT, System.currentTimeMillis() - startedAt)
+      val ms = System.currentTimeMillis() - startedAt
+      TransportStatus.record(ConnectionStrategy.Mode.DIRECT, ms)
+      ConnectionStats.recordDirect(true, ms)
+      // A3-17：一次成功往返是最硬的证据 —— 桌面在线 **且** 认这台手机的凭证。
+      LinkStatus.online()
+      LinkStatus.authAccepted()
       return out
     }
+    // R-A3-6c：直连失败也要记 —— 只记成功的成功率永远是 100%，那不是统计是自我安慰。
+    ConnectionStats.recordDirect(false, System.currentTimeMillis() - startedAt)
     val directErr = directResult.exceptionOrNull() ?: IllegalStateException("unknown")
     val viaRelay = runCatching { postViaRelay(url, headers, bodyBytes, directErr) }
     val out =
       viaRelay.getOrElse { err ->
         // 两条都不通：回到「未连接」，别让状态条还挂着上一次的「中转 · 320ms」。
         TransportStatus.record(ConnectionStrategy.Mode.NONE, System.currentTimeMillis() - startedAt)
+        ConnectionStats.recordRelay(false, System.currentTimeMillis() - startedAt)
         throw err
       }
-    TransportStatus.record(ConnectionStrategy.Mode.RELAY, System.currentTimeMillis() - startedAt)
+    val relayMs = System.currentTimeMillis() - startedAt
+    TransportStatus.record(ConnectionStrategy.Mode.RELAY, relayMs)
+    ConnectionStats.recordRelay(true, relayMs)
+    LinkStatus.online()
+    LinkStatus.authAccepted()
     return out
   }
 
@@ -437,16 +527,23 @@ object TurnBridge {
     val cfg = relayConfig() ?: throw directErr
     val hostHeader = if (url.port > 0) url.host + ":" + url.port else url.host
     val path = url.path.takeIf { it.isNotEmpty() } ?: "/v1/turn"
+    // R-A3-6b/5c：从池里借，而不是每次 CONNECT 一条新的。
+    // 借不到（凭据被拒 / 中继上没有这台桌面）时的措辞必须区分开 ——
+    // 这两种失败让用户做的事完全不同。
     val tunnel =
       try {
-        RelayTunnel.open(cfg)
+        RelayTunnelPool.borrow(cfg)
       } catch (e: RelayTunnel.OpenFailure) {
         throw IllegalStateException(
           e.userMessage + "（直连也没通：" + explainHttpReason(directErr.message) + "）",
           directErr,
         )
       }
-    return try {
+    // 这条隧道还能不能还给池子：只有「请求-响应完整走完」才算健康。
+    // HTTP 4xx/5xx 是**权威答复**（隧道本身是好的），照样可以归还；
+    // 超时/对端关闭/协议错属于传输层坏死，必须丢弃。
+    var healthy = false
+    try {
       val resp =
         TunnelHttp.post(
           tunnel = tunnel,
@@ -454,19 +551,25 @@ object TurnBridge {
           hostHeader = hostHeader,
           headers = headers,
           body = bodyBytes,
+          keepAlive = true,
         )
+      healthy = true
       if (resp.status !in 200..299) error("turn HTTP ${resp.status}: ${resp.body}")
-      resp.body.trim()
+      return resp.body.trim()
+    } catch (e: TunnelHttp.StaleTunnelException) {
+      // 池子里的那条被对端关了：丢掉，并如实告诉调用方（由它决定要不要再试一次）。
+      // 这里不再自动重试 —— 偷偷重试会把「隧道过期」和「网络在抖」混成同一个现象。
+      throw IllegalStateException("中转隧道已失效（复用连接被对端关闭），请再试一次", e)
     } finally {
-      // 一 CONNECT 一隧道：响应读干净就关，不把空闲隧道留成「看不见的连接」。
-      RelayTunnel.closeQuietly(tunnel.socket)
+      if (healthy) RelayTunnelPool.release(tunnel) else RelayTunnelPool.invalidate(tunnel)
     }
   }
 
   private fun runTurnLocal(text: String, machineKind: String): String {
     val repoRoot = System.getenv("BITBOT_REPO_ROOT") ?: inferRepoRoot()
     val runner = File(repoRoot, "hosts/mobile_host/run.js")
-    require(runner.isFile) { "missing mobile_host runner at ${runner.absolutePath}" }
+    // A3-17：不是「找不到就用原来的话术兜底」，而是明确告诉上层「这条通道不存在」。
+    if (!runner.isFile) throw DevRunnerUnavailable()
     val pb =
       ProcessBuilder(
         "node",

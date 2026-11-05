@@ -139,7 +139,7 @@ try {
 
 // GP-99/100/101/102 — §8.3 secure secret input. The vault stores values on the
 // Host side only; the renderer sees a handle + `****last4`.
-const { createSecretVault } = require("./secret_vault");
+const { createSecretVault, createSafeStorageProtector, inspectKeyStorage } = require("./secret_vault");
 // GP-103/104 — §8.4 untrusted marking is applied in the kernel (the fence text
 // is written by `continue_after_host_ffi`); the renderer loads the same grammar
 // from hosts/shared/untrusted_fence.js to render the badge.
@@ -624,8 +624,47 @@ const sessions = createSessionStore(REPO_ROOT, { dataRoot: DATA_ROOT });
 const ffi = createHostFfi(REPO_ROOT, { dataRoot: DATA_ROOT, kernelBin: KERNEL_BIN });
 /** Wave G stores: bots / settings / approvals / computer / rooms / usage (docs/grok-desktop-parity/ipc-contract.md §2). */
 const surface = createProductSurface(REPO_ROOT, { dataRoot: DATA_ROOT });
-/** GP-99/100/101/102 — Host-owned secret vault (§8.3). */
-const secretVault = createSecretVault(REPO_ROOT, { dataRoot: DATA_ROOT });
+/**
+ * GP-99/100/101/102 — Host-owned secret vault (§8.3).
+ *
+ * R-A3-6h（关掉「vault 密钥明文躺在磁盘上」这条残留）：密钥改由 OS 钥匙串保护
+ * （Electron `safeStorage`，底层 macOS Keychain / Windows DPAPI / Linux libsecret），
+ * 磁盘上只留 `vault.key.protected`；旧的明文 `vault.key` 在首次加载时被迁移并删除。
+ *
+ * 为什么是**惰性**创建而不是在这里直接构造：`safeStorage.isEncryptionAvailable()`
+ * 在 app ready 之前一律回 false（Electron 文档写明）。模块顶层构造会拿到一个
+ * 「永远不可用」的 protector —— 那不只是接了个摆设，更坏的是首启会在 ready 之前
+ * 先生成明文 `vault.key`，之后再也走不到迁移分支，等于把这笔债永久钉死。
+ *
+ * 三个调用点（submit / vault / remove）全都在 IPC handler 里，而 handler 只可能在
+ * app ready 之后被调用，所以惰性初始化不会漏掉任何一次真实使用；纯 Node 环境
+ * （门禁、CLI）拿不到 electron，protector 为 null，行为与历史完全一致。
+ */
+let secretVaultInstance = null;
+let secretVaultProtector = null;
+function resolveVaultProtector() {
+  if (secretVaultProtector !== null) return secretVaultProtector;
+  try {
+    // 放进 try：打包漏带 electron、或被 ELECTRON_RUN_AS_NODE 拉到纯 Node 模式时，
+    // require 会抛 —— 那时必须干净地回落明文路径，而不是让整个 app 起不来。
+    const electron = require("electron");
+    secretVaultProtector = electron && electron.safeStorage
+      ? createSafeStorageProtector(electron.safeStorage)
+      : null;
+  } catch (_e) {
+    secretVaultProtector = null;
+  }
+  return secretVaultProtector;
+}
+function secretVault() {
+  if (!secretVaultInstance) {
+    secretVaultInstance = createSecretVault(REPO_ROOT, {
+      dataRoot: DATA_ROOT,
+      protector: resolveVaultProtector(),
+    });
+  }
+  return secretVaultInstance;
+}
 const secretProtocol = require("./secret_protocol");
 const { computePrivacyStatus } = require(path.join(
   fs.existsSync(path.join(__dirname, "shared", "privacy_status.js"))
@@ -3178,7 +3217,7 @@ ipcMain.handle("bitbot:secrets:set", async (_e, patch) => {
 ipcMain.handle("bitbot:secrets:submit", async (_e, payload) => {
   const p = payload && typeof payload === "object" ? payload : {};
   try {
-    const res = secretVault.submit(p);
+    const res = secretVault().submit(p);
     if (!res.ok) return res;
     // Optional env-key mirror: only for keys the Settings form already owns,
     // so a secret card can't smuggle an arbitrary env name into .env.local.
@@ -3214,14 +3253,26 @@ ipcMain.handle("bitbot:secrets:submit", async (_e, payload) => {
 });
 ipcMain.handle("bitbot:secrets:vault", async () => {
   try {
-    return secretVault.status();
+    // R-A3-6h：把「密钥到底有没有离开磁盘」一并如实带出去。
+    // 渲染端据此显示「已由系统钥匙串保护」或「仍以明文存放在本机」，
+    // 不许在 Linux 无 keyring 的情况下假装安全。
+    const st = secretVault().status();
+    let storage = null;
+    try {
+      // 必须把同一个 protector 传进去，否则探针永远报 mode:"file" ——
+      // 「界面说密钥还在磁盘上」而实际已经进了钥匙串，同样是撒谎，方向相反而已。
+      storage = inspectKeyStorage({ root: REPO_ROOT, dataRoot: DATA_ROOT, protector: resolveVaultProtector() });
+    } catch (_e) {
+      storage = null;
+    }
+    return Object.assign({}, st, { key_storage: storage });
   } catch (err) {
     return { ok: false, entries: {}, error: String(err && err.message ? err.message : err) };
   }
 });
 ipcMain.handle("bitbot:secrets:remove", async (_e, name) => {
   try {
-    return secretVault.remove(name);
+    return secretVault().remove(name);
   } catch (err) {
     return { ok: false, removed: false, error: String(err && err.message ? err.message : err) };
   }
@@ -4714,6 +4765,27 @@ ipcMain.handle("bitbot:relay:settings:disable", async () => {
     syncRelayBoxRegistration(relayConfigWatchStatus);
   } catch (_) {}
   return r;
+});
+
+/**
+ * A3-18：跨网配对串（关 R-A3-6a 的桌面侧）。
+ *
+ * 这是整个桌面**唯一**把 `client_token` 明文交出去的地方，所以刻意做成
+ * 「用户点一次才生成」而不是随读视图一起返回：读视图那条路（get）永远只有掩码。
+ * 不写日志、不进审计、不做缓存 —— 生成完就交给渲染端，进程里不留副本。
+ */
+ipcMain.handle("bitbot:relay:bootstrap", async () => {
+  try {
+    return relaySettingsMod.buildRelayBootstrap({ repoRoot: REPO_ROOT, vault: relayVault });
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "build_failed",
+      error: String((err && err.message) || err),
+      bootstrap: "",
+      summary: "",
+    };
+  }
 });
 
 /**

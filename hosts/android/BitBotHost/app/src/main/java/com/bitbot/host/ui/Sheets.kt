@@ -1,5 +1,6 @@
 package com.bitbot.host.ui
 
+import com.bitbot.host.RelayBootstrap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -143,6 +144,13 @@ fun CredentialsSheet(
   onSave: () -> Unit,
   onOpenPairing: () -> Unit,
   onDismiss: () -> Unit,
+  /**
+   * R-A3-6c：真机连接统计一行（`ConnectionStats.describe()`）。
+   * 默认 null = 不显示，老调用点与既有 UI 单测一字不用改。
+   */
+  statsLine: String? = null,
+  /** R-A3-6c：清零统计。默认 null = 不显示清零入口。 */
+  onResetStats: (() -> Unit)? = null,
 ) {
   val scheme = MaterialTheme.colorScheme
   var reveal by remember { mutableStateOf(false) }
@@ -196,6 +204,22 @@ fun CredentialsSheet(
           style = MaterialTheme.typography.bodySmall,
           color = if (broken) scheme.error else scheme.onSurfaceVariant,
         )
+      }
+      // R-A3-6c：真机统计。只在有数据时出现；null 时整块不渲染。
+      if (statsLine != null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+            statsLine,
+            style = BitBotMonoStyle,
+            color = scheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+          )
+          if (onResetStats != null) {
+            TextButton(onClick = onResetStats) {
+              Text("清零", style = MaterialTheme.typography.labelMedium, color = scheme.primary)
+            }
+          }
+        }
       }
       PrimaryPillButton(text = "保存并热加载", onClick = onSave, fillWidth = true)
       TextButton(onClick = onOpenPairing) {
@@ -310,6 +334,16 @@ fun PairingSheet(
   onRedeem: () -> Unit,
   onOpenCredentials: () -> Unit,
   onDismiss: () -> Unit,
+  /**
+   * A3-18：跨网配对。手机不在同一个 Wi-Fi 时扫不到桌面，只能靠用户把桌面生成的
+   * 那段「跨网配对串」粘进来，兑换走 relay 隧道。
+   *
+   * 全部给了默认值，是为了不打爆既有调用点与既有 UI 单测 —— 不传就是老版面。
+   */
+  bootstrapInput: String = "",
+  onBootstrapChange: (String) -> Unit = {},
+  bootstrapState: PairingRedeemState = PairingRedeemState.Idle,
+  onRedeemViaRelay: () -> Unit = {},
 ) {
   val scheme = MaterialTheme.colorScheme
   val state = rememberModalBottomSheetState()
@@ -373,7 +407,11 @@ fun PairingSheet(
         }
       }
 
-      if (selected != null && scanState is PairingScanState.Done) {
+      // 配对码这一段现在有两个入口：局域网选中的那台，或者跨网配对串。
+      // 两者都用同一个 6 位码（桌面只认一个码），所以输入框复用。
+      val relayParsed = RelayBootstrap.parse(bootstrapInput)
+      val relayReady = relayParsed is RelayBootstrap.Parsed.Ok
+      if ((selected != null && scanState is PairingScanState.Done) || bootstrapInput.isNotBlank()) {
         Column {
           FieldLabel("配对码", "桌面上那六个数字，5 分钟内有效，用一次就作废")
           BitBotField(
@@ -395,10 +433,65 @@ fun PairingSheet(
           )
           else -> {}
         }
+        if (selected != null && scanState is PairingScanState.Done) {
+          PrimaryPillButton(
+            text = if (redeemState is PairingRedeemState.Redeeming) "配对中…" else "配对",
+            onClick = onRedeem,
+            enabled = codeInput.length == 6 && redeemState !is PairingRedeemState.Redeeming,
+            fillWidth = true,
+          )
+        }
+      }
+
+      /**
+       * A3-18 跨网配对区。
+       *
+       * 为什么把它放在配对面板底部而不是「凭证」里：用户的心智是「我要连上这台桌面」，
+       * 不是「我要配中转」。摆在配对这条路上，他才找得到。
+       */
+      Column {
+        FieldLabel(
+          "跨网配对（不在同一 Wi-Fi）",
+          "桌面「中转设置 → 生成跨网配对串」，把整段粘到这里；手机走蜂窝也能配上",
+        )
+        BitBotField(
+          value = bootstrapInput,
+          onValueChange = onBootstrapChange,
+          placeholder = "bitbot-relay://v1?h=…&p=…&b=…&t=…",
+          singleLine = false,
+        )
+        // 解析结论如实说：缺哪栏就说缺哪栏，别只丢一句「格式不对」。
+        val hint =
+          when (relayParsed) {
+            is RelayBootstrap.Parsed.Incomplete -> "还缺：" + relayParsed.missing.joinToString("、")
+            is RelayBootstrap.Parsed.NotBootstrap -> "这不像配对串（要以 bitbot-relay://v1? 开头）"
+            is RelayBootstrap.Parsed.Ok -> RelayBootstrap.describe(relayParsed.config)
+            RelayBootstrap.Parsed.Empty -> null
+          }
+        if (!hint.isNullOrBlank()) {
+          Text(
+            hint,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (relayReady) scheme.primary else scheme.error,
+          )
+        }
+        when (bootstrapState) {
+          is PairingRedeemState.Error -> Text(
+            bootstrapState.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.error,
+          )
+          is PairingRedeemState.Success -> Text(
+            bootstrapState.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.primary,
+          )
+          else -> {}
+        }
         PrimaryPillButton(
-          text = if (redeemState is PairingRedeemState.Redeeming) "配对中…" else "配对",
-          onClick = onRedeem,
-          enabled = codeInput.length == 6 && redeemState !is PairingRedeemState.Redeeming,
+          text = if (bootstrapState is PairingRedeemState.Redeeming) "经中转配对中…" else "经中转配对",
+          onClick = onRedeemViaRelay,
+          enabled = relayReady && codeInput.length == 6 && bootstrapState !is PairingRedeemState.Redeeming,
           fillWidth = true,
         )
       }

@@ -3781,6 +3781,58 @@ else
   echo "  · G-92 残留（诚实）：见上；这条红的常见原因：分类被改宽/改窄、准入闸被摘、界面灯回到「配了就绿」"
 fi
 
+echo "== G-93 跨网配对串（路线 A · W4 / A3-18 · 手机在蜂窝网下也能配第一次）=="
+if timeout 180 node scripts/prove_relay_bootstrap.js > /tmp/g93-bootstrap.log 2>&1; then
+  ok "G-93 配对串全绿（$(grep -c '^  ✓ ' /tmp/g93-bootstrap.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g93-bootstrap.log)）"
+  grep -q 'RBI-02 ' /tmp/g93-bootstrap.log && grep -q 'RBI-03 ' /tmp/g93-bootstrap.log \
+    && ok "G-93 真安全也真有用地拒绝：串里只有 client_token（box 那把不出门）、盘上是历史残留的死地址时拒绝生成而不是照着发" \
+    || bad "G-93 RBI-02/03 锚点缺失"
+  grep -q 'RBI-06 ' /tmp/g93-bootstrap.log && grep -q 'INJ-RBI_06 ' /tmp/g93-bootstrap.log \
+    && ok "G-93 两端线格式逐字对齐：SCHEME 同一个字面量、键 h/p/b/t 两边都在、转义集 %&# 三个；改一边立刻被同一判据抓到" \
+    || bad "G-93 RBI-06/INJ 锚点缺失"
+  grep -q 'RBI-07 ' /tmp/g93-bootstrap.log && grep -q 'RBI-08 ' /tmp/g93-bootstrap.log \
+    && ok "G-93 两端都接通：桌面 IPC/preload/按钮/复制、手机 PairingSheet→parse→走隧道 redeem（不拼直连 IP）" \
+    || bad "G-93 RBI-07/08 锚点缺失"
+  echo "  · G-93 现场来由（R-A3-6a 的死结）：redeemCode 只 POST 局域网地址，而中转四栏**只有配对成功后**才下发 ——"
+  echo "    于是「在蜂窝网下配第一次」在结构上不可能，必须先回同一个 Wi-Fi 配一次。"
+  echo "  · G-93 十一组负向对照里两组是**实跑**的：把 box_token 拼进串（改副本模块 → 真 require → 真生成，看串里有没有），"
+  echo "    以及改 SCHEME/键名/丢一个转义字符（同一 measureWire 判据必须翻红）。"
+  echo "  · G-93 诚实边界：① 本门**不执行 Kotlin**，两端对齐是字面量+键序列比对；解析行为由 RB-01..RB-06 承担（AB-21 点名）；"
+  echo "    ② 真手机 + 真 relay 粘过去能不能用，仍是 R-A3-6a 的残留。"
+else
+  bad "G-93 跨网配对串（见 /tmp/g93-bootstrap.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g93-bootstrap.log || tail -3 /tmp/g93-bootstrap.log | head -1)）"
+  echo "  · G-93 残留（诚实）：见上；这条红的常见原因：生成器把 box token 带出去了、自检被绕开照样生成、或手机侧改回直连 redeem"
+fi
+
+echo "== G-94 OS 钥匙串（路线 A · W4 / R-A3-6h · vault 密钥不再躺在本机磁盘）=="
+if timeout 180 node scripts/prove_vault_keychain.js > /tmp/g94-vault.log 2>&1; then
+  ok "G-94 钥匙串全绿（$(grep -c '^  ✓ ' /tmp/g94-vault.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g94-vault.log)）"
+  grep -q 'VK-08 ' /tmp/g94-vault.log && grep -q 'VK-09 ' /tmp/g94-vault.log \
+    && ok "G-94 迁移如实：file/明文 → os-keychain/迁移完成；后端不可用时 available=false（不假装已上钥匙串）" \
+    || bad "G-94 VK-08/09 锚点缺失"
+  grep -q 'VK-10 ' /tmp/g94-vault.log \
+    && ok "G-94 算法没被换弱：仍是 aes-256-gcm + randomBytes(32)，密钥不进日志" \
+    || bad "G-94 VK-10 锚点缺失"
+  echo "  · G-94 残留（诚实）：解不开时**绝不自动重建**（宁可让用户重新配对，也不静默丢凭证）；"
+  echo "    真机 Electron safeStorage 形态（macOS Keychain / Windows DPAPI）未逐一实跑，只验了注入 protector 这一层。"
+else
+  bad "G-94 钥匙串（见 /tmp/g94-vault.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g94-vault.log || tail -3 /tmp/g94-vault.log | head -1)）"
+  echo "  · G-94 残留（诚实）：见上；这条红的常见原因：迁移把明文留下了、后端不可用时报可用、或算法被换弱"
+fi
+
+echo "== G-95 公网入口自动化（路线 A · W4 / R-A3-8a 部分 · 探测 + UPnP 映射）=="
+if timeout 240 node scripts/prove_public_entry.js > /tmp/g95-public.log 2>&1; then
+  ok "G-95 公网入口全绿（$(grep -c '^  ✓ ' /tmp/g95-public.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g95-public.log)）"
+  grep -q 'PE-11 ' /tmp/g95-public.log && grep -q 'PE-12 ' /tmp/g95-public.log \
+    && ok "G-95 不靠网络也说话：三个脚本 --help 退出 0、三条网络路径全带超时（探测失败如实报错，不编 IP）" \
+    || bad "G-95 PE-11/12 锚点缺失"
+  echo "  · G-95 残留（诚实）：本机出网探测在本机环境曾超时（api.ipify.org exit 28），UPnP 在运营商光猫/双 NAT 下仍可能不适用；"
+  echo "    **真公网 relay + 真 NAT 桌面 + 蜂窝网手机样本依旧为零**，R-A3-8a 未关闭。"
+else
+  bad "G-95 公网入口（见 /tmp/g95-public.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g95-public.log || tail -3 /tmp/g95-public.log | head -1)）"
+  echo "  · G-95 残留（诚实）：见上；这条红的常见原因：超时被摘（探测会挂住 CI）、或失败路径开始编造 IP"
+fi
+
 
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

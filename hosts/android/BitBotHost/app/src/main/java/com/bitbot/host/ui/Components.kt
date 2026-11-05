@@ -118,18 +118,36 @@ fun ConnectionStatusChip(
    * 地址在「凭证」里一直看得到。没连过就是 null，状态条保持原样。
    */
   transportLabel: String? = null,
+  /**
+   * A3-17：探活/回合得出的结论（`LinkStatus.label`）。**优先级最高** ——
+   * 它回答的是「现在连得上吗」，而不是「你以前填过吗」。
+   * null 表示还没探过，退回旧的「已配对 · 地址」写法。
+   */
+  linkLabel: String? = null,
+  /** A3-17：状态点语义 ok / warn / error / idle（`LinkStatus.tone`）。 */
+  dotTone: String? = null,
 ) {
   val scheme = MaterialTheme.colorScheme
-  val dot = if (paired) scheme.primary else LocalBitBotExtras.current.dotIdle
+  val dot =
+    when (dotTone) {
+      "ok" -> scheme.primary
+      "warn" -> scheme.tertiary
+      // 「配了但凭证被拒」必须看起来和「没配对」不一样，否则用户永远发现不了。
+      "error" -> scheme.error
+      else -> if (paired) scheme.primary else LocalBitBotExtras.current.dotIdle
+    }
   val detail =
     when {
       !paired -> null
+      // 探活结论压过一切：地址和延迟都不如「现在到底通不通」要紧。
+      !linkLabel.isNullOrBlank() -> linkLabel
       !transportLabel.isNullOrBlank() -> transportLabel
       hostLabel.isNullOrBlank() -> null
       else -> hostLabel
     }
   val label = when {
     !paired -> "未配对"
+    !linkLabel.isNullOrBlank() -> linkLabel
     detail == null -> "已配对"
     else -> "已配对 · $detail"
   }
@@ -167,6 +185,8 @@ fun AppTopBar(
   onOpenStatus: () -> Unit,
   onOpenMenu: () -> Unit,
   transportLabel: String? = null,
+  linkLabel: String? = null,
+  dotTone: String? = null,
 ) {
   Row(
     Modifier
@@ -182,6 +202,8 @@ fun AppTopBar(
       onClick = onOpenStatus,
       modifier = Modifier.weight(1f, fill = false),
       transportLabel = transportLabel,
+      linkLabel = linkLabel,
+      dotTone = dotTone,
     )
     Spacer(Modifier.weight(1f))
     IconButton(onClick = onOpenMenu) {
