@@ -3833,6 +3833,35 @@ else
   echo "  · G-95 残留（诚实）：见上；这条红的常见原因：超时被摘（探测会挂住 CI）、或失败路径开始编造 IP"
 fi
 
+echo "== G-96 验收清单不许说反话（路线 A · 文档与代码一致性 · 改前红改后绿）=="
+if timeout 120 node scripts/prove_checklist_freshness.js > /tmp/g96-checklist.log 2>&1; then
+  ok "G-96 清单与代码事实一致（$(grep -c '^  ✓ ' /tmp/g96-checklist.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g96-checklist.log)）"
+  grep -q 'INJ-CF ' /tmp/g96-checklist.log \
+    && ok "G-96 判据有牙：六种旧说法（SSE 不走隧道 / APK 不用重打 / 必须同网配对 / 不是钥匙串 / 重启 app / R-A3-6h 未关）逐一注入全被抓到" \
+    || bad "G-96 INJ-CF 注入对照缺失"
+  # 反向证据：造一份「代码已做完、文档还写着没做」的清单，门必须真的红。
+  # 不用 `git show HEAD:` —— 提交之后 HEAD 就是新版，那条对照会自己变绿/变红，
+  # 门会跟着提交腐烂。这里现场合成，永远成立。
+  {
+    cat docs/design/desktop-target/real-device-checklist.md
+    printf '\n当前 SSE 不走隧道，必然回退到整轮模式。\n'
+    printf '\nA3-6 构建的 APK 已含全部能力，不用重打。\n'
+    printf '\n铁律：配对必须先在同一个 Wi-Fi 完成。\n'
+    printf '\n改完 relay.json 后请重启桌面 app 让配置生效。\n'
+  } > /tmp/g96-stale.md 2>/dev/null
+  if BITBOT_CHECKLIST_DOC=/tmp/g96-stale.md timeout 120 node scripts/prove_checklist_freshness.js > /tmp/g96-stale.log 2>&1; then
+    bad "G-96 合成陈旧清单竟然也是绿的 —— 这道门拦不住陈旧，等于没门"
+  else
+    ok "G-96 改前红：合成陈旧清单报 $(grep -m1 -o 'FAIL=[0-9]*' /tmp/g96-stale.log)，四条旧说法逐条被抓到（对照不是摆设）"
+  fi
+  echo "  · G-96 诚实的边界：这是**词面**检查，不是语义检查。它只挡「明明做完了还写着没做」这一类具体陈旧说法，"
+  echo "    不检查清单是否完整（漏一条验收项它看不出来），也不跑 Android、不碰真机。"
+else
+  bad "G-96 清单新鲜度（见 /tmp/g96-checklist.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g96-checklist.log || tail -3 /tmp/g96-checklist.log | head -1)）"
+  echo "  · G-96 残留（诚实）：见上；这条红的常见原因：代码补完了但清单还写着「没做/不走/不用重打」，"
+  echo "    或有人把历史注记写进了正文（应放进 > 引用块或用 ~~删除线~~）"
+fi
+
 
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()
