@@ -177,6 +177,13 @@ async function main() {
     // 顺带修掉一个老毛病 —— `const cfg = loadCurrentRelayConfig();` 原来是
     // 全文字符串匹配，A3-16 之后 handoff 里也长出同样一行，于是登记那处
     // 就算哪天不接也照样绿。改成按函数体切片，各查各的。
+    // 判之前先剥注释：这里已经栽过一次「注释撑绿」—— `createSecretVault(REPO_ROOT)`
+    // 这个 needle 之所以还能命中，是因为**我在 main.js 的注释里写了这句话**，
+    // 而真正的调用早就变成了 `createSecretVault(REPO_ROOT, { protector: ... })`。
+    // 注释和被注释的代码长得一模一样，不剥就是把判据建在自己的说明文字上。
+    const srcCode = src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
     const bodyOf = (name) => {
       const i = src.indexOf("function " + name);
       if (i < 0) return "";
@@ -186,14 +193,17 @@ async function main() {
     const handoffBody = bodyOf("currentRelayHandoff");
     const registerBody = bodyOf("syncRelayBoxRegistration");
     const anchors = [
-      [src, 'require("./shared/relay/relay_secrets")', "没 require relay_secrets 模块"],
-      [src, "createSecretVault(REPO_ROOT)", "没创建 vault 实例"],
-      [src, "function loadCurrentRelayConfig()", "没有统一安全读口"],
-      [src, "relaySecretsMod.loadRelayConfigSecure({ repoRoot: REPO_ROOT, vault: relayVault })", "读口没接 secure load"],
+      [srcCode, 'require("./shared/relay/relay_secrets")', "没 require relay_secrets 模块"],
+      // R-A3-6h：vault 现在两个入口都接钥匙串（relayVaultNow 惰性），所以锚点从
+      // 「有个无参构造」改成「构造时带了 protector」—— 约束更强，不是放松。
+      [srcCode, "createSecretVault(REPO_ROOT, {", "没创建 vault 实例"],
+      [srcCode, "protector: resolveVaultProtector()", "vault 没接钥匙串保护器"],
+      [srcCode, "function loadCurrentRelayConfig()", "没有统一安全读口"],
+      [srcCode, "relaySecretsMod.loadRelayConfigSecure({ repoRoot: REPO_ROOT, vault: relayVaultNow() })", "读口没接 secure load"],
       [handoffBody, "loadCurrentRelayConfig()", "回执四栏没走安全读口"],
       [handoffBody, "relayConfigMod.toHandoff(", "回执四栏没经 toHandoff 折成四栏"],
       [registerBody, "loadCurrentRelayConfig()", "登记没走安全读口"],
-      [src, "load: () => loadCurrentRelayConfig(),", "配置观察器没走安全读口"],
+      [srcCode, "load: () => loadCurrentRelayConfig(),", "配置观察器没走安全读口"],
     ];
     const missing = anchors.filter(([s, needle]) => !s.includes(needle)).map(([, , why]) => why);
     if (missing.length) bad("RS-09 桌面接线缺了 " + missing.length + " 处：" + missing.join("；"));

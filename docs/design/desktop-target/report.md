@@ -7452,6 +7452,35 @@ audit: {"kind":"private","isLocalInterface":false,"level":"error",
    随后又发现 `measureWire` 自己也太松 —— 只查 `replace("#"` 在不在，把映射改坏成 `replace("#", "#")` 仍然绿，
    于是改成连**映射目标值**一起钉住（`%25` / `%26` / `%23`）。
 
+### 8.82.6 收口时查出的半拉子：中转那两把 token 其实没上钥匙串
+
+跑完门禁再回头读 `main.js` 才发现的：`secretVault()`（桌面自己的密钥）传了 protector，
+但中转那两把 token 走的是**另一个** vault 实例 —— 模块顶层的
+`createSecretVault(REPO_ROOT)`，**没传 protector**。也就是说 R-A3-6h 只锁了前门：
+桌面密钥进了钥匙串，relay 的 box/client token 仍旧躺在明文 `vault.key` 后面。
+这正是「按模块交付」最容易漏的形状：`secret_vault.js` 那一层是对的，接的时候就接了一半。
+
+改法（两处，都很小）：
+1. `relayVault` 改**惰性**（`relayVaultNow()`），并同样传 `resolveVaultProtector()`。
+   必须惰性：`createSafeStorageProtector` 在构造时就把 `available` 定死，顶层构造会拿到
+   「永远不可用」的那一个。
+2. `resolveVaultProtector()` **只缓存可用**的那一个（`available === true` 才复用）。
+   否则 ready 之前问一次，整台机器永久退化成明文 —— 就是注释里警告的那笔债，而代码当时
+   只防了「顶层构造」，没防「提前调用」。
+
+顺带补两条门（VK-11 / VK-12）：
+* **VK-11** 行为：喂一个 `available: false` 的保护器，vault 必须**回落明文**、数据照常读写、
+  探针如实报 `mode: "file"` —— 「上了钥匙串变成打不开」比不上更坏，这条钉住它。
+* **VK-12** 静态：两处 vault 都传了 protector、顶层不再有无保护器构造、不可用的不被缓存。
+
+改完 `prove_relay_secure_config` 的 RS-09 立刻转红（10/1）——它钉着
+`vault: relayVault` 那一行。处理方式仍然是**改形状不删约束**：锚点换成
+`vault: relayVaultNow()`，并把「vault 构造」那条从 `createSecretVault(REPO_ROOT)`
+换成 `createSecretVault(REPO_ROOT, {` + `protector: resolveVaultProtector()` —— 约束变强了。
+另外这里又踩了一次注释：`createSecretVault(REPO_ROOT)` 那个 needle 之所以还能命中，
+是因为**我在 main.js 注释里写了这句话**。RS-09 现在判前统一剥注释（今天第三次同型：
+RBI-06 的对照、AB-21 的 box_token、这里的 RS-09 —— 注释和被注释的代码长得一模一样）。
+
 ### 8.82.6 残留（诚实）
 
 1. **真公网 + 真 NAT + 蜂窝网依旧零样本**（R-A3-8a / R-A3-6c）。「跨网成功率 ≥90%」这句判据

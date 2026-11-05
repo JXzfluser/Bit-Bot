@@ -643,14 +643,18 @@ const surface = createProductSurface(REPO_ROOT, { dataRoot: DATA_ROOT });
 let secretVaultInstance = null;
 let secretVaultProtector = null;
 function resolveVaultProtector() {
-  if (secretVaultProtector !== null) return secretVaultProtector;
+  // **只缓存「可用」的那一个**。`createSafeStorageProtector` 在构造时就把
+  // `available` 定死了，而 `isEncryptionAvailable()` 在 app ready 之前恒 false ——
+  // 如果这里把「不可用」也缓存下来，之后即使 ready 了也永远拿不回钥匙串，
+  // 整台机器就永久退化成明文 `vault.key`（正是本注释上一段警告的那笔债）。
+  // 所以：不可用就下次再问。
+  if (secretVaultProtector && secretVaultProtector.available === true) return secretVaultProtector;
   try {
     // 放进 try：打包漏带 electron、或被 ELECTRON_RUN_AS_NODE 拉到纯 Node 模式时，
     // require 会抛 —— 那时必须干净地回落明文路径，而不是让整个 app 起不来。
     const electron = require("electron");
-    secretVaultProtector = electron && electron.safeStorage
-      ? createSafeStorageProtector(electron.safeStorage)
-      : null;
+    secretVaultProtector =
+      electron && electron.safeStorage ? createSafeStorageProtector(electron.safeStorage) : null;
   } catch (_e) {
     secretVaultProtector = null;
   }
@@ -4302,21 +4306,40 @@ let relayBoxKey = null;
  * 打包万一漏带 secret_vault.js ⇒ 降级为 null：旧明文格式照常可用，
  * 安全引用格式按「半套」处理（loadRelayConfigSecure 回 null），绝不编一个默认凭证。 */
 let relayVault = null;
-try {
-  let secretVaultMod;
+/**
+ * 中转那一份 vault —— **也必须接钥匙串**（R-A3-6h 的另一半）。
+ *
+ * 之前这里是模块顶层直接 `createSecretVault(REPO_ROOT)`：没传 protector，
+ * 于是 relay 的两把 token 用的还是明文 `vault.key`。桌面自己的密钥上了钥匙串、
+ * 中转凭证没有，等于「锁了前门忘了后门」。
+ *
+ * 为什么改成惰性：protector 的 `available` 在构造时定死，顶层构造会拿到
+ * 「永远不可用」的那一个 —— 和上面 secretVault() 是同一个理由。
+ *
+ * 打包万一漏带 secret_vault.js ⇒ 降级为 null：旧明文格式照常可用，
+ * 安全引用格式按「半套」处理（loadRelayConfigSecure 回 null），绝不编一个默认凭证。
+ */
+function relayVaultNow() {
+  if (relayVault) return relayVault;
   try {
-    secretVaultMod = require("./secret_vault");
+    let secretVaultMod;
+    try {
+      secretVaultMod = require("./secret_vault");
+    } catch (_e) {
+      secretVaultMod = require("../desktop/secret_vault");
+    }
+    relayVault = secretVaultMod.createSecretVault(REPO_ROOT, {
+      protector: resolveVaultProtector(),
+    });
   } catch (_e) {
-    secretVaultMod = require("../desktop/secret_vault");
+    relayVault = null;
   }
-  relayVault = secretVaultMod.createSecretVault(REPO_ROOT);
-} catch (_e) {
-  relayVault = null;
+  return relayVault;
 }
 
 /** 统一的安全读口：三处调用点都走它，返回形状与 loadRelayConfig 完全一致。 */
 function loadCurrentRelayConfig() {
-  return relaySecretsMod.loadRelayConfigSecure({ repoRoot: REPO_ROOT, vault: relayVault });
+  return relaySecretsMod.loadRelayConfigSecure({ repoRoot: REPO_ROOT, vault: relayVaultNow() });
 }
 
 /**
@@ -4744,7 +4767,7 @@ ipcMain.handle("bitbot:pairing:copy", async (_e, what) => {
  * A3-11 的观察器最多 2s 也会发现变化，但用户点了「保存并生效」就该立刻生效。
  * ------------------------------------------------------------------------ */
 ipcMain.handle("bitbot:relay:settings:get", async () => {
-  return relaySettingsMod.readRelaySettings({ repoRoot: REPO_ROOT, vault: relayVault });
+  return relaySettingsMod.readRelaySettings({ repoRoot: REPO_ROOT, vault: relayVaultNow() });
 });
 
 ipcMain.handle("bitbot:relay:settings:save", async (_e, patch) => {
@@ -4760,7 +4783,7 @@ ipcMain.handle("bitbot:relay:settings:save", async (_e, patch) => {
 });
 
 ipcMain.handle("bitbot:relay:settings:disable", async () => {
-  const r = relaySettingsMod.disableRelaySettings({ repoRoot: REPO_ROOT, vault: relayVault });
+  const r = relaySettingsMod.disableRelaySettings({ repoRoot: REPO_ROOT, vault: relayVaultNow() });
   try {
     syncRelayBoxRegistration(relayConfigWatchStatus);
   } catch (_) {}
@@ -4776,7 +4799,7 @@ ipcMain.handle("bitbot:relay:settings:disable", async () => {
  */
 ipcMain.handle("bitbot:relay:bootstrap", async () => {
   try {
-    return relaySettingsMod.buildRelayBootstrap({ repoRoot: REPO_ROOT, vault: relayVault });
+    return relaySettingsMod.buildRelayBootstrap({ repoRoot: REPO_ROOT, vault: relayVaultNow() });
   } catch (err) {
     return {
       ok: false,

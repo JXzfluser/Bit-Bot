@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 "use strict";
-/* prove_vault_keychain.js — R-A3-6h 门禁（VK-01..VK-10）
+/* prove_vault_keychain.js — R-A3-6h 门禁（VK-01..VK-12）
  *
  * 要证的一件事：**vault 的 AES 密钥可以不再以明文躺在磁盘上**，
  * 而且「不接保护器」时的历史行为一字没变、旧明文密钥能安全迁移、
@@ -74,7 +74,7 @@ function modeOf(file) {
 const HEX64 = /^[0-9a-f]{64}$/;
 
 async function main() {
-  console.log("R-A3-6h vault keychain proof (VK-01..VK-10)");
+  console.log("R-A3-6h vault keychain proof (VK-01..VK-12)");
   const tmpDirs = [];
 
   /* ============ VK-01 基线：不传 protector → 仍是明文 vault.key 0600 === */
@@ -328,6 +328,65 @@ async function main() {
     const failed = anchors.filter(([cond]) => !cond).map(([, why]) => why);
     if (failed.length) bad("VK-10 静态锚点失配：" + failed.join("；"));
     else ok("VK-10 静态锚点：仍是 aes-256-gcm + randomBytes(32)，无弱算法替换，无密钥进日志");
+  }
+
+  /* ============ VK-11 「不可用」的保护器必须被过滤掉，而不是让 vault 变砖 ====
+   *
+   * 为什么要这一条：`createSafeStorageProtector` 在**构造时**就把 available 定死，
+   * 而 `isEncryptionAvailable()` 在 app ready 之前恒 false。如果不可用的保护器也往
+   * createSecretVault 里塞，Linux 无 keyring / 提前构造两种情况下整份 vault 会直接不可读 ——
+   * 「上了钥匙串」变成「上了就打不开」，比不上更坏。
+   * 正确行为：过滤掉、回落明文口径，数据照常可读。 */
+  {
+    const dir = mkTmp("unavailable"); tmpDirs.push(dir);
+    const p = pathsOf(dir);
+    const dead = {
+      id: "os-keychain",
+      available: false,
+      protect() { throw new Error("must not be called"); },
+      unprotect() { throw new Error("must not be called"); },
+    };
+    const vault = createSecretVault(dir, Object.assign({}, p, { protector: dead }));
+    const sub = vault.submit({ name: "relay.client_token", label: "client", value: "still-readable" });
+    // 读回用 resolve（vault 的 API 是 submit/status/resolve/remove/keyStatus，没有 get）。
+    const got = vault.resolve("relay.client_token");
+    // 保护器不可用 ⇒ 必须回到明文 vault.key，且 .protected 一个字节都不该出现。
+    const plain = fs.existsSync(p.keyPath);
+    const prot = fs.existsSync(p.keyPath + ".protected");
+    const info = inspectKeyStorage(Object.assign({ protector: dead }, p));
+    if (!sub || sub.ok === false) bad("VK-11 保护器不可用时 vault 直接不可用（比不上钥匙串更坏）", JSON.stringify(sub));
+    else if (got !== "still-readable") bad("VK-11 保护器不可用时读不回原值", String(got));
+    else if (!plain) bad("VK-11 没有回落到明文 vault.key");
+    else if (prot) bad("VK-11 保护器不可用却写出了 vault.key.protected");
+    else if (info.mode !== "file") bad("VK-11 探针没如实报 file 口径", info.mode);
+    else ok("VK-11 不可用的保护器被 usableProtector 过滤：回落明文 vault.key、数据照常读写、探针如实报 file");
+  }
+
+  /* ============ VK-12 静态锚点：桌面那两份 vault 都接了钥匙串 ============
+   *
+   * 现场口径：R-A3-6h 只把「桌面自己的密钥」接上了钥匙串，中转那两把 token 走的
+   * 是模块顶层 `createSecretVault(REPO_ROOT)`（没传 protector）—— 锁了前门忘了后门。
+   * 这条钉三件事：两处都传 protector、顶层不再无保护器构造、不可用的保护器不缓存。 */
+  {
+    // 先剥注释再判 —— 上面那段 KDoc 里就写着「之前这里是模块顶层直接
+    // `createSecretVault(REPO_ROOT)`」，不剥的话锚点会被自己的说明文字撑红
+    // （今天第三次踩：RBI-06 / AB-21 都是同一个病，注释和被注释的代码长得一样）。
+    const mainSrc = fs
+      .readFileSync(path.join(REPO, "hosts/desktop/main.js"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const anchors = [
+      [/function relayVaultNow\(\)/.test(mainSrc), "中转 vault 没有惰性入口 relayVaultNow()"],
+      [/createSecretVault\(REPO_ROOT, \{\s*\n\s*protector: resolveVaultProtector\(\)/.test(mainSrc),
+        "中转 vault 没接 protector（锁了前门忘了后门）"],
+      [/createSecretVault\(REPO_ROOT\)/.test(mainSrc) === false, "还有无保护器的 createSecretVault(REPO_ROOT) 顶层构造"],
+      // 不可用的保护器不许缓存：否则 ready 之前问一次，整台机器永久退化成明文。
+      [/secretVaultProtector\.available === true/.test(mainSrc), "resolveVaultProtector 会把「不可用」也缓存下来"],
+      [mainSrc.includes("vault: relayVaultNow()"), "调用点没换成惰性入口"],
+    ];
+    const failed = anchors.filter(([cond]) => !cond).map(([, why]) => why);
+    if (failed.length) bad("VK-12 静态锚点失配：" + failed.join("；"));
+    else ok("VK-12 两份 vault 都接钥匙串：relayVaultNow 惰性 + protector 传入 + 无顶层无保护器构造 + 不可用不缓存");
   }
 
   for (const dir of tmpDirs) {
