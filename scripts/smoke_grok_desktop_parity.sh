@@ -3593,6 +3593,38 @@ else
   echo "  · G-86 残留（诚实）：见上；这条红说明自检工具不可信，别拿它验真机"
 fi
 
+echo "== G-87 中转配置热生效（路线 A · W4 / A3-11 · 部分关 R-A3-6h）=="
+if timeout 180 node scripts/prove_relay_config_hot_reload.js > /tmp/g87-hotreload.log 2>&1; then
+  ok "G-87 配置热生效全绿（$(grep -c '^  ✓ ' /tmp/g87-hotreload.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g87-hotreload.log)）"
+  grep -q 'RH-01 ' /tmp/g87-hotreload.log && grep -q 'RH-02 ' /tmp/g87-hotreload.log \
+    && ok "G-87 反真空两件套在：配置齐时真 BIND 登记上（正控）、观察器定时器真在跑（不是门手动 check 出来的假象）" \
+    || bad "G-87 RH-01/RH-02 锚点缺失"
+  grep -q 'RH-04 ' /tmp/g87-hotreload.log && grep -q 'RH-05 ' /tmp/g87-hotreload.log && grep -q 'RH-06 ' /tmp/g87-hotreload.log && grep -q 'RH-07 ' /tmp/g87-hotreload.log \
+    && ok "G-87 四类运行中变更都自动重登记：改 mode、换 box_token、删配置（停登记 + NOBOX）、从无到有（自己上线不用重启 app）" \
+    || bad "G-87 RH-04/05/06/07 锚点缺失"
+  grep -q 'RH-03 ' /tmp/g87-hotreload.log && grep -q 'RH-08 ' /tmp/g87-hotreload.log && grep -q 'RH-09 ' /tmp/g87-hotreload.log \
+    && ok "G-87 不误伤也不空转：加空格不重登记（指纹用归一配置）、摘掉 onChange 时 registry 不变（注入对照）、stop() 之后不再触发" \
+    || bad "G-87 RH-03/RH-08/RH-09 锚点缺失"
+  grep -q 'RH-10 ' /tmp/g87-hotreload.log && grep -q 'RH-11 ' /tmp/g87-hotreload.log \
+    && ok "G-87 模块绿≠产品会用：main.js 五处接线都在（require/启动/onChange 接登记/before-quit 停/入站关闭停），回执四栏仍现读且不含 box_token" \
+    || bad "G-87 RH-10/RH-11 锚点缺失"
+  echo "  · G-87 修复前红（最终门 + main.js 回退到 A3-10 态，观察器模块保留）：PASS=10 FAIL=1 ——"
+  echo "    '✗ RH-10 桌面接线缺了 5 处：没 require 观察器模块；ensureCnInbound 没启动观察器；"
+  echo "    onChange 没接到登记函数上；before-quit 没停观察器；入站关掉时没停观察器'。"
+  echo "    其余十条全绿 ⇒ 这正是 A3-7 RB-09 那类最值钱的红：**模块能跑，但产品根本没接线**。"
+  echo "  · G-87 十组负向对照逐个实跑、逐组复原校验、0 真空（原文见 report.md §8.76.4）："
+  echo "    摘四处 main.js 接线、指纹恒不变、check 不回调、stop 不生效、指纹掺时间戳（加空格也触发）、"
+  echo "    toHandoff 夹带 mode、回执恒回 null。另门内自带 RH-08 注入对照（空 onChange 时 registry 不变）。"
+  echo "  · G-87 残留（诚实）：① 只解决「登记不热」，**没有设置界面**、box_token 仍明文落盘、"
+  echo "    仍没做钥匙串/0600 ⇒ R-A3-6h 只是**部分关闭**。② 2s 轮询是折中：编辑器 rename 保存、"
+  echo "    asar 路径都不适合 fs.watch，但轮询有最多 2s 生效延迟，不是瞬时。"
+  echo "    ③ 指纹用归一后的配置对象，JSON 里加注释不是合法 JSON、会被当成没配（半套一律 null）。"
+  echo "    ④ 真机/真公网仍是零样本；SSE 仍不走隧道（R-A3-5b）。"
+else
+  bad "G-87 配置热生效（见 /tmp/g87-hotreload.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g87-hotreload.log || tail -3 /tmp/g87-hotreload.log | head -1)）"
+  echo "  · G-87 残留（诚实）：见上；这条红的常见原因：main.js 接线被摘、观察器回调没接登记、或四栏现读被改回恒 null"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

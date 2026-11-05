@@ -100,9 +100,12 @@ node hosts/shared/relay/relay_server.js
 - `endpoint` 在 reverse 下**只作展示**，不要填、也不要照旧文档去改它。
 - `local_endpoint` 一般不用填，缺省是 `127.0.0.1:<入站实际端口>`。
 - 两个可选环境变量兜底：`BITBOT_RELAY_MODE=reverse`、`BITBOT_RELAY_LOCAL_ENDPOINT=...`。
-- ⚠️ **配置改完要重启桌面 app**（或切一次「允许手机连接」开关）：回执四栏是每次兑换现读，
-  但登记只在入站启动 / 切开关时发生 —— 运行中改配置会出现「有四栏却 NOBOX」（`R-A3-6h`）。
-- ⚠️ `box_token` 是明文落在本机 JSON 里的，当前没做钥匙串 / 0600（`R-A3-6h`）。
+- ✅ **配置热生效（A3-11）**：改完 `relay.json` **不用重启桌面 app**。回执四栏本来就是每次
+  兑换现读，现在「盒子登记」也由观察器按 2s 轮询跟着变（改 mode / 换 token / 删配置 / 从无到有
+  都会自动重新登记），日志会出现 `[relay-box] relay.json 变了 → 已按新配置重新登记`。
+  最多等 2s；想调间隔用 `BITBOT_RELAY_CONFIG_POLL_MS`。
+  **注意**：这只解决「登记不热」，没解决没有设置界面、也没解决凭证明文落盘 —— `R-A3-6h` 只是部分关闭。
+- ⚠️ `box_token` 是明文落在本机 JSON 里的，当前没做钥匙串 / 0600（`R-A3-6h` 剩余部分）。
 
 ### 2.4 打开桌面 app
 

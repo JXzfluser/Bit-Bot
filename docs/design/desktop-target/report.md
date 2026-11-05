@@ -6712,3 +6712,107 @@ RD-05 的 TCP 可达、RD-06 的真握手、RD-08 的 HTTP 探活逐个摘掉，
   配置层改不动它）；它由 A3-7 `RB-02` 与 A3-8 `RV-12` 覆盖，不重复造门，记为已知分工。
 - **CI 收口**：`e0e76a9` 的 `run 41852793229` `PASS=559 FAIL=0`（G-86 `8/0`，32m10s），
   详情与 A3-9 那跑 `41849770338` 被 `cancelled` 的归因见 §8.74.7。
+
+---
+
+## 8.76 A3-11 中转配置热生效（部分关 R-A3-6h）
+
+### 8.76.1 这一刀补的是「下发已热、登记不热」那半截
+
+A3-6 起，配对回执里的 relay 四栏是**每次兑换现读**的（`relayHandoff: () => currentRelayHandoff()`），
+改完 `relay.json` 立刻能下发给手机；但「盒子登记」只在入站启动 / 切局域网开关时发生
+（`ensureCnInbound()` 里的 `syncRelayBoxRegistration(started)`）。
+运行中改配置于是会得到一个很难查的症状：**手机拿到了四栏，relay 却回 `NOBOX`**。
+
+A3-10 重写真机清单时，§2.3 和 §7 甚至把「配置改完要重启桌面 app」写成了现场 workaround。
+这一刀就是把它删掉 —— 现场少一个坑，也把 `R-A3-6h` 里「配置不热生效」这半条关掉。
+
+**架构决定**（延续 A3-7 的教训）：逻辑放独立可测模块
+`hosts/shared/relay/relay_config_watch.js`，`main.js` **只做接线**。
+门里的运行时断言全部打在真模块 + 真 relay + 真 socket 上（RH-01..RH-09），
+静态锚点只补那个 join（RH-10）。「模块自己绿 ≠ 产品会用」在 §8.76.3 的基线红里
+又一次被证明：模块能跑、门十条全绿，产品没接线时 RH-10 照样红。
+
+### 8.76.2 交付
+
+| 文件 | 改动 |
+| --- | --- |
+| `hosts/shared/relay/relay_config_watch.js`（新） | `createRelayConfigWatch({load, intervalMs, onChange})`：2s 轮询、指纹比对、`start/stop/check/getState`。指纹用**归一后的配置对象**而非文件原文 —— 加空格不重登记，host/port/boxId/两把 token/endpoint/mode/localEndpoint 任一变化都触发；`check()` 显式暴露给门做确定性触发，不靠 sleep 猜状态 |
+| `hosts/desktop/main.js`（改） | 五处接线：require 观察器、`ensureCnInbound` 里 `startRelayConfigWatch(started)`、`onChange` 调 `syncRelayBoxRegistration(relayConfigWatchStatus)`、`BITBOT_CN_INBOUND=0` 分支 stop、`before-quit` stop。`syncRelayBoxRegistration` 本身幂等（key 相同直接返回），重复触发不会多开心跳 / 多开 BIND 长连接 |
+| `scripts/prove_relay_config_hot_reload.js`（新） | RH-01..RH-11：真 relay + 真 socket，覆盖改 mode / 换凭证 / 删配置 / 从无到有 / 格式不变 / stop 不触发 / 静态 join / 四栏不变 |
+| `docs/design/desktop-target/real-device-checklist.md`（改） | §2.3 删掉「重启桌面 app」workaround，改为「最多等 2s 自动重登记」；§7 排错表同步 |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-87**（5 条 `ok`，按命门分组） |
+
+**为什么轮询而不是 `fs.watch`**：编辑器保存 JSON 普遍是「写临时文件 + rename」，
+只 watch 文件本身会在 rename 后丢监听；打包后路径还要处理 asar。
+2s 一次读一个几百字节的 JSON 成本可忽略，却能同时覆盖「新建 / 删除 / 改坏」三种情况。
+代价是最多 2s 生效延迟，不是瞬时 —— 写进残留。
+
+### 8.76.3 修复前红（最终门 + `main.js` 回退到 A3-10 态）
+
+这一片是**新增能力**，按 A3-7 的先例用「基线红 + 门内注入对照 + 外部负向对照」替代
+传统的「修一个坏掉的绿」。基线做法：只把 `main.js` 换成 `git HEAD`（A3-10 状态），
+**保留新模块**，用最终门跑，跑完逐字复原：
+
+```
+  ✓ RH-01 正控：完整 reverse 配置 → 真 BIND 登记上（registry[box-hot-reload].kind=reverse）
+  ✓ RH-02 观察器定时器真在跑（checks 0 → 1）
+  … （RH-03..RH-09 全绿）
+  ✗ RH-10 桌面接线缺了 5 处：没 require 观察器模块；ensureCnInbound 没启动观察器；
+     onChange 没接到登记函数上；before-quit 没停观察器；入站关掉时没停观察器
+  ✓ RH-11 回执四栏仍是现读的 host/port/box_id/client_token（不含 box_token）
+prove_relay_config_hot_reload: PASS=10 FAIL=1
+```
+
+**十条绿恰恰是这份红的价值**：观察器模块、定时器、四类配置变更、注入对照、
+回执现读全都成立，唯独「产品没有调用它」—— 与 A3-7 `RB-09` 那句
+「服务端读了 `opts.relayHandoff` 却恒回 null」是同一种坏法。
+
+门内另有 **RH-08 注入对照**（反真空）：把 `onChange` 换成空函数，同样的配置变更
+观察器会报变化，但 registry **不变** —— 证「重登记确实来自接线」，不是心跳或 relay
+自己重连带来的假绿。
+
+### 8.76.4 十组负向对照（逐个实跑、逐组复原校验，0 真空）
+
+| # | 摘掉的锚点 | 结果 | 抓到的红 |
+| --- | --- | --- | --- |
+| M01 | `startRelayConfigWatch(started)` | 10/1 | `RH-10 … ensureCnInbound 没启动观察器` |
+| M02 | `before-quit` 的 `stopRelayConfigWatch()` | 10/1 | `RH-10 … before-quit 没停观察器` |
+| M03 | 入站关闭分支的 stop | 10/1 | `RH-10 … 入站关掉时没停观察器` |
+| M04 | `onChange` 里的登记调用 | 10/1 | `RH-10 … onChange 没接到登记函数上` |
+| M05 | 指纹恒不变 | 6/5 | RH-04/05/06/07 等五条（配置变了却不重登记） |
+| M06 | `check()` 不调 `onChange` | 9/2 | RH-04/07（热生效不发生） |
+| M07 | `stop()` 不改 `running` | 10/1 | `RH-09 stop() 之后观察器还在触发` |
+| M08 | 指纹掺 `Date.now()` | 10/1 | `RH-03 加空格/换行也触发了重登记 — 1 → 2` |
+| M09 | `toHandoff` 夹带 `mode` | 10/1 | `RH-11 toHandoff 被撑大了` |
+| M10 | 回执恒回 `null`（A3-7 经典坏法） | 10/1 | `RH-11 回执不再每次兑换现读` |
+
+判定沿用 A3-9 的加严口径：每组必须**同时有红行 + `PASS=/FAIL=` 收尾行**。
+
+### 8.76.5 修复后绿与既有门复跑
+
+```
+prove_relay_config_hot_reload:      PASS=11 FAIL=0
+prove_relay_box_registration:       PASS=12 FAIL=0   （RB-09 五处静态锚点未受影响）
+prove_relay_reverse_tunnel:         PASS=15 FAIL=0   （RV-12 四处静态锚点未受影响）
+prove_relay_reverse_resilience:     PASS=9  FAIL=0
+verify_real_device_readiness --self-test: PASS=8 FAIL=0
+```
+
+改的是 `main.js`，最怕把 A3-7 / A3-8 钉的静态 join 撞红 —— 那四行
+（`relayHandoff: () => currentRelayHandoff(),`、`const started = await cnInbound.start();`、
+`syncRelayBoxRegistration(started)`、`before-quit` 里的 `relayBox.stop()`）**一字未动**，
+新接线全部加在它们旁边。
+
+### 8.76.6 残留（诚实）
+
+| # | 残留 | 说明 |
+| --- | --- | --- |
+| ① | **`R-A3-6h` 只是部分关闭** | 关掉的是「配置不热生效」；**没有设置界面**、`box_token` 仍明文落盘、钥匙串 / 0600 未做，三样仍开 |
+| ② | 轮询最多 2s 延迟 | `BITBOT_RELAY_CONFIG_POLL_MS` 可调；不是 `fs.watch` 的瞬时通知 |
+| ③ | 指纹基于归一的合法 JSON | 往 `relay.json` 里加注释会变成非法 JSON ⇒ 按「半套一律 null」处理，盒子会下线。这是既有口径，不是新回归 |
+| ④ | 真机 / 真公网仍零样本 | `R-A3-8a` 未关闭；清单 §5 十条仍需人工打勾 |
+| ⑤ | SSE 仍不走隧道 | `R-A3-5b`；手机仍无手动填中转入口 `R-A3-6a` |
+
+**边界**：这一刀让「运行中改配置」这件事不再需要重启 app，**不等于跨网可用**，
+也不等于有了设置界面。CI 结论不在本片收口前置内（同 A3-9 口径），推送后事后查。

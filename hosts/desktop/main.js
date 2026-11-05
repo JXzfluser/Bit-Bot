@@ -166,6 +166,14 @@ try {
 } catch (_e) {
   relayBoxMod = require("../shared/relay/relay_box_client");
 }
+// A3-11（部分关 R-A3-6h）：配置热生效的观察器。与上面两个模块同一套双路径兜底
+// —— 打包后 hosts/shared 会被拷进 shared/，开发态与装机态的 require 根不同。
+let relayWatchMod;
+try {
+  relayWatchMod = require("./shared/relay/relay_config_watch");
+} catch (_e) {
+  relayWatchMod = require("../shared/relay/relay_config_watch");
+}
 
 // Pairing-v1: shared code manager (IPC + HTTP routes see the same instance).
 let createPairingCodeManager;
@@ -4251,9 +4259,56 @@ function syncRelayBoxRegistration(status) {
   return relayBox;
 }
 
+/* ---------- A3-11：配置热生效（部分关 R-A3-6h）--------------------------- *
+ * A3-6 起，回执四栏就是**每次兑换现读**的（`relayHandoff: () => currentRelayHandoff()`），
+ * 改完 relay.json 立刻能下发给手机；但「登记」只在入站启动 / 切局域网开关时发生。
+ * 于是运行中改配置会出现「有四栏却 NOBOX」，用户只能重启 app —— A3-10 真机清单
+ * §2.3 / §7 里那条「配置改完要重启桌面 app」的 workaround 就是这么来的。
+ *
+ * 这里挂一个轻量观察器：配置指纹一变，用同一份 started 重新调
+ * `syncRelayBoxRegistration`。该函数本身幂等（key 相同直接返回），
+ * 所以重复触发不会多开心跳 / 多开一条 BIND 长连接。
+ * 逻辑放在 hosts/shared/relay/relay_config_watch.js，门禁能拿真 socket 直接跑；
+ * 这里只做接线（A3-7 的教训：模块自己绿 ≠ 产品会用）。
+ * ------------------------------------------------------------------------ */
+let relayConfigWatch = null;
+let relayConfigWatchStatus = null;
+
+function startRelayConfigWatch(status) {
+  // 切「允许手机连接」开关会重复进 ensureCnInbound：观察器只起一次，
+  // 但 started 要刷新 —— 重启入站后端口可能变了。
+  relayConfigWatchStatus = status;
+  if (relayConfigWatch) return relayConfigWatch;
+  relayConfigWatch = relayWatchMod.createRelayConfigWatch({
+    load: () => relayConfigMod.loadRelayConfig({ repoRoot: REPO_ROOT }),
+    intervalMs: Number(process.env.BITBOT_RELAY_CONFIG_POLL_MS || 2000),
+    onChange: () => {
+      try {
+        syncRelayBoxRegistration(relayConfigWatchStatus);
+        process.stdout.write("[relay-box] relay.json 变了 → 已按新配置重新登记\n");
+      } catch (err) {
+        process.stderr.write(
+          `[relay-box] reload failed: ${err && err.message ? err.message : err}\n`,
+        );
+      }
+    },
+  });
+  relayConfigWatch.start();
+  return relayConfigWatch;
+}
+
+function stopRelayConfigWatch() {
+  if (relayConfigWatch) {
+    relayConfigWatch.stop();
+    relayConfigWatch = null;
+  }
+}
+
 async function ensureCnInbound() {
   if (process.env.BITBOT_CN_INBOUND === "0") {
     // 入站关了就没有可登记的端口 —— 顺手收掉心跳，别让中转上留一台永远拨不通的盒子。
+    // A3-11：观察器也要停，否则入站关着它还在按旧 started 反复登记。
+    stopRelayConfigWatch();
     if (relayBox) {
       relayBox.stop();
       relayBox = null;
@@ -4348,6 +4403,9 @@ async function ensureCnInbound() {
   // 登记失败只是后台状态（relay 没起、凭证不对），绝不把「手机连不上局域网」连坐。
   try {
     syncRelayBoxRegistration(started);
+    // A3-11：四栏本来就是现读的，这里把「登记」也接成热生效 ——
+    // 运行中改 relay.json 不再需要重启 app（部分关 R-A3-6h）。
+    startRelayConfigWatch(started);
   } catch (err) {
     process.stderr.write(
       `[relay-box] setup failed: ${err && err.message ? err.message : err}\n`,
@@ -4812,6 +4870,8 @@ app.on("before-quit", () => {
   stopResidentKernel();
   // A3-7：心跳是 setTimeout + unref 的，退出时本来也不会拖住进程；这里显式停一下，
   // 让「盒子下线」这件事发生在进程真的消失之前，而不是等中转自己发现拨不通。
+  // A3-11：配置观察器也是常驻定时器，先停掉，免得退出过程中还在读配置、重登记。
+  stopRelayConfigWatch();
   if (relayBox) {
     relayBox.stop();
     relayBox = null;
