@@ -6816,3 +6816,105 @@ verify_real_device_readiness --self-test: PASS=8 FAIL=0
 
 **边界**：这一刀让「运行中改配置」这件事不再需要重启 app，**不等于跨网可用**，
 也不等于有了设置界面。CI 结论不在本片收口前置内（同 A3-9 口径），推送后事后查。
+
+---
+
+## 8.77 A3-12 中转凭证落盘加固（关 R-A3-6h 的「凭证明文」半条）
+
+### 8.77.1 复用已有能力，不另造加密
+
+`R-A3-6h` 里一直挂着一句「`box_token` 明文落盘、没做钥匙串/0600」。
+`box_token` 是**桌面自己的登记权**，泄露出去别人就能把一台假盒子登记成你的 `box_id`，
+比 `client_token` 敏感得多。
+
+查代码时发现仓库早就有 `hosts/desktop/secret_vault.js`（GP-99~102）：
+AES-256-GCM 加密、`vault.json` / `vault.key` 都是 0600、`resolve()` 是唯一解密读口、
+`status()` 只回掩码、`grep data/` 找不到明文。这一层**直接复用**，不新造一套密钥管理。
+
+安全格式（`relay.json` 里不再有任何明文 token）：
+
+```json
+{ "host": "relay.example.com", "port": 18766, "box_id": "my-desktop", "mode": "reverse",
+  "box_token_ref": "relay.box_token", "client_token_ref": "relay.client_token" }
+```
+
+**兼容性是硬要求**：旧的手写明文 `relay.json` 继续能读、环境变量兜底不变、
+`loadRelayConfigSecure()` 的返回形状与 `loadRelayConfig()` **完全一致**（cfg 或 null），
+所以 `main.js` 只换调用点，A3-7~A3-11 的逻辑一行没动。真机清单 §2.3 给了
+「把现有明文配置转成安全格式」的一条命令——**不主动转换就仍是明文**，这点必须说清。
+
+### 8.77.2 交付
+
+| 文件 | 改动 |
+| --- | --- |
+| `hosts/shared/relay/relay_secrets.js`（新） | `writeRelayConfigSecure()`（两把 token 进 vault、写 0600、写完自检「文件里查无明文」，万一将来有人往 body 加 token 字段会直接拒绝）；`loadRelayConfigSecure()`（引用 / 明文 / 环境变量三来源，缺 vault 时引用格式按半套回 null，绝不编默认凭证）；`inspectRelayConfigFile()`（权限、明文、引用齐不齐） |
+| `hosts/desktop/main.js`（改） | 创建 vault 实例（打包漏带时降级为 null，旧明文照常可用）、统一读口 `loadCurrentRelayConfig()`；回执四栏 / 登记 / 配置观察器三处都走安全读口 |
+| `scripts/prove_relay_secure_config.js`（新） | RS-01..RS-11：旧格式兼容、明文消失、vault 加密、resolve 一致性、四栏边界、权限告警、半套/坏 JSON、假 vault 注入对照、静态 join、既有锚点、环境变量兜底 |
+| `docs/design/desktop-target/real-device-checklist.md`（改） | §2.3 补安全格式转换命令，并把「明文没做钥匙串/0600」改成 A3-12 口径 |
+| `scripts/smoke_grok_desktop_parity.sh`（改） | 新增 **G-88**（5 条 `ok`） |
+
+### 8.77.3 修复前红（最终门 + `main.js` 回退到 A3-11 态）
+
+新增能力，按 A3-7 先例用「基线红 + 门内 RS-08 注入对照 + 外部负向对照」替代传统修复前红。
+基线只回退 `main.js`（保留新模块），用最终门跑，跑完逐字复原：
+
+```
+  ✓ RS-01 正控：旧明文 relay.json 继续读得出（五栏齐、mode=reverse，向后兼容）
+  … （RS-02..RS-08、RS-10、RS-11 全绿）
+  ✗ RS-09 桌面接线缺了 7 处：没 require relay_secrets 模块；没创建 vault 实例；
+     没有统一安全读口；读口没接 secure load；回执四栏没走安全读口；
+     登记没走安全读口；配置观察器没走安全读口
+prove_relay_secure_config: PASS=10 FAIL=1
+```
+
+十条绿、只有「产品没接线」红 —— 与 A3-11 的基线红同型，第三次实证
+「模块绿 ≠ 产品会用」。门内 **RS-08 注入对照**：假 vault 的 `resolve()` 恒回空串，
+或干脆没 vault 时，安全格式必须回 `null`，不许拿空 token 硬凑一个「配好了」。
+
+### 8.77.4 十组负向对照（逐个实跑、逐组复原校验，0 真空）
+
+| # | 摘掉的锚点 | 结果 |
+| --- | --- | --- |
+| M01 | `require("./shared/relay/relay_secrets")` | `RS-09` 红 |
+| M02 | `createSecretVault(REPO_ROOT)` | `RS-09` 红 |
+| M03 | 读口退回普通 `loadRelayConfig` | `RS-09` 红 |
+| M04 | 安全写入 body 夹带明文 token | `RS-02` 红（**写入前的明文自检真的拦下了**，不是靠门事后 grep） |
+| M05 | 写文件用 0644（含 chmod 兜底一起摘） | `RS-02` 红 |
+| M06 | `resolve` 为空时两把 token 都编 dummy | `RS-08` 红 |
+| M07 | `toHandoff` 夹带 `box_token` | `RS-05` 红 |
+| M08 | 权限检查恒真 | `RS-06` 红 |
+| M09 | 回执四栏不走安全读口 | `RS-09` 红 |
+| M10 | 半套配置也认 | `RS-08` 红 |
+
+**第一版有 2 组真空，都是 mutation 没真正生效，不是门盲**：
+M05 只改了 `fs.writeFileSync` 的 mode，后面还有 `chmodSync(file, 0600)` 兜底把权限改回来
+—— 产品双保险是对的，对照却没摘干净；M06 只给 `box_token` 编了 dummy，
+`client_token` 仍为空，归一照样回 null。两组各补一处编辑后全部报红。
+另 runner 自己崩过一次（把循环改成支持多编辑时，其余 8 项还是 4 元组），
+加规范化函数修好；`finally` 里逐字复原，工作树没有残留。
+
+### 8.77.5 修复后绿与既有门复跑
+
+```
+prove_relay_secure_config:          PASS=11 FAIL=0
+prove_relay_box_registration:       PASS=12 FAIL=0   （RB-09 / RB-10 未受影响）
+prove_relay_reverse_tunnel:         PASS=15 FAIL=0   （RV-12 未受影响）
+prove_relay_reverse_resilience:     PASS=9  FAIL=0
+prove_relay_config_hot_reload:      PASS=11 FAIL=0   （RH-10 / RH-11 未受影响）
+verify_real_device_readiness --self-test: PASS=8 FAIL=0
+```
+
+改 `main.js` 最怕连坐，RS-10 专门把 RB-09 / RV-12 / RH-10 的七处既有锚点钉住，
+这轮一行未动。
+
+### 8.77.6 残留（诚实）
+
+| # | 残留 | 说明 |
+| --- | --- | --- |
+| ① | **`R-A3-6h` 仍未整条关闭** | 关掉的是「凭证明文 + 宽松权限」；**设置界面**仍没有（安全写入只有 API/命令），**OS 钥匙串**仍没接 —— vault 密钥文件还在本机磁盘，防的是「grep data/ 见明文 / 同机其他用户读走」，不防「本机已被完全控制」 |
+| ② | 清单示例仍是旧明文格式 | 向后兼容，但用户不主动跑转换命令就还是明文。已在 §2.3 写明并给出命令 |
+| ③ | `client_token` 仍随回执明文下发手机 | 这是协议必需（手机要拿它 AUTH），不是泄露；`box_token` 绝不外泄（RS-05 钉住） |
+| ④ | 权限被改宽只告警、不拒绝读 | 刻意选择：现场不会因为一次 chmod 突然 `NOBOX`（RS-06） |
+| ⑤ | 真机 / 真公网仍零样本；SSE 仍不走隧道 | `R-A3-8a` / `R-A3-5b` 未关闭 |
+
+**边界**：这一刀让凭证不再以明文躺在磁盘上，**不等于有设置界面、也不等于跨网可用**。

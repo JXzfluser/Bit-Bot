@@ -174,6 +174,13 @@ try {
 } catch (_e) {
   relayWatchMod = require("../shared/relay/relay_config_watch");
 }
+// A3-12（关 R-A3-6h 的凭证明文半条）：安全格式的 relay.json 读写。
+let relaySecretsMod;
+try {
+  relaySecretsMod = require("./shared/relay/relay_secrets");
+} catch (_e) {
+  relaySecretsMod = require("../shared/relay/relay_secrets");
+}
 
 // Pairing-v1: shared code manager (IPC + HTTP routes see the same instance).
 let createPairingCodeManager;
@@ -4194,7 +4201,7 @@ ipcMain.handle("bitbot:openArtifact", async (_event, artifactPath) => {
 /** 现读一次配置并折成给手机的四栏；读不出来就 null（回执逐字节不变）。 */
 function currentRelayHandoff() {
   try {
-    return relayConfigMod.toHandoff(relayConfigMod.loadRelayConfig({ repoRoot: REPO_ROOT }));
+    return relayConfigMod.toHandoff(loadCurrentRelayConfig());
   } catch (_e) {
     return null; // 配置读坏不该把配对拖死 —— 最坏就是这轮没有跨网参数
   }
@@ -4203,13 +4210,36 @@ function currentRelayHandoff() {
 let relayBox = null;
 let relayBoxKey = null;
 
+/* A3-12：复用桌面已有的 secret vault（GP-99~102，AES-256-GCM + 0600），
+ * 把两把 relay token 从明文 relay.json 里挪出去。放在这里而不是文件头部的 require 区，
+ * 是因为 vault 需要 REPO_ROOT（第 314 行才定义），而那些 require 在它之前。
+ * 打包万一漏带 secret_vault.js ⇒ 降级为 null：旧明文格式照常可用，
+ * 安全引用格式按「半套」处理（loadRelayConfigSecure 回 null），绝不编一个默认凭证。 */
+let relayVault = null;
+try {
+  let secretVaultMod;
+  try {
+    secretVaultMod = require("./secret_vault");
+  } catch (_e) {
+    secretVaultMod = require("../desktop/secret_vault");
+  }
+  relayVault = secretVaultMod.createSecretVault(REPO_ROOT);
+} catch (_e) {
+  relayVault = null;
+}
+
+/** 统一的安全读口：三处调用点都走它，返回形状与 loadRelayConfig 完全一致。 */
+function loadCurrentRelayConfig() {
+  return relaySecretsMod.loadRelayConfigSecure({ repoRoot: REPO_ROOT, vault: relayVault });
+}
+
 /**
  * 让这台盒子在中转上「在线」。幂等：同一份配置 + 同一个端口重复调用不会多开一个心跳。
  * 没配置就**不启动**，并停掉旧的那个 —— 留一个「看起来在跑」的客户端比没有更坏。
  */
 function syncRelayBoxRegistration(status) {
   const port = Number(status && status.port);
-  const cfg = relayConfigMod.loadRelayConfig({ repoRoot: REPO_ROOT });
+  const cfg = loadCurrentRelayConfig();
   if (!cfg || !Number.isInteger(port) || port <= 0) {
     if (relayBox) {
       relayBox.stop();
@@ -4280,7 +4310,7 @@ function startRelayConfigWatch(status) {
   relayConfigWatchStatus = status;
   if (relayConfigWatch) return relayConfigWatch;
   relayConfigWatch = relayWatchMod.createRelayConfigWatch({
-    load: () => relayConfigMod.loadRelayConfig({ repoRoot: REPO_ROOT }),
+    load: () => loadCurrentRelayConfig(),
     intervalMs: Number(process.env.BITBOT_RELAY_CONFIG_POLL_MS || 2000),
     onChange: () => {
       try {

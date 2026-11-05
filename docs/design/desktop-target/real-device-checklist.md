@@ -105,7 +105,25 @@ node hosts/shared/relay/relay_server.js
   都会自动重新登记），日志会出现 `[relay-box] relay.json 变了 → 已按新配置重新登记`。
   最多等 2s；想调间隔用 `BITBOT_RELAY_CONFIG_POLL_MS`。
   **注意**：这只解决「登记不热」，没解决没有设置界面、也没解决凭证明文落盘 —— `R-A3-6h` 只是部分关闭。
-- ⚠️ `box_token` 是明文落在本机 JSON 里的，当前没做钥匙串 / 0600（`R-A3-6h` 剩余部分）。
+- ✅ **凭证加固（A3-12）**：`relay_secrets.js` 复用桌面已有的 secret vault
+  （AES-256-GCM 加密、`vault.json` / `vault.key` 都是 0600），可以把两把 token 移出
+  `relay.json`，只留 `box_token_ref` / `client_token_ref`；旧明文格式**继续兼容**。
+  **上面那段示例是旧格式** —— 照抄写完仍是明文。要转成安全格式，在仓库根跑一次：
+
+  ```bash
+  node -e '
+  const {writeRelayConfigSecure}=require("./hosts/shared/relay/relay_secrets");
+  const {createSecretVault}=require("./hosts/desktop/secret_vault");
+  const cfg=require("./data/desktop/relay.json");
+  console.log(writeRelayConfigSecure({cfg, vault:createSecretVault(process.cwd())}));
+  '
+  ```
+
+  看到 `{ ok: true }` 即可：此后 `relay.json` 查无明文、权限 0600，桌面照常读（读口会自动 resolve）。
+  配置热生效（A3-11）照样工作，改完仍不用重启 app。
+- ⚠️ vault 密钥文件仍在**本机磁盘**上，不是 OS 钥匙串 —— 它防的是「`grep data/` 就看到明文 /
+  同机其他用户读走」，不防「本机已被完全控制」。**也仍没有设置界面**：安全写入目前只有 API/命令，
+  `R-A3-6h` 剩余的就是这两样。
 
 ### 2.4 打开桌面 app
 

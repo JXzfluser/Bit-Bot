@@ -3625,6 +3625,37 @@ else
   echo "  · G-87 残留（诚实）：见上；这条红的常见原因：main.js 接线被摘、观察器回调没接登记、或四栏现读被改回恒 null"
 fi
 
+echo "== G-88 中转凭证落盘加固（路线 A · W4 / A3-12 · 关 R-A3-6h 的凭证明文半条）=="
+if timeout 180 node scripts/prove_relay_secure_config.js > /tmp/g88-securecfg.log 2>&1; then
+  ok "G-88 凭证加固全绿（$(grep -c '^  ✓ ' /tmp/g88-securecfg.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g88-securecfg.log)）"
+  grep -q 'RS-01 ' /tmp/g88-securecfg.log && grep -q 'RS-04 ' /tmp/g88-securecfg.log \
+    && ok "G-88 反真空正控在：旧手写明文 relay.json 继续读得出（向后兼容），安全格式 resolve 回的钥匙与签发值逐字相同" \
+    || bad "G-88 RS-01/RS-04 锚点缺失"
+  grep -q 'RS-02 ' /tmp/g88-securecfg.log && grep -q 'RS-03 ' /tmp/g88-securecfg.log \
+    && ok "G-88 明文真的没了：relay.json 只留 *_token_ref 且 mode=0600，vault.json / vault.key 查无明文（AES-256-GCM）" \
+    || bad "G-88 RS-02/RS-03 锚点缺失"
+  grep -q 'RS-05 ' /tmp/g88-securecfg.log && grep -q 'RS-06 ' /tmp/g88-securecfg.log && grep -q 'RS-07 ' /tmp/g88-securecfg.log \
+    && ok "G-88 边界也在：四栏仍正好四栏且不含 box_token、权限 644 只告警不拒绝读、半套/坏 JSON 一律 null" \
+    || bad "G-88 RS-05/RS-06/RS-07 锚点缺失"
+  grep -q 'RS-08 ' /tmp/g88-securecfg.log && grep -q 'RS-09 ' /tmp/g88-securecfg.log && grep -q 'RS-10 ' /tmp/g88-securecfg.log \
+    && ok "G-88 不真空也不连坐：假 vault 取不到凭证时回 null、main.js 七处接线都在、RB-09/RV-12/RH-10 既有锚点一字未动" \
+    || bad "G-88 RS-08/RS-09/RS-10 锚点缺失"
+  echo "  · G-88 修复前红（最终门 + main.js 回退 A3-11 态，保留新模块）：运行时十条全绿、"
+  echo "    只有 RS-09「桌面接线缺了 N 处」红 —— 与 A3-11 同型：模块能跑，产品没接线。"
+  echo "    这一片是新增能力，按 A3-7 先例用「基线红 + 门内 RS-08 注入对照 + 十组负向对照」替代传统修复前红。"
+  echo "  · G-88 十组负向对照逐个实跑、逐组复原校验（原文见 report.md §8.77.4）："
+  echo "    摘 require / 摘 vault / 读口退回普通 load / 安全写入夹带明文（自检必须拦下）/"
+  echo "    写文件用 0644 / resolve 为空编 dummy / toHandoff 夹带 box_token / 权限检查恒真 /"
+  echo "    回执不走安全读口 / 半套也认。"
+  echo "  · G-88 残留（诚实）：① vault 密钥仍在本机磁盘（不是 OS 钥匙串），防的是"
+  echo "    「grep data/ 见明文 / 同机其他用户读走」，不防本机已被完全控制。② **没有设置界面**："
+  echo "    安全写入只有 API，现场要把手写明文转成安全格式得跑一条命令（清单 §2.3）。"
+  echo "    ③ 清单示例仍用旧明文格式（兼容），不主动转换就还是明文；④ 真机/真公网仍零样本。"
+else
+  bad "G-88 凭证加固（见 /tmp/g88-securecfg.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g88-securecfg.log || tail -3 /tmp/g88-securecfg.log | head -1)）"
+  echo "  · G-88 残留（诚实）：见上；这条红的常见原因：安全写入把明文写回磁盘、vault 没接上、或四栏夹带 box_token"
+fi
+
 echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()
