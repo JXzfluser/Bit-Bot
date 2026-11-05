@@ -12,7 +12,7 @@
  *          —— 缺声明时框架抛 SecurityException，点「扫描」是崩而不是「没找到桌面」
  *   AB-04 minSdk / targetSdk 与工程配置一致
  *   AB-05 六个国内渠道 flavor 都在（universal/huawei/xiaomi/honor/oppo/vivo）
- *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 230（防止 test 任务空转假绿；230 = 199 + A3-17 探活 11 + A3-18 配对串 6 + 隧道池/chunked/统计 13 + A3-17 文案拆分 1 —— 这条是棘轮，用例只准涨不准掉）
+ *   AB-06 JVM 单测真的跑了：0 失败且用例数 ≥ 235（防止 test 任务空转假绿；235 = 230 + R-A3-5b 事件流隧道归属 5 —— 这条是棘轮，用例只准涨不准掉）
  *   AB-07 配对地址归一化的两条红线真的在结果里（未配对不许回写死地址、少协议要补全）
  *   AB-08 失败原因翻译层的三条红线真的在结果里（401 点名重抄令牌、404 不贴 HTML、
  *         Connection refused 要说端口没人监听）
@@ -270,7 +270,7 @@ if (badge.status !== 0 || !badgeOut) {
   else if (failures > 0) bad("AB-06 JVM 单测有失败", failures + " failures / " + tests + " tests");
   // 棘轮：这个数字只准往上抬。写死下限的意义是「test 任务空转/测试文件被删」也会被抓出来，
   // 所以每次加用例都要同时把这里抬上去（漏了就会出现「用例加了但门还按老数字绿」）。
-  else if (tests < 230) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
+  else if (tests < 235) bad("AB-06 JVM 单测用例数偏少，像空跑", "tests=" + tests + " files=" + files);
   else ok("AB-06 JVM 单测真跑：" + tests + " 用例 0 失败（" + files + " 个类）");
   /* AB-07 配对地址那几条红线真的在跑（不是写了不执行）：
    * 未配对不许回写死地址、少协议要补全 —— 这两条是真机会踩的坑。 */
@@ -1673,6 +1673,154 @@ if (badge.status !== 0 || !badgeOut) {
   else
     ok(
       "AB-21 跨网补齐：SSE 真走隧道且 chunked 惰性解码（SX-01..03）、隧道借/还/废与配置指纹作废（TP-01..06）、配对串在手机上被解析并走隧道 redeem（RB-01..06），且串里只有 client token（六组负向对照全抓到；真蜂窝零样本仍属 R-A3-6a 残留）",
+    );
+}
+
+/* AB-22 R-A3-5b 残留：**事件流那条隧道断线重连时会漏，一条都没关**。
+ *
+ * 现场：手机在蜂窝网下看进度，流断了 → 重试循环 sleep 后重连（1s/2s/4s/8s/10s…）
+ * → 每次 `RelayTunnel.open` 一条新的，而旧的那条只是被字段覆盖，既没还池（它本来
+ * 就不还池）也没关。中继上于是躺着一条永远不会有数据的连接，**每重连一次多一条**。
+ *
+ * 为什么以前所有门都绿：这条路径只在「走了中转 + 流断了」时触发；本机门禁里事件流
+ * 要么走直连、要么一次跑完不断线。**只有把「重连 N 次」显式造出来才看得见。**
+ *
+ * AB-22 钉三件事：
+ *  1. 归属原语存在且真的是 try/finally 关（`Tunnel.withOwnership`）；
+ *  2. `readViaRelay` 的读流**在**原语的花括号作用域内（按配平算，不是看有没有这个词）；
+ *  3. RL-01..RL-05 真在 JVM 结果里且 0 失败；其中 RL-01 是**反真空**：
+ *     同一场景用旧写法跑必须漏，否则「都关掉了」可能只是因为压根没开。
+ * 四组负向对照逐个摘都要被抓到。
+ * 诚实边界：本门不跑真 relay，也不跑真蜂窝；「中继侧连接数真的不涨」仍属 R-A3-8a 残留。 */
+{
+  const ANDROID = "hosts/android/BitBotHost/app/src/main/java/com/bitbot/host";
+  const read = (rel) => {
+    try {
+      return fs.readFileSync(path.join(REPO, rel), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const sseSrc = read(ANDROID + "/EventStreamClient.kt");
+  const tunnelSrc = read(ANDROID + "/RelayTunnel.kt");
+  const turnSrc = read(ANDROID + "/TurnBridge.kt");
+
+  /** readViaRelay 的函数体（从签名到下一个同级成员）。 */
+  const bodyOf = (src, sig) => {
+    const i = src.indexOf(sig);
+    if (i < 0) return "";
+    const rest = src.slice(i + sig.length);
+    /* 注意这里**必须是** ` {4}(?:private |internal |public |protected )?`，
+     * 不能写成 ` {4}(...)?\s*`：`\s*` 会把 6 空格缩进的 `val headers` 也吃成
+     * 「同级成员」，于是函数体在第 108 个字符就被截断，判据在空壳上白跑一遍
+     * （第一版就是这么假红的）。同类错今天第四次：正则要锚「形状」，不要锚「差不多」。 */
+    const j = rest.search(/\n {4}(?:private |internal |public |protected )?(?:fun|val|var|class) /);
+    return j < 0 ? rest : rest.slice(0, j);
+  };
+
+  /** 从 `{` 开始按花括号配平，返回花括号内的内容。 */
+  const braceScope = (text, openIdx) => {
+    let d = 0;
+    for (let k = openIdx; k < text.length; k++) {
+      const c = text[k];
+      if (c === "{") d++;
+      else if (c === "}") {
+        d--;
+        if (d === 0) return text.slice(openIdx + 1, k);
+      }
+    }
+    return "";
+  };
+
+  const measure = (src) => {
+    const got = [];
+    const body = bodyOf(src.sseSrc, "private fun readViaRelay(");
+    if (!body) return ["找不到 readViaRelay（事件流不走隧道了？）"];
+
+    // ① 读流必须在 withOwnership 的**花括号作用域**里。
+    //    不能只看 includes("withOwnership")（写了但把读流挪到外面正是旧 bug 的形状），
+    //    也不能只比缩进（缩进更深的也可能已经在闭括号之后）。按花括号配平才算数。
+    const ownIdx = body.indexOf("withOwnership");
+    if (ownIdx < 0) {
+      got.push("readViaRelay 没有用归属原语包住（还是裸开裸读）");
+    } else {
+      const braceIdx = body.indexOf("{", ownIdx);
+      const scope = braceIdx < 0 ? "" : braceScope(body, braceIdx);
+      if (!scope) got.push("withOwnership 没有函数体（写错了？）");
+      else if (!scope.includes("parseSseStream("))
+        got.push("读流不在 withOwnership 作用域内（开了就漏 —— 这正是修复前的形状）");
+    }
+
+    // ② 旧的四处分散 close 不该再回来 —— 那种写法正是「漏了一条路径」的来源。
+    if (body.includes("closeQuietly(tunnel.socket)")) got.push("readViaRelay 里又出现了分散的 close（容易漏路径）");
+
+    // ③ 原语本身必须是 try/finally 关，不能是「正常路径关一下」。
+    if (!/fun <T> withOwnership\(/.test(src.tunnelSrc)) got.push("Tunnel 没有 withOwnership 原语");
+    else {
+      const w = bodyOf(src.tunnelSrc, "fun <T> withOwnership(");
+      if (!/finally\s*\{/.test(w)) got.push("withOwnership 没有 finally（异常就漏）");
+      if (!/finally\s*\{[^}]*close\(\)/s.test(w)) got.push("withOwnership 的 finally 里没有 close()");
+    }
+
+    // ④ 回合那条路别被这次改动搅坏：它本来就是对的（finally + healthy）。
+    if (!/finally\s*\{[^}]*RelayTunnelPool\.(release|invalidate)/s.test(src.turnSrc))
+      got.push("回合的借还保护被破坏了（原来 finally 里 release/invalidate）");
+
+    // ⑤ 用例真在结果里
+    const want = [/RL-01/, /RL-02/, /RL-03/, /RL-04/, /RL-05/];
+    const missing = want.filter((re) => !src.names.some((n) => re.test(n)));
+    if (missing.length) got.push("用例不在结果里：" + missing.map(String).join(", "));
+    return got;
+  };
+
+  // 结果集（AB-21 已扫过同一个目录，这里重扫一次：AB-22 单独红也能自己说清楚）
+  const names = [];
+  let rlFailures = 0;
+  try {
+    const dir = path.join(HOST, "app/build/test-results/testUniversalDebugUnitTest");
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith("TEST-") || !f.endsWith(".xml")) continue;
+      const xml = fs.readFileSync(path.join(dir, f), "utf8");
+      for (const m of xml.matchAll(/<testcase\s+name="([^"]+)"/g)) names.push(m[1]);
+      if (f.includes("TunnelOwnershipTest")) {
+        const suite = xml.match(/<testsuite[^>]*>/);
+        if (suite) {
+          rlFailures +=
+            Number((suite[0].match(/failures="(\d+)"/) || [])[1] || 0) +
+            Number((suite[0].match(/errors="(\d+)"/) || [])[1] || 0);
+        }
+      }
+    }
+  } catch {
+    /* 结果目录不在时 AB-06 已报 */
+  }
+
+  const base = { sseSrc, tunnelSrc, turnSrc, names };
+  const problems = measure(base);
+  if (rlFailures > 0) bad("AB-22 隧道归属用例有 " + rlFailures + " 条失败（泄漏没修好）");
+
+  const muts = [
+    ["1 不用归属原语", (s) => ({ ...s, sseSrc: s.sseSrc.replace(/tunnel\.withOwnership \{/g, "run {") })],
+    [
+      "2 读流挪出作用域",
+      (s) => ({
+        ...s,
+        sseSrc: s.sseSrc.replace(
+          /( *)parseSseStream\(resp\.reader\)\n( *)\}/,
+          "$2}\n$1parseSseStream(resp.reader)",
+        ),
+      }),
+    ],
+    ["3 finally 不关", (s) => ({ ...s, tunnelSrc: s.tunnelSrc.replace(/finally\s*\{\s*close\(\)/s, "finally {") })],
+    ["4 用例不在结果里", (s) => ({ ...s, names: s.names.filter((n) => !/^RL-0/.test(n)) })],
+  ];
+  const undetected = muts.filter(([, mutate]) => !measure(mutate(base)).length).map(([label]) => label);
+  if (undetected.length) bad("AB-22 负向对照失败：这些走偏尺子抓不到", undetected.join("；"));
+
+  if (problems.length) bad("AB-22 隧道归属没接齐", problems.slice(0, 6).join(" | "));
+  else
+    ok(
+      "AB-22 事件流隧道不再漏：读流被 withOwnership 的 try/finally 包住（正常结束/异常/并发 close 三个出口都关）、重连 5 次零残留（RL-04）、且 RL-01 反真空证明旧写法确实会漏；四组负向对照全抓到（真中继侧连接数不涨仍属 R-A3-8a 残留）",
     );
 }
 

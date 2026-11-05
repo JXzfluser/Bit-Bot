@@ -7489,8 +7489,11 @@ RBI-06 的对照、AB-21 的 box_token、这里的 RS-09 —— 注释和被注�
    只在失败路径上被验过；UPnP 在运营商光猫 / 双 NAT 下仍可能不适用。
 3. **`safeStorage` 三平台形态未逐一实跑**：只验了「注入 protector」这一层抽象；
    macOS Keychain / Windows DPAPI 的真机行为、以及升级前那段明文窗口，都还得靠用户升级覆盖。
-4. **事件流隧道不还池**（长连接借出去要等流自己结束）。断线时会不会在中继上留一条看不见的连接，
-   没有做压测；`MAX_IDLE=1` 也只是「多留没意义」的取舍，不是量出来的最优值。
+4. ~~事件流隧道不还池，断线时会不会在中继上留一条看不见的连接，没有做压测~~ ——
+   **已查明会漏，已修**（§8.84）：`readViaRelay` 在读流抛异常时不关隧道，重连一次多一条。
+   现在整段由 `Tunnel.withOwnership` 的 `try/finally` 兜住（RL-01..RL-05 + AB-22）。
+   仍留着的：**中继侧连接数真的不涨**只在 JVM 上证明了「socket 被关」，真 relay 上的
+   计数观测仍属 `R-A3-8a`；`MAX_IDLE=1` 也还是「多留没意义」的取舍，不是量出来的最优值。
 5. **APK 只在本机产出**，真机安装 / 厂商商店签名未做；端上观感（圆角、字距、深色）依旧只能真机验收。
 6. **iOS 侧为零**（R-A3-3a 剩下那一半需要 Xcode）。
 7. 三语新词条（配对串、统计行）未做切语言肉眼验收；`statsLine` 只用 `BitBotMonoStyle` 排了一行，
@@ -7603,6 +7606,110 @@ $ BITBOT_CHECKLIST_DOC=<上一版清单> node scripts/prove_checklist_freshness.
 
 1. 这是**词面**检查，不是语义检查。它只挡本表列的六类陈旧，挡不住「换一种说法写反」。
 2. 它**不检查完整性** —— 清单漏掉一条该验的项，这道门看不见。
-3. 它不跑 Android、不碰真机；§5 十三条依旧全部躺在 `R-A3-8a` 名下等真环境。
+3. 它不跑 Android、不碰真机；§5 十四条依旧全部躺在 `R-A3-8a` 名下等真环境。
 4. 豁免区（`>` 引用块 / `~~删除线~~`）理论上可以被滥用成「把陈旧内容塞进引用块」，
    目前靠 CF-07..CF-10 四条正向锚点兜着，不是严密防线。
+
+---
+
+## 8.84 事件流隧道会漏：每重连一次，中继上多挂一条看不见的连接
+
+### 8.84.1 这条不是「没做压测」，是「一压就漏」
+
+§8.82.7 里我把它写成残留：「事件流隧道不还池（长连接借出去要等流自己结束）。断线时会不会
+在中继上留一条看不见的连接，没有做压测」。这一节就是把那个问号打开 —— 答案是**会**。
+
+`EventStreamClient.readViaRelay` 原来的形状是：
+
+```kotlin
+val tunnel = RelayTunnel.open(cfg)
+this.relayTunnel = tunnel          // 存字段，留给界面线程的 close()
+...
+val resp = try { TunnelHttp.openEventStream(...) } catch (e) {
+  RelayTunnel.closeQuietly(tunnel.socket); throw ...   // ① 开流失败：关了
+}
+if (resp.status == 503) { closeQuietly; throw }         // ② 503：关了
+if (resp.status == 401) { closeQuietly; throw }         // ③ 401：关了
+if (resp.status !in 200..299) { closeQuietly; throw }   // ④ 4xx：关了
+parseSseStream(resp.reader)                             // ⑤ 读流：**没关**
+```
+
+五条出口，四条显式关了，唯独**最常走的那一条**没关 —— 而 `parseSseStream` 恰恰是蜂窝网下
+最先抛的那个（流断就是 IO 异常）。异常冒到重试循环（`EventStreamClient.kt:113`），
+循环只 `Thread.sleep` 然后重连，`this.relayTunnel` 被新隧道覆盖，旧 socket 从此没人再碰。
+
+退避 1s/2s/4s/8s/10s…，三分钟内能堆十几条。中继侧看到的是**一条登录过、ATTACH 过、
+永远不会有数据的连接**。它既不在池子里（`dropAll()` 只清 `idle`），也不在字段上
+（被覆盖了），除了进程退出没有任何东西会回收它。
+
+为什么以前所有门都绿：这条路径只在「走了中转 + 流断了」同时成立时触发。本机门禁里
+事件流要么走直连、要么一次跑完不断线 —— **没有一处把「重连 N 次」显式造出来**。
+
+### 8.84.2 修法：管住归属，而不是管住每一条路径
+
+新增原语（`RelayTunnel.Tunnel.withOwnership`）：
+
+```kotlin
+fun <T> withOwnership(block: (Tunnel) -> T): T =
+  try { block(this) } finally { close() }
+```
+
+`readViaRelay` 整段包进去，四处显式 `closeQuietly` 全部删掉 —— 出口从「五条各自记着关」
+变成「一条关法」。`finally` 里顺带把字段清掉（`if (this.relayTunnel === tunnel)`），
+不留悬空引用；界面线程的 `close()` 与 `finally` 并发是安全的（关已关的 socket 不抛）。
+
+对照：回合那条路（`TurnBridge.postViaRelay`）本来就是对的 ——
+`try { ... healthy = true } finally { if (healthy) release else invalidate }`。同一份代码库里
+两种写法并存，错的偏偏是没人压过的那条。
+
+### 8.84.3 用例带反真空证明（RL-01..RL-05）
+
+新增 `TunnelOwnershipTest`，5 条全绿，235 用例 0 失败：
+
+| 用例 | 断言 |
+| --- | --- |
+| RL-01 | **反真空**：同一场景用旧写法（没有 finally）跑，socket **必须还开着** |
+| RL-02 | 流正常结束（turn_ended）也关 —— 否则下一轮开始时中继上还挂着上一条 |
+| RL-03 | 块里抛异常也关，且异常**原样**上抛（换个异常会丢栈和类型） |
+| RL-04 | 断线重连 **5 次**：开 5 条、关 5 条、零残留（真机现象的复刻） |
+| RL-05 | 已关的再关不抛（界面线程 `close()` 与 `finally` 会撞车） |
+
+RL-01 是这组的关键：没有它，五条「都关掉了」可能只是因为**压根没开**。
+它用 `leakyRead`（与生产只差一个 `finally`，别处一字不差）跑同一场景，断言它必须漏。
+它现在绿，意味着「这个场景真的能暴露泄漏」这个前提成立。
+
+### 8.84.4 AB-22：判据按花括号配平，不按缩进
+
+AB-22 钉三件事：原语存在且是 `finally` 关；`readViaRelay` 的读流**在**原语的**花括号作用域**内；
+RL-01..05 真在 JVM 结果里且 0 失败。四组负向对照逐个摘都要被抓到。
+
+**这里我又踩了两次，都在判据上：**
+
+1. **`bodyOf` 切分正则太松**：`\n {4}(private|internal|public)?\s*(fun|val|var|class) `
+   —— `\s*` 会把 6 空格缩进的 `val headers` 也吃成「同级成员」，于是 `readViaRelay` 的函数体
+   在第 108 个字符就被截断，判据在一个空壳上白跑一遍，报出「没有用归属原语包住」的**假红**。
+   改成 `\n {4}(?:private |internal |public |protected )?(?:fun|val|var|class) `：` {4}` 后直接
+   接关键字，多一格空格就匹配不上。
+2. **用缩进判断「在不在 lambda 里」也不行**：负向对照「把读流挪出作用域」恰好把 `}` 提前、
+   让读流**缩进更深**地落在闭括号之后 —— 缩进比得出来，但比反了。改成从 `withOwnership` 的
+   `{` 开始**按花括号配平**，看作用域里有没有 `parseSseStream(`。这条才算锚住了形状。
+
+同一类错今天第五次、第六次（前四次：RBI-06 恒真对照、AB-21 注释撑绿、RS-09 注释锚点、
+CF-05 否定前瞻）。**正则锚的应该是形状，不是「差不多」。**
+
+### 8.84.5 门禁与回归
+
+```
+prove_android_build: PASS=23 FAIL=0 SKIP=0   （AB-06 棘轮 230 → 235，27 个类 0 失败）
+host_audit 14 / settings 13 / secure_config 11 / bootstrap 12 /
+vault 12 / public_entry 12 / public_relay_setup 11 / checklist 16
+```
+
+### 8.84.6 残留（诚实）
+
+1. 只在 **JVM** 上证明了「socket 被关」。**中继侧连接数真的不涨**没在真 relay 上观测过 ——
+   那需要一台真 relay 跑一轮「断流 N 次」并读它的连接计数，仍属 `R-A3-8a`。
+2. 修的是「漏」，不是「快」：`MAX_IDLE=1`、空闲 30s 这些参数仍是取舍，不是量出来的最优。
+3. 事件流的隧道**仍然不还池**（长连接还池会让下一轮拿到挂着旧订阅的连接）—— 这是设计，
+   不是遗漏；改掉的是「不还池」变成「不关」。
+4. 并发 `close()` 与 `finally` 的竞态只做了「关两次不抛」的断言，没有做真实竞态压测。

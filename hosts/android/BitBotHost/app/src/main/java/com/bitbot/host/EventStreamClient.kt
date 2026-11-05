@@ -272,8 +272,14 @@ object EventStreamClient {
      * 关键只在 [TunnelHttp.openEventStream] 要**惰性**解 chunked，否则要等到
      * 整条流结束才看得到第一帧（那就不是实时进度了）。
      *
-     * 生命周期：隧道**不还池**。事件流是长连接，借出去就要等这条流自己结束
-     * （turn_ended / 用户离开）。还池了下一回合会拿到一条还挂着上一个订阅的连接。
+     * 生命周期：隧道**不还池**（事件流是长连接，还池了下一回合会拿到一条还挂着
+     * 上一个订阅的连接），但**必须由这里负责关掉**（[RelayTunnel.Tunnel.withOwnership]）。
+     *
+     * 这里踩过一次：原来只在「开流失败 / 503 / 401 / 4xx」四处显式关，读流抛异常
+     * 那条路径没关 —— 而 `parseSseStream` 恰恰是最常抛的那个（蜂窝网下流断就是这么来的）。
+     * 异常冒到重试循环后，循环只 sleep 再重连，于是**每重连一次就在中继上多挂一条
+     * 永远不会有数据的连接**。改成整段用 `withOwnership` 包住：正常结束、异常、
+     * 并发 `close()`，任何出口都只有一条关法。
      */
     private fun readViaRelay(
       cfg: RelayTunnel.RelayConfig,
@@ -294,36 +300,38 @@ object EventStreamClient {
         token?.let { add("Authorization" to "Bearer $it") }
         DeviceIdentity.applyHeaders({ k, v -> add(k to v) }, deviceHeaders)
       }
-      val resp =
-        try {
-          TunnelHttp.openEventStream(
-            tunnel = tunnel,
-            path = path,
-            hostHeader = cfg.host,
-            headers = headers,
-            // 0 = 不限：SSE 本来就是等服务端推，设了超时会在安静的时候被误判成断线。
-            readTimeoutMs = 0,
-          )
-        } catch (e: Exception) {
-          RelayTunnel.closeQuietly(tunnel.socket)
-          this.relayTunnel = null
-          throw SseTransportException(e.message ?: "隧道上没有回包", e)
+      try {
+        tunnel.withOwnership {
+          val resp =
+            try {
+              TunnelHttp.openEventStream(
+                tunnel = tunnel,
+                path = path,
+                hostHeader = cfg.host,
+                headers = headers,
+                // 0 = 不限：SSE 本来就是等服务端推，设了超时会在安静的时候被误判成断线。
+                readTimeoutMs = 0,
+              )
+            } catch (e: Exception) {
+              throw SseTransportException(e.message ?: "隧道上没有回包", e)
+            }
+          if (resp.status == 503) {
+            throw SseUnavailableException("event_log_unavailable", "")
+          }
+          if (resp.status == 401) {
+            throw SseUnauthorizedException("unauthorized", "")
+          }
+          if (resp.status !in 200..299) {
+            throw SseHttpException(resp.status, "")
+          }
+          setState(SubscriptionState.CONNECTED, null)
+          this.reader = resp.reader
+          parseSseStream(resp.reader)
         }
-      if (resp.status == 503) {
-        RelayTunnel.closeQuietly(tunnel.socket)
-        throw SseUnavailableException("event_log_unavailable", "")
+      } finally {
+        // 字段只是给界面线程的 close() 一个把手，这一条自己已经关完了，别留悬空引用。
+        if (this.relayTunnel === tunnel) this.relayTunnel = null
       }
-      if (resp.status == 401) {
-        RelayTunnel.closeQuietly(tunnel.socket)
-        throw SseUnauthorizedException("unauthorized", "")
-      }
-      if (resp.status !in 200..299) {
-        RelayTunnel.closeQuietly(tunnel.socket)
-        throw SseHttpException(resp.status, "")
-      }
-      setState(SubscriptionState.CONNECTED, null)
-      this.reader = resp.reader
-      parseSseStream(resp.reader)
     }
 
     /**

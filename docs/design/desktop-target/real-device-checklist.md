@@ -312,6 +312,7 @@ adb install -r app/build/outputs/apk/universal/debug/app-universal-debug.apk
 | ⑪ | **探活 ≠ 凭证（A3-17）** | 两条独立的维度都要看到：桌面关掉 → 「桌面离线」；桌面开着但吊销这台手机 → 「桌面在线 · **凭证被拒**」，**不能报成离线** | ☐ |
 | ⑫ | **错误提示说人话** | 故意粘一段残缺配对串 / 停掉 relay / 输错配对码，提示应分别指出缺哪栏、隧道不通、码不对；**不出现内部路径或堆栈** | ☐ |
 | ⑬ | **钥匙串真的接上了（R-A3-6h）** | `ls -l data/secrets/vault.key*` 只看到 `vault.key.protected`；桌面重启后配置仍能读（说明迁移没把钥匙弄丢） | ☐ |
+| ⑭ | **断流重连不留连接（R-A3-5b 残留）** | 蜂窝下反复断网/恢复 **5 次**（每次等进度断掉再恢复）。之后看 relay 诊断态：`streamsServed` 会涨（说明真重连过），但 `activeStreams` **必须回到基线**，不能随重连次数单调上涨 | ☐ |
 
 **⑩ 这一条的判定方向在早期版本里是相反的**（R-A3-5b 之前，事件流只能靠直连，回退才是正常）。
 现在正过来了：看到「回退到整轮模式」意味着隧道化失败，**这一条不过**，要去看
@@ -333,6 +334,7 @@ adb install -r app/build/outputs/apk/universal/debug/app-universal-debug.apk
 | relay 审计 `/tmp/bitbot-relay-audit.jsonl` | `event` | `auth` / `bind` / `ping` / `accept` / `attach` / `close`；半开时 `liveness-timeout` |
 | relay `/healthz`（18767） | `boxes` | 桌面在线时 ≥1，桌面关掉后回落 |
 | relay 诊断态 | `dialAttempts` / `reverseBoxes` / `livenessEvictions` | reverse 下 `dialAttempts` 不涨 |
+| relay 诊断态 | `activeStreams` / `streamsServed` | 重连 5 次后 `streamsServed` 涨、`activeStreams` 回基线（⑭ 就看这一行） |
 | 桌面日志 | `[relay-box] reverse …` | 没有 `WARN … 回环地址`、没有 `denied` / `transport` |
 | `lsof -nP -i :18765` | 入站监听 | `*:18765`；无输出 = 桌面 app 没在跑 |
 

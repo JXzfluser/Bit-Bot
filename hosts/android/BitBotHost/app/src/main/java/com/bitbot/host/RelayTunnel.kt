@@ -68,6 +68,27 @@ object RelayTunnel {
   /** 一条已建立的隧道：socket 已进入数据面，[boxEndpoint] 只是中继告知的目标，信息用。 */
   data class Tunnel(val socket: Socket, val boxEndpoint: String) : java.io.Closeable {
     override fun close() = closeQuietly(socket)
+
+    /**
+     * 独占这条隧道的整段生命周期：**不论正常结束还是抛异常，都必须关掉**。
+     *
+     * 只给「借出去就不还池」的那类场景用（事件流长连接）。池子里的短请求不要用它 ——
+     * 那些走 `RelayTunnelPool.borrow/release`，归还而不是关闭。
+     *
+     * 为什么要有这个原语，而不是每处自己写 try/finally：这个坑已经踩过一次。
+     * `EventStreamClient.readViaRelay` 原来是「开 → 存字段 → 读流」，读流抛异常时
+     * 异常直接冒到重试循环，那条 socket 既没还池也没关；重连一次就多一条，
+     * 中继上于是挂着一条永远不会有数据的连接。**管住归属，而不是管住某一条路径。**
+     *
+     * 与 `close()` 并发是安全的：关一个已关的 socket 不抛，所以界面线程调 `close()`
+     * 和这里 `finally` 撞车也不要紧。
+     */
+    fun <T> withOwnership(block: (Tunnel) -> T): T =
+      try {
+        block(this)
+      } finally {
+        close()
+      }
   }
 
   sealed class AuthReply {
