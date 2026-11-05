@@ -3234,6 +3234,10 @@
               <span class="mc-card-title" data-i18n="mcRelayTitle">跨网中转</span>
             </div>
             <div id="mc-relay-status" class="mc-status" data-i18n="mcRelayEmpty">尚未配置</div>
+            <!-- A3-16：这一行专门回答「这个地址谁能敲到」。上面那行显示的是
+                 relay.json 里的值，和配对那一行由网卡算出来的局域网地址
+                 本来就该不一样 —— 不写清楚，用户只会看到两个对不上的 IP。 -->
+            <p class="mc-note" id="mc-relay-audit" hidden></p>
             <p class="mc-note" data-i18n="mcRelayNote">公网 relay + NAT 后的桌面请选 reverse；两把凭证只填一次，之后留空即沿用。保存后自动重新登记，不用重启 app。</p>
             <div class="mc-actions">
               <button type="button" id="mc-relay-open" class="bb-btn bb-btn-sm" data-i18n="mcRelayOpen">配置中转</button>
@@ -12770,6 +12774,20 @@
         n.textContent = text;
         n.dataset.state = isError ? "error" : "ok";
       }
+      // A3-16：自检码 → 词条。放在 render 外面，保存失败的提示也要用它，
+      // 别把 `host_private_other` 这种内部码甩到界面上。
+      const MC_AUDIT_KEY = {
+        host_missing: "mcRelayAuditMissing",
+        host_loopback: "mcRelayAuditLoopback",
+        host_link_local: "mcRelayAuditLinkLocal",
+        host_private_local: "mcRelayAuditPrivateLocal",
+        host_private_other: "mcRelayAuditPrivateOther",
+        host_cgnat: "mcRelayAuditCgnat",
+        host_mdns: "mcRelayAuditMdns",
+        host_own_public_ip: "mcRelayAuditOwnPublic",
+        host_public: "mcRelayAuditPublic",
+        host_hostname: "mcRelayAuditHostname",
+      };
       function render(v) {
         if (!v) return;
         const put = (id, val) => { const el = $(id); if (el) el.value = val == null ? "" : String(val); };
@@ -12786,8 +12804,29 @@
               (v.hasPlaintextTokens ? " · " + tr("mcRelayPlainWarn", "当前文件仍是明文格式") : "")
             : tr("mcRelayEmpty", "尚未配置");
         }
+        // A3-16：这一行回答「上面那个地址，手机到底敲不敲得到」。
+        // 判定在 hosts/shared/relay/relay_host_audit.js，产品与门共用同一套口径。
+        const auEl = $("mc-relay-audit");
+        if (auEl) {
+          const a = v.audit;
+          if (a && a.level && a.level !== "ok") {
+            const fallback = String(a.note || "");
+            const text = tr(MC_AUDIT_KEY[a.code] || "", fallback) || fallback;
+            auEl.hidden = false;
+            auEl.dataset.audit = a.level;
+            auEl.textContent = (a.level === "error" ? "✗ " : "! ") + text;
+          } else {
+            auEl.hidden = true;
+            auEl.textContent = "";
+            delete auEl.dataset.audit;
+          }
+        }
         const dot = $("mc-relay-dot");
-        if (dot) dot.dataset.state = v.configured ? "on" : "off";
+        if (dot) {
+          // 「配了」和「能用」是两件事：自检不过就不要再亮绿灯。
+          const lv = v.audit && v.audit.level;
+          dot.dataset.state = !v.configured ? "off" : lv === "error" ? "error" : lv === "warn" ? "warn" : "on";
+        }
       }
       async function load() {
         try {
@@ -12814,9 +12853,13 @@
           try {
             const r = await window.bitbot.relaySettings.save(patch);
             render(r && r.view);
+            // A3-16：地址被自检挡下时，别把 `host_private_other` 这种码甩给用户。
+            const why = r && r.audit
+              ? (tr(MC_AUDIT_KEY[r.audit.code] || "", String(r.audit.note || "")) || String(r.audit.code))
+              : String((r && r.reason) || "unknown");
             say(r && r.ok
               ? tr("mcRelaySaved", "已保存并重新登记")
-              : tr("mcRelayFailed", "保存失败") + " · " + String((r && r.reason) || "unknown"),
+              : tr("mcRelayFailed", "保存失败") + " · " + why,
               !(r && r.ok));
           } catch (e) {
             say(String((e && e.message) || e), true);
@@ -15978,7 +16021,7 @@
         machineNeverPaired: "未配对",
         pairingReadFail: "配对状态读取失败（不猜）",
         pairingNotListening: "入站没在听 — 手机没地方连",
-        pairingLanOn: "手机可以连进来了：{url}",
+        pairingLanOn: "局域网地址（仅同一 Wi-Fi）：{url}",
         pairingLanOnNoIp: "已放开局域网，但没读到本机 IPv4 — 手机上要手填桌面的局域网地址",
         pairingLocalOnly: "只在桌面自己这台机器上开着：{url}。手机要连，点「允许手机连接」",
         pairingTurnEndpoint: "完整端点（手机会自己补，不用手抄）：{url}",
@@ -16016,6 +16059,17 @@
         mcRelayDisabled: "中转已关闭",
         mcRelayPlainWarn: "当前文件仍是明文格式",
         mcRelayKeep: "留空沿用",
+        mcRelayAuditMissing: "还没填中转地址，手机在蜂窝网下无从连起",
+        mcRelayAuditLoopback: "回环地址只在这台机器内部有效，手机永远敲不到",
+        mcRelayAuditLinkLocal: "链路本地地址，手机敲不到",
+        mcRelayAuditPrivateLocal: "这是本机的局域网地址：同一个 Wi-Fi 下能用，切到蜂窝就断",
+        mcRelayAuditPrivateOther: "私网地址，而且不在本机任何网段上 —— 既不是公网入口，也不是这台机器",
+        mcRelayAuditCgnat: "运营商大内网地址（100.64/10），出不了运营商",
+        mcRelayAuditMdns: "`.local` 靠局域网组播解析，蜂窝网下解析不了",
+        mcRelayAuditOwnPublic: "这是本机公网出口 IP：需要在路由器上把端口映射到本机才通，NAT 回环常不通",
+        mcRelayAuditPublic: "公网地址，手机在蜂窝网下够得到（前提是端口已放通）",
+        mcRelayAuditHostname: "域名：解析与端口放通取决于你的 DNS / 防火墙，这里替你验不了",
+        mcRelayHandoffHeld: "这个地址手机连不到，本轮回执已扣下跨网参数，手机仍走同网配对",
         mcPairTitle: "手机连接这台桌面",
         mcReading: "配对状态：读取中…",
         mcHint: "手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。",
@@ -16803,7 +16857,7 @@
         machineNeverPaired: "未配對",
         pairingReadFail: "配對狀態讀取失敗（不猜）",
         pairingNotListening: "入站沒在聽 — 手機沒地方連",
-        pairingLanOn: "手機可以連進來了：{url}",
+        pairingLanOn: "區域網位址（僅同一個 Wi-Fi）：{url}",
         pairingLanOnNoIp: "已放開區域網路，但沒讀到本機 IPv4 — 手機上要手填桌面的區域網路位址",
         pairingLocalOnly: "只在本機開著：{url}。手機要連，點「允許手機連接」",
         pairingTurnEndpoint: "完整端點（手機自己補，不用手抄）：{url}",
@@ -16841,6 +16895,17 @@
         mcRelayDisabled: "中轉已關閉",
         mcRelayPlainWarn: "目前檔案仍是明文格式",
         mcRelayKeep: "留空沿用",
+        mcRelayAuditMissing: "還沒填中轉位址，手機在蜂窩網下無從連起",
+        mcRelayAuditLoopback: "回環位址只在這一台機器內部有效，手機永遠敲不到",
+        mcRelayAuditLinkLocal: "鏈路本位址，手機敲不到",
+        mcRelayAuditPrivateLocal: "這是本機的區域網位址：同一個 Wi-Fi 下能用，切到蜂窩就斷",
+        mcRelayAuditPrivateOther: "私網位址，而且不在本機任何網段上 —— 既不是公網入口，也不是這一台機器",
+        mcRelayAuditCgnat: "營運商大內網位址（100.64/10），出不了營運商",
+        mcRelayAuditMdns: "`.local` 靠區域網組播解析，蜂窩網下解析不了",
+        mcRelayAuditOwnPublic: "這是本機公網出口 IP：需要在路由器上把埠映射到本機才通，NAT 回環常不通",
+        mcRelayAuditPublic: "公網位址，手機在蜂窩網下夠得到（前提是埠已放通）",
+        mcRelayAuditHostname: "域名：解析與埠放通取決於你的 DNS / 防火牆，這裡替你驗不了",
+        mcRelayHandoffHeld: "這個位址手機連不到，本輪回執已扣下跨網參數，手機仍走同網配對",
         mcPairTitle: "手機連接這台桌面",
         mcReading: "配對狀態：讀取中…",
         mcHint: "手機和桌面在同一個 Wi-Fi 下，輸入 6 位配對碼就能連上這台大腦，不需要手填長權杖。",
@@ -17628,7 +17693,7 @@
         machineNeverPaired: "not paired",
         pairingReadFail: "pairing state unreadable (not guessing)",
         pairingNotListening: "Inbound is not listening — nowhere for the phone to connect",
-        pairingLanOn: "Phones can connect now: {url}",
+        pairingLanOn: "LAN address (same Wi-Fi only): {url}",
         pairingLanOnNoIp: "LAN is open, but no local IPv4 found — type the desktop's LAN address on the phone",
         pairingLocalOnly: "Loopback only: {url}. Tap “Allow phone access” to let the phone in",
         pairingTurnEndpoint: "Full endpoint (the phone appends it — no need to copy): {url}",
@@ -17666,6 +17731,17 @@
         mcRelayDisabled: "Relay turned off",
         mcRelayPlainWarn: "Config file still holds plaintext credentials",
         mcRelayKeep: "Leave blank to keep",
+        mcRelayAuditMissing: "No relay host yet — the phone has nothing to dial over cellular",
+        mcRelayAuditLoopback: "Loopback only works inside this machine; the phone can never reach it",
+        mcRelayAuditLinkLocal: "Link-local address; the phone cannot reach it",
+        mcRelayAuditPrivateLocal: "This is this desktop's LAN address: fine on the same Wi-Fi, dead on cellular",
+        mcRelayAuditPrivateOther: "Private address, and not on any of this machine's subnets — not a public entry point, not this machine either",
+        mcRelayAuditCgnat: "Carrier-grade NAT address (100.64/10) — it never leaves the carrier",
+        mcRelayAuditMdns: "`.local` resolves via LAN multicast and cannot resolve on cellular",
+        mcRelayAuditOwnPublic: "This is this machine's public egress IP: it only works after you map the port on your router, and NAT loopback often fails",
+        mcRelayAuditPublic: "Public address — reachable over cellular, provided the port is open",
+        mcRelayAuditHostname: "Hostname: resolution and port reachability depend on your DNS/firewall; this cannot be verified here",
+        mcRelayHandoffHeld: "This address is unreachable for the phone, so cross-network parameters were withheld and the phone falls back to same-network pairing",
         mcPairTitle: "Connect your phone to this desktop",
         mcReading: "Pairing state: loading…",
         mcHint: "On the same Wi-Fi, the phone just types a 6-digit pairing code to reach this brain — no long token to paste.",

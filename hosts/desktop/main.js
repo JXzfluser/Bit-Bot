@@ -188,6 +188,16 @@ try {
 } catch (_e) {
   relaySettingsMod = require("../shared/relay/relay_settings");
 }
+// A3-16（部分关 R-A3-8a）：中转地址自检 —— 「这个地址手机敲得到吗」。
+// 同一个静音模块也决定了要不要把 relay 段塞进配对回执。
+let relayHostAudit;
+try {
+  relayHostAudit = require("./shared/relay/relay_host_audit");
+} catch (_e) {
+  relayHostAudit = require("../shared/relay/relay_host_audit");
+}
+// 只在码变了才打一行 warn，别每次配对都刷屏。
+let relayHandoffAuditLogged = "";
 
 // Pairing-v1: shared code manager (IPC + HTTP routes see the same instance).
 let createPairingCodeManager;
@@ -4208,7 +4218,25 @@ ipcMain.handle("bitbot:openArtifact", async (_event, artifactPath) => {
 /** 现读一次配置并折成给手机的四栏；读不出来就 null（回执逐字节不变）。 */
 function currentRelayHandoff() {
   try {
-    return relayConfigMod.toHandoff(loadCurrentRelayConfig());
+    const cfg = loadCurrentRelayConfig();
+    // A3-16：地址自检没过的反向配置**不下发**。
+    // 理由和 setup_public_relay.js 注释里那句一样：把一个手机连不上的地址
+    // 写进配对回执，比干脆不给 relay 参数更糟 —— 手机会照着连、连不上，
+    // 而桌面界面显示「已配置」，两边都以为没问题。
+    // 丢掉 relay 段后手机退回同网配对（老行为），至少是同 Wi-Fi 能用的。
+    const verdict = relayHostAudit.auditRelayHost({
+      host: cfg ? cfg.host : "",
+      port: cfg ? cfg.port : 0,
+      mode: cfg ? cfg.mode : "reverse",
+    });
+    if (relayHostAudit.shouldRejectSave(verdict)) {
+      if (relayHandoffAuditLogged !== verdict.code) {
+        relayHandoffAuditLogged = verdict.code;
+        console.warn("[relay-handoff] 已扣下不可用的中转地址：" + verdict.code + " · " + verdict.host);
+      }
+      return null;
+    }
+    return relayConfigMod.toHandoff(cfg);
   } catch (_e) {
     return null; // 配置读坏不该把配对拖死 —— 最坏就是这轮没有跨网参数
   }

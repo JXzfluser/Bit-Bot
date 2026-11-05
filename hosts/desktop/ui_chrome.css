@@ -3315,6 +3315,21 @@ body.grok-ui .ca-meta:empty { display: none; }
   background: var(--accent);
   border-color: var(--accent);
 }
+/* A3-16：配了不等于连得上。地址自检不过时灯必须变，否则「已配置」会骗人。 */
+.mc-dot[data-state="warn"] {
+  background: var(--warn);
+  border-color: var(--warn);
+}
+.mc-dot[data-state="error"] {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.mc-note[data-audit="warn"] {
+  color: var(--warn);
+}
+.mc-note[data-audit="error"] {
+  color: var(--danger);
+}
 .mc-status {
   font-size: var(--text-sm);
   line-height: 1.5;

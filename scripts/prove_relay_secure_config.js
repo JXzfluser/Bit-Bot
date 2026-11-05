@@ -171,18 +171,34 @@ async function main() {
   /* RS-09 静态 join：模块绿 ≠ 产品会用（A3-7 RB-09 的教训）。 */
   {
     const src = fs.readFileSync(MAINJS, "utf8");
+    // A3-16 把回执四栏从「一行 loadCurrentRelayConfig() 直塞 toHandoff」
+    // 改成了「先拿 cfg → 地址自检 → 过了才 toHandoff，不过就 return null」，
+    // 原来那条整行锚点必然失配。这里**不删约束、改锚点形状**：
+    // 顺带修掉一个老毛病 —— `const cfg = loadCurrentRelayConfig();` 原来是
+    // 全文字符串匹配，A3-16 之后 handoff 里也长出同样一行，于是登记那处
+    // 就算哪天不接也照样绿。改成按函数体切片，各查各的。
+    const bodyOf = (name) => {
+      const i = src.indexOf("function " + name);
+      if (i < 0) return "";
+      const j = src.indexOf("\n}\n", i); // 顶层函数收尾（行首花括号）
+      return j > i ? src.slice(i, j) : src.slice(i, i + 2400);
+    };
+    const handoffBody = bodyOf("currentRelayHandoff");
+    const registerBody = bodyOf("syncRelayBoxRegistration");
     const anchors = [
       [src, 'require("./shared/relay/relay_secrets")', "没 require relay_secrets 模块"],
       [src, "createSecretVault(REPO_ROOT)", "没创建 vault 实例"],
       [src, "function loadCurrentRelayConfig()", "没有统一安全读口"],
       [src, "relaySecretsMod.loadRelayConfigSecure({ repoRoot: REPO_ROOT, vault: relayVault })", "读口没接 secure load"],
-      [src, "return relayConfigMod.toHandoff(loadCurrentRelayConfig());", "回执四栏没走安全读口"],
-      [src, "const cfg = loadCurrentRelayConfig();", "登记没走安全读口"],
+      [handoffBody, "loadCurrentRelayConfig()", "回执四栏没走安全读口"],
+      [handoffBody, "relayConfigMod.toHandoff(", "回执四栏没经 toHandoff 折成四栏"],
+      [registerBody, "loadCurrentRelayConfig()", "登记没走安全读口"],
       [src, "load: () => loadCurrentRelayConfig(),", "配置观察器没走安全读口"],
     ];
     const missing = anchors.filter(([s, needle]) => !s.includes(needle)).map(([, , why]) => why);
     if (missing.length) bad("RS-09 桌面接线缺了 " + missing.length + " 处：" + missing.join("；"));
-    else ok("RS-09 七处接线都在：require / vault / 统一读口 / 三处调用 / 回执四栏");
+    else if (!handoffBody) bad("RS-09 切不出 currentRelayHandoff 函数体（锚点失效，不是绿）");
+    else ok("RS-09 八处接线都在：require / vault / 统一读口 / 三处调用 / 回执四栏 / 登记");
   }
 
   /* RS-10 既有门的关键锚点一字未动（改 main.js 最怕连坐）。 */

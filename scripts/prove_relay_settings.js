@@ -217,12 +217,16 @@ async function main() {
     const q0 = main.indexOf('app.on("before-quit"');
     const q1 = main.indexOf('app.on("will-quit"');
     const quitBlock = q0 >= 0 && q1 > q0 ? main.slice(q0, q1) : "";
+    // A3-16：回执四栏改成「先拿 cfg → 地址自检 → 过了才 toHandoff」，
+    // 原来那条整行锚点必然失配。约束保留，锚点改形状。
+    const hs = main.indexOf("function currentRelayHandoff");
+    const handoffBody = hs >= 0 ? main.slice(hs, hs + 1600) : "";
     const anchors = [
       [main, "relayHandoff: () => currentRelayHandoff(),", "RB-09"],
       [main, "const started = await cnInbound.start();", "RB-09"],
       [main, "syncRelayBoxRegistration(started)", "RB-09"],
       [main, "load: () => loadCurrentRelayConfig(),", "RH-10"],
-      [main, "return relayConfigMod.toHandoff(loadCurrentRelayConfig());", "RS-09"],
+      [handoffBody, "relayConfigMod.toHandoff(", "RS-09"],
       [quitBlock, "relayBox.stop()", "RB-09 quit"],
       [quitBlock, "stopRelayConfigWatch();", "RH-10 quit"],
     ];

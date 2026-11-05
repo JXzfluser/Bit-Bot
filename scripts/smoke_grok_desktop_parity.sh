@@ -3748,7 +3748,40 @@ else
   echo "  · G-91 残留（诚实）：见上；这条红的常见原因：地址拆分被摘、四栏误用 connect_host、或部署脚本绑回 127.0.0.1"
 fi
 
-echo "== G-75 手机真订得到、看得见、断线接得上（路线 A · W2 收口 / A1-3 + F1/F2 真 Electron 门）=="
+echo "== G-92 中转地址自检（路线 A · W4 / A3-16 · 两个地址为什么不一样）=="
+if timeout 180 node scripts/prove_relay_host_audit.js > /tmp/g92-hostaudit.log 2>&1; then
+  ok "G-92 地址自检全绿（$(grep -c '^  ✓ ' /tmp/g92-hostaudit.log) 项断言，$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g92-hostaudit.log)）"
+  grep -q 'HA-01 ' /tmp/g92-hostaudit.log && grep -q 'HA-02 ' /tmp/g92-hostaudit.log && grep -q 'HA-03 ' /tmp/g92-hostaudit.log && grep -q 'HA-04 ' /tmp/g92-hostaudit.log \
+    && ok "G-92 认得清：13 种地址分类、5 种写法归一；本机网卡私网与「别处捡来的私网」判成两回事" \
+    || bad "G-92 HA-01/02/03/04 锚点缺失"
+  grep -q 'HA-05 ' /tmp/g92-hostaudit.log && grep -q 'HA-06 ' /tmp/g92-hostaudit.log && grep -q 'HA-09 ' /tmp/g92-hostaudit.log \
+    && ok "G-92 不判死：公网域名/本机公网出口 IP 只 warn；dial 同网部署的私网地址照存（准入只拦 reverse+error）" \
+    || bad "G-92 HA-05/06/09 锚点缺失"
+  grep -q 'HA-07 ' /tmp/g92-hostaudit.log && grep -q 'HA-08 ' /tmp/g92-hostaudit.log && grep -q 'HA-10 ' /tmp/g92-hostaudit.log \
+    && ok "G-92 真拦得住：读视图带 audit、reverse+私网保存被拒且文件零改动、回执自检不过就 return null（不下发死地址）" \
+    || bad "G-92 HA-07/08/10 锚点缺失"
+  grep -q 'HA-11 ' /tmp/g92-hostaudit.log && grep -q 'HA-12 ' /tmp/g92-hostaudit.log && grep -q 'HA-13 ' /tmp/g92-hostaudit.log \
+    && ok "G-92 界面也说人话：有审计行、码→词条表、灯跟随自检结果、11 词条 × 3 语齐、输出不含凭证" \
+    || bad "G-92 HA-11/12/13 锚点缺失"
+  echo "  · G-92 现场来由（用户报障，不是凭空造的用例）：配对那行显示 http://10.201.107.104:18765，"
+  echo "    中转那行显示 192.168.1.5:18766 —— 两个地址本来就该不一样（一个是网卡现算的局域网地址，"
+  echo "    一个是 relay.json 里手填的下发地址）；真正的病是 **192.168.1.5 既不在本机任何网段、也不是公网**，"
+  echo "    而 A3-14 的设置面只校验「非空 + 端口范围」，于是它被写进配置、随回执发给手机，手机照着连、连不上。"
+  echo "  · G-92 十三组负向对照逐个实跑、逐组复原校验、0 真空（原文见 report.md §8.81.4）。"
+  echo "    其中 M05 第一版真空：把 if 块里的 return null 删掉门仍绿 —— HA-10 用 main.includes 全文搜，"
+  echo "    被 catch 兜底那句 return null 撑绿；换成贪心正则后**又**跨过 if 右花括号吃到兜底那行，"
+  echo "    最终改成按花括号切出 if 块区间再查才红（A3-7 RB-09 / A3-14 M03 同型坑，第三次踩）。"
+  echo "  · G-92 诚实边界：① 判定只据 host 字面 + 本机网卡，**不做 DNS 解析、不探测端口** ——"
+  echo "    域名 host 一律 warn 不是 ok，因为「解析得到」和「敲得开」这台机器说了不算；"
+  echo "    ② 没有记录任何「曾经连通过」的历史，因此无法区分「配置错了」与「配置对但现在网络变了」；"
+  echo "    ③ 现场 relay.json 里的 192.168.1.5 是历史残留，本刀没动它（改它需要用户真实公网地址），"
+  echo "    现在的行为是：界面标红 + 回执扣下 relay 段，手机退回同网配对。"
+else
+  bad "G-92 地址自检（见 /tmp/g92-hostaudit.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g92-hostaudit.log || tail -3 /tmp/g92-hostaudit.log | head -1)）"
+  echo "  · G-92 残留（诚实）：见上；这条红的常见原因：分类被改宽/改窄、准入闸被摘、界面灯回到「配了就绿」"
+fi
+
+
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then

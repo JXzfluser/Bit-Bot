@@ -7199,3 +7199,137 @@ grep 失配。**不是产品红，是门与总闸的文案脱钩**，又一种�
 修法：拆成两条独立 `ok`（BP-06 审计有 `stream-reject`、BP-07 日志非空的反真空），
 门从 `PASS=8 FAIL=0` 变 `PASS=9 FAIL=0`；四条 grep 逐条复验全命中，
 A3-13 的七组负向对照重跑仍 `0 真空`。历史章节里 A3-13 当时的 `8/0` 按惯例保留不改。
+
+---
+
+## 8.81 A3-16 中转地址自检（两个地址为什么不一样 · 部分关 R-A3-8a）
+
+### 8.81.1 起因：用户指着一张截图问「这里的地址是另外一个呢」
+
+现场两个地址同时出现在桌面上：
+
+| 位置 | 值 | 谁算的 |
+|---|---|---|
+| 手机配对那一行 | `http://10.201.107.104:18765` | `pairingState()` 现读网卡 `lanIPv4Addresses()` |
+| 跨网中转那行 | `192.168.1.5:18766` | `data/desktop/relay.json` 里手填的 `host` |
+
+**这两个地址本来就该不一样** —— 一个是「同一个 Wi-Fi 下手机敲哪儿」，一个是
+「手机走蜂窝时该敲哪儿」，端口都不同（18765 是配对入站，18766 是 relay）。
+真正的病不在「不一样」，在于第二行那个值**是错的却没人发现**：
+
+* `192.168.1.5` 不在这台机器的任何一块网卡上（实际是 `10.201.107.104` /
+  `192.168.139.3` / `192.168.215.0`），也不是公网出口 IP；
+* `scripts/setup_public_relay.js` 早就会拒绝私网 host，但它是**脚本**，
+  走界面的用户绕过去了；
+* A3-14 的 `saveRelaySettings()` 只校验「非空 + 端口范围」，于是这个地址
+  被写进 `relay.json`、经 `toHandoff()` 随配对回执下发给手机，**手机照着连、
+  连不上**，而桌面界面显示「已配置」、绿灯亮着。
+
+所以这一刀要证的不是「地址为什么不一样」（本来就该不一样），而是
+**产品自己知道哪个地址谁能敲到，并且不会把一个敲不到的地址交出去**。
+
+### 8.81.2 改动
+
+| 文件 | 改动 |
+|---|---|
+| `hosts/shared/relay/relay_host_audit.js`（新建） | 纯函数：`normalizeHost` / `classifyHost` / `localIPv4List` / `auditRelayHost` / `shouldRejectSave`。分类 `loopback / link_local / private / cgnat / mdns / public / hostname / empty`，并区分「**本机网卡上的**私网地址」与「别处捡来的私网地址」 |
+| `hosts/shared/relay/relay_settings.js` | `readRelaySettings()` 多带一个 `audit`（只读判定，不拦读）；`saveRelaySettings()` 在 `missing_token` 之后加准入闸：`shouldRejectSave(audit)` 为真则拒，`reason` 直接用自检码，并**把 `audit` 一起带回**给界面 |
+| `hosts/desktop/main.js` | `currentRelayHandoff()` 先自检，不通过就 `return null` —— **扣下 relay 段**，手机退回同网配对；`relayHandoffAuditLogged` 只在码变了时打一行 warn，不刷屏 |
+| `hosts/desktop/index.html` | 入口卡片加 `#mc-relay-audit` 一行 + `MC_AUDIT_KEY` 码→词条表；灯改三态（off / warn / error）；保存失败提示不再甩 `host_private_other` 这种内部码；`pairingLanOn` 三语改写成「局域网地址（仅同一 Wi-Fi）」 |
+| `hosts/desktop/ui_chrome.css` | `.mc-dot[data-state=warn/error]` + `.mc-note[data-audit=warn/error]` |
+| `scripts/prove_relay_host_audit.js`（新建） | HA-01..HA-14 |
+| `scripts/prove_relay_secure_config.js` | RS-09 锚点改形状（见 §8.81.5） |
+| `scripts/prove_relay_settings.js` | RS2-11 同上 |
+| `scripts/smoke_grok_desktop_parity.sh` | 新增 G-92 |
+
+**判定口径（`shouldRejectSave`）只有一条**：`level === "error" && mode === "reverse"`。
+`dial` 是「同网部署」，私网地址合法，只 warn 不拒 —— 这条是反真空的支点，
+证明这套判定不是「看到私网就打死」。
+
+### 8.81.3 红 → 绿
+
+门写完后 `HA-01..HA-14` 一次 `PASS=14 FAIL=0`，没有「先红」阶段 —— 因为
+这一刀是**新增约束**，原有代码里没有可回退的实现。红是用负向对照证的
+（§8.81.4）。修复前的行为有直接证据：用真 `relay.json` 跑一次读视图，
+
+```
+configured: true host: 192.168.1.5 port: 18766 mode: reverse connectHost: 127.0.0.1
+audit: {"kind":"private","isLocalInterface":false,"level":"error",
+        "code":"host_private_other","reachableFromCellular":false,
+        "note":"私网地址，而且不在本机任何网段上 —— 既不是公网入口，也不是这台机器。"}
+```
+
+即：**改动之后这个配置第一次被如实判成 error**；改动之前它一路绿灯到手机。
+
+回归：十一门全绿 —— `prove_relay_host_audit 14/0`、`prove_relay_settings 13/0`、
+`prove_relay_secure_config 11/0`、`prove_relay_config_hot_reload 11/0`、
+`prove_relay_reverse_tunnel 15/0`、`prove_relay_box_registration 12/0`、
+`prove_relay_stream_backpressure 9/0`、`prove_relay_reverse_resilience 9/0`、
+`prove_public_relay_setup 11/0`、`prove_cn_relay_image 6/0`、`prove_cn_relay_invisible 6/0`。
+
+### 8.81.4 十三组负向对照（逐组实跑 · 逐组复原 · 0 真空）
+
+| 组 | 改什么 | 必须红 |
+|---|---|---|
+| M01 | 去掉 `192.168/16` 私网判定 | HA-01 |
+| M02 | 私网不再区分本机 / 别处 | HA-04 |
+| M03 | 准入判定恒 `false`（永不拒） | HA-06, HA-08 |
+| M04 | 准入判定不看 `mode`（dial 也拒） | HA-06 |
+| M05 | 自检不过也照样下发 | HA-10 |
+| M06 | 读视图不带 `audit` | HA-07 |
+| M07 | 保存前不拦（删掉准入闸） | HA-08 |
+| M08 | 界面码→词条表改名 | HA-11 |
+| M09 | 删掉英文 `mcRelayAuditHostname` | HA-12 |
+| M10 | 灯恒亮（回到「配了就绿灯」） | HA-11 |
+| M11 | 删掉界面审计行 | HA-11 |
+| M12 | 归一不去 scheme | HA-02 |
+| M13 | 配对那行改回「手机可以连进来了」 | HA-14 |
+
+结果 `13/13 红`，收尾回到 `PASS=14 FAIL=0`。
+
+**两处真空（必须记）**：
+
+1. **M05 第一版真空**。HA-10 原来只搜 `return null;`，而 `currentRelayHandoff()`
+   的 `catch` 兜底恰好也有一句 `return null;` —— 把 if 块里的那句删掉，门照样绿。
+   典型的「`main.includes` 被同款调用撑绿」（A3-7 RB-09 / A3-14 M03 同型，这是第三次）。
+2. **M05 第二版仍然真空**。换成 `[\s\S]{0,500}?return null;` 后，虽然加了长度上限，
+   但 `[\s\S]` 会跨过 if 的右花括号，又吃到兜底那句。最终改成
+   **按花括号位置切出 if 块区间**（`indexOf("\n    }")` 定右界）再在区间里查，才真正变红。
+   教训：钉「某个 return 在指定分支内」不能靠正文字符串，只能靠结构切块。
+
+### 8.81.5 连坐修复：两处既有静态锚点必然失配
+
+`currentRelayHandoff()` 从「一行 `loadCurrentRelayConfig()` 直塞 `toHandoff`」
+变成「先拿 `cfg` → 自检 → 过了才 `toHandoff`」，于是：
+
+* `prove_relay_secure_config.js` 的 `RS-09` 整行锚点
+  `return relayConfigMod.toHandoff(loadCurrentRelayConfig());` 失配 → `11/0` 变 `10/1`；
+* `prove_relay_settings.js` 的 `RS2-11` 抄了同一条锚点 → `13/0` 变 `12/1`。
+
+两条都是「回执四栏没走安全读口」。**约束是对的，锚点形状过期了**，
+所以不删约束、改形状：
+
+* `RS-09` 改成按函数体切片断言 —— `bodyOf("currentRelayHandoff")` 里必须有
+  `loadCurrentRelayConfig()` 与 `relayConfigMod.toHandoff(`；`bodyOf("syncRelayBoxRegistration")`
+  里必须有 `loadCurrentRelayConfig()`。
+* 顺带修掉一个**老问题**：原来 `[src, "const cfg = loadCurrentRelayConfig();", "登记没走安全读口"]`
+  是全文匹配，A3-16 之后 handoff 里也长出同样一行，于是「登记没走安全读口」这条
+  就算哪天真的不接也照样绿。切片后各查各的，断言数从七处变八处。
+* `RS2-11` 同样把那条抄来的整行锚点换成 handoff 切片里的 `relayConfigMod.toHandoff(`。
+
+### 8.81.6 残留（诚实）
+
+1. **判定只看 host 字面 + 本机网卡，不做 DNS 解析、不探端口**。域名一律 `warn`
+   而非 `ok` —— 「解析得到」和「敲得开」这台机器说了不算。也就是说
+   `hostname` 与 `host_own_public_ip` 两种 warn 仍然可能连不上，门也证不了。
+2. **不记历史**。无法区分「配置写错了」与「配置本来对、但现在换了网络」。
+   用户换 Wi-Fi 后被判 error 时会看到红字，虽然结论正确但归因不准。
+3. **回执扣下 relay 段是「静默降级」**：手机侧只会看到「没有 relay 参数」，
+   不知道桌面为什么没给。要等 R-A3-5b/R-A3-6a（跨网配对不再依赖先同网一次）
+   一起做，才谈得上把原因告诉手机。
+4. **现场那个 `192.168.1.5` 没动**。改它需要用户真实的公网地址（或域名），
+   属于基础设施侧；现在的行为是「界面标红 + 回执不下发」。
+5. 三语新词条未做真机切语言肉眼验收；`ui_chrome.css` 只加了 warn/error 两态配色，
+   没做对比度实测。
+6. **R-A3-8a 仍未关闭**：真公网 + 真 NAT + 蜂窝网样本依旧为零。
+

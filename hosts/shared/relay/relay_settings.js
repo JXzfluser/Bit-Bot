@@ -18,6 +18,7 @@ const fs = require("fs");
 const path = require("path");
 const relaySecrets = require("./relay_secrets");
 const relayConfig = require("./relay_config");
+const hostAudit = require("./relay_host_audit");
 
 function mask(v) {
   const s = String(v || "");
@@ -31,6 +32,8 @@ function optsOf(opts) {
     file: o.file,
     vault: o.vault,
     env: o.env === undefined ? {} : o.env, // 设置面只看文件，不被进程环境变量干扰
+    // 门禁注入网卡表用；产品里留 undefined ⇒ relay_host_audit 现读 os。
+    interfaces: o.interfaces,
   };
 }
 
@@ -39,6 +42,16 @@ function readRelaySettings(opts) {
   const o = optsOf(opts);
   const cfg = relaySecrets.loadRelayConfigSecure(o);
   const info = relaySecrets.inspectRelayConfigFile(o);
+  // A3-16：顺手审一下这个地址谁能敲到。**只读判定，不拦读**——
+  // 即使配置是坏的，界面也必须能把「坏在哪」说出来，而不是干脆不显示。
+  const audit = cfg
+    ? hostAudit.auditRelayHost({
+        host: cfg.host,
+        port: cfg.port,
+        mode: cfg.mode,
+        interfaces: o.interfaces,
+      })
+    : null;
   return {
     configured: Boolean(cfg),
     host: cfg ? cfg.host : "",
@@ -51,6 +64,7 @@ function readRelaySettings(opts) {
     boxTokenMask: cfg ? mask(cfg.boxToken) : "",
     clientTokenMask: cfg ? mask(cfg.clientToken) : "",
     warnings: info.warnings.slice(),
+    audit,
     // 显式诚实：渲染端拿不到值，连字段名都不给它误用的机会。
     value_echoed: false,
   };
@@ -91,6 +105,18 @@ function saveRelaySettings(opts) {
   if (!p.boxId) return { ok: false, reason: "missing_box_id", view: view() };
   if (!boxToken || !clientToken) {
     return { ok: false, reason: "missing_token", view: view() };
+  }
+  // A3-16：reverse 模式说的是「手机从公网回来」，所以这里必须挡住
+  // 回环 / 私网 / mDNS / CGNAT —— 否则写进去的是个手机永远连不上的地址，
+  // 界面上还会显示「已配置」，比不配更误导。dial 模式同网部署，放行。
+  const verdict = hostAudit.auditRelayHost({
+    host: p.host,
+    port: p.port,
+    mode: p.mode,
+    interfaces: o.interfaces,
+  });
+  if (hostAudit.shouldRejectSave(verdict)) {
+    return { ok: false, reason: verdict.code, audit: verdict, view: view() };
   }
 
   const cfg = {
