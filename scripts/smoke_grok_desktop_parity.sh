@@ -3902,6 +3902,19 @@ else
   bad "G-99 启动日志门（见 /tmp/g99-failure-copy.log；$(tail -3 /tmp/g99-failure-copy.log | tr '\n' ' ')）"
 fi
 
+echo "== G-100 桌面端「能启动好」这件事本身有门（DS-01..DS-10）=="
+if timeout 120 node scripts/prove_desktop_start.js > /tmp/g100-start.log 2>&1; then
+  ok "G-100 启动脚本结构可信（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g100-start.log)）"
+  grep -q 'DS-02 七组负向对照' /tmp/g100-start.log \
+    && ok "G-100 判据有牙：不剔变量 / 路径找错 / 不判活 / 走代理 / 无早退 / 静默降级 / 中文变量七组注入全被抓到" \
+    || bad "G-100 负向对照缺失"
+  grep -q 'DS-05 path.txt 解析落到真可执行文件' /tmp/g100-start.log \
+    && ok "G-100 Electron 二进制路径落到真文件（macOS 布局不会找错）" \
+    || bad "G-100 二进制路径证据缺失"
+else
+  bad "G-100 启动门（见 /tmp/g100-start.log；$(tail -3 /tmp/g100-start.log | tr '\n' ' ')）"
+fi
+
 
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

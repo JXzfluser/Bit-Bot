@@ -72,6 +72,21 @@ NAT 从未出现。A3-9 的门禁用 `192.0.2.1:1` 不可达端点等价建模�
 
 ## 2. 部署（以下都在桌面 / relay 机器上，命令可直接复制）
 
+### 2.0 先把桌面端启动好
+
+```bash
+bash scripts/start-desktop.sh
+# 受限环境（沙箱 / 无 GPU 权限）：BITBOT_DESKTOP_SAFE=1 bash scripts/start-desktop.sh
+```
+
+这条命令会：剔除 shell 里常驻的 `ELECTRON_RUN_AS_NODE`（不剔 Electron 会退化成纯 Node）、
+按 `path.txt` 找到正确平台的二进制、必要时降级 sandbox/GPU，然后**判活**
+（等 `cn-inbound listening=true` 并真打 `/v1/pair/discover` 要 200）。看到
+`[desktop] ready: … → 200` 才算起来好了；只看到进程不等于能用。
+
+桌面日志里如果出现 `[relay-box] 登记失败：… errno=ECONNREFUSED`，那是 **relay 没起**，
+按 §2.2 去起 relay；**别去查日志里 `endpoint=` 那个地址**（reverse 下它只是展示字段）。
+
 ### 2.1 生成两把钥匙 —— 两把不能混
 
 `box_token`（role=box）只给桌面自己 `BIND` 用，**绝不下发**；

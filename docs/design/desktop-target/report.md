@@ -8033,3 +8033,78 @@ FC-06 断言 9 次失败不能是 0 行（把「没打日志」当「收敛成�
    `Bit Bot.app` 的形态；GPU/沙箱在正常 macOS 上是可用的，但那条路径本轮没实跑。
 3. relay 没起是本机现状，不是产品缺陷；真公网 relay + NAT + 蜂窝手机仍零样本（`R-A3-8a`）。
 4. 收敛阈值 `repeatEvery=10` 是取舍，不是量出来的最优值。
+
+---
+
+## 8.88 「启动好」不能只是一次性手工命令：把两个坑固化进 start-desktop.sh
+
+### 8.88.1 既有启动脚本两个坑都不处理
+
+上一节（§8.87）手工启动踩了两次才起来：shell 里 `ELECTRON_RUN_AS_NODE=1` 常驻、
+受限环境 Chromium sandbox/GPU 起不来。回头看项目已有的 `scripts/start-desktop.sh`，
+最后一句就是：
+
+```bash
+exec npm start
+```
+
+**两个坑一个都没处理**。照它跑会原样再踩一遍；而且「进程活着」也没有任何判活，
+用户得对着一个可能半死的窗口猜。上一次改这个文件是 2026-10-22，比这一整轮
+A3-* 的 relay 工作都早 —— 后端做了这么多，启动入口一直没跟着长。
+
+### 8.88.2 改成什么
+
+| 段 | 内容 |
+| --- | --- |
+| ① 净化环境 | `env -u` 剔除 `ELECTRON_RUN_AS_NODE` / `NODE_OPTIONS` / 六个代理变量，口径与 `scripts/electron_env.mjs` 的 DROP 同源（DS-03 会比对，一处改了另一处漏了会红） |
+| ② 二进制定位 | 以 electron 包自己的 `path.txt` 为准，兜 macOS 的 `Electron.app/Contents/MacOS/Electron`；找不到直接报红，不静默退化 |
+| ③ 受限降级 | **默认不改启动形态**；仅 `BITBOT_DESKTOP_SAFE=1` 或探测到受限沙箱时才加 `--no-sandbox --disable-gpu` + 独立 user-data-dir，并明确打两行说明「这是降级形态，不等于日常双击 app」 |
+| ④ 判活 | 等日志 `cn-inbound listening=true` → **真打** `/v1/pair/discover`（`--noproxy '*'`，否则读到代理的 502 而不是产品状态）；见到 `GPU process isn't usable`/`FATAL` 立即早退；~24s 超时报红并 `tail -12` 日志 |
+
+用法：`bash scripts/start-desktop.sh` 前台运行；受限环境设 `BITBOT_DESKTOP_SAFE=1`；
+CI 用 `BITBOT_DESKTOP_NO_WAIT=1` 跳过判活。
+
+### 8.88.3 脚本自己也踩了一次，而且当场被自测抓到
+
+第一次跑修好的脚本，960ms 就红：
+
+```
+scripts/start-desktop.sh: line 85: UD?: unbound variable
+```
+
+原因是 `echo "…user-data-dir=$UD）"` 里，`$UD` 紧挨中文全角括号 `）`，
+bash 把多字节 UTF-8 的首字节吃进了变量名。改成 `${UD}` 即好。
+**中文紧邻 shell 变量必须 `${}`** —— 这条现在有 DS-01 静态判据和 DS-02 负向对照钉着，
+不是靠人记住。
+
+修完真跑一次（这次是用脚本、不是手工命令）：
+
+```
+[desktop] MoonBit=moon 0.1.20261012 … target=native
+[desktop] 受限环境：启用 --no-sandbox --disable-gpu（独立 user-data-dir=/tmp/bitbot-desktop-live-ud）
+[desktop] 注：这是降级形态，不等于日常双击 Bit Bot.app 的启动路径
+[desktop] app="Bit Bot" version=0.1.0
+[desktop] ready: /v1/pair/discover → 200；日志 /tmp/bitbot-desktop-script2.log
+[desktop] pid=33728（Ctrl-C 退出）
+```
+
+桌面端现在由这条命令稳定运行中。
+
+### 8.88.4 门 DS-01..DS-10 + G-100（10/0）
+
+`scripts/prove_desktop_start.js` 不真的再起一个 Electron（要 GUI、慢、会抢 18765），
+而是钉住脚本四段结构 + 用 bash 真跑语法与 path.txt 解析片段 + 桌面端在跑时做真判活正控。
+七组负向对照逐个摘要红。
+
+**判据上又栽一次（本轮第十四次，同型）**：DS-02「降级不打说明」判据写成
+`/不等于日常双击|降级形态/`，而脚本两句都有 —— 改掉一句另一句仍撑绿。改成两句**都**钉。
+规律仍是：或条件会被另一半撑绿，判据要锚齐所有必要形状。
+
+### 8.88.5 残留（诚实）
+
+1. 本门不真起 Electron，验证的是脚本结构 + 真路径 + 真 HTTP；完整启动链由 §8.87 的
+   两次真启动与本次脚本真跑覆盖，但**没有**做成 CI 上每次都跑的门（GUI 依赖）。
+2. `--no-sandbox --disable-gpu` 是受限环境降级形态，日常双击 `Bit Bot.app` 的
+   正常路径本轮仍未实跑。
+3. 自动探测用的是「是否在受限 agent 沙箱里」这个环境标志，不是直接探测
+   Chromium sandbox 权限；在别的受限环境里仍可能需要显式 `BITBOT_DESKTOP_SAFE=1`。
