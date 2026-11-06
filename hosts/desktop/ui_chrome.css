@@ -3463,3 +3463,172 @@ body.grok-ui .cn-hint {
   line-height: 1.5;
   color: var(--muted);
 }
+
+/* ── 移动端远程控制 / 连接管理：按参考稿收敛为「扫码为主、配置折叠」 ──────────
+ * 设计口径：主区一眼只回答「现在能不能连、扫哪里」，所有需要用户思考/填写的
+ * 东西退到 <details> 里。新增类全部以 mc2- 或既有 mc- 的修饰类命名，
+ * 不改 .mc-card / .mc-grid 既有规则（MC-09 会量几何，动了就假红）。
+ * 配套断言：scripts/prove_ui_simplicity.js（主区可见输入框数 = 0）。 */
+.mc-sheet { --sheet-w: 780px; padding-bottom: var(--space-3); }
+.mc-sheet-head { align-items: flex-start; gap: var(--space-3); }
+.mc-heading { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.mc-heading-ic {
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 9px; color: var(--ink);
+  background: var(--surface);
+}
+.mc-heading-tx { min-width: 0; }
+.mc-subtitle {
+  margin-top: 3px; font-size: var(--text-sm); line-height: 1.5;
+  color: var(--muted); max-width: 52ch;
+}
+.mc-x { margin-left: auto; font-size: 17px; line-height: 1; padding: 2px 8px; }
+
+.mc-card-ic {
+  flex: none; width: 24px; height: 24px; display: grid; place-items: center;
+  border-radius: 7px; border: 1px solid var(--line); color: var(--muted);
+}
+.mc-card-note { margin: 0; font-size: var(--text-sm); line-height: 1.55; color: var(--muted); }
+
+/* 状态一行：点 + 真话 + 一个动作，不堆按钮 */
+.mc-state {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 10px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.mc-state .mc-status { flex: 1 1 160px; min-width: 0; }
+.mc-state-btn { flex: none; }
+.mc-scope { margin: 0; }
+
+/* 「扫不了？」一行 + 两个动作；次要用幽灵按钮 */
+.mc-fallback {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; flex-wrap: wrap;
+  font-size: var(--text-sm); color: var(--muted);
+}
+.mc-fallback .mc-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* 二维码：大、居中、白底安静区（扫码器要求 4 模块白边） */
+.mc-qr-wrap {
+  display: grid; place-items: center; min-height: 196px;
+  padding: 14px; border-radius: 10px;
+  border: 1px solid var(--line); background: #fff;
+}
+.mc-qr { width: 168px; height: 168px; display: grid; place-items: center; }
+.mc-qr svg { width: 100%; height: 100%; display: block; }
+/* 白底里必须深色字：第一版沿用 --muted（浅灰）在深色主题下几乎看不见，
+   截图验收抓到的真问题。这里显式写深色，不受主题变量影响。 */
+.mc-qr-empty { font-size: var(--text-sm); color: #5a6069; text-align: center; max-width: 24ch; line-height: 1.6; }
+.mc-qr-empty[hidden] { display: none; }
+
+/* 6 位码：主区里降为紧凑一行，不再是第二个大卡片 */
+.mc-code-inline { padding: 8px 10px; border-radius: 8px; border: 1px dashed var(--line); }
+.mc-code-inline .pc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mc-code-inline .pc-hint { margin: 6px 0 0; font-size: var(--text-xs, 11px); color: var(--muted); line-height: 1.45; }
+.mc-code-inline .pc-display { margin-top: 6px; }
+.mc-link-note { margin: 0; font-size: var(--text-xs, 11px); line-height: 1.45; }
+
+/* 右列渠道卡：图标徽章 + 名字 + 一句话；参考稿的卡片式留白 */
+.mc-channels { gap: 10px; }
+.mc-ch-list { display: flex; flex-direction: column; gap: 8px; }
+.mc-ch {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.mc-ch-ic {
+  flex: none; width: 30px; height: 30px; border-radius: 8px;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 700; color: #fff;
+}
+.mc-ch-ding { background: #2f7cf6; }
+.mc-ch-feishu { background: #3370ff; }
+.mc-ch-wecom { background: #2f9e6f; }
+.mc-ch-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mc-ch-tx b { font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
+.mc-ch-tx small { font-size: var(--text-xs, 11px); color: var(--muted); line-height: 1.4; }
+.mc-ch-go { align-self: flex-start; }
+.mc-manager-btn { margin-top: auto; width: 100%; }
+
+/* 高级：默认折叠；展开也不把主区挤破 */
+.mc-advanced { margin-top: var(--space-3); border-top: 1px solid var(--line); padding-top: 8px; }
+.mc-advanced > summary {
+  cursor: pointer; font-size: var(--text-sm); color: var(--muted);
+  padding: 4px 2px; list-style: none; user-select: none;
+}
+.mc-advanced > summary::-webkit-details-marker { display: none; }
+.mc-advanced > summary::before { content: "›"; display: inline-block; margin-right: 6px; transition: transform .15s; }
+.mc-advanced[open] > summary::before { transform: rotate(90deg); }
+.mc-advanced-body {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-3); margin-top: 8px;
+}
+.mc-adv-card { padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); }
+
+@media (max-width: 640px) {
+  .mc-grid { grid-template-columns: 1fr; }
+  .mc-qr { width: 148px; height: 148px; }
+  .mc-subtitle { max-width: none; }
+}
+
+/* ── 机器人/连接管理（参考稿 2）：左列表 + 右详情，主区零输入框 ────────── */
+.mc2-sheet { --sheet-w: 760px; }
+.mc2-layout {
+  display: grid; grid-template-columns: 190px 1fr;
+  gap: var(--space-4); margin-top: var(--space-3);
+  align-items: start;
+}
+.mc2-list {
+  display: flex; flex-direction: column; gap: 4px;
+  padding-right: var(--space-3); border-right: 1px solid var(--line);
+}
+.mc2-list-title {
+  font-size: var(--text-xs, 11px); color: var(--muted);
+  text-transform: none; padding: 2px 6px 6px;
+}
+.mc2-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 8px; border: 1px solid transparent; border-radius: 9px;
+  background: transparent; color: var(--ink); text-align: left; cursor: pointer;
+}
+.mc2-item:hover { background: var(--surface); }
+.mc2-item.is-active { background: var(--surface); border-color: var(--line); }
+.mc2-item-ic {
+  flex: none; width: 26px; height: 26px; display: grid; place-items: center;
+  border-radius: 7px; border: 1px solid var(--line); color: var(--muted);
+}
+.mc2-item-tx { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mc2-item-tx b { font-size: var(--text-sm); font-weight: 600; }
+.mc2-item-tx small { font-size: var(--text-xs, 11px); color: var(--muted); }
+.mc2-detail { min-width: 0; }
+.mc2-panel { display: flex; flex-direction: column; gap: 10px; }
+.mc2-panel[hidden] { display: none; }
+.mc2-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mc2-badge {
+  font-size: var(--text-xs, 11px); padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); background: var(--surface);
+}
+.mc2-badge[data-state="on"] { color: var(--accent); border-color: var(--accent); }
+.mc2-string { padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.mc2-advanced { margin-top: 4px; }
+.mc2-form { display: grid; gap: 6px; margin: 8px 0; }
+.mc2-form label { display: grid; grid-template-columns: 88px 1fr; align-items: center; gap: 6px; }
+.mc2-form label > span { font-size: var(--text-sm); color: var(--muted); }
+@media (max-width: 640px) {
+  .mc2-layout { grid-template-columns: 1fr; }
+  .mc2-list { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 8px; }
+  .mc2-list-title { width: 100%; }
+  .mc2-item { width: auto; flex: 1 1 130px; }
+}
+.mc-adv-notes { display: flex; flex-direction: column; gap: 6px; }
+.mc-adv-notes .mc-note { margin: 0; }
+
+/* 真话要留，但别用整段长句抢主视觉：状态补充行收敛为两行内、弱化字重。 */
+.mc-scope { font-size: var(--text-xs, 11px); line-height: 1.5; opacity: .85; }
+/* 渠道「去配置」是次要动作：主视觉留给渠道卡片与二维码。 */
+.mc-ch-go.bb-btn-primary { font-weight: 500; opacity: .92; }
+/* 已登记设备是「查看/吊销」，不是输入：留在可见区但压成紧凑块，
+   不与二维码抢视觉。MC-13 会真点里面的吊销按钮，折叠会挡住。 */
+.mc-roster-inline { margin-top: 2px; padding: 8px 10px; }
+.mc-roster-inline .mc-roster { max-height: 108px; overflow-y: auto; }
+.mc-roster-inline .mc-note { margin: 0; font-size: var(--text-xs, 11px); }

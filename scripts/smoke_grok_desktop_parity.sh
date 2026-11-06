@@ -3915,6 +3915,23 @@ else
   bad "G-100 启动门（见 /tmp/g100-start.log；$(tail -3 /tmp/g100-start.log | tr '\n' ' ')）"
 fi
 
+echo "== G-101 页面简洁度：主区零输入框 + 二维码真能扫 + 三语齐 =="
+# QR 门要调 macOS Vision（Swift 编译较慢），单独给足超时；Swift 不可用时它自己记红，不 SKIP 当绿。
+if timeout 500 node scripts/prove_qr_code.js > /tmp/g101-qr.log 2>&1; then
+  ok "G-101 二维码能被独立解码器真扫出原文（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g101-qr.log)）"
+else
+  bad "G-101 二维码门（见 /tmp/g101-qr.log；$(tail -3 /tmp/g101-qr.log | tr '\n' ' ')）"
+fi
+if timeout 120 node scripts/prove_ui_simplicity.js > /tmp/g101-ui.log 2>&1; then
+  ok "G-101 两个弹窗主区可见输入框 = 0、6 字段进折叠、三语键集合一致（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g101-ui.log)）"
+  grep -q 'UI-01 移动端远程控制：主区可见输入框 = 0' /tmp/g101-ui.log \
+    && grep -q 'UI-02 机器人管理：主区可见输入框 = 0' /tmp/g101-ui.log \
+    && ok "G-101 简洁度核心判据成立：不再让用户各种输入去处理" \
+    || bad "G-101 简洁度判据缺失"
+else
+  bad "G-101 UI 简洁度门（见 /tmp/g101-ui.log；$(tail -3 /tmp/g101-ui.log | tr '\n' ' ')）"
+fi
+
 
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

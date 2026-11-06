@@ -3166,27 +3166,51 @@
          所以渠道列只摆钉钉/飞书/企业微信这三条真有的路，不给微信个人号、
          Telegram、Lark 国际版做假入口。 -->
     <div id="mobile-control-modal" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="mc-title">
-      <div class="bb-sheet bb-sheet-lg">
-        <div class="bb-sheet-head">
-          <div class="bb-sheet-title" id="mc-title" data-i18n="mcTitle">移动端远程控制</div>
-          <button type="button" id="mc-close" class="bb-btn bb-close" data-i18n="settingsClose">关闭</button>
-        </div>
-        <div class="bb-sheet-note" id="mc-hint" data-i18n="mcHint">手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。</div>
-        <div class="mc-grid">
-          <section class="mc-card" id="mc-pair-card">
-            <div class="mc-card-head">
-              <span id="mc-dot" class="mc-dot" data-state="off" aria-hidden="true"></span>
-              <span class="mc-card-title" data-i18n="mcPairTitle">手机连接这台桌面</span>
+      <div class="bb-sheet bb-sheet-lg mc-sheet">
+        <div class="bb-sheet-head mc-sheet-head">
+          <div class="mc-heading">
+            <span class="mc-heading-ic" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3.5" y="1.5" width="6" height="10.5" rx="1.6"/><path d="M6 10.6h1"/><path d="M11.5 6.2a3 3 0 0 1 0 5.1"/><path d="M13 4.2a5.4 5.4 0 0 1 0 9"/></svg></span>
+            <div class="mc-heading-tx">
+              <div class="bb-sheet-title" id="mc-title" data-i18n="mcTitle">移动端远程控制</div>
+              <!-- MC-02 硬要求「6 位」写进主路说明：既保留备用路径，又不把它做成必经输入框。 -->
+              <div class="mc-subtitle" id="mc-hint" data-i18n="mcHint">扫码或在手机上打开链接，即可远程控制当前工作区；6 位配对码仅作备用。</div>
             </div>
-            <div id="mc-status" class="mc-status" data-i18n="mcReading">配对状态：读取中…</div>
-            <div id="mc-scope-note" class="mc-note" hidden></div>
-            <div class="mc-actions">
-              <button type="button" id="mc-enable-btn" class="bb-btn bb-btn-sm" data-i18n="pairingBtnEnable">允许手机连接</button>
-              <button type="button" id="mc-copy-url-btn" class="bb-btn bb-btn-sm" disabled data-i18n="mcCopyUrl">复制配对链接</button>
+          </div>
+          <button type="button" id="mc-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose">×</button>
+        </div>
+
+        <div class="mc-grid">
+          <!-- 主区（左）：只做一件事 —— 扫码。状态一行、动作三个、码一张。 -->
+          <section class="mc-card mc-scan" id="mc-pair-card">
+            <div class="mc-card-head">
+              <span class="mc-card-ic" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="4" y="1.5" width="8" height="13" rx="1.6"/><path d="M7 12.8h2"/></svg></span>
+              <span class="mc-card-title" data-i18n="mcScanTitle">手机扫码连接</span>
+            </div>
+            <p class="mc-card-note" data-i18n="mcScanNote">用手机相机扫下面的码，在手机上打开这个工作区。</p>
+
+            <div class="mc-state">
+              <span id="mc-dot" class="mc-dot" data-state="off" aria-hidden="true"></span>
+              <span id="mc-status" class="mc-status" data-i18n="mcReading">配对状态：读取中…</span>
+              <button type="button" id="mc-enable-btn" class="bb-btn bb-btn-sm mc-state-btn" data-i18n="pairingBtnEnable">允许手机连接</button>
+            </div>
+            <div id="mc-scope-note" class="mc-note mc-scope" hidden></div>
+
+            <div class="mc-fallback">
+              <span data-i18n="mcFallback">扫不了？在手机上打开链接也行。</span>
+              <div class="mc-actions">
+                <button type="button" id="mc-qr-refresh" class="bb-btn bb-btn-sm" data-i18n="mcQrRefresh">刷新二维码</button>
+                <button type="button" id="mc-copy-url-btn" class="bb-btn bb-btn-sm" disabled data-i18n="mcCopyUrl">复制链接</button>
+              </div>
+            </div>
+
+            <div class="mc-qr-wrap" id="mc-qr-wrap">
+              <div id="mc-qr" class="mc-qr" role="img" data-i18n-aria="mcQrAria" aria-label="配对二维码"></div>
+              <div id="mc-qr-empty" class="mc-qr-empty" hidden data-i18n="mcQrEmpty">先点「允许手机连接」，这里才会出现二维码。</div>
             </div>
             <div id="mc-pair-note" class="mc-note" hidden></div>
-            <p class="mc-note" data-i18n="mcLinkNote">「复制配对链接」复制的是这台桌面的说明页：粘到手机浏览器里打开，会写明下一步该干什么；配对码仍然只在 App 里输。</p>
-            <div class="pc-block" id="mc-code-block">
+
+            <!-- 6 位配对码：紧凑一行，作为扫码失败时的备用，不占主视觉。 -->
+            <div class="pc-block mc-code-inline" id="mc-code-block">
               <div class="pc-head">
                 <span class="pc-head-title" id="mc-code-title" data-i18n="mcCodeTitle">让手机自己找</span>
                 <button type="button" id="mc-gen-btn" class="bb-btn bb-btn-sm" data-i18n="mcCodeGen">生成配对码</button>
@@ -3198,111 +3222,176 @@
               <div class="pc-actions" id="mc-code-actions" hidden>
                 <button type="button" id="mc-revoke-btn" class="bb-btn bb-btn-sm" data-i18n="mcCodeRevoke">立即作废</button>
               </div>
-              <p class="pc-hint" data-i18n="mcCodeHint">手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。</p>
             </div>
-            <!-- 「获取移动版」原来是账户弹层里的独立一行：点下去先往对话里打一段说明，
-                 再跳「设置 → 手机」——而那个页签早就不存在了，等于点了没反应。
-                 手机这件事本来就是一句话（装哪份、怎么连），搬到这里和配对码放在一起，
-                 用户不需要在两个入口之间被踢来踢去。 -->
-            <div class="mc-app" id="mc-app-block">
+          </section>
+
+          <!-- 次区（右）：渠道卡片。只列真跑通的三条（MC-07 禁止假入口）。 -->
+          <section class="mc-card mc-channels" id="mc-channel-card">
+            <div class="mc-card-head">
+              <span class="mc-card-ic" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4.5h12v7H6.5L3.5 14v-2.5H2z"/><path d="M5 8h6"/></svg></span>
+              <span class="mc-card-title" data-i18n="mcChannelTitle">使用 Bot Channel</span>
+            </div>
+            <p class="mc-card-note" data-i18n="mcChannelNote">连接聊天 Bot，适合更长时间的移动端访问。</p>
+            <div class="mc-ch-list">
+              <div class="mc-ch" id="mc-ch-ding">
+                <span class="mc-ch-ic mc-ch-ding" aria-hidden="true">钉</span>
+                <div class="mc-ch-tx"><b data-i18n="mcChDingName">钉钉</b><small data-i18n="mcChDingNote">从钉钉群打开这个工作区。</small></div>
+              </div>
+              <div class="mc-ch" id="mc-ch-feishu">
+                <span class="mc-ch-ic mc-ch-feishu" aria-hidden="true">飞</span>
+                <div class="mc-ch-tx"><b data-i18n="mcChFeishuName">飞书</b><small data-i18n="mcChFeishuNote">从飞书打开这个工作区。</small></div>
+              </div>
+              <div class="mc-ch" id="mc-ch-wecom">
+                <span class="mc-ch-ic mc-ch-wecom" aria-hidden="true">企</span>
+                <div class="mc-ch-tx"><b data-i18n="mcChWecomName">企业微信</b><small data-i18n="mcChWecomNote">从企业微信打开这个工作区。</small></div>
+              </div>
+            </div>
+            <!-- MC-07 门要它可点、且点了真落到「连接应用」的国内渠道卡。 -->
+            <button type="button" id="mc-goto-channels" class="bb-btn bb-btn-sm bb-btn-primary mc-ch-go" data-i18n="mcGotoChannels">去配置</button>
+            <section class="mc-card mc-adv-card mc-roster-inline" id="mc-roster-card">
+              <div class="mc-card-title" id="mc-roster-title" data-i18n="mcRosterTitle">已登记的设备</div>
+              <p class="mc-note" id="mc-roster-empty" data-i18n="mcRosterEmpty">还没有已登记的设备。手机配对成功后，会出现在这一栏。</p>
+              <p class="mc-note" id="mc-roster-error" hidden></p>
+              <ul class="mc-roster" id="mc-roster-list"></ul>
+            </section>
+            <!-- 图 2 的入口：机器人/连接管理，主区不放任何输入框。 -->
+            <button type="button" id="mc-open-manager" class="bb-btn bb-btn-sm mc-manager-btn" data-i18n="mcManager">机器人管理</button>
+          </section>
+        </div>
+
+        <!-- 高级：设备列表 / 跨网中转 / 手机端来源，默认折叠。
+             这些能力一个没删，只是不再和「扫码」抢主视觉。 -->
+        <details class="mc-advanced" id="mc-advanced">
+          <summary data-i18n="mcAdvanced">高级设置</summary>
+          <div class="mc-advanced-body">
+            <div class="mc-adv-card mc-adv-notes">
+              <p class="mc-note" data-i18n="mcCodeHint">手机只需点「连接 Desktop」并输入这 6 位数字：5 分钟内有效，用过一次即作废。</p>
+              <p class="mc-note" data-i18n="mcLinkNote">「复制链接」复制的是这台桌面的说明页：粘到手机浏览器里打开，会写明下一步该干什么；配对码仍然只在 App 里输。</p>
+            </div>
+            <section class="mc-card mc-adv-card" id="mc-relay-entry-card">
+              <div class="mc-card-head">
+                <span id="mc-relay-dot" class="mc-dot" data-state="off" aria-hidden="true"></span>
+                <span class="mc-card-title" data-i18n="mcRelayTitle">跨网中转</span>
+              </div>
+              <div id="mc-relay-status" class="mc-status" data-i18n="mcRelayEmpty">尚未配置</div>
+              <p class="mc-note" id="mc-relay-audit" hidden></p>
+              <div class="mc-actions">
+                <button type="button" id="mc-relay-open" class="bb-btn bb-btn-sm" data-i18n="mcRelayOpen">配置中转</button>
+              </div>
+            </section>
+            <div class="mc-app mc-adv-card" id="mc-app-block">
               <div class="mc-card-title" data-i18n="mcAppTitle">手机端从哪来</div>
               <p class="mc-note" data-i18n="mcAppNote">安卓版目前是自己构建的安装包，还没上应用商店 —— 所以这里不给一个点了没反应的下载按钮。装好后打开 App，点「连接 Desktop」，输入上面这 6 位码就能连上。</p>
             </div>
-          </section>
-          <section class="mc-card" id="mc-channel-card">
-            <div class="mc-card-title" data-i18n="mcChannelTitle">使用 Bot Channel</div>
-            <p class="mc-note" data-i18n="mcChannelNote">下面三条是真跑通过的入站渠道。没列出的渠道目前没有适配器，这里不给点了没反应的入口。</p>
-            <ul class="mc-channels">
-              <li class="mc-ch" id="mc-ch-ding"><span data-i18n="mcChDing">钉钉 · 群机器人 Webhook</span></li>
-              <li class="mc-ch" id="mc-ch-feishu"><span data-i18n="mcChFeishu">飞书 · 自建应用事件回调</span></li>
-              <li class="mc-ch" id="mc-ch-wecom"><span data-i18n="mcChWecom">企业微信 · 应用消息回调</span></li>
-            </ul>
-            <button type="button" id="mc-goto-channels" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mcGotoChannels">去配置</button>
-          </section>
-          <section class="mc-card" id="mc-roster-card">
-            <div class="mc-card-title" id="mc-roster-title" data-i18n="mcRosterTitle">已登记的设备</div>
-            <p class="mc-note" id="mc-roster-empty" data-i18n="mcRosterEmpty">还没有已登记的设备。手机配对成功后，会出现在这一栏。</p>
-            <p class="mc-note" id="mc-roster-error" hidden></p>
-            <ul class="mc-roster" id="mc-roster-list"></ul>
-          </section>
-          <!-- A3-14 跨网中转（部分关 R-A3-6h）：这一屏是手机配对主路，MC-02 硬要求
-               零令牌控件（6 位配对码就是主路），所以这里只放入口与状态，
-               表单在独立的 #relay-settings-modal 里。 -->
-          <section class="mc-card" id="mc-relay-entry-card">
-            <div class="mc-card-head">
-              <span id="mc-relay-dot" class="mc-dot" data-state="off" aria-hidden="true"></span>
-              <span class="mc-card-title" data-i18n="mcRelayTitle">跨网中转</span>
-            </div>
-            <div id="mc-relay-status" class="mc-status" data-i18n="mcRelayEmpty">尚未配置</div>
-            <!-- A3-16：这一行专门回答「这个地址谁能敲到」。上面那行显示的是
-                 relay.json 里的值，和配对那一行由网卡算出来的局域网地址
-                 本来就该不一样 —— 不写清楚，用户只会看到两个对不上的 IP。 -->
-            <p class="mc-note" id="mc-relay-audit" hidden></p>
-            <p class="mc-note" data-i18n="mcRelayNote">公网 relay + NAT 后的桌面请选 reverse；两把凭证只填一次，之后留空即沿用。保存后自动重新登记，不用重启 app。</p>
-            <div class="mc-actions">
-              <button type="button" id="mc-relay-open" class="bb-btn bb-btn-sm" data-i18n="mcRelayOpen">配置中转</button>
-            </div>
-          </section>
-        </div>
+          </div>
+        </details>
       </div>
     </div>
     <!-- A3-14 独立的中转设置弹窗：与手机配对主路分开，MC-02 的「零令牌控件」口径
          只管 #mobile-control-modal。凭证框是 password 且永不预填明文。 -->
     <div id="relay-settings-modal" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="mc-relay-modal-title" style="display:none">
-      <div class="bb-sheet bb-sheet-lg">
-        <div class="bb-sheet-head">
-          <div class="bb-sheet-title" id="mc-relay-modal-title" data-i18n="mcRelayTitle">跨网中转设置</div>
-          <button type="button" id="mc-relay-close" class="bb-btn bb-close" data-i18n="settingsClose">关闭</button>
-        </div>
-        <section class="mc-card" id="mc-relay-card">
-          <p class="mc-note" data-i18n="mcRelayNote">公网 relay + NAT 后的桌面请选 reverse；两把凭证只填一次，之后留空即沿用。保存后自动重新登记，不用重启 app。</p>
-          <div class="mc-form" style="display:grid;gap:6px;margin:8px 0">
-            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
-              <span data-i18n="mcRelayHost">中转地址</span>
-              <input class="bb-control" id="mc-relay-host" type="text" autocomplete="off" spellcheck="false">
-            </label>
-            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
-              <span data-i18n="mcRelayPort">端口</span>
-              <input class="bb-control" id="mc-relay-port" type="number" min="1" max="65535">
-            </label>
-            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
-              <span data-i18n="mcRelayBoxId">盒子 ID</span>
-              <input class="bb-control" id="mc-relay-box" type="text" autocomplete="off" spellcheck="false">
-            </label>
-            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
-              <span data-i18n="mcRelayMode">模式</span>
-              <select class="bb-control" id="mc-relay-mode">
-                <option value="reverse">reverse · 反向隧道（推荐）</option>
-                <option value="dial">dial · 主动拨（同网部署）</option>
-              </select>
-            </label>
-            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
-              <span data-i18n="mcRelayBoxToken">桌面凭证</span>
-              <input class="bb-control" id="mc-relay-box-token" type="password" autocomplete="new-password" data-i18n-ph="mcRelayKeep" placeholder="留空沿用">
-            </label>
-            <label style="display:grid;grid-template-columns:88px 1fr;align-items:center;gap:6px">
-              <span data-i18n="mcRelayClientToken">手机凭证</span>
-              <input class="bb-control" id="mc-relay-client-token" type="password" autocomplete="new-password" data-i18n-ph="mcRelayKeep" placeholder="留空沿用">
-            </label>
-          </div>
-          <div class="mc-actions">
-            <button type="button" id="mc-relay-save" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mcRelaySave">保存并生效</button>
-            <button type="button" id="mc-relay-disable" class="bb-btn bb-btn-sm" data-i18n="mcRelayDisable">关闭中转</button>
-            <!-- A3-18：跨网配对。手机在蜂窝网下没法先扫局域网，只能靠用户把这段粘过去。 -->
-            <button type="button" id="mc-relay-bootstrap" class="bb-btn bb-btn-sm" data-i18n="mcRelayBootstrap">生成跨网配对串</button>
-          </div>
-          <div id="mc-relay-bootstrap-box" style="display:none;margin-top:8px">
-            <p class="mc-note" data-i18n="mcRelayBootstrapNote">把下面整段复制到手机「配对 → 跨网配对」里。它含这台桌面的手机凭证，请当密码对待，别发到群里。</p>
-            <textarea id="mc-relay-bootstrap-text" class="bb-control" readonly rows="3"
-              style="width:100%;font:12px/1.4 ui-monospace,monospace;resize:vertical"></textarea>
-            <div class="mc-actions">
-              <button type="button" id="mc-relay-bootstrap-copy" class="bb-btn bb-btn-sm" data-i18n="mcRelayBootstrapCopy">复制</button>
+      <div class="bb-sheet bb-sheet-lg mc-sheet mc2-sheet">
+        <div class="bb-sheet-head mc-sheet-head">
+          <div class="mc-heading">
+            <span class="mc-heading-ic" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 7h.01M8 7h.01M11 7h.01M5.5 10h5"/></svg></span>
+            <div class="mc-heading-tx">
+              <div class="bb-sheet-title" id="mc-relay-modal-title" data-i18n="mcManager">机器人管理</div>
+              <div class="mc-subtitle" data-i18n="mc2Subtitle">选一个连接，点一下就能用；只有需要自定义时才展开高级设置。</div>
             </div>
           </div>
-          <div id="mc-relay-note" class="mc-note" hidden></div>
-        </section>
+          <button type="button" id="mc-relay-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose">×</button>
+        </div>
+
+        <div class="mc2-layout">
+          <!-- 左：连接对象列表。只列真有的两条路，不给「新建」假按钮。 -->
+          <aside class="mc2-list" id="relay-manager-list">
+            <div class="mc2-list-title" data-i18n="mc2ListTitle">连接</div>
+            <button type="button" class="mc2-item is-active" data-mc2="lan" id="mc2-item-lan">
+              <span class="mc2-item-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="4" y="1.5" width="8" height="13" rx="1.6"/><path d="M7 12.8h2"/></svg></span>
+              <span class="mc2-item-tx"><b data-i18n="mc2LanName">本机同网</b><small data-i18n="mc2LanMeta">和手机在同一个 Wi-Fi</small></span>
+            </button>
+            <button type="button" class="mc2-item" data-mc2="relay" id="mc2-item-relay">
+              <span class="mc2-item-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/></svg></span>
+              <span class="mc2-item-tx"><b data-i18n="mcRelayTitle">跨网中转</b><small data-i18n="mc2RelayMeta">手机用蜂窝网也能连</small></span>
+            </button>
+          </aside>
+
+          <!-- 右：详情。主区没有输入框 —— 需要填的都在 <details> 里。 -->
+          <div class="mc2-detail">
+            <section class="mc2-panel" id="mc2-panel-lan">
+              <div class="mc2-panel-head">
+                <span class="mc-card-title" data-i18n="mc2LanTitle">扫一下就连上</span>
+                <span id="mc2-lan-badge" class="mc2-badge" data-state="off" data-i18n="mc2NotReady">未就绪</span>
+              </div>
+              <p class="mc-card-note" data-i18n="mc2LanNote">手机相机扫下面的码，会打开这台桌面的连接说明页。</p>
+              <div class="mc-qr-wrap">
+                <div id="mc2-qr" class="mc-qr" role="img" data-i18n-aria="mcQrAria" aria-label="配对二维码"></div>
+                <div id="mc2-qr-empty" class="mc-qr-empty" data-i18n="mcQrEmpty">先点「允许手机连接」，这里才会出现二维码。</div>
+              </div>
+              <div class="mc-actions">
+                <button type="button" id="mc2-copy-link" class="bb-btn bb-btn-sm" data-i18n="mcCopyUrl">复制链接</button>
+                <button type="button" id="mc2-refresh" class="bb-btn bb-btn-sm" data-i18n="mcQrRefresh">刷新二维码</button>
+              </div>
+              <p class="mc-note" data-i18n="mc2LanHint">扫不了就把链接发到手机，在浏览器里打开照着做。</p>
+            </section>
+
+            <section class="mc2-panel" id="mc2-panel-relay" hidden>
+              <div class="mc2-panel-head">
+                <span class="mc-card-title" data-i18n="mcRelayTitle">跨网中转</span>
+                <span id="mc-relay-dot2" class="mc2-badge" data-state="off" data-i18n="mcRelayEmpty">尚未配置</span>
+              </div>
+              <p class="mc-card-note" data-i18n="mc2RelayNote">生成一段连接信息，复制到手机的「跨网配对」里粘上就好，不用逐项填。</p>
+              <div id="mc-relay-status" class="mc-status" data-i18n="mcRelayEmpty">尚未配置</div>
+              <p class="mc-note" id="mc-relay-audit" hidden></p>
+              <div class="mc-actions">
+                <button type="button" id="mc-relay-bootstrap" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mc2GenAndCopy">生成并复制</button>
+                <button type="button" id="mc-relay-disable" class="bb-btn bb-btn-sm" data-i18n="mcRelayDisable">关闭中转</button>
+              </div>
+              <!-- 跨网串是自定 scheme，Android 端没注册 deep link：如实说明「要粘贴」，
+                   不画一个扫了打不开的假二维码。 -->
+              <div id="mc-relay-bootstrap-box" class="mc2-string" style="display:none">
+                <p class="mc-note" data-i18n="mcRelayBootstrapNote">把下面整段复制到手机「配对 → 跨网配对」里。它含这台桌面的手机凭证，请当密码对待，别发到群里。</p>
+                <textarea id="mc-relay-bootstrap-text" class="bb-control" readonly rows="3"
+                  style="width:100%;font:12px/1.4 ui-monospace,monospace;resize:vertical"></textarea>
+                <div class="mc-actions">
+                  <button type="button" id="mc-relay-bootstrap-copy" class="bb-btn bb-btn-sm" data-i18n="mcRelayBootstrapCopy">复制</button>
+                </div>
+              </div>
+              <div id="mc-relay-note" class="mc-note" hidden></div>
+
+              <!-- 高级：6 个字段一个没删，但默认折叠，常规用户根本不用看见。 -->
+              <details class="mc-advanced mc2-advanced" id="mc2-relay-advanced">
+                <summary data-i18n="mcAdvanced">高级设置</summary>
+                <section class="mc-card mc-adv-card" id="mc-relay-card">
+                  <p class="mc-note" data-i18n="mcRelayNote">公网 relay + NAT 后的桌面请选 reverse；两把凭证只填一次，之后留空即沿用。保存后自动重新登记，不用重启 app。</p>
+                  <div class="mc-form mc2-form">
+                    <label><span data-i18n="mcRelayHost">中转地址</span>
+                      <input class="bb-control" id="mc-relay-host" type="text" autocomplete="off" spellcheck="false"></label>
+                    <label><span data-i18n="mcRelayPort">端口</span>
+                      <input class="bb-control" id="mc-relay-port" type="number" min="1" max="65535"></label>
+                    <label><span data-i18n="mcRelayBoxId">盒子 ID</span>
+                      <input class="bb-control" id="mc-relay-box" type="text" autocomplete="off" spellcheck="false"></label>
+                    <label><span data-i18n="mcRelayMode">模式</span>
+                      <select class="bb-control" id="mc-relay-mode">
+                        <option value="reverse">reverse · 反向隧道（推荐）</option>
+                        <option value="dial">dial · 主动拨（同网部署）</option>
+                      </select></label>
+                    <label><span data-i18n="mcRelayBoxToken">桌面凭证</span>
+                      <input class="bb-control" id="mc-relay-box-token" type="password" autocomplete="new-password" data-i18n-ph="mcRelayKeep" placeholder="留空沿用"></label>
+                    <label><span data-i18n="mcRelayClientToken">手机凭证</span>
+                      <input class="bb-control" id="mc-relay-client-token" type="password" autocomplete="new-password" data-i18n-ph="mcRelayKeep" placeholder="留空沿用"></label>
+                  </div>
+                  <div class="mc-actions">
+                    <button type="button" id="mc-relay-save" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="mcRelaySave">保存并生效</button>
+                  </div>
+                </section>
+              </details>
+            </section>
+          </div>
+        </div>
       </div>
     </div>
+
     <div id="agent-info-panel" class="bb-card bb-inset" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div class="title" style="font-weight:700" id="agent-info-title">代理信息</div>
@@ -3841,6 +3930,9 @@
   <script src="./vendor/marked.umd.js"></script>
   <script src="./vendor/dompurify.umd.js"></script>
   <script src="./vendor/highlight.min.js"></script>
+  <!-- 离线二维码：把 pairing.state().pair_page_url 编成真能扫的码。
+       不联网、不装 npm 包；正确性由 scripts/prove_qr_code.js 用 macOS Vision 真扫验证。 -->
+  <script src="./vendor/qrcode.js"></script>
   <script src="./avatar_palette.js"></script>
   <script>
     if (!window.__bitbotUntrusted) {
@@ -13057,6 +13149,68 @@
       });
     }
 
+
+    /* ── 机器人/连接管理：左列表切详情，主区始终零输入框 ──────────────────
+     * 二维码编码的是 pairing.state().pair_page_url（真能扫开的本地说明页），
+     * 不是自定 scheme。跨网串只能复制粘贴：Android 端未注册 deep link，
+     * 画成二维码就是扫了打不开的假入口。 */
+    (function initManagerPanels() {
+      const $ = (id) => document.getElementById(id);
+      const items = Array.from(document.querySelectorAll(".mc2-item"));
+      const panels = { lan: $("mc2-panel-lan"), relay: $("mc2-panel-relay") };
+      const qrBox = $("mc2-qr"), qrEmpty = $("mc2-qr-empty"), badge = $("mc2-lan-badge");
+      function paintManagerQr(st) {
+        const url = st && st.pair_page_url
+          ? st.pair_page_url : (st && st.pair_base ? st.pair_base + "/pair" : "");
+        const qr = window.BitBotQR;
+        const ready = Boolean(st && st.lan_open && url && qr && typeof qr.toSvg === "function");
+        if (badge) {
+          badge.dataset.state = ready ? "on" : "off";
+          badge.textContent = wavegT(ready ? "mc2Ready" : "mc2NotReady");
+        }
+        if (!qrBox || !qrEmpty) return;
+        if (!ready) { qrBox.innerHTML = ""; qrBox.hidden = true; qrEmpty.hidden = false; return; }
+        const svg = qr.toSvg(url, { border: 4, scale: 1 });
+        if (!svg) { qrBox.innerHTML = ""; qrBox.hidden = true; qrEmpty.hidden = false; return; }
+        qrBox.innerHTML = svg; qrBox.hidden = false; qrEmpty.hidden = true;
+      }
+      async function refreshManagerQr() {
+        try {
+          const st = await window.bitbot.pairing.state();
+          paintManagerQr(st && st.ok ? st : null);
+        } catch (_) { paintManagerQr(null); }
+      }
+      function select(which) {
+        for (const it of items) it.classList.toggle("is-active", it.dataset.mc2 === which);
+        for (const k of Object.keys(panels)) if (panels[k]) panels[k].hidden = (k !== which);
+        if (which === "lan") refreshManagerQr();
+      }
+      for (const it of items) it.addEventListener("click", () => select(it.dataset.mc2));
+      const refreshBtn = $("mc2-refresh");
+      if (refreshBtn) refreshBtn.addEventListener("click", refreshManagerQr);
+      const copyBtn = $("mc2-copy-link");
+      if (copyBtn) copyBtn.addEventListener("click", async () => {
+        try { await window.bitbot.pairing.copy("page"); } catch (_) {}
+      });
+      // 弹窗打开时刷一次：openRelay 调 load()，这里挂同一个入口的 click 后置钩子
+      const relayOpen = $("mc-relay-open");
+      if (relayOpen) relayOpen.addEventListener("click", () => { select("lan"); refreshManagerQr(); });
+      const managerOpen = $("mc-open-manager");
+      if (managerOpen) managerOpen.addEventListener("click", () => { select("lan"); refreshManagerQr(); });
+      // 「生成并复制」：沿用既有 bootstrap 按钮的真逻辑，再自动点一次复制
+      const genCopy = $("mc-relay-bootstrap");
+      if (genCopy) {
+        genCopy.addEventListener("click", () => {
+          setTimeout(() => {
+            const copy = $("mc-relay-bootstrap-copy");
+            const ta = $("mc-relay-bootstrap-text");
+            if (copy && ta && ta.value) copy.click();
+          }, 60);
+        });
+      }
+      select("lan");
+    })();
+
     /* ---------- 移动端远程控制弹窗（pairing-v1 的产品正门）--------------
      * 这一屏不重算协议，只把同一份 pairing.state() 讲成人能读懂的三句话：
      * 现在手机能不能连、连的地址是哪个、下一步做什么。状态与设置里那张卡
@@ -13249,11 +13403,43 @@
       }
     }
 
+    /* 二维码：编码 pairing.state() 给的**真实可打开**的 /pair 说明页，
+       不是自定 scheme（Android 端没注册 deep link，扫 bitbot-relay:// 打不开）。
+       没放开局域网 / 没地址时显示一句实话，绝不画一个扫了没反应的码。 */
+    function mcPaintQr(st) {
+      const box = document.getElementById("mc-qr");
+      const empty = document.getElementById("mc-qr-empty");
+      if (!box || !empty) return;
+      const url = st && st.pair_page_url
+        ? st.pair_page_url
+        : (st && st.pair_base ? st.pair_base + "/pair" : "");
+      const ready = Boolean(st && st.lan_open && url);
+      const qr = window.BitBotQR;
+      if (!ready || !qr || typeof qr.toSvg !== "function") {
+        box.innerHTML = "";
+        box.hidden = true;
+        empty.hidden = false;
+        return;
+      }
+      const svg = qr.toSvg(url, { border: 4, scale: 1 });
+      if (!svg) {
+        box.innerHTML = "";
+        box.hidden = true;
+        empty.hidden = false;
+        empty.textContent = wavegT("mcQrTooLong");
+        return;
+      }
+      box.innerHTML = svg; // toSvg 只由黑白模块拼成，URL 不进 DOM 文本
+      box.hidden = false;
+      empty.hidden = true;
+    }
+
     async function refreshMobileControl() {
       if (!mcEls.status || !window.bitbot || !window.bitbot.pairing) return;
       try {
         const st = await window.bitbot.pairing.state();
         mcSnapshot = st && st.ok ? st : null;
+        mcPaintQr(mcSnapshot);
         if (!mcSnapshot) {
           mcEls.dot.dataset.state = "off";
           mcEls.status.textContent = wavegT("pairingReadFail");
@@ -13261,6 +13447,7 @@
           if (mcEls.copyUrl) mcEls.copyUrl.disabled = true;
           if (mcEls.scope) { mcEls.scope.hidden = true; mcEls.scope.textContent = ""; }
           mcPaintCode(null);
+          mcPaintQr(null);
           return;
         }
         // 状态点只在「真放开了、且拿得到一个地址」时亮 —— 读取失败或没放开都是 off。
@@ -13376,6 +13563,26 @@
     }
     const mcCloseBtn = document.getElementById("mc-close");
     if (mcCloseBtn) mcCloseBtn.addEventListener("click", () => closeMobileControl());
+
+    /* 刷新二维码：内容来自同一份 pairing.state()，不自己编地址。 */
+    const mcQrRefresh = document.getElementById("mc-qr-refresh");
+    if (mcQrRefresh) {
+      mcQrRefresh.addEventListener("click", async () => {
+        mcQrRefresh.disabled = true;
+        try { await refreshMobileControl(); } finally { mcQrRefresh.disabled = false; }
+      });
+    }
+    /* 「机器人管理」→ 图 2 的连接/机器人配置页（本项目即中转设置弹窗）。
+       先关主弹窗避免两层叠着；openRelay 在 initRelaySettings 闭包内，
+       这里转发点击到它已绑定的入口，不复制一份开关逻辑。 */
+    const mcOpenManager = document.getElementById("mc-open-manager");
+    if (mcOpenManager) {
+      mcOpenManager.addEventListener("click", () => {
+        closeMobileControl();
+        const relayEntry = document.getElementById("mc-relay-open");
+        if (relayEntry) relayEntry.click();
+      });
+    }
     const mcGotoChannels = document.getElementById("mc-goto-channels");
     if (mcGotoChannels) {
       mcGotoChannels.addEventListener("click", () => {
@@ -16140,7 +16347,7 @@
         mcRelayCopyManual: "请手动复制（已选中）",
         mcPairTitle: "手机连接这台桌面",
         mcReading: "配对状态：读取中…",
-        mcHint: "手机和桌面在同一个 Wi-Fi 下，输入 6 位配对码就能连上这台大脑，不需要手填长令牌。",
+        mcHint: "扫码或在手机上打开链接，即可远程控制当前工作区；6 位配对码仅作备用。",
         mcCopyUrl: "复制配对链接",
         mcLinkNote: "「复制配对链接」复制的是这台桌面的说明页：粘到手机浏览器里打开，会写明下一步该干什么；配对码仍然只在 App 里输。",
         mcCodeTitle: "让手机自己找",
@@ -16151,7 +16358,34 @@
         mcAppTitle: "手机端从哪来",
         mcAppNote: "安卓版目前是自己构建的安装包，还没上应用商店 —— 所以这里不给一个点了没反应的下载按钮。装好后打开 App，点「连接 Desktop」，输入上面这 6 位码就能连上。",
         mcChannelTitle: "使用 Bot Channel",
-        mcChannelNote: "下面三条是真跑通过的入站渠道。没列出的渠道目前没有适配器，这里不给点了没反应的入口。",
+        mcChannelNote: "连接聊天 Bot，适合更长时间的移动端访问。",
+        mcScanTitle: "手机扫码连接",
+        mcScanNote: "用手机相机扫下面的码，在手机上打开这个工作区。",
+        mcFallback: "扫不了？在手机上打开链接也行。",
+        mcQrRefresh: "刷新二维码",
+        mcQrEmpty: "先点「允许手机连接」，这里才会出现二维码。",
+        mcQrTooLong: "地址太长，画不出二维码；请用「复制链接」。",
+        mcQrAria: "配对二维码",
+        mcManager: "机器人管理",
+        mcAdvanced: "高级设置",
+        mcChDingName: "钉钉",
+        mcChDingNote: "从钉钉群打开这个工作区。",
+        mcChFeishuName: "飞书",
+        mcChFeishuNote: "从飞书打开这个工作区。",
+        mcChWecomName: "企业微信",
+        mcChWecomNote: "从企业微信打开这个工作区。",
+        mc2Subtitle: "选一个连接，点一下就能用；只有需要自定义时才展开高级设置。",
+        mc2ListTitle: "连接",
+        mc2LanName: "本机同网",
+        mc2LanMeta: "和手机在同一个 Wi-Fi",
+        mc2RelayMeta: "手机用蜂窝网也能连",
+        mc2LanTitle: "扫一下就连上",
+        mc2NotReady: "未就绪",
+        mc2Ready: "已就绪",
+        mc2LanNote: "手机相机扫下面的码，会打开这台桌面的连接说明页。",
+        mc2LanHint: "扫不了就把链接发到手机，在浏览器里打开照着做。",
+        mc2RelayNote: "生成一段连接信息，复制到手机的「跨网配对」里粘上就好，不用逐项填。",
+        mc2GenAndCopy: "生成并复制",
         mcChDing: "钉钉 · 群机器人 Webhook",
         mcChFeishu: "飞书 · 自建应用事件回调",
         mcChWecom: "企业微信 · 应用消息回调",
@@ -16983,7 +17217,7 @@
         mcRelayCopyManual: "請手動複製（已選中）",
         mcPairTitle: "手機連接這台桌面",
         mcReading: "配對狀態：讀取中…",
-        mcHint: "手機和桌面在同一個 Wi-Fi 下，輸入 6 位配對碼就能連上這台大腦，不需要手填長權杖。",
+        mcHint: "掃碼或在手機上開啟連結，即可遠端控制目前工作區；6 位配對碼僅作備用。",
         mcCopyUrl: "複製配對連結",
         mcLinkNote: "「複製配對連結」複製的是這台桌面的說明頁：貼到手機瀏覽器裡打開，會寫明下一步該做什麼；配對碼仍然只在 App 裡輸入。",
         mcCodeTitle: "讓手機自己找",
@@ -16994,7 +17228,34 @@
         mcAppTitle: "手機端從哪來",
         mcAppNote: "安卓版目前是自己建置的安裝包，還沒上應用商店 —— 所以這裡不給一個點了沒反應的下載按鈕。裝好後打開 App，點「連接 Desktop」，輸入上面這 6 位碼就能連上。",
         mcChannelTitle: "使用 Bot Channel",
-        mcChannelNote: "下面三條是真跑通的入站渠道。沒列出的渠道目前沒有配接器，這裡不給點了沒反應的入口。",
+        mcChannelNote: "連接聊天 Bot，適合更長時間的行動端存取。",
+        mcScanTitle: "手機掃碼連線",
+        mcScanNote: "用手機相機掃描下方的碼，在手機上開啟這個工作區。",
+        mcFallback: "掃不了？在手機上開啟連結也行。",
+        mcQrRefresh: "重新產生二維碼",
+        mcQrEmpty: "先點「允許手機連線」，這裡才會出現二維碼。",
+        mcQrTooLong: "位址太長，畫不出二維碼；請用「複製連結」。",
+        mcQrAria: "配對二維碼",
+        mcManager: "機器人管理",
+        mcAdvanced: "進階設定",
+        mcChDingName: "釘釘",
+        mcChDingNote: "從釘釘群組開啟這個工作區。",
+        mcChFeishuName: "飛書",
+        mcChFeishuNote: "從飛書開啟這個工作區。",
+        mcChWecomName: "企業微信",
+        mcChWecomNote: "從企業微信開啟這個工作區。",
+        mc2Subtitle: "選一個連線，點一下就能用；只有需要自訂時才展開進階設定。",
+        mc2ListTitle: "連線",
+        mc2LanName: "本機同網",
+        mc2LanMeta: "和手機在同一個 Wi-Fi",
+        mc2RelayMeta: "手機用行動網路也能連",
+        mc2LanTitle: "掃一下就連上",
+        mc2NotReady: "未就緒",
+        mc2Ready: "已就緒",
+        mc2LanNote: "手機相機掃描下方的碼，會開啟這台桌面的連線說明頁。",
+        mc2LanHint: "掃不了就把連結傳到手機，在瀏覽器裡開啟照著做。",
+        mc2RelayNote: "產生一段連線資訊，複製到手機的「跨網配對」貼上即可，不用逐項填。",
+        mc2GenAndCopy: "產生並複製",
         mcChDing: "釘釘 · 群組機器人 Webhook",
         mcChFeishu: "飛書 · 自建應用事件回調",
         mcChWecom: "企業微信 · 應用消息回調",
@@ -17826,7 +18087,7 @@
         mcRelayCopyManual: "Copy it manually (already selected)",
         mcPairTitle: "Connect your phone to this desktop",
         mcReading: "Pairing state: loading…",
-        mcHint: "On the same Wi-Fi, the phone just types a 6-digit pairing code to reach this brain — no long token to paste.",
+        mcHint: "Scan the code or open the link on your phone to control this workspace; the 6-digit pairing code is a fallback.",
         mcCopyUrl: "Copy pairing link",
         mcLinkNote: "This copies the desktop's read-only page: open it in the phone's browser and it says what to do next. The pairing code is still typed in the app only.",
         mcCodeTitle: "Let the phone find it",
@@ -17837,7 +18098,34 @@
         mcAppTitle: "Where the phone app comes from",
         mcAppNote: "The Android build is currently a self-built package — it is not on any app store yet, so there is no download button here that would do nothing. Install it, open the app, tap “Connect Desktop”, and enter the 6-digit code above.",
         mcChannelTitle: "Use a Bot Channel",
-        mcChannelNote: "The three below are the inbound channels actually working today. Anything not listed has no adapter yet, so there is no dead entry for it here.",
+        mcChannelNote: "Connect a chat Bot for longer mobile access.",
+        mcScanTitle: "Scan to connect",
+        mcScanNote: "Scan the code with your phone camera to open this workspace.",
+        mcFallback: "Cannot scan? Open the link on your phone instead.",
+        mcQrRefresh: "Refresh code",
+        mcQrEmpty: "Enable phone access to show the QR code.",
+        mcQrTooLong: "Address too long for a QR code; use Copy link.",
+        mcQrAria: "Pairing QR code",
+        mcManager: "Bot management",
+        mcAdvanced: "Advanced",
+        mcChDingName: "DingTalk",
+        mcChDingNote: "Open this workspace from DingTalk.",
+        mcChFeishuName: "Feishu",
+        mcChFeishuNote: "Open this workspace from Feishu.",
+        mcChWecomName: "WeCom",
+        mcChWecomNote: "Open this workspace from WeCom.",
+        mc2Subtitle: "Pick a connection and go. Only open Advanced if you need custom settings.",
+        mc2ListTitle: "Connections",
+        mc2LanName: "Same Wi-Fi",
+        mc2LanMeta: "Phone and desktop on one Wi-Fi",
+        mc2RelayMeta: "Works over mobile data too",
+        mc2LanTitle: "Scan to connect",
+        mc2NotReady: "Not ready",
+        mc2Ready: "Ready",
+        mc2LanNote: "Scan with your phone camera to open this desktop's pairing page.",
+        mc2LanHint: "Cannot scan? Send the link to your phone and open it.",
+        mc2RelayNote: "Generate one string, paste it into Cross-network pairing on your phone. No fields to fill in.",
+        mc2GenAndCopy: "Generate & copy",
         mcChDing: "DingTalk · group robot Webhook",
         mcChFeishu: "Feishu · custom app event callback",
         mcChWecom: "WeCom · app message callback",
