@@ -7713,3 +7713,203 @@ vault 12 / public_entry 12 / public_relay_setup 11 / checklist 16
 3. 事件流的隧道**仍然不还池**（长连接还池会让下一轮拿到挂着旧订阅的连接）—— 这是设计，
    不是遗漏；改掉的是「不还池」变成「不关」。
 4. 并发 `close()` 与 `finally` 的竞态只做了「关两次不抛」的断言，没有做真实竞态压测。
+
+---
+
+## 8.85 §5⑭ 的判据是恒真的，而且现场根本读不到那个数
+
+### 8.85.1 起因：准备把桌面侧自证做成一条命令，先去核对「诊断态」从哪来
+
+上一节（§8.84）把「事件流隧道会漏」修完，清单 §5 新增了 ⑭「断流重连不留连接」，
+§6 补了一行观测点：
+
+> `activeStreams` / `streamsServed` —— 重连 5 次后 `streamsServed` 涨、`activeStreams` 回基线。
+
+准备把这些读数自动化时，回头查 `relay_server.js`，发现两个硬伤，都比「写个脚本」更根本：
+
+1. **判据恒真**：`activeStreams: pendingStreams.size` 只统计「手机 CONNECT 后等盒子
+   ATTACH」的窗口。ATTACH 一到就 `pendingStreams.delete(streamId)`，另有 2.5s 超时
+   `dropPending()` 兜底。也就是说**不管转发连接泄漏得多严重，它都必然回到 0**。
+   拿它证明「不留连接」，等于拿一个本来就会自己归零的计数器当证据 —— 与 RBI-06 /
+   AB-21 / RS-09 / CF-05 同型，本轮第七次「恒真对照」，而这次是我自己上一节刚写下的。
+2. **现场读不到**：`getDiagnosticState()` 只是 `createRelayServer()` 返回对象上的一个
+   **进程内 JS API**；health 端口只实现了 `GET /healthz` → `{ok, boxes}`。真公网 relay
+   是一台独立机器，现场手里只有 curl，**没有任何 HTTP 端点能取到诊断态**。清单却写着
+   「看 relay 诊断态」，等于让人去看一个不存在的仪表盘。
+
+### 8.85.2 补的不是「一个字段」，是「一个能被现场观测的量」
+
+新增三个计数，挂在**已进入数据面、尚未关闭的转发连接**上，而不是等 ATTACH 的窗口：
+
+| 字段 | 含义 |
+| --- | --- |
+| `liveBridges` | 当前挂着的转发连接数。`bridge()`（reverse）与 `openBox()`（dial）建立时 +1，各自幂等 `close()` 时 −1 |
+| `bridgesOpened` | 累计开过多少条 |
+| `bridgesClosed` | 累计关过多少条 |
+
+后两个是**反真空**用的：`liveBridges === 0` 也可能是「压根没连过」。必须同时看到
+`bridgesOpened` 涨过，且满足不变量 `live === opened − closed`，「回基线」才是真的回落。
+计数 helper 故意不把 `liveBridges` 钳到 0 —— 少减一次要让门禁当场暴露，而不是自愈成好看的数。
+
+同时新增 `GET /diagnostics`（也在 18767，与 `/healthz` 同端口）：白名单逐字段挑 12 个计数，
+带 `schema: 1` 和 `cache-control: no-store`。**故意不写 `JSON.stringify(diagnosticState())`** ——
+整包序列化等于把「将来有人往诊断态加 endpoint / memberId」变成一次静默泄露。
+`/healthz` 一个字没动（探针与既有门依赖 `{ok, boxes}`）。
+
+顺带修了一处作用域坑：`getDiagnosticState` 原本是返回对象的方法名，不是闭包内可调用的
+函数，`start()` 里直接调会 `ReferenceError`。抽成 `diagnosticState()`，HTTP 端点与 JS API
+共用同一份实现，避免两份逻辑漂移。
+
+### 8.85.3 门 DG-01..DG-12：把「恒真」当场拆穿
+
+`scripts/prove_relay_diagnostics.js`，静态判据 + 真起 relay / 真 reverse 隧道：
+
+| 用例 | 断言 |
+| --- | --- |
+| DG-01/02 | 端点白名单、schema、两条路径成对记账、`/healthz` 原契约；五组负向对照（摘 close / 删字段 / 删 schema / 整包序列化 / reverse 不记账）逐个摘都要红 |
+| DG-03/12 | 端点只吐计数，查无 token / payload / endpoint / memberId / boxId / relaySecret |
+| DG-04 | **反真空**：真开一条隧道时 `liveBridges` 必须 >0（从来没连过也是 0，那是真空绿） |
+| DG-05 | 现场读得到：`200` + `schema:1` + 与进程内一致 + `no-store` |
+| DG-06 | 开一关一，live 回 0、opened/closed 各 +1、不变量成立 |
+| **DG-07** | **挂住 3 条死连接不关**：`activeStreams=0`（照样回基线，证明不了任何事），`liveBridges=3`（真抓到了）；HTTP 端点同样读到 3 |
+| DG-08 | §5⑭ 的真形状：重连 5 次 → opened+5 / closed+5 / served+5，live 稳定 |
+| DG-09 | 把挂住的 3 条关掉，live 从 3 降到 0 |
+| DG-10/11 | 未知路径仍 404；`/healthz` 仍是 `{ok, boxes}` 两字段 |
+
+DG-07 是这一节的结论：**旧判据不是「不够精确」，是方向就错了。**
+
+### 8.85.4 判据上又栽两次（本轮第七、八次，都在这一个门里）
+
+1. **DG-02 假绿**：负向对照「摘掉 `onBridgeClose()`」只摘了 `bridge()` 那一处，
+   而 dial 的 `openBox()` 还有一处；判据用全局 `/onBridgeClose\(\);/` 查「文件里有没有」，
+   被另一条路径撑绿。→ 改成按函数体切片，**两条路径各自都要有开、也都要有关**。
+2. **DG-09 更隐蔽**：第一版写「关掉 3 条挂住的连接后 live 回到 `after5.liveBridges`」——
+   那个目标值就是**关之前**的数，于是 `waitFor` 的谓词当下为真、一次都没等，
+   测的是「什么都没发生」。→ 改成先记基线、期望 `基线 − held.length`，并强制断言
+   「关之前 > 期望值」，否则拒绝判绿。
+
+两次都不是产品问题，是门自己的错。**这轮的规律已经很清楚了：判据必须锚「变化」，
+不能锚「某个好看的静态值」。**
+
+### 8.85.5 清单改了什么
+
+- **§5⑭** 判定改成：`curl <公网>:18767/diagnostics`，断流前记基线，
+  之后 `liveBridges` 回基线且 `streamsServed` / `bridgesOpened` / `bridgesClosed` 各涨 ≥5
+  （说明真重连过，不是压根没连）；明确写「⚠️ 别看 `activeStreams`」及原因。
+- **§6** 观测点补上真实端点 `/diagnostics`（18767）、`schema:1` 版本自检，
+  以及「旧版只有 `/healthz`，那里没有诊断态」的历史说明。
+- **§2.2** 补：**18767 也要放通**（以前只写了 18766），开跑前先 curl 一次 `/diagnostics`
+  确认 `schema:1`；只回 404 说明 relay 太旧、§5⑭ 无法判。
+- roadmap 的 `R-A3-8a` 行回填本片，仍标「**仍开**」—— 判据变硬不等于有样本。
+
+### 8.85.6 门禁与回归
+
+| 门 | 结果 |
+| --- | --- |
+| `prove_relay_diagnostics.js` | PASS=12 FAIL=0 |
+| G-97（smoke 区段） | REGION PASS=3 FAIL=0 |
+| 既有 relay 五门 | reverse_tunnel 15 / resilience 9 / backpressure 9 / box_registration 12 / hot_reload 11，全绿 |
+
+### 8.85.7 残留（诚实）
+
+1. 本节全部是**本机真 relay + 真 socket** 的证明，不是真公网 / 真 NAT / 蜂窝网。
+   §5 十四条依旧全部躺在 `R-A3-8a` 名下等真环境。
+2. `liveBridges` 记的是 relay 进程内「已建立未关闭」的转发连接；**盒子侧 / 手机侧的
+   socket 是否也真的关了**，它看不见 —— 那要靠两端的连接数，不在本节范围。
+3. `/diagnostics` 只吐计数、无鉴权。它绑的是 health 端口，暴露面与 `/healthz` 同级；
+   但若现场把 18767 直接开在公网，等于把「这台 relay 有多少盒子、跑过多少条流」公开。
+   目前按「计数不敏感」接受，未做鉴权或限流。
+4. `bridgesOpened/Closed` 是进程内累计，relay 重启即清零；§5⑭ 的「涨 ≥5」必须在
+   **同一次 relay 进程生命周期内**取前后两份快照。
+
+---
+
+## 8.86 把桌面/relay 侧的一半验收做成一条命令
+
+### 8.86.1 起点：真机窗口不该浪费在翻日志上
+
+上一节修完判据后回到最初的问题：§5 十四条里，③④⑤⑬⑭ 五条都在桌面或 relay 上，
+**能自动判**；①②⑥⑦⑨⑩⑪⑫ 九条在手机上，必须人肉。真机窗口（真公网 relay + NAT 后
+桌面 + 蜂窝手机）是一次性的稀缺资源，现场不该手抄数字、更不该「看着像没问题」就打勾。
+
+已有的 `verify_real_device_readiness.js` 是**开跑前自检**（RD-01..08：配置齐不齐、
+两把钥匙能不能真 AUTH/BIND、桌面入站有没有在接待），结尾还留着一句
+「现场记得看 relay 审计里有没有 accept/attach/close」—— 正是要人肉看的那句。
+两者形态不同（一个跑前一次、一个要在 §5 过程中反复采样对比），所以做成**独立命令**，
+不动它 `PASS=8 FAIL=0` 的既有契约。
+
+### 8.86.2 `verify_real_device_desktop_side.js`
+
+两条子命令，**基线必须在发消息 / 断流实验之前记**：
+
+```
+baseline --relay http://<公网>:18767 [--audit ...]        ← 写快照到 /tmp
+check    --relay ... --audit ... --secrets data/secrets \
+         --out /tmp/bitbot-evidence.txt                   ← 判 7 条并落可粘贴记录
+```
+
+| 判定 | 对应 §5 | 证据 |
+| --- | --- | --- |
+| EV-00 | 前提 | `/diagnostics` 的 `schema:1`（旧 relay 直接红，不让它假装能判 ⑭） |
+| EV-01 | ④ | `/healthz boxes≥1` 且 `reverseBoxes≥1` |
+| EV-02 | ③ | `dialAttempts` 相对基线不涨，**且** `streamsServed` 真的涨过（反真空） |
+| EV-03 | ⑤ | 审计 JSONL 有 accept/attach/close，且查无 token / 正文 / HTTP 请求行 |
+| EV-04 | ⑬ | 只有 `vault.key.protected`，无明文 `vault.key` |
+| EV-05 | ⑭ | `liveBridges` 回基线 **且** opened/closed/served 各涨 ≥5，不变量成立 |
+| EV-06 | A3-2 | `/diagnostics` 响应里查无 token/payload/endpoint/memberId/boxId |
+
+两条铁律，都是这轮踩了九次之后写进代码的：
+**取不到数一律记红**（不许 SKIP 当绿、不许「没找到文件」当成「查无明文」）；
+**判变化不判好看的静态值**（③⑭ 必须有基线；`liveBridges===0` 单独成立不算证据）。
+
+输出是一份可直接粘进验收记录的文本：时间、relay 地址（凭证隐去）、每条判定的真实数值、
+结论，以及**明确列出「手机侧仍需人工」的九条** —— 工具不假装能判它判不了的东西。
+
+### 8.86.3 自证 ST-01..ST-13（`PASS=13 FAIL=0`）
+
+`--self-test` 自己起真 relay + 真 reverse 隧道 + 真审计日志，不依赖外网/真机：
+
+- ST-01 正控：真跑 5 条隧道后 7 条判定全绿。
+- ST-02..ST-10 **九组负向对照**逐条转红：没跑过消息（真空绿）、`dialAttempts` 涨了、
+  `liveBridges` 不回基线、审计空、审计夹带 token、明文密钥还在、盒子离线、
+  旧 relay 缺 schema、缺基线快照。
+- ST-11/12：真的 spawn 子进程跑 `baseline` 与 `check`，不是直接调判据函数冒充。
+- ST-13：`--out` 落盘的记录含表头、EV-05 判定与「手机侧仍需人工」边界。
+
+**脚手架自己错过一次**：第一版把 `baseline` 子进程放在 5 条隧道**之后**，
+基线与当前快照一模一样、增量恒为 0，ST-12 转红。判据拒绝「没跑过消息」恰恰是对的，
+错的是自证的顺序 —— 把 baseline 挪到跑隧道之前即全绿。这与判据错误要分开看。
+
+### 8.86.4 CF-13：文档里的命令也是要验的代码
+
+§3.4 新增了现场步骤（含基线顺序警告、`--audit` 在 relay 那台机器上的提示）。
+CF 门补 **CF-13**：验 §3.4 那两条 `node scripts/…` 命令指向的脚本真的存在、
+且实现里真有 `baseline` / `check` / `--self-test` 三个子命令；负向对照把脚本名改错一个字必须转红。
+
+**这里又差点写下一个恒真对照（本轮第九次）**：INJ-CF_13 第一版把注入后的结果单独写成
+`wrongMentioned && wrongExists`，而那个「改错名字的文件」当然不存在 ⇒ `wrongExists`
+必然 false ⇒ 判据恒绿，测了个寂寞。改成把正判抽成 `evidenceCommandCheck()`，
+**正判与负向对照复用同一函数**（与 `gradleRootCheck` / `measure` 同形状）。
+规律再次确认：**判据要能复用，否则「有没有牙」根本没被测。**
+
+CF 门 `PASS=18 FAIL=0`（16 → 18）。
+
+### 8.86.5 门禁与回归
+
+| 门 | 结果 |
+| --- | --- |
+| `verify_real_device_desktop_side.js --self-test` | PASS=13 FAIL=0 |
+| G-98（smoke 区段） | REGION PASS=3 FAIL=0 |
+| CF 门（含新增 CF-13 / INJ-CF_13） | PASS=18 FAIL=0 |
+| DG 门 / 既有八门 | 全绿 |
+
+### 8.86.6 残留（诚实）
+
+1. 工具判的是**桌面/relay 侧**，手机侧九条仍要人肉；它不替代 §5，只是省下现场翻日志的时间。
+2. `--audit` 与 `--secrets` 都是**本机路径**。桌面与 relay 不同机时，要先把审计日志取回本机
+   或直接在 relay 机器上跑；工具不会自动跨机取文件。
+3. `baseline` 快照是进程内累计值，**relay 一重启就清零** —— 前后两份快照必须在同一次
+   relay 进程生命周期内，否则 EV-02/05 会（正确地）判红。
+4. 自证用的是本机 127.0.0.1 真 relay；`--relay` 指向公网地址时的 TLS/代理/超时形态
+   未实跑（这台机器没有公网 relay 可连）。
+5. 全部仍归 `R-A3-8a`：真公网 + 真 NAT + 蜂窝网，到今天零样本。

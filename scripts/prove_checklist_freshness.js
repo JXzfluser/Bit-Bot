@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 "use strict";
-/* prove_checklist_freshness.js — 真机清单不许说反话（CF-01..CF-12 + INJ-CF + INJ-CF_12 + INJ-CF-EXEMPT）
+/* prove_checklist_freshness.js — 真机清单不许说反话（CF-01..CF-13 + INJ-CF + INJ-CF_12 + INJ-CF_13 + INJ-CF-EXEMPT）
  *
  * 要证的一件事：**验收清单里的「否定断言」和代码事实不冲突**。
  *
@@ -183,8 +183,27 @@ function gradleRootCheck(mdText) {
   return { found: false, ok: false, dir: "" };
 }
 
+/**
+ * §3.4 那两条 `node scripts/…` 命令是不是落在真脚本上。
+ * 抽成函数是为了让正判与负向对照**复用同一套判据** —— 各写一份必出恒真对照。
+ */
+function evidenceCommandCheck(mdText) {
+  const m = mdText.match(/node\s+(scripts\/[\w-]+\.js)\s+baseline/);
+  const script = m ? m[1] : "";
+  const mentioned = Boolean(script) &&
+    new RegExp("node\\s+" + script.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+check").test(mdText);
+  const full = script ? path.join(REPO, script) : "";
+  const exists = Boolean(full) && fs.existsSync(full);
+  let hasSub = false;
+  if (exists) {
+    const src = fs.readFileSync(full, "utf8");
+    hasSub = src.includes('"baseline"') && src.includes('"check"') && src.includes("--self-test");
+  }
+  return { mentioned, exists, hasSub, script };
+}
+
 function main() {
-  console.log("real-device checklist freshness proof (CF-01..CF-12)");
+  console.log("real-device checklist freshness proof (CF-01..CF-13)");
 
   /* ============ 前提：这一页和它依赖的代码都在 ============ */
   if (!fs.existsSync(DOC)) {
@@ -286,6 +305,29 @@ function main() {
     const claimsDone = /(成功率[^\n]{0,10}(已达标|已达成|已验证通过))/.test(doc);
     if (claimsDone) bad("CF-11 清单把 ≥90% 跨网成功率写成了已有结论", "这条至今没有真机分母");
     else ok("CF-11 清单没有把「≥90% 跨网成功率」写成已达标（它仍是待验目标）");
+  }
+
+  /* ============ CF-13 §3.4 的一键判定命令必须真能跑 ============ */
+  /* 与 CF-12 同一条规矩：文档里的命令也是要验的代码。
+   * 只读磁盘上脚本在不在，不真跑 --self-test（那属于 G-98，避免这道门变慢）。
+   * 判据抽成函数并让负向对照**复用同一份**：第一版把注入后的结果单独写成
+   * `wrongMentioned && wrongExists`，而 wrongExists 必然 false ⇒ 恒真对照，
+   * 本轮第九次同型。判据必须能复用，否则「有没有牙」根本没被测。 */
+  {
+    const verdict = evidenceCommandCheck(doc);
+    if (!verdict.mentioned) {
+      bad("CF-13 §3.4 没给出 baseline / check 两条命令", "现场又要手抄数字了");
+    } else if (!verdict.exists || !verdict.hasSub) {
+      bad("CF-13 文档指向的一键判定脚本不存在或缺子命令", verdict.script + " / exists=" + verdict.exists + " hasSub=" + verdict.hasSub);
+    } else {
+      ok("CF-13 §3.4 两条命令落在真脚本上（baseline / check / --self-test 都在实现里）");
+    }
+    const wrong = doc.replace(/verify_real_device_desktop_side\.js/g, "verify_real_device_desktop_side_v0.js");
+    const w = evidenceCommandCheck(wrong);
+    const wouldPass = w.mentioned && w.exists && w.hasSub;
+    if (wrong !== doc && wouldPass) bad("INJ-CF_13 脚本名写错了竟然也判绿", "这条判据没有牙");
+    else if (wrong !== doc) ok("INJ-CF_13 脚本名改错立刻被判红 —— 判据读的是磁盘、且与正判复用同一函数");
+    else console.log("  · INJ-CF_13 跳过：文档里没有该脚本名，无从注入");
   }
 
   console.log("\nprove_checklist_freshness: PASS=" + PASS + " FAIL=" + FAIL);

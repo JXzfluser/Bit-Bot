@@ -90,6 +90,15 @@ function createRelayServer(opts) {
   let bytesForwarded = 0;
   let dialAttempts = 0; // 只有 openBox() 的 net.connect 会 +1：reverse 全程必须不变
   let streamsServed = 0;
+  // R-A3-5b 验收：**已进入数据面、尚未关闭的转发连接数**。
+  // 为什么不能拿 activeStreams（pendingStreams.size）顶替：它只统计「手机 CONNECT 后
+  // 等盒子 ATTACH」的窗口，ATTACH 一到就 delete、另有 2.5s 超时兜底，所以它**必然**
+  // 回基线 —— 断流重连挂住十条死连接它照样是 0。拿它证明「不留连接」是恒真对照。
+  // 另外两个累计量是反真空用的：liveBridges===0 也可能是「压根没连过」，
+  // 必须同时看到 bridgesOpened 涨过、且与 bridgesClosed 对得上。
+  let liveBridges = 0;
+  let bridgesOpened = 0;
+  let bridgesClosed = 0;
   let controlSrv = null;
   let healthSrv = null;
   const auditLog = []; // 内存审计缓冲，供 getAuditLog()
@@ -126,6 +135,20 @@ function createRelayServer(opts) {
     sock.destroy();
   }
 
+  /**
+   * 数据面连接的成对记账。**调用方必须自己保证幂等**（bridge / openBox 各有 closed 标志），
+   * 这里不吞异常也不钳到 0 —— 少减一次要让门禁的不变量 `live === opened - closed`
+   * 当场暴露出来，而不是悄悄自愈成好看的数。
+   */
+  function onBridgeOpen() {
+    liveBridges++;
+    bridgesOpened++;
+  }
+  function onBridgeClose() {
+    liveBridges--;
+    bridgesClosed++;
+  }
+
   /** 把一条控制面 socket 切成数据面：冻结解析，返回粘连的剩余字节。 */
   function toDataPlane(sock) {
     const c = controls.get(sock);
@@ -140,6 +163,7 @@ function createRelayServer(opts) {
   // 开一条到 box 的 TCP，把控制缓冲里的数据面首字节带走，之后双向盲 pipe
   function openBox(clientSock, target, initialData, meta) {
     dialAttempts++; // ← 唯一的主动拨计数点；reverse 路径绝不经过这里
+    onBridgeOpen(); // 与 bridge() 同口径：一条转发连接从建立尝试到两端关闭
     let connBytes = initialData ? Buffer.byteLength(initialData, "latin1") : 0;
     let closed = false;
     const boxSock = net.connect(target.port, target.host, () => {
@@ -173,6 +197,7 @@ function createRelayServer(opts) {
       // 关闭时记一条 close 元数据（bytes>0 即确有数据流过），绝不记 payload
       if (!closed) {
         closed = true;
+        onBridgeClose();
         log("close", {
           role: meta && meta.role,
           memberId: meta && meta.memberId,
@@ -196,6 +221,7 @@ function createRelayServer(opts) {
 
   /** 两条已就绪的 socket 双向盲 pipe（reverse 用），initial* 是各自粘连的首字节。 */
   function bridge(a, b, initialA, initialB, meta) {
+    onBridgeOpen();
     let connBytes = 0;
     if (initialA) {
       try {
@@ -215,6 +241,7 @@ function createRelayServer(opts) {
     const close = () => {
       if (closed) return;
       closed = true;
+      onBridgeClose(); // 与 onBridgeOpen 成对：不变量 liveBridges === bridgesOpened - bridgesClosed
       log("close", {
         role: meta && meta.role,
         memberId: meta && meta.memberId,
@@ -462,12 +489,72 @@ function createRelayServer(opts) {
     });
   }
 
+  /** 诊断态：仅计数，绝不带 payload。HTTP /diagnostics 与 JS API 共用这一份实现。 */
+  function diagnosticState() {
+    let reverseBoxes = 0;
+    for (const v of registry.values()) if (v.kind === "reverse") reverseBoxes++;
+    // A3-9：等 ATTACH 的窗口里 relay 用户态持有的业务字节数。
+    // 改成 clientSock.pause() 后应恒为 0（CONNECT 行粘连的首包除外）。
+    let pendingBufferBytes = 0;
+    let pendingSocketsPaused = 0;
+    for (const p of pendingStreams.values()) {
+      const pc = controls.get(p.clientSock);
+      if (pc) pendingBufferBytes += Buffer.byteLength(pc.buf, "latin1");
+      // 「0 字节」有两种可能：内核缓冲替我们持有（对），或字节被读走丢了（错）。
+      // 只看 pendingBufferBytes 会把后者当绿 —— 必须同时看 socket 真的处于 paused。
+      if (p.clientSock && typeof p.clientSock.isPaused === "function" && p.clientSock.isPaused()) {
+        pendingSocketsPaused++;
+      }
+    }
+    return {
+      boxes: registry.size,
+      connectionsForwarded,
+      bytesForwarded,
+      dialAttempts,
+      reverseBoxes,
+      activeStreams: pendingStreams.size,
+      streamsServed,
+      // 与 activeStreams 的区别见变量处注释：这个才是「挂着的转发连接」，
+      // activeStreams 只是「等 ATTACH 的窗口」，必然回基线、证明不了不留连接。
+      liveBridges,
+      bridgesOpened,
+      bridgesClosed,
+      livenessEvictions,
+      pendingBufferBytes,
+      pendingSocketsPaused,
+      pendingRejected,
+      maxPendingStreams,
+    };
+  }
+
   function start() {
     return new Promise((resolve) => {
       healthSrv = http.createServer((req, res) => {
         if (req.method === "GET" && (req.url === "/healthz" || req.url === "/")) {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({ ok: true, boxes: registry.size }));
+        } else if (req.method === "GET" && req.url === "/diagnostics") {
+          // 只读诊断态，**白名单逐字段挑**，绝不整包 JSON.stringify(getDiagnosticState())：
+          // 将来有人往诊断态里加 endpoint / memberId / token 时，这里不会顺手泄出去。
+          // 存在即为了真机验收：以前诊断态只有进程内 JS API，公网 relay 上现场根本读不到。
+          const d = diagnosticState();
+          res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({
+            ok: true,
+            // 版本号：现场脚本据此判断这个 relay 是否带得起 §5⑭（旧版没有 liveBridges）。
+            schema: 1,
+            boxes: d.boxes,
+            dialAttempts: d.dialAttempts,
+            reverseBoxes: d.reverseBoxes,
+            activeStreams: d.activeStreams,
+            streamsServed: d.streamsServed,
+            liveBridges: d.liveBridges,
+            bridgesOpened: d.bridgesOpened,
+            bridgesClosed: d.bridgesClosed,
+            connectionsForwarded: d.connectionsForwarded,
+            livenessEvictions: d.livenessEvictions,
+            pendingRejected: d.pendingRejected,
+          }));
         } else {
           res.writeHead(404);
           res.end();
@@ -535,38 +622,8 @@ function createRelayServer(opts) {
       }
       return out;
     },
-    /** 诊断态：仅计数，绝不带 payload */
-    getDiagnosticState() {
-      let reverseBoxes = 0;
-      for (const v of registry.values()) if (v.kind === "reverse") reverseBoxes++;
-      // A3-9：等 ATTACH 的窗口里 relay 用户态持有的业务字节数。
-      // 改成 clientSock.pause() 后应恒为 0（CONNECT 行粘连的首包除外）。
-      let pendingBufferBytes = 0;
-      let pendingSocketsPaused = 0;
-      for (const p of pendingStreams.values()) {
-        const pc = controls.get(p.clientSock);
-        if (pc) pendingBufferBytes += Buffer.byteLength(pc.buf, "latin1");
-        // 「0 字节」有两种可能：内核缓冲替我们持有（对），或字节被读走丢了（错）。
-        // 只看 pendingBufferBytes 会把后者当绿 —— 必须同时看 socket 真的处于 paused。
-        if (p.clientSock && typeof p.clientSock.isPaused === "function" && p.clientSock.isPaused()) {
-          pendingSocketsPaused++;
-        }
-      }
-      return {
-        boxes: registry.size,
-        connectionsForwarded,
-        bytesForwarded,
-        dialAttempts,
-        reverseBoxes,
-        activeStreams: pendingStreams.size,
-        streamsServed,
-        livenessEvictions,
-        pendingBufferBytes,
-        pendingSocketsPaused,
-        pendingRejected,
-        maxPendingStreams,
-      };
-    },
+    /** 诊断态：仅计数，绝不带 payload。与 HTTP /diagnostics 共用同一份实现。 */
+    getDiagnosticState: diagnosticState,
     /** 数据面永不缓存内容 —— 恒返回空数组，供门禁证明不落明文 */
     getCapturedPayloads() {
       return [];

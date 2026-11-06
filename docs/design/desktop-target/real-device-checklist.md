@@ -102,6 +102,10 @@ node hosts/shared/relay/relay_server.js
 - `BITBOT_RELAY_BIND=0.0.0.0` 必须设（默认只绑 `127.0.0.1`，公网打不进来）。
 - 安全组 / 端口映射要放通 **18766/TCP**（控制面）；数据面复用同一条连接，不用另开端口。
 - `/healthz` 在 18767，可先 `curl http://<公网地址>:18767/healthz` 确认活着。
+- **18767 也要放通**（跟 18766 一样做端口映射 / 安全组）：`/diagnostics` 在同一个
+  health 端口上，§5⑭ 和一键自证脚本都从它取数。开跑前先验一次：
+  `curl http://<公网地址>:18767/diagnostics`，应看到 `schema:1` 与 `liveBridges` 等计数字段。
+  只回 404 说明 relay 是旧版，§5⑭ 无法判，先升级 relay。
 - 审计日志是**元数据**（bind / accept / attach / close / ping / liveness-timeout），
   按设计不含 token、不含请求正文、不含附件 —— 现场可拿它当证据。
 
@@ -276,6 +280,40 @@ adb install -r app/build/outputs/apk/universal/debug/app-universal-debug.apk
 11. 打开「凭证」页，**记下那行连接统计**（形如 `中转 a/b · 整体 c/d · 均 x ms`）。它带分母，
     §5 ⑨ 的成功率就从这行取数；点「清零」可以开始一轮干净的计数。
 
+### 3.4 桌面/relay 侧交给一条命令（**别在真机窗口里手抄数字**）
+
+§5 里 ③零主动拨 / ④盒子在线 / ⑤审计查无正文 / ⑬钥匙串落盘 / ⑭连接数回基线
+这五条都在桌面或 relay 上，能自动判；手机侧那九条必须人肉，工具**不假装能判**。
+
+**顺序很重要**：基线要在「发消息 / 断流实验」**之前**记，否则增量恒为 0，
+工具会正确地把它判红（那不是 bug，是顺序错了）。
+
+```bash
+RELAY=http://<公网地址>:18767
+AUDIT=/tmp/bitbot-relay-audit.jsonl          # relay 那台机器上的 BITBOT_RELAY_LOGFILE
+
+# ① 手机开始 §5 之前（桌面这台机器上）
+node scripts/verify_real_device_desktop_side.js baseline \
+  --relay "$RELAY" --audit "$AUDIT"
+
+# ② 手机做完 §5（含断网/恢复 ≥5 次）之后
+node scripts/verify_real_device_desktop_side.js check \
+  --relay "$RELAY" --audit "$AUDIT" --secrets data/secrets \
+  --out /tmp/bitbot-evidence.txt
+```
+
+`--out` 落的是一份可直接粘进验收记录的文本：时间、relay 地址、每条判定的**真实数值**、
+结论，以及「手机侧仍需人工」的清单。任一条红就是红 —— **取不到数一律记红**，
+不会 SKIP 当绿，也不会把「没找到文件」当成「查无明文」。
+
+自证（本机可跑，不依赖外网/真机）：
+`node scripts/verify_real_device_desktop_side.js --self-test` → `PASS=13 FAIL=0`，
+其中九组负向对照（真空绿 / 连接泄漏 / 缺基线 / 审计夹带 token / 明文密钥 /
+盒子离线 / 旧 relay …）逐条转红，工具本身可信才拿去验真机。
+
+⚠️ `--audit` 指的是 **relay 那台机器**上的文件。若桌面与 relay 不是同一台，
+先把审计日志取回本机再给路径，或直接在 relay 机器上跑这条命令。
+
 ---
 
 ## 4. 局域网逐条打勾（R-A2-1，A3-6 之前就有效）
@@ -312,7 +350,7 @@ adb install -r app/build/outputs/apk/universal/debug/app-universal-debug.apk
 | ⑪ | **探活 ≠ 凭证（A3-17）** | 两条独立的维度都要看到：桌面关掉 → 「桌面离线」；桌面开着但吊销这台手机 → 「桌面在线 · **凭证被拒**」，**不能报成离线** | ☐ |
 | ⑫ | **错误提示说人话** | 故意粘一段残缺配对串 / 停掉 relay / 输错配对码，提示应分别指出缺哪栏、隧道不通、码不对；**不出现内部路径或堆栈** | ☐ |
 | ⑬ | **钥匙串真的接上了（R-A3-6h）** | `ls -l data/secrets/vault.key*` 只看到 `vault.key.protected`；桌面重启后配置仍能读（说明迁移没把钥匙弄丢） | ☐ |
-| ⑭ | **断流重连不留连接（R-A3-5b 残留）** | 蜂窝下反复断网/恢复 **5 次**（每次等进度断掉再恢复）。之后看 relay 诊断态：`streamsServed` 会涨（说明真重连过），但 `activeStreams` **必须回到基线**，不能随重连次数单调上涨 | ☐ |
+| ⑭ | **断流重连不留连接（R-A3-5b 残留）** | 蜂窝下反复断网/恢复 **5 次**（每次等进度断掉再恢复）。`curl http://<公网地址>:18767/diagnostics`：断流前先记一份基线，之后看 **`liveBridges` 回到基线**（挂着没关的转发连接数），同时 `streamsServed` / `bridgesOpened` / `bridgesClosed` 都涨了 ≥5（说明**真的重连过**，不是压根没连）。⚠️ **别看 `activeStreams`**：它只是「等 ATTACH 的窗口」，ATTACH 一到就清空、另有 2.5s 超时兜底，**挂住十条死连接它照样是 0**，拿它当证据是恒真对照 | ☐ |
 
 **⑩ 这一条的判定方向在早期版本里是相反的**（R-A3-5b 之前，事件流只能靠直连，回退才是正常）。
 现在正过来了：看到「回退到整轮模式」意味着隧道化失败，**这一条不过**，要去看
@@ -333,8 +371,12 @@ adb install -r app/build/outputs/apk/universal/debug/app-universal-debug.apk
 | 手机状态条 | `TransportStatus.labelOrNull` | 「中转 · Nms」；`NONE` 时不显示延迟 |
 | relay 审计 `/tmp/bitbot-relay-audit.jsonl` | `event` | `auth` / `bind` / `ping` / `accept` / `attach` / `close`；半开时 `liveness-timeout` |
 | relay `/healthz`（18767） | `boxes` | 桌面在线时 ≥1，桌面关掉后回落 |
-| relay 诊断态 | `dialAttempts` / `reverseBoxes` / `livenessEvictions` | reverse 下 `dialAttempts` 不涨 |
-| relay 诊断态 | `activeStreams` / `streamsServed` | 重连 5 次后 `streamsServed` 涨、`activeStreams` 回基线（⑭ 就看这一行） |
+| relay **`/diagnostics`（18767）** | `dialAttempts` / `reverseBoxes` / `livenessEvictions` | `schema:1` 存在；reverse 下 `dialAttempts` 不涨 |
+| relay `/diagnostics`（18767） | `liveBridges` / `bridgesOpened` / `bridgesClosed` / `streamsServed` | ⑭ 就看这一行：`liveBridges` 回基线且后三者各涨 ≥5。**`activeStreams` 不算证据**（等 ATTACH 的窗口，必然回基线） |
+
+`/diagnostics` 只吐计数，查无 token / 正文 / endpoint / memberId；端点带 `schema:1`，
+看到别的版本号说明这台 relay 太旧、撑不起 §5⑭。旧版只有 `/healthz`（`{ok, boxes}`），
+**那里没有诊断态** —— 以前清单写「看 relay 诊断态」但没给端点，现场根本读不到。
 | 桌面日志 | `[relay-box] reverse …` | 没有 `WARN … 回环地址`、没有 `denied` / `transport` |
 | `lsof -nP -i :18765` | 入站监听 | `*:18765`；无输出 = 桌面 app 没在跑 |
 

@@ -3862,6 +3862,33 @@ else
   echo "    或有人把历史注记写进了正文（应放进 > 引用块或用 ~~删除线~~）"
 fi
 
+echo "== G-97 relay 诊断态现场可读 + 恒真判据被拆穿（DG-01..DG-12）=="
+if timeout 180 node scripts/prove_relay_diagnostics.js > /tmp/g97-diag.log 2>&1; then
+  ok "G-97 /diagnostics 现场可读且计数成对（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g97-diag.log)）"
+  grep -q 'DG-07 .*恒真对照被拆穿' /tmp/g97-diag.log \
+    && ok "G-97 反真空：挂住 3 条死连接时 activeStreams 照样回基线、liveBridges 真涨到 3（旧 §5⑭ 判据确实证明不了任何事）" \
+    || bad "G-97 DG-07 恒真对照证据缺失"
+  grep -q 'DG-02 .*五组负向对照' /tmp/g97-diag.log \
+    && ok "G-97 判据有牙：摘 close / 删字段 / 删 schema / 整包序列化 / reverse 不记账，五组注入全被抓到" \
+    || bad "G-97 负向对照缺失"
+else
+  bad "G-97 relay 诊断门（见 /tmp/g97-diag.log；$(tail -3 /tmp/g97-diag.log | tr '\n' ' ')）"
+fi
+
+echo "== G-98 桌面/relay 侧一键自证工具本身可信（EV / ST --self-test）=="
+if timeout 240 node scripts/verify_real_device_desktop_side.js --self-test > /tmp/g98-evidence.log 2>&1; then
+  ok "G-98 一键判定工具自证全绿（$(grep -m1 -o 'self-test: PASS=[0-9]* FAIL=[0-9]*' /tmp/g98-evidence.log)）"
+  grep -q 'ST-02 没跑过消息（真空绿）' /tmp/g98-evidence.log \
+    && grep -q 'ST-04 liveBridges 不回基线' /tmp/g98-evidence.log \
+    && ok "G-98 判据有牙：真空绿 / 连接泄漏 / 缺基线 / 审计夹带 token / 明文密钥 / 盒子离线 / 旧 relay 等九组负向逐条转红" \
+    || bad "G-98 负向对照缺失（工具会把「没取到数」当绿）"
+  grep -q 'ST-13 --out 落盘' /tmp/g98-evidence.log \
+    && ok "G-98 产出可粘贴记录，且明确列出「手机侧仍需人工」的九条（不假装能判）" \
+    || bad "G-98 记录产物 / 人工边界缺失"
+else
+  bad "G-98 一键判定工具自证（见 /tmp/g98-evidence.log；$(tail -3 /tmp/g98-evidence.log | tr '\n' ' ')）"
+fi
+
 
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()
