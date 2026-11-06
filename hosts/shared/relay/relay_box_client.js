@@ -123,6 +123,8 @@ function createRelayBoxClient(opts) {
   // reverse 控制长连接意外断开后的重连间隔；stop() 之后绝不重连。
   const reconnectMs = Number(o.reconnectMs === undefined ? 2000 : o.reconnectMs);
   const log = typeof o.log === "function" ? o.log : null;
+  // 成功登记时通知一次（日志收敛器靠它清账并打「已恢复」）。可选，不传就没有这个通知。
+  const onRecovery = typeof o.onRecovery === "function" ? o.onRecovery : null;
 
   const state = {
     ok: false,
@@ -135,6 +137,10 @@ function createRelayBoxClient(opts) {
     streamsServed: 0,
     lastError: REASON_NOT_CONFIGURED,
     lastErrorAt: 0,
+    // R-A3-8a 启动日志纠偏：lastError 的**取值不变**（门禁靠它区分凭证/网络），
+    // 另挂一份结构化细节供日志说人话。以前只有 "transport" 四个字，
+    // 现场分不清「relay 没起」「端口没放通」「DNS 不通」，还会被误导去查本机入站端口。
+    lastErrorDetail: null,
   };
   let timer = null;
   let reconnectTimer = null;
@@ -142,11 +148,36 @@ function createRelayBoxClient(opts) {
   let controlSock = null;
   const streamSockets = new Set();
 
-  function setError(reason) {
+  /** 结构化失败细节。绝不塞凭证：只放目标地址、errno、阶段、尝试次数。 */
+  function detailOf(reason, code, phase, rawMessage) {
+    return {
+      reason,
+      // 真正被连接的目标。reverse 下是 relay，不是 endpoint（后者只作展示、从不被连接）。
+      target: host + ":" + port,
+      code: code || "",
+      phase: phase || "",
+      mode,
+      attempts: state.attempts,
+      // 只留错误串，且绝不带 boxToken / AUTH 行。
+      message: String(rawMessage || "").split("\n")[0].slice(0, 160).replace(boxToken, "<redacted>"),
+    };
+  }
+
+  function setError(reason, detail) {
     state.ok = false;
     state.lastError = reason;
     state.lastErrorAt = Date.now();
-    if (log) log(reason);
+    state.lastErrorDetail = detail || null;
+    // 兼容既有单参数 log(reason) 消费者：第二个参数是新增的可选细节。
+    if (log) log(reason, detail || null);
+  }
+
+  /** socket error → 保留 errno（ECONNREFUSED / ETIMEDOUT / ENOTFOUND …），不再整个吞掉。 */
+  function codeOf(err) {
+    return String((err && (err.code || err.errno)) || "").trim();
+  }
+  function messageOf(err) {
+    return String((err && err.message) || "").trim();
   }
 
   /** 本地能判死的就别发出去：`REGISTER <空 id>` 只会换回一个 BADREG，白花一条连接。 */
@@ -183,14 +214,22 @@ function createRelayBoxClient(opts) {
           state.ok = true;
           state.registeredAt = Date.now();
           state.lastError = null;
+          state.lastErrorDetail = null;
+          if (onRecovery) onRecovery({ target: host + ":" + port, mode });
         } else {
-          setError(v.reason);
+          setError(v.reason, v.detail || null);
         }
         resolve(v);
       };
 
-      sock.setTimeout(connectTimeoutMs, () => finish({ ok: false, reason: REASON_TRANSPORT }));
-      sock.once("error", () => finish({ ok: false, reason: REASON_TRANSPORT }));
+      sock.setTimeout(connectTimeoutMs, () => finish({
+        ok: false, reason: REASON_TRANSPORT,
+        detail: detailOf(REASON_TRANSPORT, "ETIMEDOUT", "connect", "connect/handshake timed out"),
+      }));
+      sock.once("error", (err) => finish({
+        ok: false, reason: REASON_TRANSPORT,
+        detail: detailOf(REASON_TRANSPORT, codeOf(err), "connect", messageOf(err)),
+      }));
       sock.connect(port, host, async () => {
         try {
           sock.setTimeout(replyTimeoutMs);
@@ -304,10 +343,10 @@ function createRelayBoxClient(opts) {
     controlSock = sock;
     let handshook = false;
 
-    const dead = (reason) => {
+    const dead = (reason, code, phase, rawMessage) => {
       if (controlSock !== sock) return;
       controlSock = null;
-      setError(reason);
+      setError(reason, detailOf(reason, code, phase, rawMessage));
       try { sock.destroy(); } catch (_) {}
       scheduleReconnect();
     };
@@ -324,6 +363,8 @@ function createRelayBoxClient(opts) {
         state.ok = true;
         state.registeredAt = Date.now();
         state.lastError = null;
+        state.lastErrorDetail = null;
+        if (onRecovery) onRecovery({ target: host + ":" + port, mode });
       } else if (line.startsWith("ACCEPT ")) {
         const streamId = line.slice(7).trim();
         if (streamId && handshook) serveStream(streamId);
@@ -339,8 +380,12 @@ function createRelayBoxClient(opts) {
       }
     });
 
-    sock.setTimeout(connectTimeoutMs, () => { if (!handshook) dead(REASON_TRANSPORT); });
-    sock.once("error", () => { if (!handshook) dead(REASON_TRANSPORT); });
+    sock.setTimeout(connectTimeoutMs, () => {
+      if (!handshook) dead(REASON_TRANSPORT, "ETIMEDOUT", "connect", "connect/handshake timed out");
+    });
+    sock.once("error", (err) => {
+      if (!handshook) dead(REASON_TRANSPORT, codeOf(err), "connect", messageOf(err));
+    });
     sock.once("connect", () => {
       sock.setTimeout(replyTimeoutMs);
       sock.write("AUTH " + boxToken + "\nBIND " + boxId + "\n");
@@ -349,9 +394,13 @@ function createRelayBoxClient(opts) {
       if (controlSock !== sock) return;
       controlSock = null;
       if (!stopped) {
-        state.ok = false;
-        state.lastError = REASON_TRANSPORT;
-        state.lastErrorAt = Date.now();
+        // 已握手后掉线是「控制通道断了」，与「连不上」不是同一件事，phase 要分开。
+        setError(REASON_TRANSPORT, detailOf(
+          REASON_TRANSPORT,
+          "ECONNRESET",
+          handshook ? "bound" : "connect",
+          handshook ? "relay control connection closed" : "connection closed before handshake",
+        ));
         scheduleReconnect();
       }
     });

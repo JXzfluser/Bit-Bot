@@ -3889,6 +3889,19 @@ else
   bad "G-98 一键判定工具自证（见 /tmp/g98-evidence.log；$(tail -3 /tmp/g98-evidence.log | tr '\n' ' ')）"
 fi
 
+echo "== G-99 桌面启动日志说人话（§5⑫ · errno / 真目标 / 收敛）=="
+if timeout 180 node scripts/prove_relay_failure_copy.js > /tmp/g99-failure-copy.log 2>&1; then
+  ok "G-99 启动失败日志说人话（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g99-failure-copy.log)）"
+  grep -q 'FC-10 真 socket' /tmp/g99-failure-copy.log \
+    && ok "G-99 反真空：真连不可达端口拿到 ECONNREFUSED（不是从字符串猜的），且 detail.target 不是展示用的 endpoint" \
+    || bad "G-99 FC-10 真 socket 证据缺失"
+  grep -q 'FC-02 八组负向对照' /tmp/g99-failure-copy.log \
+    && ok "G-99 判据有牙：吞 errno / 不提真目标 / 不收敛 / 恢复不清账 / 旧日志形状等八组注入全被抓到" \
+    || bad "G-99 负向对照缺失"
+else
+  bad "G-99 启动日志门（见 /tmp/g99-failure-copy.log；$(tail -3 /tmp/g99-failure-copy.log | tr '\n' ' ')）"
+fi
+
 
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g75_xvfb=()

@@ -7913,3 +7913,123 @@ CF 门 `PASS=18 FAIL=0`（16 → 18）。
 4. 自证用的是本机 127.0.0.1 真 relay；`--relay` 指向公网地址时的 TLS/代理/超时形态
    未实跑（这台机器没有公网 relay 可连）。
 5. 全部仍归 `R-A3-8a`：真公网 + 真 NAT + 蜂窝网，到今天零样本。
+
+---
+
+## 8.87 桌面端真启动一次，日志当场暴露「不说人话」
+
+### 8.87.1 启动本身：两次才起来，第一次不是产品问题
+
+用户要求「把桌面端启动好」，用项目自己的 Electron 二进制 + 源码目录（跑最新代码，
+不用 `dist/` 里的旧打包版）启动。第一次 exit 133（SIGTRAP）：
+
+```
+sandbox initialization failed: Operation not permitted
+GPU process exited unexpectedly: exit_code=6
+FATAL: gpu_data_manager_impl_private.cc:415] GPU process isn't usable. Goodbye.
+```
+
+这是当前受限环境里 Chromium sandbox / GPU 起不来，不是产品 bug。按项目既有口径
+（`scripts/electron_env.mjs` 的 DROP 清单 + 各 e2e 脚本的 `--no-sandbox --disable-gpu`
++ 独立 `--user-data-dir`）重启即好。另外当前 shell 里 `ELECTRON_RUN_AS_NODE=1` 常驻，
+不剔除的话 Electron 会退化成纯 Node、`ipcMain`/`BrowserWindow` 全 undefined。
+
+**启动好的判据**（不是「进程活着」）：`[desktop] app="Bit Bot" version=0.1.0`、
+`[desktop] cn-inbound listening=true port=18765`、真 HTTP `/v1/pair/discover → 200`、
+无 `FATAL`（第一次那个 `HTTP 502` 是 curl 走了代理，判活必须用 `curl --noproxy '*'`）。
+
+### 8.87.2 启动日志里的真问题：一行日志能把现场带到错的方向
+
+```
+[relay-box] reverse failed: transport endpoint=127.0.0.1:18765   ← 每 2s 一条，无限刷
+```
+
+三个毛病，都不是「文案不好看」，是**诊断信息本身错误**：
+
+1. 只有 `transport` 四个字。errno 被 `sock.once("error", () => …)` 整个吞掉，
+   分不清「relay 没起」「端口没放通」「DNS 不通」「曾连上又被踢」。
+2. `endpoint=127.0.0.1:18765` 在 reverse 下**只是展示字段、从不被连接**
+   （`relay_box_client.js` 文件头第 28 行明说，门禁还专门传不可达地址证明这点）。
+   真正连不上的是 relay 的 `host:port`。照这行去排查，会去 ping 一个刚才还回 200 的端口。
+3. 每 2s 一条永不收敛，日志被刷爆，真正有用的那行反而被淹。
+
+正撞在 §5⑫「错误提示说人话」上 —— 之前只在手机端验过提示，桌面启动日志没人看过。
+
+### 8.87.3 只改诊断信息层，协议与重连节奏一字不动
+
+改强不改松，`lastError` 的**取值**（门禁靠它区分凭证/网络）、reason 分类、
+「不做指数退避」（relay 还没起来时要快速恢复，是刻意设计）全部保留。
+
+- `relay_box_client.js`：socket error 接住 `err` → 提取 `err.code`；新增 `detailOf()`
+  结构化细节 `{target, code, phase, mode, attempts, message}`（message 截断 160 字、
+  凭证 redact）；`state.lastErrorDetail`；成功登记时可选 `onRecovery`。
+  **reverse 与 dial 两条路径都补**，不只修一半。
+  `phase` 区分 `connect`（连不上）与 `bound`（曾 BIND 成功后掉线）——
+  后者是 relay 重启 / NAT 映射过期，不是配置错。
+- 新模块 `relay_failure_copy.js`：`describeFailure()` 把 errno 映射成中文原因 + 下一步
+  （ECONNREFUSED→「relay 没起或 18766 没监听」、ETIMEDOUT→「安全组/端口映射」、
+  ENOTFOUND→「DNS」…），并明确点破「`endpoint=` 只是展示字段，不用查它」；
+  `createFailureLog()` 收敛：首次详报、之后每 10 次一行汇总（带累计次数/时长/真实重试间隔）、
+  失败签名一变立刻重新详报、恢复清账并报「已恢复」。
+- `main.js`：日志回调换成人话；配置变更重建客户端时**一起重建收敛器**，
+  否则换了 relay 地址还沿用旧签名，会把「新目标第一次失败」误判成「老目标第 N 次」而吞掉详报。
+
+### 8.87.4 真实启动后的日志（这才算验收，不是门绿就算）
+
+```
+[relay-box] 登记失败：网络层没连通 · 目标 127.0.0.1:18766 · errno=ECONNREFUSED
+            · 目标拒绝连接 —— relay 进程没起，或 18766 端口没监听
+            · 原始信息：connect ECONNREFUSED 127.0.0.1:18766
+            · 注：endpoint=127.0.0.1:18765 只是展示字段，reverse 下从不被连接，不用查它
+[relay-box] 仍在失败：同上原因已连续 10 次 / 18s（目标 127.0.0.1:18766，每 2s 重试）；原因不变不再逐条打印
+```
+
+约 10 次失败 → 2 行，旧的误导形状 0 条。桌面端本身**启动完整**，失败的是这台机器上
+relay 没起 —— 日志现在把这件事说清楚了。
+
+顺带补了一处 A3-15 的解释：启动行写 `-> 192.168.1.5:18766`，失败行写 `目标 127.0.0.1:18766`，
+那是「下发给手机的地址 ≠ 本机实际连接地址」的设计，但没有解释时现场会以为地址又对不上、
+跑去改一个本来就对的字段。现在只在 `cfg.connectHost !== cfg.host` 时打一行说明（FC-15）。
+
+### 8.87.5 门 FC-01..FC-15 + G-99（15/0）
+
+`prove_relay_failure_copy.js`。关键是**反真空**：
+FC-10 真起一个没人监听的端口，连它，断言 errno **真的是** `ECONNREFUSED`、
+`detail.target` 真的是那个端口且**不是**展示用的 endpoint —— 不是查模块里有没有这个字符串。
+FC-13 反过来起真 relay，断言 BIND 成功会触发 `onRecovery`（否则收敛器永远清不了账）。
+FC-06 断言 9 次失败不能是 0 行（把「没打日志」当「收敛成功」也不行），
+也不能是 9 行。FC-11 钉住 `getState().lastError` 老取值不变。
+八组负向对照逐个摘要红。
+
+### 8.87.6 这一轮判据上又栽三次（全同型，第十一~十三次）
+
+1. **FC-02「恢复不清账」抓不到**：判据 `/sig = ""/` 命中的是变量初始声明
+   `let sig = ""`，不是 `onRecover` 里的清账 → 恒真。改成按函数体切片查。
+2. **FC-02「人话不提真目标」抓不到**：判据只查 `/d\.target/` 全文件，
+   别处还有引用撑绿。改成钉 `const target = d.target || "relay"` 与 `目标 ${target}` 两个形状。
+3. **FC-02「写死重试间隔」抓不到**：负向对照往源码尾部塞了一句**注释**，
+   而 `measure()` 判前 `stripComments()` 直接剥掉 —— 与 AB-21 / RS-09 / CF-05 同型，
+   本轮第四次。改成注入真代码。
+
+另有一处**真产品缺陷**是门抓出来的（FC-05）：`describeFailure()` 是纯函数，
+直接喂 500 字错误串会原样吐出（截断只做在 `detailOf` 里，UI 以后直接调就绕过）。
+已在纯函数里自己截断。
+
+**规律还是那句：判据要锚具体位置的形状、要能复用，不能锚「文件里出现过这个串」；
+负向对照必须注入真代码，注释会被剥掉。**
+
+### 8.87.7 回归与残留
+
+| 门 | 结果 |
+| --- | --- |
+| `prove_relay_failure_copy.js` | PASS=15 FAIL=0 |
+| G-99（smoke 区段） | REGION PASS=3 FAIL=0 |
+| 既有 13 门 | 全绿（box_registration 12 / reverse_tunnel 15 / resilience 9 / hot_reload 11 / checklist 18 / diagnostics 12 …） |
+
+残留（诚实）：
+1. 桌面端只把状态写日志，**没有 UI 呈现**。`lastErrorDetail` 已经备好，但界面还没消费它 ——
+   §5⑫ 的「提示说人话」在桌面侧仍只覆盖日志层。
+2. 本次启动用的是 `--no-sandbox --disable-gpu`（受限环境口径），**不是**用户日常双击
+   `Bit Bot.app` 的形态；GPU/沙箱在正常 macOS 上是可用的，但那条路径本轮没实跑。
+3. relay 没起是本机现状，不是产品缺陷；真公网 relay + NAT + 蜂窝手机仍零样本（`R-A3-8a`）。
+4. 收敛阈值 `repeatEvery=10` 是取舍，不是量出来的最优值。

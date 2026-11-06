@@ -174,6 +174,14 @@ try {
 } catch (_e) {
   relayWatchMod = require("../shared/relay/relay_config_watch");
 }
+// §5⑫ 启动日志说人话：把 errno / 真实目标 / 收敛策略从日志回调里抽出来，
+// 做成可单测的共享模块（与上面三个同样走开发态/装机态双路径兜底）。
+let relayFailureCopy;
+try {
+  relayFailureCopy = require("./shared/relay/relay_failure_copy");
+} catch (_e) {
+  relayFailureCopy = require("../shared/relay/relay_failure_copy");
+}
 // A3-12（关 R-A3-6h 的凭证明文半条）：安全格式的 relay.json 读写。
 let relaySecretsMod;
 try {
@@ -4299,6 +4307,13 @@ function currentRelayHandoff() {
 
 let relayBox = null;
 let relayBoxKey = null;
+/* 失败日志收敛器：每次重建客户端时一起换掉，否则换了 relay 地址还沿用旧的
+ * 连续失败签名，会把「新目标第一次失败」误判成「老目标第 N 次」而吞掉详报。 */
+let relayBoxFailureLog = relayFailureCopy.createFailureLog({
+  write: (line) => process.stderr.write(line + "\n"),
+  repeatEvery: 10,
+  reconnectMs: 2000, // 与 relay_box_client 的 reconnectMs 默认同源；改了要一起改
+});
 
 /* A3-12：复用桌面已有的 secret vault（GP-99~102，AES-256-GCM + 0600），
  * 把两把 relay token 从明文 relay.json 里挪出去。放在这里而不是文件头部的 require 区，
@@ -4377,6 +4392,11 @@ function syncRelayBoxRegistration(status) {
     );
   }
 
+  relayBoxFailureLog = relayFailureCopy.createFailureLog({
+    write: (line) => process.stderr.write(line + "\n"),
+    repeatEvery: 10,
+    reconnectMs: 2000,
+  });
   relayBox = relayBoxMod.createRelayBoxClient({
     host: cfg.connectHost || cfg.host, // A3-15：本机 relay 走 127.0.0.1；手机仍拿公网 host
     port: cfg.port,
@@ -4385,16 +4405,34 @@ function syncRelayBoxRegistration(status) {
     endpoint,
     mode: cfg.mode,
     localEndpoint,
-    log: (reason) => {
-      // 只打原因，不打凭证；「凭证不对」与「网络不好」必须能分开看。
-      process.stderr.write(`[relay-box] ${mode} failed: ${reason} endpoint=${endpoint}\n`);
+    // §5⑫：以前这行是 `[relay-box] reverse failed: transport endpoint=127.0.0.1:18765`，
+    // 每 2s 一条永不收敛，且把「只作展示、从不被连接」的 endpoint 摆成失败点 ——
+    // 现场照着去 ping，会去查一个明明回 200 的端口。改为：
+    //   ① 报真正被连接的目标（relay host:port）+ errno + 该查什么；
+    //   ② 同类连续失败收敛成一行汇总，恢复时清账并报「已恢复」；
+    //   ③ 绝不把凭证写进日志（detail 由客户端 scrub 过）。
+    log: (reason, detail) => {
+      relayBoxFailureLog.onFailure(reason, detail, {
+        endpoint,
+        endpointIsDisplayOnly: mode === "reverse",
+      });
     },
+    onRecovery: (info) => { relayBoxFailureLog.onRecover(info); },
   });
   relayBoxKey = key;
   relayBox.start();
   process.stdout.write(
     `[relay-box] ${mode} box=${cfg.boxId} -> ${cfg.host}:${cfg.port} endpoint=${endpoint}\n`,
   );
+  // A3-15：本机实际连的地址可能与下发给手机的地址不同（例如配置写公网 IP、
+  // 本机走回环直连）。不点破的话，现场会把启动行的 192.168.1.5 与失败行的
+  // 127.0.0.1 当成「地址又对不上」，跑去改一个本来就对的字段。
+  if (cfg.connectHost && cfg.connectHost !== cfg.host) {
+    process.stdout.write(
+      `[relay-box] 注：下发给手机的是 ${cfg.host}:${cfg.port}，本机实际连 ` +
+        `${cfg.connectHost}:${cfg.port}（A3-15 连接地址与下发地址分离）；诊断里看到的是实际连接目标。\n`,
+    );
+  }
   return relayBox;
 }
 
