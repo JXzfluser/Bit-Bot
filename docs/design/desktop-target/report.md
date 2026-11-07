@@ -8450,3 +8450,52 @@ Info.plist 不在签名封条里，改它不破坏签名（改完实测能正常
   没动，因为改变它等于改产品行为（不是修 bug），要单独拍。
 * **手机端 `/bind` 页仍是中文单语**（上一轮就记着的跨端切片），以及手机 UI 的语言
   跟随**手机系统**而不是桌面设置 —— 同一轮里看到的英文进度行有一部分来自这一侧。
+
+### 8.92.6 「双击 / open -a 还是弹 Electron 默认欢迎页」（2026-11-07 补）
+
+做完 §8.92.2 之后用户又贴来一张截图：那个写着
+`To run a local app, execute the following on the command line` 的窗口还在，
+命令里赫然是**我们刚造的包**：
+
+```
+$ /Users/zfl/Downloads/bitbot/hosts/desktop/build/dev-app/Bit Bot.app/Contents/MacOS/Bit Bot path-to-app
+```
+
+**根因**：新包只是「名字对了」，并不「点得开」。macOS 从 Finder 双击 `.app`
+（以及 `open -a`、登录项）启动时**不给 app 路径**，Electron 于是按顺序找
+`Resources/app.asar` → `Resources/app` → 都没有才退回自带的 `default_app.asar`，
+也就是那个欢迎页。`start-desktop.sh` 是显式传 `.` 的，所以命令行启动一直正常 ——
+两种启动路径行为不同，这就是「我明明改了它却还是这样」。
+
+**修法三条**：
+
+1. `make_dev_app_bundle.sh` 里加 `Contents/Resources/app` → `hosts/desktop` 的
+   软链（不复制：`main.js` 大量 `__dirname` 相对路径，复制成两份代码改哪个都不对）。
+   软链之后 `__dirname` 仍是真目录，双击 / `open -a` / 登录项与 `start-desktop.sh`
+   跑的是同一份代码。已造过的包在 `--force` 之外也能**原地补链**，不必重拷 250MB。
+2. 顺手发现一个副作用并修掉：走 `Resources/app` 启动时 `process.defaultApp` 为假，
+   于是 **`app.isPackaged` 变成 true**，`process.resourcesPath`（找内核）、
+   userData 里的 `.env.local`、自动更新这三处会按「安装版」走。新增
+   `IS_DEV_BUILD = !app.isPackaged || execPath 在 build/dev-app 下`，三处分支改用它。
+3. **dev 不再注册登录项**（并把历史遗留的撤掉）。原来每次 dev 启动都
+   `openAtLogin=true`、`path=process.execPath`、`args=[]` —— 登录时被拉起时同样
+   不带 app 路径，是欢迎页的另一个来源；用户还会看到「两套 user-data-dir 各开一个窗口」。
+
+**验证**（都是跑出来的）：
+
+| 场景 | 结果 |
+| --- | --- |
+| `…/Bit Bot.app/Contents/MacOS/Bit Bot`（**不给 app 路径**） | `[desktop] app="Bit Bot" version=0.1.0 … dev_build=true`，无欢迎页 |
+| `bash scripts/start-desktop.sh`（显式传 `.`） | 同上，`ready: /v1/pair/discover → 200` |
+| 登录项 | `[desktop] openAtLogin=false ok=true` |
+
+**门**（都接进 G-103）：ID-14 dev 包自给自足（`Resources/app` 的 `realpath` 必须等于
+应用目录，且里面有 `package.json`）、ID-15 dev 早返回 + 撤销旧项 + 标 `skipped`、
+ID-16 `IS_DEV_BUILD` 必须覆盖 bundle 路径、ID-17 三处行为分支都走它。
+四条各配一个注入对照（把 `Resources/app` 指到 `/tmp`、摘掉 dev 守卫、退回只看
+`!app.isPackaged`、把某一处改回裸 `app.isPackaged`，都必须判红）。
+
+**残留**：登录项这条在 macOS 上实测 `getLoginItemSettings` 一直是 false ——
+非 `/Applications` 下的包，系统大概率没真的登记（Sonoma 起走 SMAppService）。
+所以「欢迎页反复出现」的主因是**有人（我，或用户）直接点开了那个 .app**，
+登录项最多是次要来源。现在两条路都堵了：点开能起、登录项不注册。

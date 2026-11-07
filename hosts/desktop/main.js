@@ -66,6 +66,25 @@ try {
   app.setName(PRODUCT_NAME);
 } catch (_) { /* no-op */ }
 
+/* 「这是开发构建」不能只看 app.isPackaged。
+ * 打包安装的 Bit Bot.app 里 Resources/ 有 app.asar，isPackaged 为真 —— 对。
+ * 但开发态现在有两条启动路径，行为不一样：
+ *   ① `Electron .`（门禁、start-desktop.sh 传了 app 路径）→ process.defaultApp
+ *      为真 → isPackaged **假**；
+ *   ② `Bit Bot.app`（双击 / open -a / 登录项，不带 app 路径）→ 靠包里
+ *      Resources/app 找到应用 → isPackaged **真**，和安装版分不开。
+ * ②变成真之后，process.resourcesPath / 自动更新 / userData 里的 .env.local
+ * 这几处会按「安装版」走，而它其实不是。所以这里用可执行文件所在位置划一刀：
+ * 只要跑的是 build/dev-app 里的那份，就一律当开发态。 */
+const IS_DEV_BUILD = (() => {
+  try {
+    if (!app.isPackaged) return true;
+    return /[\\/]build[\\/]dev-app[\\/]/.test(process.execPath);
+  } catch (_) {
+    return true;
+  }
+})();
+
 // 单实例锁：同一个 user-data-dir 只允许一个 Electron 进程常驻。
 // 没有这把锁时，双击第二次会起一个全新进程，于是出现「两个应用同时跑」。
 // 这里在最早的位置拿锁：拿不到就直接退出，并把已有的窗口唤到前台。
@@ -312,7 +331,7 @@ const { resolveRepoRoot, resolveDataRoot, resolveMoonBin, resolveKernelBin, desc
 /** Resources dir of a packaged app (undefined in dev). */
 const RESOURCES_PATH = (() => {
   try {
-    return app.isPackaged && process.resourcesPath ? process.resourcesPath : null;
+    return app.isPackaged && !IS_DEV_BUILD && process.resourcesPath ? process.resourcesPath : null;
   } catch (_) {
     return null;
   }
@@ -466,7 +485,7 @@ try {
 }
 const { parseEnvFile } = hostEnv;
 
-const DESKTOP_ENV_LOCAL = app.isPackaged && USER_DATA_DIR
+const DESKTOP_ENV_LOCAL = app.isPackaged && !IS_DEV_BUILD && USER_DATA_DIR
   ? path.join(USER_DATA_DIR, ".env.local")
   : path.join(__dirname, ".env.local");
 
@@ -754,6 +773,21 @@ const DESKTOP_SWEEP_MS = (() => {
   return Number.isFinite(n) && n >= 0 ? n : 60000;
 })();
 
+/* 早期 dev 运行把「登录项」注册成了 node_modules 里的 Electron 二进制（args 为空）。
+   登录时它被拉起时**不带 app 路径**，Electron 于是开默认欢迎页 —— 用户看到的就是
+   「一直在弹这个窗口」。这条路径要能算出来，才能把历史遗留的那一项撤掉。 */
+const ELECTRON_DIST_EXEC = (() => {
+  if (!IS_DEV_BUILD) return "";
+  const guess = path.join(
+    __dirname, "node_modules", "electron", "dist", "Electron.app", "Contents", "MacOS", "Electron",
+  );
+  try {
+    return fs.existsSync(guess) ? guess : "";
+  } catch (_) {
+    return "";
+  }
+})();
+
 /** Linux XDG autostart .desktop (Electron setLoginItemSettings is weak on Linux). */
 function applyLinuxXdgAutostart(enabled) {
   const home = process.env.HOME || "";
@@ -791,6 +825,26 @@ function applyLinuxXdgAutostart(enabled) {
 }
 
 function applyLoginItem(enabled) {
+  /* 开发态**不注册**登录项，并且把以前注册过的撤掉。
+     原因不是洁癖，是真机看到的现象：dev 启动时 openAtLogin=true，macOS 记下
+     `path = process.execPath`（那时还可能是 Electron.app 的二进制）+ `args = []`，
+     于是下次登录时它**不带 app 路径**把这个可执行文件拉起来 —— Electron 找不到
+     app 就开默认欢迎页（"To run a local app…"）。用户看到的就是「怎么又弹这个窗口」，
+     双击一次、登录一次，攒出好几个。开发机不该被自己的构建塞一条开机自启。
+     打包后照旧：那时 execPath 就是安装好的 Bit Bot.app，登录启动也带得到 app。 */
+  if (IS_DEV_BUILD) {
+    for (const stale of [process.execPath, ELECTRON_DIST_EXEC]) {
+      if (!stale) continue;
+      try {
+        const cur = app.getLoginItemSettings({ path: stale });
+        if (cur && cur.openAtLogin) {
+          app.setLoginItemSettings({ openAtLogin: false, path: stale, args: [] });
+          process.stdout.write(`[desktop] 开发态：撤销登录项 ${stale}\n`);
+        }
+      } catch (_) { /* 平台不支持就跳过 */ }
+    }
+    return { ok: true, openAtLogin: false, skipped: "dev_build", note: "dev 不注册登录项" };
+  }
   try {
     app.setLoginItemSettings({
       openAtLogin: Boolean(enabled),
@@ -3508,7 +3562,7 @@ ipcMain.handle("bitbot:product:status", async () => {
   const moderation = process.env.BITBOT_CONTENT_MODERATION === "1";
   const otaFeed =
     Boolean(String(process.env.BITBOT_UPDATE_FEED_URL || "").trim()) ||
-    (app.isPackaged && hasBakedGithubFeed());
+    (app.isPackaged && !IS_DEV_BUILD && hasBakedGithubFeed());
   return {
     ok: true,
     desktop_first: true,
@@ -5093,6 +5147,7 @@ app.whenReady().then(async () => {
   process.stdout.write(
     `[desktop] app="${app.getName()}" version=${PRODUCT_VERSION || app.getVersion()}`
     + ` bundle=${process.execPath.includes("/Electron.app/") ? "Electron.app(dev 兜底)" : "app bundle"}`
+    + ` dev_build=${IS_DEV_BUILD}`
     + `\n`,
   );
   if (process.platform === "darwin" && app.dock) {

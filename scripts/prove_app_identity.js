@@ -143,6 +143,40 @@ function judgeMenuRewire(fragment) {
   return { ok: true, why: "settings:set 收到 language 变化即重建菜单" };
 }
 
+/* ---------------- 8.92.6 那一轮补的两条判据 ---------------- */
+
+/** dev 包必须自给自足：Resources/app 指到真应用目录（否则双击 .app 开欢迎页）。 */
+function judgeSelfContained(resolvedAppDir, resolvedDesktop, hasPkg) {
+  if (!hasPkg) return { ok: false, why: "Resources/app/package.json 不存在（包不自给自足）" };
+  if (!resolvedAppDir) return { ok: false, why: "Resources/app 解不出真实路径（软链断了）" };
+  if (resolvedAppDir !== resolvedDesktop) {
+    return { ok: false, why: "Resources/app 指向 " + resolvedAppDir + "，不是应用目录" };
+  }
+  return { ok: true, why: "Resources/app → 应用目录" };
+}
+
+/** 「开发构建」的判定必须覆盖 bundle 那条路径，不能只看 app.isPackaged。 */
+function judgeIsDevBuild(block) {
+  const s = String(block || "");
+  if (!/IS_DEV_BUILD/.test(s)) return { ok: false, why: "没有 IS_DEV_BUILD 定义" };
+  if (!/build\[?\\\\?\/\]?dev-app|build\[\/\|\\\\\/\]dev-app/.test(s) && !s.includes("dev-app")) {
+    return { ok: false, why: "只在 !app.isPackaged 上判 —— 从 .app 启动时 isPackaged 为真，会被当安装版" };
+  }
+  if (!/app\.isPackaged/.test(s)) return { ok: false, why: "连 isPackaged 都没看" };
+  return { ok: true, why: "isPackaged 为假 **或** 可执行文件在 build/dev-app 下 → 开发构建" };
+}
+
+/** dev 态不许注册登录项（并把历史遗留的撤掉），且必须早返回。 */
+function judgeLoginGuard(fnSrc) {
+  const s = String(fnSrc || "");
+  if (!/if \(IS_DEV_BUILD\)/.test(s)) return { ok: false, why: "没有 IS_DEV_BUILD 分支" };
+  if (!/setLoginItemSettings\(\{\s*openAtLogin: false/.test(s)) {
+    return { ok: false, why: "没有撤销动作（历史遗留的登录项会继续在登录时拉起欢迎页）" };
+  }
+  if (!/skipped: "dev_build"/.test(s)) return { ok: false, why: "没有把「跳过」说出来（调用方会以为真的注册了）" };
+  return { ok: true, why: "dev 早返回 + 撤销旧项 + 明确标 skipped" };
+}
+
 /* ---------------- 1) 身份三件套 ---------------- */
 
 if (PRODUCT_NAME === "Bit Bot" && pkg.build && pkg.build.appId) {
@@ -339,6 +373,76 @@ if (/^\d+\.\d+\.\d+/.test(String(pkg.version || ""))) {
   }
   if (!missing.length) ok("ID-13", keys.length + " 个词条 ×3 语言齐全（按字典行数数，不是「出现一次就算」）");
   else bad("ID-13", "词条不足三语：" + missing.join(", "));
+}
+
+/* ---------------- 10) dev 包自给自足 + 不许注册登录项（§8.92.6） ---------------- */
+
+{
+  const appPath = path.join(DESKTOP, "build/dev-app", PRODUCT_NAME + ".app");
+  const link = path.join(appPath, "Contents/Resources/app");
+  const pkgInLink = path.join(link, "package.json");
+  if (!fs.existsSync(appPath)) {
+    skip("ID-14", "还没造过 dev 应用包（先跑 scripts/make_dev_app_bundle.sh）");
+    skip("ID-14b", "同上（负向对照没有真包可喂）");
+  } else {
+    let resolvedApp = "";
+    try { resolvedApp = fs.realpathSync(link); } catch (_) { /* 软链不存在 */ }
+    let resolvedDesktop = "";
+    try { resolvedDesktop = fs.realpathSync(DESKTOP); } catch (_) { /* 不可能 */ }
+    const r = judgeSelfContained(resolvedApp, resolvedDesktop, fs.existsSync(pkgInLink));
+    if (r.ok) ok("ID-14", "dev 包自给自足：" + r.why + "（双击 / open -a 不带 app 路径也能起）");
+    else bad("ID-14", "dev 包不自给自足：" + r.why + " —— 双击 .app 会开 Electron 默认欢迎页");
+
+    // 负向对照：把「指向别处」的路径喂进去必须判红
+    const neg = judgeSelfContained("/tmp", resolvedDesktop, fs.existsSync(pkgInLink));
+    if (neg.ok) {
+      bad("ID-14b", "注入对照失效：Resources/app 指到别处仍判绿");
+    } else {
+      ok("ID-14b", "注入对照：Resources/app 指向 /tmp（不是应用目录）→ 判红");
+    }
+  }
+}
+
+{
+  const fn = main.slice(main.indexOf("function applyLoginItem(enabled)"), main.indexOf("function readDaemonStatus"));
+  const r = judgeLoginGuard(fn);
+  if (r.ok) ok("ID-15", "登录项：" + r.why);
+  else bad("ID-15", "登录项策略不合格：" + r.why);
+
+  // 负向对照：把守卫摘掉（回到「dev 也注册」）必须判红
+  const mutated = fn.replace(/if \(IS_DEV_BUILD\) \{[\s\S]*?\n  \}\n/, "");
+  if (mutated === fn) {
+    bad("ID-15b", "注入对照失效：守卫没匹配上（判据与代码脱节）");
+  } else if (judgeLoginGuard(mutated).ok) {
+    bad("ID-15b", "注入对照失效：摘掉 dev 守卫后仍判绿");
+  } else {
+    ok("ID-15b", "注入对照：摘掉 dev 守卫 → 判红");
+  }
+}
+
+{
+  const block = main.slice(main.indexOf("const IS_DEV_BUILD"), main.indexOf("const IS_DEV_BUILD") + 700);
+  const r = judgeIsDevBuild(block);
+  if (r.ok) ok("ID-16", "IS_DEV_BUILD：" + r.why);
+  else bad("ID-16", "IS_DEV_BUILD 定义不合格：" + r.why);
+
+  // 负向对照：退回只看 isPackaged，必须判红
+  const oldBlock = 'const IS_DEV_BUILD = (() => { try { return !app.isPackaged; } catch (_) { return true; } })();';
+  if (judgeIsDevBuild(oldBlock).ok) {
+    bad("ID-16b", "注入对照失效：只看 !app.isPackaged 仍判绿");
+  } else {
+    ok("ID-16b", "注入对照：退回只看 !app.isPackaged → 判红");
+  }
+
+  // 三处「行为分支」都别再裸用 app.isPackaged（它们在 bundle 启动时会走成安装版）
+  const risky = [
+    ["RESOURCES_PATH", /app\.isPackaged && process\.resourcesPath/, /app\.isPackaged && !IS_DEV_BUILD && process\.resourcesPath/],
+    ["DESKTOP_ENV_LOCAL", /const DESKTOP_ENV_LOCAL = app\.isPackaged && USER_DATA_DIR/, /const DESKTOP_ENV_LOCAL = app\.isPackaged && !IS_DEV_BUILD && USER_DATA_DIR/],
+    ["otaFeed", /\(app\.isPackaged && hasBakedGithubFeed\(\)\)/, /\(app\.isPackaged && !IS_DEV_BUILD && hasBakedGithubFeed\(\)\)/],
+  ];
+  const left = risky.filter(([, bare, guarded]) => bare.test(main) && !guarded.test(main)).map(([n]) => n);
+  if (!left.length) ok("ID-17", "三处行为分支（资源目录 / userData 的 .env.local / 自动更新）都走 IS_DEV_BUILD");
+  else bad("ID-17", "还有分支裸用 app.isPackaged（双击启动时会按安装版走）：" + left.join(", "));
 }
 
 console.log("\nprove_app_identity: PASS=" + PASS + " FAIL=" + FAIL);

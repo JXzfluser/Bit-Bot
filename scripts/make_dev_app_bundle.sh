@@ -65,9 +65,20 @@ STAMP="electron=$ELECTRON_VER|product=$PRODUCT|version=$VERSION|id=$BUNDLE_ID"
 
 APP="$OUTDIR/$PRODUCT.app"
 EXE="$APP/Contents/MacOS/$PRODUCT"
+# Resources/app 是这个包「自给自足」的关键：Electron 找不到 app 路径时会先看
+# Resources/app.asar、再看 Resources/app，都没有才开默认欢迎页（那个写着
+# "To run a local app, execute the following on the command line" 的窗口）。
+# 双击 .app / `open -a` / 登录项启动**都不会带 app 路径**，所以这一条不做，
+# 用户从 Finder 点开看到的就是欢迎页（实测过一次，见 report §8.92.6）。
+APP_LINK="$APP/Contents/Resources/app"
 
 if [[ "$FORCE" == "0" && -f "$OUTDIR/.stamp" && -x "$EXE" ]] \
    && [[ "$(cat "$OUTDIR/.stamp")" == "$STAMP" ]]; then
+  # 包是最新的，但早期版本造的包没有 Resources/app —— 这里补上，不必重拷 250MB。
+  if [[ ! -e "$APP_LINK/package.json" ]]; then
+    ln -sfn "$DESKTOP" "$APP_LINK"
+    echo "[dev-app] 补上 Resources/app → hosts/desktop（原地补，不重建）"
+  fi
   echo "[dev-app] 已最新（${STAMP}）"
   echo "DEV_APP=$APP"
   exit 0
@@ -89,6 +100,14 @@ P="$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$P"
 mv "$APP/Contents/MacOS/Electron" "$EXE"
 
+# ③' 让它自给自足：Resources/app 指回真实的应用目录（符号链接）。
+# 不用复制：main.js 里大量 __dirname 相对路径（index.html / build/icon.png /
+# shared/ 模块），复制一份就成了两份代码，改哪个都不对。软链之后
+# `__dirname` 仍是 hosts/desktop，双击 / open -a / 登录项启动与
+# start-desktop.sh 走的是同一份代码。
+# 传了 app 路径的启动（start-desktop.sh 的 `… .`）优先级更高，不受这条影响。
+ln -sfn "$DESKTOP" "$APP_LINK"
+
 # 自检：PlistBuddy 的 Set 在键不存在时是 Add，键名拼错就静默多一个键，
 # 所以这里逐项读回来对，不对就整体失败（不留下一个「看起来建好了」的包）。
 fail=0
@@ -108,6 +127,13 @@ check CFBundleIdentifier "$BUNDLE_ID"
 check CFBundleExecutable "$PRODUCT"
 check CFBundleShortVersionString "$VERSION"
 [[ -x "$EXE" ]] && echo "  ✓ 可执行文件 MacOS/$PRODUCT" || { echo "  ✗ 缺可执行文件" >&2; fail=1; }
+# Resources/app 必须指到真应用目录，且那个目录里真有 package.json（软链断了也报）
+if [[ -f "$APP_LINK/package.json" ]]; then
+  echo "  ✓ Resources/app → $(cd "$APP_LINK" && pwd -P)"
+else
+  echo "  ✗ Resources/app 没指到应用目录（双击 .app 会开默认欢迎页）" >&2
+  fail=1
+fi
 
 if [[ "$fail" != "0" ]]; then
   echo "error: 应用包自检失败，删掉重来" >&2

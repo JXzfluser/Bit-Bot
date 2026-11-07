@@ -4163,7 +4163,7 @@ if [ $? -eq 0 ]; then
 else
   bad "G-103 prove_app_identity（见 /tmp/g103-app-identity.log；$(grep '✗' /tmp/g103-app-identity.log | head -2 | tr '\n' ' ')）"
 fi
-for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b" "ID-08" "ID-10" "ID-10b"; do
+for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b" "ID-08" "ID-10" "ID-10b" "ID-14" "ID-14b" "ID-15" "ID-15b" "ID-16" "ID-16b" "ID-17"; do
   if grep -q "✓ $g103_a" /tmp/g103-app-identity.log; then ok "G-103 锚点：$g103_a"; else bad "G-103 锚点没跑绿：$g103_a"; fi
 done
 echo "  · G-103 为什么长出来：真机 screencapture 菜单栏第一项写的是 Electron。app.setName() 只管"
@@ -4173,6 +4173,12 @@ echo "    切语言菜单不跟着变（监听器在、渲染端从来不 send�
 echo "  · G-103 判据：① dev 应用包 plist 的 CFBundleName/DisplayName/Executable/版本必须等于"
 echo "    package.json（真读 plutil，不猜）；② 菜单语言只有 en* 走英文；③ settings:set 收到"
 echo "    language 就重建菜单。每条都配一个注入对照（改回旧实现必须判红），ID-10 只扫代码不扫注释。"
+echo "  · G-103 后来补的一刀（ID-14..17）：光把包做出「名字对」不够，还得「点得开」。用户从 Finder"
+echo "    双击 .app 时 Electron 拿不到 app 路径，开的是自带欢迎页（写着 To run a local app…），"
+echo "    窗口标题还叫 Electron。所以包里必须有 Resources/app 指回真实应用目录（ID-14）；"
+echo "    又因为这样启动时 app.isPackaged 会变成 true，dev 判定得改成 IS_DEV_BUILD（ID-16），"
+echo "    三处行为分支（资源目录 / .env.local / 自动更新）跟着一起改（ID-17）；"
+echo "    dev 也不再注册登录项，并把历史遗留的撤掉（ID-15）—— 登录项就是「不带参数拉起」的另一个来源。"
 
 echo "== G-104 身份类文案在真渲染里对不对（含不刷新页面切语言）=="
 node scripts/prove_identity_render.mjs >/tmp/g104-identity-render.log 2>&1
