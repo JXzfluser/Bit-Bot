@@ -16894,7 +16894,7 @@
         roomRenameHint: "双击改名（Enter 保存，Esc 取消）",
         roomExit: "退出群聊",
         roomInfo: "群资料",
-        roomRouteHint: "@Name 定向 · @everyone 全体 · 无 @ 由 Bot 自行决定",
+        roomRouteHint: "@Name 定向 · @everyone 全体 · 无 @ 按内容派给一个成员",
         roomComposerPh: "在群里发消息…（@Name 定向）",
         roomTranscriptEmpty: "这是群聊的开始——还没有任何消息。",
         roomTranscriptHead: "群聊记录（最近 {n} 条）：",
@@ -17841,7 +17841,7 @@
         roomRenameHint: "雙擊改名（Enter 儲存，Esc 取消）",
         roomExit: "退出群聊",
         roomInfo: "群資料",
-        roomRouteHint: "@Name 定向 · @everyone 全體 · 無 @ 由 Bot 自行決定",
+        roomRouteHint: "@Name 定向 · @everyone 全體 · 無 @ 依內容派給一位成員",
         roomComposerPh: "在群裡發消息…（@Name 定向）",
         roomTranscriptEmpty: "這是群聊的開始——還沒有任何消息。",
         roomTranscriptHead: "群聊記錄（最近 {n} 條）：",
@@ -18784,7 +18784,7 @@
         roomRenameHint: "double-click to rename (Enter saves, Esc cancels)",
         roomExit: "Leave group",
         roomInfo: "Group info",
-        roomRouteHint: "@Name directed · @everyone all · no @ = bots decide",
+        roomRouteHint: "@Name directed · @everyone all · no @ = routed to one member",
         roomComposerPh: "Message the group… (@Name to direct)",
         roomTranscriptEmpty: "This is the start of the group — no messages yet.",
         roomTranscriptHead: "Group transcript (last {n}):",
@@ -20321,7 +20321,7 @@
       }
       runUserTurn("room " + roomId + " :: " + body, {});
       txt.value = "";
-      if (status) status.textContent = "已发送 → kernel RoomTurn 路由（@Name 定向 / @everyone 全体 / 无 @ 自行决定）";
+      if (status) status.textContent = "已发送 → RoomTurn 路由（@Name 定向 / @everyone 全体 / 无 @ 按内容派给一个成员）";
     }
 
     // ----- GP-80/81/82 notifications + unread + badge -----

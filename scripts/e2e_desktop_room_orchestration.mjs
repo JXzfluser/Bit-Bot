@@ -661,6 +661,25 @@ const DOM_COUNTS = () => ({
             d: rep12 && rep12.discretion,
             paused: Boolean(paused12),
           }).slice(0, 400));
+      /* 「停下来问」必须**看得见**：转录里有一张 confirm_request 卡还不够，DOM 里得
+         真有那张卡，且上面写的就是要问用户的那句话（不是空壳）。 */
+      if (paused12) {
+        const confirmDom = await win.evaluate(() => {
+          const els = Array.from(document.querySelectorAll("#log .msg.room-confirm"));
+          const last = els[els.length - 1];
+          if (!last) return null;
+          const q = last.querySelector(".rc-q");
+          return {
+            count: els.length,
+            question: q ? (q.innerText || "") : "",
+            hasHint: Boolean(last.querySelector(".rc-hint")),
+            cands: last.querySelectorAll(".rc-cand").length,
+          };
+        });
+        confirmDom && confirmDom.count >= 1 && confirmDom.question.trim().length > 0 && confirmDom.hasHint
+          ? ok("停在「等你确认」时，群里真有一张卡（问题：" + confirmDom.question.slice(0, 40) + "，候选 " + confirmDom.cands + " 个）")
+          : bad("confirm card in DOM", JSON.stringify(confirmDom));
+      }
       await win.screenshot({ path: path.join(SHOT_DIR, "gp145-8-unknown-mention.png") });
     }
 
