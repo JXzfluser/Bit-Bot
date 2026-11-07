@@ -101,10 +101,60 @@ function agentContextPath(ffi, slot, machineId) {
   };
 }
 
+/**
+ * 和内核同一把尺子（`runtime/agent_context.mbt::estimate_tokens`）：
+ * ASCII 按 4 字符 ≈ 1 token，CJK 一字符 ≈ 1 token。
+ * Host 不解析上下文的语义（K-1：它只存字节），但**可以**量尺寸。
+ */
+function contextTokenEstimate(text) {
+  let ascii = 0;
+  let cjk = 0;
+  for (const ch of String(text || "")) {
+    const c = ch.codePointAt(0);
+    if (c >= 0x4e00 && c <= 0x9fff) cjk += 1;
+    else ascii += 1;
+  }
+  return Math.floor((ascii + 3) / 4) + cjk;
+}
+
+const AGENT_CONTEXT_DEFAULT_BUDGET = 24000;
+
+/** 上下文头部 v1 行带着它自己的预算（内核决定的），Host 只读不猜。 */
+function contextBudgetOf(text) {
+  const first = String(text || "").split("\n")[0] || "";
+  const parts = first.split("|");
+  if (parts[0] === "v1" && parts.length >= 3) {
+    const n = Number(parts[2]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return AGENT_CONTEXT_DEFAULT_BUDGET;
+}
+
+/**
+ * 群成员回合的私有上下文是「锦上添花」：真正的群共享上下文由 Host 塞进 prompt 的
+ * 「最近群聊记录」承载（AR-07）。但这份私有历史会**跨轮累积**——而内核的失败是
+ * 终局性的：一旦 `estimated_tokens > budget`，它先 compact，压不下来就直接
+ * `agent loop stopped: token budget exhausted` 收场，**每一轮都这样**，因为历史只增不减。
+ *
+ * 实测：5 人群里「事实编辑」的槽位涨到 178 KB（≈6 万 token，预算是 24000），于是
+ * 用户每次看到的都是「收齐 2/3 · 事实编辑失败」——不是模型不行，是它一进门就超重。
+ *
+ * 所以读的时候量一次：已经超预算就当没有历史，让它从干净上下文开跑。下一轮 save
+ * 会把这堆脂肪写掉，自然收敛。私聊不动（那是「它记得我」，用户要的就是长期记忆）。
+ */
+function staleRoomContext(text, slot) {
+  if (!/__room-/.test(String(slot || ""))) return false;
+  const body = String(text || "");
+  return contextTokenEstimate(body) > contextBudgetOf(body);
+}
+
 function readAgentContext(ffi, slot, machineId) {
   const { file, legacyFile } = agentContextPath(ffi, slot, machineId);
   try {
-    if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
+    if (fs.existsSync(file)) {
+      const text = fs.readFileSync(file, "utf8");
+      return staleRoomContext(text, slot) ? "" : text;
+    }
     // 迁移:老槽位**没有机器归属**(那时候根本没记是谁写的),所以规则是
     // 「谁先读谁继承」—— 读完就搬走,第二台机器就看不到了。
     // 这才是「各机独立」该有的样子;复制的话两台机器会共享同一段对话。
@@ -117,7 +167,7 @@ function readAgentContext(ffi, slot, machineId) {
       } catch (_) {
         /* 搬不动就还是读老的 —— 宁可继续用旧槽位,也不能把历史弄丢 */
       }
-      return text;
+      return staleRoomContext(text, slot) ? "" : text;
     }
     return "";
   } catch (_) {

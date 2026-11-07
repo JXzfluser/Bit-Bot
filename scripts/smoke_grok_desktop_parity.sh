@@ -4353,6 +4353,22 @@ echo "    I 显式 @ 两人也产出文件，两人成果**并列**（不是「�
 echo "    J 一句「好。」这种短答复不落 .md（deliverable_skipped=too_short），也不因此"
 echo "    把这一轮算成 partial。"
 
+echo "== G-111 群成员上下文超预算要能自愈（不再每轮都 token budget exhausted） =="
+node scripts/prove_room_context_reset.js >/tmp/g111-ctx.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-111 prove_room_context_reset（$(grep -c '✓ ' /tmp/g111-ctx.log) 项全绿）"
+else
+  bad "G-111 prove_room_context_reset（见 /tmp/g111-ctx.log；$(grep '✗' /tmp/g111-ctx.log | head -2 | tr '\n' ' ')）"
+fi
+echo "  · G-111 为什么长出来：群里「事实编辑」每一轮都失败，用户连着两轮看到的都是"
+echo "    「收齐 2/3 · 模型或服务返回失败」。查磁盘：它的 agent 上下文槽位 178,539 字节"
+echo "    （≈6 万 token），而内核预算是 24000 —— 一进门就 over_budget，compact 压不下来"
+echo "    就直接 agent loop stopped，**而历史只增不减，所以它永远失败**。"
+echo "  · G-111 判据：群槽位（session 以 room- 开头）读上下文时量一次尺寸，超过它自己头部"
+echo "    写的预算就当没有历史（群共享上下文由 Host 的「最近群聊记录」承载，AR-07）；"
+echo "    私聊槽位**不**受这条影响（「它记得我」不能陪葬）；边界是严格超过（正好 24000 保留，"
+echo "    24001 才重置）；旧式平铺槽位的迁移路径同样要过这一关。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo
