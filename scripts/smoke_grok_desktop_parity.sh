@@ -4382,6 +4382,29 @@ echo "    product_surface.js 这类主进程模块是 require 进来的，只有
 echo "  · G-112 判据：菜单的「重新载入」比一次代码时间戳（只看 .js），变了就 app.relaunch，"
 echo "    没变才 win.reload；负向对照「启动戳已是最新 → 仍然只重载」防止退化成每次都重启。"
 
+echo "== G-113 一处功能一个入口：凭证页不再有第二颗「生成配对码」、标题不再写两遍 =="
+node scripts/prove_settings_credentials_zones.js >/tmp/g113-cred.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-113 prove_settings_credentials_zones（$(grep -c '✓ ' /tmp/g113-cred.log) 项全绿）"
+else
+  bad "G-113 prove_settings_credentials_zones（见 /tmp/g113-cred.log；$(grep '✗' /tmp/g113-cred.log | head -2 | tr '\n' ' ')）"
+fi
+for g113_a in "CL-03 " "CL-15 " "CL-16 " "CL-10 "; do
+  if grep -q "✓ $g113_a" /tmp/g113-cred.log; then ok "G-113 锚点：$g113_a"; else bad "G-113 锚点没跑绿：$g113_a"; fi
+done
+echo "  · G-113 为什么长出来：用户指着「设置 → 凭证」说「入站地址、国内通信渠道这个是冗余的吧，"
+echo "    这两个在移动端远程控制都有了吧，冗余就移除掉，保持简洁易用」。查下来三样东西三种结论："
+echo "    配对码是**真冗余**（移动端远程控制里早有一颗，读同一份 pairing.state()）；入站地址那边"
+echo "    没有（那边是配对地址与二维码），只是**位置放错了**；国内通信渠道是 13 个字段唯一的"
+echo "    写盘口子（机器人管理的「去填写」只做跳转），**不能删**，毛病是标题写了两遍。"
+echo "  · G-113 判据：凭证屏里不许出现 #pairing-gen-btn / #sec-pairing-modal-hint /「生成配对码」/"
+echo "    「移动端远程控制」任何一个字；「国内通信渠道」整屏只出现一次且 #cn-card-state 还在；"
+echo "    两个折叠各装各的（备用渠道三栏 → #sec-alt-channels，13 个渠道字段 + 入站地址 →"
+echo "    #ca-cn-box）。负向对照三条：把入站地址搬出渠道卡、把第二颗按钮塞回来、"
+echo "    在折叠卡里再抄一遍标题 —— 每一条都必须在同一把尺子上翻红。"
+echo "  · 同一件事在真机上另有一条：e2e_desktop_mobile_control MC-10 反转（往 #secrets-panel"
+echo "    里 appendChild 一颗「生成配对码」，判据必须当场翻红再删掉翻绿）。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

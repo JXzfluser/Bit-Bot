@@ -10,9 +10,12 @@
  * 否则下一次"再精简一点"会把 #sec-llm-key 收进折叠里，真机门当场红。
  *
  * 现状（2026-11）：这一屏只剩两张卡 —— 必填（本机大脑）/ 选填（可选接线：
- * 联网搜索 + 入站地址）。原来的第三张「合规」卡已删：里面的 ICP 备案号 / 算法备案号
+ * 联网搜索 + 国内通信渠道）。原来的第三张「合规」卡已删：里面的 ICP 备案号 / 算法备案号
  * 是「对外提供生成式 AI 服务」的主体才要填的，本机自用不存在这件事；唯一真有功能的
  * 内容审核门（LLM 输出前按本地词表拦）随大脑搬进第一张卡，不再自称「合规」。
+ * 同一轮又收掉选填卡里「同一件事出现两次」的两处：入站地址不再单占一个分组标题
+ * （搬进渠道卡，CL-03 钉位置），配对码不再在凭证页留第二颗按钮（CL-15）、
+ * 渠道卡标题不再和分组标题叠字（CL-16）。三条都有负向对照。
  *
  * 历史：GP-189 曾把手机配对搬成独立「手机」页签，本门随之长了 PH-01..PH-10 十条。
  * 那一页后来被整体删除，PH 系列的锚点（id="st-phone"）不再存在 —— 结果整把门
@@ -74,6 +77,20 @@ function insideDetails(text, ranges, id) {
   if (i < 0) return null;
   return ranges.some(([s, e]) => i > s && i < e);
 }
+/* marker 落在哪一个折叠里（找不到返回 null）。本屏现在有两个折叠，
+   只问「在不在某个折叠里」会把「收错了盒子」当成合格。 */
+function foldOf(text, ranges, marker) {
+  const at = text.indexOf(marker);
+  if (at < 0) return null;
+  return ranges.find(([s, e]) => at > s && at < e) || null;
+}
+/* id 是否落在指定区间里 */
+function insideRange(text, range, id) {
+  if (!range) return null;
+  const i = text.indexOf('id="' + id + '"');
+  if (i < 0) return null;
+  return i > range[0] && i < range[1];
+}
 /* 折叠外的 input/select/textarea 的 id */
 function controlsOutsideDetails(text) {
   const ranges = detailsRanges(text);
@@ -104,6 +121,17 @@ const EXPECT_OUTSIDE = MAIN.concat([
   "sec-search-provider", "sec-search-key", "sec-search-base", "sec-moderation",
 ]);
 const ADV = ["sec-llm-provider", "sec-qwen-key", "sec-moon-key"];
+/* 国内通信渠道的 13 个字段 + 入站地址，全都得在 #ca-cn-box 这一个折叠里。
+   入站地址 2026-11 从「自己占一个分组标题」搬进了这张卡：填 webhook 时就要贴它，
+   两样东西分居两处只会让人来回滚。 */
+const CN_FIELDS = [
+  "sec-ding-post", "sec-ding-hook", "sec-ding-secret",
+  "sec-feishu-post", "sec-feishu-token", "sec-feishu-chat",
+  "sec-feishu-encrypt", "sec-feishu-verify",
+  "sec-wecom-post", "sec-wecom-token", "sec-wecom-agent", "sec-wecom-to",
+  "sec-wecom-callback",
+  "sec-inbound-url",
+];
 /* 真机门按 visible 点或按盒子高度量的控件：e2e_desktop_llm_key_paste_guard /
    cn_channel_guard / user_journeys / shell_v2 都在这几颗上。 */
 const MUST_SEE = ["sec-llm-key", "sec-save", "sec-probe-cn", "sec-model-open", "sec-moderation"];
@@ -116,7 +144,7 @@ const NEW_KEYS = [
   "credConnNone", "credConnNoneHint", "credConnNoKey", "credConnNoBase",
   "credKeyPhSaved", "credSearchBaseHint",
   "credAdvTitle", "credZoneCapability", "credSubSearch", "credModeration",
-  "credModerationNote", "credCapNote", "credInboundLabel", "credZoneInbound",
+  "credModerationNote", "credCapNote", "credInboundLabel",
   "credApplyLead",
 ];
 
@@ -131,9 +159,19 @@ const cl02 = (p) => {
   return MAIN.every((id) => out.includes(id)) && EXPECT_OUTSIDE.every((id) => out.includes(id)) && out.length === EXPECT_OUTSIDE.length;
 };
 
+/* CL-03 两个折叠，各装各的：备用渠道 → #sec-alt-channels，国内渠道+入站地址 → #ca-cn-box。
+   以前这条只要求「整屏恰好 1 个折叠」，通信渠道卡搬进来之后它就一直红着
+   （folds:2），谁也没注意 —— 因为报的是「收出第二层套娃」，而真实情况是
+   「多了一个合法折叠」。改成按盒子断言，红色才有意义。 */
 const cl03 = (p) => {
   const r = detailsRanges(p);
-  return r.length === 1 && ADV.every((id) => insideDetails(p, r, id) === true);
+  if (r.length !== 2) return false;
+  const adv = foldOf(p, r, 'id="sec-alt-channels"');
+  const cn = foldOf(p, r, 'id="ca-cn-box"');
+  if (!adv || !cn) return false;
+  if (adv[0] === cn[0] && adv[1] === cn[1]) return false;
+  return ADV.every((id) => insideRange(p, adv, id) === true)
+    && CN_FIELDS.every((id) => insideRange(p, cn, id) === true);
 };
 
 const cl04 = (p) => {
@@ -214,6 +252,25 @@ const cl14 = (p) => {
   return conn > 0 && dot > conn && title > conn && form > conn && model > 0 && chips > model;
 };
 
+/* CL-15 一个功能只留一个入口：配对码只在「账户 → 移动端远程控制」里。
+   2026-11 之前凭证卡里还挂着第二颗 #pairing-gen-btn 和一句「主路在…」的指路牌，
+   都是 GP-189 搬家时按门禁留下的兜底。用户视角那不是兜底，是「这两颗有区别吗」。
+   指路牌一并删：一个入口不需要告诉别人另一个入口在哪。 */
+const cl15 = (p) =>
+  p.indexOf('id="pairing-gen-btn"') < 0 &&
+  p.indexOf('id="sec-pairing-modal-hint"') < 0 &&
+  p.indexOf("生成配对码") < 0 &&
+  p.indexOf("移动端远程控制") < 0;
+
+/* CL-16 同一行标题不写两遍：分组标题在 .st-sub-title 上，折叠卡的 summary
+   就只报状态。「国内通信渠道」在整屏只该出现一次 —— 出现两次时，
+   折叠卡收起来的样子就是两行一样的字叠在一起。 */
+const cl16 = (p) => {
+  const n = (p.match(/国内通信渠道/g) || []).length;
+  /* 也不能一个都没有：断言不能靠「删干净了」变真 */
+  return n === 1 && p.indexOf('id="cn-card-state"') >= 0;
+};
+
 /* ---------- 页签路由一致性（PH-07 的继任者） ---------- */
 /* 渲染器 SETTINGS_TAB_KEYS 与页签条按钮必须一一对应且同序：只要一处加了另一处没加，
    深链 showSettingsTab(key) 就会 key 不认、悄悄落回常规页 —— 手机页当年就是这样
@@ -228,7 +285,12 @@ const ct01 = (doc) => {
 };
 
 /* ---------- 正向 ---------- */
-const panel = sliceOf(html, CRED_START, PANEL_END);
+const panel = (() => {
+  const raw = sliceOf(html, CRED_START, PANEL_END);
+  /* 注释不是产品面，但源码扫描读得到它 —— 注释里写一句「删掉了生成配对码」，
+     断言就会以为那颗按钮还在。剥掉注释，每条断言才对着「用户看得见的东西」。 */
+  return raw.replace(/<!--[\s\S]*?-->/g, "");
+})();
 if (!panel) {
   bad("取不到凭证屏（锚点 id=\"secrets-panel\" 或面板尾注释漂了）", JSON.stringify({ cred: !!panel }));
 } else {
@@ -241,8 +303,8 @@ if (!panel) {
   if (cl02(panel)) ok("CL-02 折叠外输入 = " + EXPECT_OUTSIDE.length + " 个，主流程仍是「服务商/模型/Base URL/Key」四栏 + 过滤开关");
   else bad("CL-02 折叠外的栏位变了", JSON.stringify({ got: controlsOutsideDetails(panel), want: EXPECT_OUTSIDE }));
 
-  if (cl03(panel)) ok("CL-03 provider_id 与备用渠道两颗 key 都在 #sec-alt-channels 折叠里（且只有一个折叠，不套娃）");
-  else bad("CL-03 该收起来没收，或收出第二层套娃", JSON.stringify({ folds: detailsRanges(panel).length, adv: ADV.map((id) => insideDetails(panel, detailsRanges(panel), id)) }));
+  if (cl03(panel)) ok("CL-03 两个折叠各装各的：备用渠道 → #sec-alt-channels，" + CN_FIELDS.length + " 个渠道字段 + 入站地址 → #ca-cn-box（不互相串门）");
+  else bad("CL-03 该收起来没收、或收错了盒子", JSON.stringify({ folds: detailsRanges(panel).length, adv: ADV.map((id) => insideDetails(panel, detailsRanges(panel), id)), cn: CN_FIELDS.map((id) => insideDetails(panel, detailsRanges(panel), id)) }));
 
   if (cl04(panel)) ok("CL-04 真机门按 visible 点的 " + MUST_SEE.length + " 个控件都在明面上（没被折叠吃掉）");
   else bad("CL-04 有门依赖的控件被收进折叠或消失", JSON.stringify({ gone: MUST_SEE.filter((id) => insideDetails(panel, detailsRanges(panel), id) !== false) }));
@@ -277,6 +339,12 @@ if (!panel) {
   if (cl14(panel)) ok("CL-14 卡内第一块是「当前连接」结论区，且排在服务商/模型/Key 之前；模型候选在输入框之后");
   else bad("CL-14 结论区不见了或又被埋到表单后面", "五个等重字段一路铺 = 用户看完不知道现在接的是什么");
 
+  if (cl15(panel)) ok("CL-15 配对码只有一个入口（凭证卡里不再有第二颗按钮和指路牌）");
+  else bad("CL-15 凭证卡又长出第二个配对入口", "两处能开同一个码，用户得先判断「有什么区别」");
+
+  if (cl16(panel)) ok("CL-16 「国内通信渠道」整屏只写一次（分组标题与折叠卡标题不叠字）");
+  else bad("CL-16 渠道卡标题写了 " + (panel.match(/国内通信渠道/g) || []).length + " 遍", "收起时是两行一样的字叠在一起");
+
   /* ---------- 页签路由 ---------- */
   if (ct01(html)) ok("CT-01 页签条 " + TABS_EXPECTED.length + " 个按钮 = 渲染器 SETTINGS_TAB_KEYS，同序（少一处 = 深链落回常规页）");
   else {
@@ -294,6 +362,7 @@ if (!panel) {
     ["CL-01b", "删掉一张卡的 id（真机门与文档按 id 找）", cl01b, panel.replace('id="sec-zone-brain"', 'class="gone"')],
     ["CL-02", "把主流程的 API Key 挪进折叠", cl02, panel.replace('<input id="sec-llm-key"', '<details id="t10a"><input id="sec-llm-key"').replace('<span id="sec-llm-mask" class="st-field-hint"></span>', '</details><span id="sec-llm-mask" class="st-field-hint"></span>')],
     ["CL-03", "把备用渠道摊平（去掉折叠）", cl03, panel.replace('<details class="st-adv" id="sec-alt-channels">', '<div class="st-adv" id="sec-alt-channels">').replace('</details>', '</div>')],
+    ["CL-03", "把入站地址搬出渠道卡（回到「自己占一个分组标题」）", cl03, panel.replace('<div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">', '</details></div><div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">')],
     ["CL-04", "把 #sec-save 塞进折叠", cl04, panel.replace('<details class="st-adv" id="sec-alt-channels">', '<details open class="st-adv" id="sec-alt-channels"><button id="sec-save">')],
     ["CL-05", "状态行搬出保存条", cl05, panel.replace('<div id="sec-status" class="st-foot-status">…</div>', '')],
     ["CL-05b", "保存条的 sticky 换成 static", cl05b, css.replace(/body\.grok-ui \.st-foot \{([\s\S]*?)\}/, (m0) => m0.replace("position: sticky", "position: static"))],
@@ -305,6 +374,8 @@ if (!panel) {
     ["CL-12", "抹掉折叠指示器", (x) => cl12(x, css), panel.replace('<span class="st-adv-mark" aria-hidden="true"></span>', "")],
     ["CL-13", "把换模型入口挪到折叠后面", cl13, panel.replace('<button type="button" class="bb-btn bb-btn-sm" id="sec-model-open" data-i18n="secModelOpen">换模型</button>', '').replace("</details>", '</details><div class="gp-row"><button type="button" id="sec-model-open">换模型</button></div>')],
     ["CL-14", "把结论区从卡头删掉（回到「五个字段一路铺」）", cl14, panel.replace('<div class="st-conn" id="sec-conn">', '<div id="sec-conn">').replace('id="sec-conn-dot"', 'data-x="dot"').replace('id="sec-conn-title"', 'data-x="title"').replace('id="sec-conn-sub"', 'data-x="sub"')],
+    ["CL-15", "把第二颗「生成配对码」塞回凭证卡", cl15, panel.replace('<div class="st-note" data-i18n="credCapNote">', '<div class="gp-row"><button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button></div><div class="st-note" data-i18n="credCapNote">')],
+    ["CL-16", "折叠卡里再抄一遍自己的标题", cl16, panel.replace('<span id="cn-card-state" class="ca-cn-state">', '<span class="ca-cn-title">国内通信渠道</span><span id="cn-card-state" class="ca-cn-state">')],
     ["CT-01", "页签条多一个按钮但路由表没加", ct01, html.replace('<button type="button" class="settings-tab-btn" data-stab="updates"', '<button type="button" class="settings-tab-btn" data-stab="phone">手机</button>\n        <button type="button" class="settings-tab-btn" data-stab="updates"')],
   ];
   const red = [];

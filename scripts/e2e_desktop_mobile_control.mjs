@@ -25,7 +25,9 @@
  *   MC-08 弹窗里读不到令牌原文（配对码是短时效凭证，令牌不是这一屏要展示的东西）
  *   MC-09 480×720（产品 minWidth）：弹窗不破版 —— sheet 不超视口、无横向滚动、
  *        两列降为单列、关闭与生成两个键都在视口内点得到
- *   MC-10 设置里那张旧卡不再假装是主路：有一句指向新弹窗的说明（一处真相，两处入口不打架）
+ *   MC-10 配对码全产品只有一个入口：设置 → 凭证 里既没有第二颗「生成配对码」按钮，
+ *        也没有「主路在…」的指路牌（一个入口不需要告诉别人另一个入口在哪）。
+ *        这条带现场负向对照：往凭证屏里真塞一颗按钮，判据必须当场翻红。
  *   MC-11 480 宽下账户弹层 itself 点得到：菜单里**每一行**（按 .ap-item 动态取，
  *        不写死清单）都不许开到视口外，且各自命中自己。（这条是顺带挖出来的
  *        真缺陷 —— 横带把账户条抬到 y≈143，平时向上开的弹层整片跑到屏外，
@@ -49,6 +51,7 @@
  *   ✗ MC-08 弹窗不存在，令牌原文校验无从落手
  *   ✗ MC-09 弹窗不存在（480 宽下没有任何可量的 sheet）
  *   ✗ MC-10 旧卡里没有指向新弹窗的说明（#sec-pairing-modal-hint 不存在）
+ *     （注：这条判据 2026-11 已反转 —— 当时要求的「说明 + 兜底按钮」现在正是要删的冗余）
  * ── 实现后仍红（弹窗已绿，窄屏挖出第二条真缺陷，PASS=9 FAIL=2）───────────────
  *   ✗ MC-11 / MC-09：page.click('#ap-remote') 超时 —— "element is outside of the
  *     viewport"。量出来的现场（480×693 视口、Ctrl+B 展开侧栏后）：
@@ -631,7 +634,12 @@ let app2 = null;
       }
     }
 
-    /* ---------- MC-10 旧卡不再假装主路：有一句指向新弹窗 ---------- */
+    /* ---------- MC-10 配对码只有一个入口：凭证卡里不再有第二颗 ----------
+       2026-11 之前的判据是反的：它要求凭证卡必须保留 #sec-pairing-modal-hint
+       + #pairing-gen-btn，理由是「别处依赖这条兜底路」。实际上那两个都在读同一份
+       pairing.state()，等于同一个码有两个开关 —— 用户看到两颗都得先判断区别。
+       现在改成「一个入口」：凭证屏里不许有第二颗带「配对」字样的按钮。
+       负向对照在真实 DOM 上做，不靠源码字符串：塞一颗进去，判据必须翻红。 */
     {
       await win.click("#account-avatar-btn");
       await win.waitForSelector("#ap-settings", { state: "visible", timeout: 8000 });
@@ -639,13 +647,46 @@ let app2 = null;
       await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
       await win.click('.settings-tab-btn[data-stab="credentials"]');
       await win.waitForTimeout(500);
-      const h = await readIds(win, ["sec-pairing-modal-hint", "pairing-gen-btn"]);
-      if (!h["sec-pairing-modal-hint"]) bad("MC-10 旧卡里没有指向新弹窗的说明（#sec-pairing-modal-hint 不存在）");
-      else if (!h["sec-pairing-modal-hint"].shown || !/移动端远程控制/.test(h["sec-pairing-modal-hint"].text))
-        bad("MC-10 说明没写清主路去哪", JSON.stringify(h["sec-pairing-modal-hint"]));
-      else if (!h["pairing-gen-btn"] || !h["pairing-gen-btn"].shown)
-        bad("MC-10 旧卡的一键配对被藏了（这是别处依赖的兜底路，只能加不能删）", JSON.stringify(h["pairing-gen-btn"]));
-      else ok("MC-10 旧卡保留手动兜底，并写明主路在「移动端远程控制」");
+      const scanCred = () =>
+        win.evaluate(() => {
+          const panel = document.getElementById("secrets-panel");
+          if (!panel) return null;
+          const txt = (el) => String((el && (el.innerText || el.textContent)) || "").replace(/\s+/g, " ").trim();
+          return {
+            gen: Boolean(document.getElementById("pairing-gen-btn")),
+            hint: Boolean(document.getElementById("sec-pairing-modal-hint")),
+            pairBtns: [...panel.querySelectorAll("button")].map(txt).filter((t) => /配对/.test(t)),
+            text: txt(panel).slice(0, 600),
+          };
+        });
+      const h = await scanCred();
+      if (!h) bad("MC-10 取不到凭证屏（#secrets-panel 不存在）");
+      else if (h.gen) bad("MC-10 凭证卡里又长出第二颗「生成配对码」（#pairing-gen-btn）", "两处能开同一个码，用户得先判断这两颗有什么区别");
+      else if (h.hint) bad("MC-10 凭证卡里又挂回一张指路牌（#sec-pairing-modal-hint）", "一个入口不需要告诉别人另一个入口在哪");
+      else if (h.pairBtns.length) bad("MC-10 凭证屏里还有带「配对」字样的按钮", JSON.stringify(h.pairBtns));
+      else if (!/国内通信渠道/.test(h.text)) bad("MC-10 渠道卡不见了（这不是精简，是把填凭证的地方删了）", h.text);
+      else {
+        await win.evaluate(() => {
+          const panel = document.getElementById("secrets-panel");
+          const b = document.createElement("button");
+          b.type = "button";
+          b.id = "mc10-probe";
+          b.className = "bb-btn bb-btn-sm";
+          b.textContent = "生成配对码";
+          panel.appendChild(b);
+        });
+        const injected = await scanCred();
+        await win.evaluate(() => {
+          const b = document.getElementById("mc10-probe");
+          if (b) b.remove();
+        });
+        const restored = await scanCred();
+        if (!injected || !injected.pairBtns.length)
+          bad("MC-10 判据恒绿：真塞一颗「生成配对码」进来它也没反应", JSON.stringify(injected));
+        else if (restored && (restored.pairBtns.length || restored.gen))
+          bad("MC-10 负向对照做完没清干净（现场被改坏）", JSON.stringify(restored));
+        else ok("MC-10 配对码只剩「移动端远程控制」一处入口（往凭证屏塞第二颗会被当场抓到）");
+      }
 
       /* ---------- MC-12 旧深链 anchor=pairing：落到弹窗，且不留隐形栈条目 ---------- */
       /* 内核与 CLI 都还会发 anchor=pairing（"设置 → 手机" 那个页签已经不存在）。

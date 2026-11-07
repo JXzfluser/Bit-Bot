@@ -1522,6 +1522,14 @@ body.grok-ui .settings-tab .st-note {
   margin: -10px 0 16px !important;
   line-height: 1.5 !important;
 }
+/* 上面那个 -10px 是为了吃掉表单最后一行下方的空白。但最后一行如果自带 hint
+   （凭证页的 API Base 就是：「留空走官方」写在输入框下面），这 10px 会直接压到
+   hint 的文字上 —— 实测两行字叠了整整 10px，截图里看得见上半行被削掉。
+   解法不是去动那条 -10px（通用/电脑与权限/用量/更新四页的说明行都靠它收口），
+   而是给带 hint 的表单补回这段余量：-10px 吃的是 padding，账面上正好剩 6px。 */
+body.grok-ui .settings-tab .st-form:has(.st-form-ctl:last-child > .st-field-hint) {
+  padding-bottom: 16px;
+}
 
 /* -- 10.3 GLOBAL design primitives (every sheet / dialog inherits) --------
    One set of tokens for ALL pages: settings, connect-apps, model picker,
@@ -3168,12 +3176,6 @@ body.grok-ui .ca-cn-sum {
   list-style: none;
 }
 body.grok-ui .ca-cn-sum::-webkit-details-marker { display: none; }
-body.grok-ui .ca-cn-title {
-  flex: 0 0 auto;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
-}
 body.grok-ui .ca-cn-state {
   flex: 1 1 auto;
   min-width: 0;
@@ -3457,13 +3459,9 @@ body.grok-ui .ca-cn-line {
   font-size: var(--text-xs);
 }
 .mc-roster-revoke { flex: 0 0 auto; }
-/* 旧卡只加一句「主路去哪」，不删任何既有控件（别的门禁在依赖它）。 */
-body.grok-ui .pairing-modal-hint {
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--muted);
-  margin-bottom: var(--space-2);
-}
+/* 这里原来有一条 .pairing-modal-hint（「主路在移动端远程控制」那句说明）。
+   2026-11 连说明带兜底按钮一起删了：配对码只剩一个入口，就不需要一个
+   「另一处在哪」的指路牌 —— 指路牌本身也是冗余。 */
 @media (max-width: 900px) {
   .mc-grid {
     grid-template-columns: 1fr;

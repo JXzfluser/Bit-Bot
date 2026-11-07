@@ -2933,33 +2933,21 @@
             </div>
           </div>
           <div class="st-note" data-i18n="credCapNote">不填也能用，只是不会联网：回答里不会出现编造的来源。</div>
-          <!-- 入站地址以前是单独一张卡，整张卡只装一条只读地址 + 一颗按钮，
-               边框和留白比内容还重。它和联网搜索同属「可选接线」，收进同一张卡，
-               用「卡片内的第二个分组」表达，不再多一层卡片。 -->
-          <div class="st-sub-title"><span data-i18n="credZoneInbound">入站地址</span></div>
-          <!-- 入站公网地址：连接应用（钉钉/飞书/企微）回调要填的地方。
-               它不属于手机，属于「这台电脑对公网暴露的入口」，所以留在凭证页。 -->
-          <div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">入站公网地址（连接应用回调要用）</span>
-            <div id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
-          </div>
-          <!-- GP-189 兜底：配对主路已搬去「账户 → 移动端远程控制」，但门禁 MC-10
-               要求凭证旧卡保留一个指向该弹窗的说明 + 一个一键配对手动兜底
-               （读同一份 pairing.state()）。文字带「移动端远程控制」是 MC-10 硬断言，
-               故不复用 data-i18n 覆盖。 -->
-          <div class="pairing-modal-hint" id="sec-pairing-modal-hint">主路在「账户 → 移动端远程控制」；这里保留一键配对作为兜底，读的是同一份配对状态。</div>
-          <div class="gp-row" style="margin-top:8px">
-            <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
-          </div>
-            <!-- 第三组：国内通信渠道。字段 id 一个不改（引擎绑定与门禁都按 id 取），
-                 只是从「连接应用」搬回这里 —— 那张卡本来就是个配置表单。 -->
-            <div class="st-sub-title"><span>国内通信渠道</span></div>
-          <!-- 国内通信渠道：凭证，不是「应用」。搬到它真正的家里 —— 保存并热加载 /
-               试连国内渠道两颗按钮就在下面那一排，字段和写盘口子不该分居两个面板。
+          <!-- 2026-11 收掉两处「同一件事出现两次」：
+               ① 入站地址原来单占一个分组标题，整组只装一条只读 URL。它和下面 13 个
+                  渠道字段是同一件事的两面 —— 配事件订阅/回调时就要贴这个地址，所以
+                  搬进渠道卡内、13 个字段之后，不再单占标题。
+               ② 「生成配对码」是 GP-189 的兜底按钮。配对主路早已是「账户 → 移动端
+                  远程控制」（#mc-gen-btn 读同一份 pairing.state()），再留一颗就是两处
+                  能开同一个码。删掉，全产品只剩一处。
+               标题也不再写两遍：分组标题由上面那颗 .st-sub-title 负责，折叠卡自己的
+               summary 只报状态（钉钉/飞书/企微 开没开）——那正是点开它的理由。 -->
+          <div class="st-sub-title"><span>国内通信渠道</span></div>
+          <!-- 字段 id 一个不改（引擎绑定与门禁都按 id 取），只是搬家。
                默认收起，卡头就写着三家开没开；有错会自动摊开。 -->
           <div id="ca-cn-channels" class="ca-cn" style="display:flex;flex-direction:column">
             <details class="ca-cn-box" id="ca-cn-box">
               <summary class="ca-cn-sum">
-                <span class="ca-cn-title">国内通信渠道</span>
                 <span id="cn-card-state" class="ca-cn-state">钉钉 未开启 · 飞书 未开启 · 企微 未开启</span>
                 <svg class="ca-cn-chev" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5"/></svg>
               </summary>
@@ -3025,10 +3013,16 @@
                   </label>
                 </div>
                 <p id="cn-next-hint" class="cn-hint">这四栏密钥一律可选：留空不挡保存，已配过的会标「已配置 ****尾4」。</p>
+                <!-- 入站公网地址：上面这些是「往外推」，这一行是「往里收」——
+                     在钉钉/飞书/企微控制台配「事件订阅 / 回调地址」时填的就是它。
+                     放在三家分组之后，因为它不是第四家的字段，混进分组里会被读错。 -->
+                <div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">入站公网地址（连接应用回调要用）</span>
+                  <div id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
+                </div>
               </div>
             </details>
           </div>
-          </div>
+        </div>
         <!-- 保存条：状态就在按钮左边，点完不用滚到页尾去找「存上了没有」。
              跑验收门禁是开发动作，跟着 data-lab 收起，产品态不占这颗按钮位。 -->
         <div class="st-foot" id="sec-foot">
@@ -13560,20 +13554,10 @@
       pairingCopyTokenBtn.addEventListener("click", () => pairingCopy("token"));
     }
 
-    // GP-189：配对主路搬去「手机」页后，凭证旧卡按门禁 MC-10 仍要保留一个一键配对手动兜底
-    // （同一份 pairing.state()）。凭证卡与手机页各有一个 #pairing-gen-btn，都要能点，故全绑。
-    const pairingGenBtns = document.querySelectorAll("#pairing-gen-btn");
+    // 配对码入口只有一个：账户 → 移动端远程控制里的 #mc-gen-btn（见 openMobileControl 那段）。
+    // 2026-11 删掉了凭证卡里的第二颗 #pairing-gen-btn —— 两处能开同一个码，
+    // 用户得先判断"这两颗有什么区别"，而答案是没有。
     const pairingRevokeBtn = document.getElementById("pairing-revoke-btn");
-
-    pairingGenBtns.forEach((pairingGenBtn) => {
-      pairingGenBtn.addEventListener("click", async () => {
-        pairingGenBtn.disabled = true;
-        try {
-          await window.bitbot.pairing.code({ action: "issue" });
-        } catch (_) { /* ignore */ }
-        pairingGenBtn.disabled = false;
-      });
-    });
     if (pairingRevokeBtn) {
       pairingRevokeBtn.addEventListener("click", async () => {
         pairingRevokeBtn.disabled = true;
@@ -17092,7 +17076,7 @@
         usageBilling: "用量与账单（本周真实 LLM 用量；无数据即空态，不造假）",
         credentials: "模型与密钥",
         secModelOpen: "换模型",
-        credLead: "必填的只有本机大脑；联网搜索和入站地址随时可以再补。",
+        credLead: "必填的只有本机大脑；联网搜索和国内通信渠道随时可以再补。",
         credZoneBrain: "本机大脑",
         credTagRequired: "必填",
         credTagOptional: "选填",
@@ -17112,7 +17096,6 @@
         credCapNote: "不填也能用，只是不会联网：回答里不会出现编造的来源。",
         credZoneDevices: "手机配对",
         credInboundLabel: "公网地址（连接应用回调要用）",
-        credZoneInbound: "入站地址",
         phoneLead: "手机连的就是这台电脑上的大脑。三步：打开局域网入口 → 生成 6 位配对码 → 在手机里输入。",
         phoneTagMust: "必做",
         phoneStepName1: "打开局域网入口",
@@ -18035,7 +18018,7 @@
         usageBilling: "用量與帳單（本週真實 LLM 用量；無資料即空態，不造假）",
         credentials: "產品憑證 · 開放設定（不寫死）",
         secModelOpen: "換模型",
-        credLead: "必填的只有本機大腦；聯網搜尋和入站地址隨時可以再補。",
+        credLead: "必填的只有本機大腦；聯網搜尋和國內通信渠道隨時可以再補。",
         credZoneBrain: "本機大腦",
         credTagRequired: "必填",
         credTagOptional: "選填",
@@ -18055,7 +18038,6 @@
         credCapNote: "不填也能用，只是不會聯網：回答裡不會出現編造的來源。",
         credZoneDevices: "手機配對",
         credInboundLabel: "公網位址（連接應用回調要用）",
-        credZoneInbound: "入站地址",
         phoneLead: "手機連的就是這台電腦上的大腦。三步：開啟區域網入口 → 產生 6 位配對碼 → 在手機裡輸入。",
         phoneTagMust: "必做",
         phoneStepName1: "開啟區域網入口",
@@ -18978,7 +18960,7 @@
         usageBilling: "Usage & Billing (real weekly LLM usage; empty state, never faked)",
         credentials: "Product credentials · open config (never baked in)",
         secModelOpen: "Change model",
-        credLead: "Only the local brain is required; web search and the inbound URL can wait.",
+        credLead: "Only the local brain is required; web search and the China messaging channels can wait.",
         credZoneBrain: "Local brain",
         credTagRequired: "Required",
         credTagOptional: "Optional",
@@ -18998,7 +18980,6 @@
         credCapNote: "Works without this: no web search, and no invented sources in answers.",
         credZoneDevices: "Phone pairing",
         credInboundLabel: "Public address (needed by app callbacks)",
-        credZoneInbound: "Inbound URL",
         phoneLead: "Your phone talks to the brain on this computer. Three steps: open the LAN endpoint, generate a 6-digit code, then type it on the phone.",
         phoneTagMust: "Required",
         phoneStepName1: "Open the LAN endpoint",
