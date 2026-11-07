@@ -8830,3 +8830,32 @@ G-108 要真开窗口，就必须能换数据根 —— `hosts/desktop/paths.js`
 - `#ca-meta` 是常驻状态条，长文案会把对话框顶高（已给 12px，但没做截断/省略）。
 - 「为你推荐」的排序能力是真删了，不是藏起来。现在 Catalog 只有 2 个应用，等目录
   变大再决定要不要在「可添加」里加排序。
+
+### 附：桌面上为什么有三份 Bit Bot（已收口）
+
+改完面板用户没看到变化，追问「为啥没感觉到变化？没有重启？现在这个项目是什么启动方式？
+为什么桌面看着有好几个应用」。查下去是三份同名同 id 的应用包同时在磁盘上：
+
+| 位置 | 内容 | 结果 |
+| --- | --- | --- |
+| `build/dev-app/Bit Bot.app` | `Resources/app` → `hosts/desktop`（软链） | **活代码**，改完重新载入即生效 |
+| `~/Applications/Bit Bot.app` | 10-22 手工拷贝的真目录 | 永远停在拷贝那天，点它永远看不到新东西 |
+| `hosts/desktop/dist/mac-arm64/Bit Bot.app` | 10-31 electron-builder 产物（代码在 `app.asar` 里） | 同上，要重新打包才更新 |
+
+三份的 `CFBundleIdentifier` 都是 `com.bitbot.desktop`、`CFBundleName` 都是
+`Bit Bot`、版本都是 `0.1.0` —— 在启动台/聚焦里完全无法区分，这就是「好几个应用」。
+已把后两份移进废纸篓（可恢复），只留开发包。
+
+**根治不是「记得重新拷一份」，而是入口不持有代码**：`~/Applications/Bit Bot.app` 现在
+是软链 → `build/dev-app/Bit Bot.app` →（`Resources/app`）→ `hosts/desktop`。两层软链，
+不可能再出现「旧拷贝」。新增 `scripts/link_dev_app.sh` 负责建/刷新这个入口，并体检
+机器上还有没有别的副本（`--check` 只体检）：
+
+```
+bash scripts/link_dev_app.sh          # 建/刷新入口 + 体检
+bash scripts/link_dev_app.sh --check  # 只体检
+```
+
+实测：`open` 该软链时只聚焦已在运行的实例（同一 userData 的单实例锁生效），不会新起
+一份。窗口内按 `⌘R`（Electron 默认菜单「显示 → 重新载入」）即可加载新代码 —— 界面
+HTML 是启动那一刻读进内存的，文件变了已开着的窗口不会自己变。
