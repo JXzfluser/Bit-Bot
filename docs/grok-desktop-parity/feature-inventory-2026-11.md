@@ -176,3 +176,14 @@ store 只留 `path / name / kind / bytes` 四个字段。
 
 **残留**：群里取消后 transcript 那一行没进 e2e（要种 3 Bot + 1 群）；
 `e2e_grok_desktop_boot` 在本机本来就红（基线 26/13，改后 28/11），未修。
+
+## 九、M53c（2026-11-07 第六轮）：从 Grok 迁移任务（能迁定义，迁不了"在跑的那次"）
+
+判据：`scripts/prove_m53c_grok_task_import.js`（13/0，含 3 条负向对照）。
+用法与边界见 `docs/grok-migration.md`。
+
+`scripts/import_grok_tasks.js`：清单（文本一行一条 / JSON 自动找任务数组）→ cron →
+`executeHostEffects` 真写入。三条硬规矩：看不懂就不写（无"默认 09:00"兜底）、幂等
+（群 + cron + 原话）、归属不猜（找不到/重名都拒绝）。暂停态跟着迁（走 routineLifecycle）。
+
+迁过来的是排程定义；本机没开常驻授权时到点只落草稿，脚本每次都会打印这一点。
