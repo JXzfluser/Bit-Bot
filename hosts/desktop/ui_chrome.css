@@ -1266,7 +1266,9 @@ body.grok-ui #sb-bots-rooms:not(.collapsed) #bot-strip { display: none; }
 body.grok-ui .bot-strip { display: flex; gap: 8px; padding: 4px 8px 8px; overflow-x: auto; }
 body.grok-ui .bot-strip .strip-av {
   flex: 0 0 auto; width: 36px; height: 36px; padding: 0; border: 0; background: transparent;
-  border-radius: 40% 60% 58% 42% / 52% 44% 56% 48%; cursor: pointer; display: grid; place-items: center;
+  /* 之前这里是不规则 blob（40% 60% 58% 42% …），叠上里面那张圆形头像，
+     观感是「被压扁的光环」，一排六只六个形状 —— 头像体系收敛后统一成正圆。 */
+  border-radius: 50%; cursor: pointer; display: grid; place-items: center;
 }
 body.grok-ui .bot-strip .strip-av:hover { background: var(--accent-soft); }
 body.grok-ui .sb-caret-btn {
@@ -2648,14 +2650,13 @@ body.grok-ui .sess-row + .sess-row { margin-top: 4px; }
 body.grok-ui .sess-row .sess-main .name { font-size: 16px; font-weight: 420; line-height: 20px; }
 body.grok-ui .sess-row .sess-main .meta { font-size: 13px; font-weight: 420; line-height: 18px; margin-top: 0; color: var(--muted); }
 
-/* --- 头像：Grok 用的是**不规则有机圆团**（blob），不是正圆。五组圆角
-   变体按 Bot id 哈希分配（fillAvatarGlyph 同款种子），重现"每只 Bot
-   形状略不同"的手感；纯 CSS，不加图片负债。 */
-body.grok-ui .sess-avatar { border-radius: 46% 54% 48% 52% / 52% 46% 54% 48%; }
-body.grok-ui .sess-avatar.blob-1 { border-radius: 56% 44% 52% 48% / 44% 56% 46% 54%; }
-body.grok-ui .sess-avatar.blob-2 { border-radius: 42% 58% 55% 45% / 55% 45% 58% 42%; }
-body.grok-ui .sess-avatar.blob-3 { border-radius: 52% 48% 44% 56% / 48% 52% 44% 56%; }
-body.grok-ui .sess-avatar.blob-4 { border-radius: 48% 52% 58% 42% / 42% 58% 50% 50%; }
+/* --- 头像：统一正圆。
+   这里原来是「不规则有机圆团」+ 五组按 id 哈希的圆角变体（.blob-1..4），
+   想复刻截图里「每只 Bot 形状略不同」的手感。代价是一排头像变成六个不同
+   形状，配上六种高饱和底色，读起来像占位图；而设计稿
+   （docs/design/desktop-target/prototype.html）写的是单字头像 + 正圆。
+   形状不再随机：正圆 + 单字，只有颜色随身份变（avatar_palette.js）。 */
+body.grok-ui .sess-avatar { border-radius: 50%; }
 
 /* --- 底部：账户是一枚胶囊，不是一条裸文字 ------------------------------- */
 /* 真源实测：footer 280×52，无分隔线、无阴影，padding `0 16 16`；
@@ -3663,10 +3664,17 @@ body.grok-ui .cn-hint {
   display: grid; place-items: center;
   font-size: 12px; font-weight: 700; color: #fff;
 }
-.bm-ic-dingtalk { background: #2f7cf6; }
-.bm-ic-feishu { background: #3370ff; }
-.bm-ic-wecom { background: #2f9e6f; }
-.bm-ic-wechat { background: #17b04a; }
+/* 渠道图标：一个字母的方形牌子，字是 12px/700 的白字。
+   四个底色原来直接用品牌色（#2f7cf6 / #3370ff / #2f9e6f / #17b04a），量下来
+   白字对比度分别是 3.94 / 4.28 / 3.36 / 2.86 —— 全部低于 4.5:1（12px/700 不算
+   large text，只能用 AA 正文这档）。微信那块最糟，白字基本糊在绿底上。
+   下面四个是把每个品牌色**只压亮度、不动色相**到刚好过线（≥4.55:1）的值：
+   #196ef5 4.57 / #2969ff 4.61 / #27845d 4.62 / #128739 4.61。
+   色相没变，钉钉还是蓝的、微信还是绿的；变的是「读不读得清」。 */
+.bm-ic-dingtalk { background: #196ef5; }
+.bm-ic-feishu { background: #2969ff; }
+.bm-ic-wecom { background: #27845d; }
+.bm-ic-wechat { background: #128739; }
 .bm-item-tx { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
 .bm-item-tx b { font-size: var(--text-sm); font-weight: 600; }
 .bm-item-tx small { font-size: var(--text-xs, 11px); color: var(--muted); }

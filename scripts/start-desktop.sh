@@ -58,6 +58,29 @@ if [[ -z "$ELECTRON_BIN" || ! -x "$ELECTRON_BIN" ]]; then
   exit 1
 fi
 
+# ④ **身份**：直接跑 Electron.app 的二进制时，macOS 菜单栏 / Dock / ⌘Q 里显示
+#    的是 "Electron" —— 它们读的是 bundle 的 CFBundleName，不是 app.setName()。
+#    所以 macOS 上先在 build/dev-app/ 造一个 CFBundleName=Bit Bot 的同构包再跑。
+#    造不出来（非 macOS / PlistBuddy 异常）就退回原二进制，并**明说**身份会是
+#    Electron，不静默降级。
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  DEV_APP_TMP="$(mktemp -t bitbot-dev-app)"
+  if bash "$ROOT/scripts/make_dev_app_bundle.sh" > "$DEV_APP_TMP" 2>&1; then
+    grep -v '^DEV_APP=' "$DEV_APP_TMP" | sed 's/^/[dev-app] /' || true
+    DEV_APP="$(sed -n 's/^DEV_APP=//p' "$DEV_APP_TMP" | tail -1)"
+    if [[ -n "$DEV_APP" && -x "$DEV_APP/Contents/MacOS/Bit Bot" ]]; then
+      ELECTRON_BIN="$DEV_APP/Contents/MacOS/Bit Bot"
+      echo "[desktop] 用产品身份启动：$DEV_APP"
+    else
+      echo "[desktop] 警告：dev 应用包没造出来，菜单栏会显示 Electron（身份问题，不影响功能）" >&2
+    fi
+  else
+    tail -8 "$DEV_APP_TMP" | sed 's/^/[dev-app] /' >&2 || true
+    echo "[desktop] 警告：make_dev_app_bundle.sh 失败，退回 Electron 本体启动（菜单栏会显示 Electron）" >&2
+  fi
+  rm -f "$DEV_APP_TMP"
+fi
+
 echo "[desktop] MoonBit=$(moon version 2>/dev/null | head -1 || true) target=${BITBOT_MOON_TARGET:-native}"
 echo "[desktop] launching Electron from hosts/desktop…"
 

@@ -5393,6 +5393,15 @@
       window.bitbot.onTurnProgress((ev) => applyProgressEvent(ev));
     }
 
+    /* 内核 op → 词条键。op 的取值钉在 hosts/shared/agent_loop_product_wire.js
+       的 projectAgentStep（llm_chat / exec_tool / request_approval / deliver），
+       未列出的 op 回落 agentStepTool（永远有一句人话，不露出符号）。 */
+    const AGENT_STEP_LABEL = {
+      llm_chat: "agentStepLlm",
+      exec_tool: "agentStepTool",
+      request_approval: "agentStepApproval",
+      deliver: "agentStepDeliver",
+    };
     function resetAgentStepRow() {
       const prev = document.getElementById("agent-step-live");
       if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
@@ -5409,7 +5418,15 @@
       const el = document.createElement("div");
       el.className = "bb-note";
       el.dataset.agentStep = step.kind === "entry" ? "entry" : String(step.op || "");
-      el.textContent = step.kind === "entry" ? "AgentLoop::run" : String(step.op || "");
+      // 措辞走词条，**不**直出内核符号：上一版把 "AgentLoop::run" 和
+      // llm_chat / exec_tool 这些 op 名原样写进对话记录，用户读到的是实现细节。
+      // dataset.agentStep 保留原始 op —— 门和排障要的是它，人读的是那句话；
+      // dataset.agentStepKey 让 wavegLangApply 能在切语言时就地重刷这一行。
+      const stepKey = step.kind === "entry"
+        ? "agentStepEntry"
+        : (AGENT_STEP_LABEL[String(step.op || "")] || "agentStepTool");
+      el.dataset.agentStepKey = stepKey;
+      el.textContent = wavegT(stepKey);
       row.appendChild(el);
     }
     if (window.bitbot && window.bitbot.onAgentLoop) {
@@ -5454,27 +5471,20 @@
     // avatarColorFor() + AVATAR_PALETTE 已抽到 ./avatar_palette.js（P2-4 拆 monolith
     // + T-2 hex 预算）；此处由该模块提供全局函数，所有调用点不变。
 
-    // G-28: Grok 的 Bot 头像内部是**白色图形**，不是首字母。逐像素看真源，
-    // 那些"blob"其实= 彩色实心圆 + 内部白色 logo。这里用 6 个简单的几何
-    // 字形代替插画（我们没有人手一张的品牌图形），按 id 稳定分配。
-    // 全部 fill=currentColor，颜色由 .sess-avatar 的 color 决定。
-    const AVATAR_GLYPHS = [
-      // 四瓣花
-      '<circle cx="12" cy="8.5" r="3.8"/><circle cx="12" cy="15.5" r="3.8"/><circle cx="8.5" cy="12" r="3.8"/><circle cx="15.5" cy="12" r="3.8"/>',
-      // 对话气泡
-      '<path d="M6.5 4.5h11A3.5 3.5 0 0 1 21 8v5a3.5 3.5 0 0 1-3.5 3.5H12l-4.2 3.2a.6.6 0 0 1-.9-.5v-2.7H6.5A3.5 3.5 0 0 1 3 13V8a3.5 3.5 0 0 1 3.5-3.5z"/>',
-      // 六边形
-      '<path d="M12 3.2l7.6 4.4v8.8L12 20.8 4.4 16.4V7.6z"/>',
-      // 星芒
-      '<path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"/>',
-      // 圆环
-      '<path d="M12 3.2a8.8 8.8 0 1 1 0 17.6 8.8 8.8 0 0 1 0-17.6zm0 4.1a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4z"/>',
-      // 菱形
-      '<path d="M12 3.4l8.6 8.6-8.6 8.6L3.4 12z"/>',
-    ];
-    // G-28 #1: 逐 Bot 品牌图形（白色 fill=currentColor，由 --av 上色）。真实 Bot
-    // 用专属 logo；其余 Bot 走上面的几何字形兜底（按 id 稳定分配，每个 Bot 形状不同）。
-    // 这里只维护「已知 Bot → 品牌 SVG」的映射，新增 Bot 在此登记即可。
+    // 头像体系（2026-11-07 收敛）：一套，不是六套。
+    //
+    // 之前这里是 6 个互不相干的几何字形（四瓣花/气泡/六边形/星芒/圆环/菱形），
+    // 按 id 哈希随机分配，再叠 5 种随机圆角（blob-*）。实际渲染出来是一排
+    // 「不同符号 + 不同形状 + 高饱和色」的彩球，读起来像占位图而不是产品
+    // —— 用户第一眼就说「图标感觉也奇怪」。而设计稿
+    // （docs/design/desktop-target/prototype.html）本来写的就是**单字头像**
+    // （P / M / 周），是后来照着截图做像素对齐时才漂成几何字形的。
+    //
+    // 现在的规则只有三条，优先级从高到低：
+    //   1. 有自定义头像图片 → 用图片（调用点自己处理）；
+    //   2. 已知品牌 Bot（BOT_BRAND_SVGS）→ 用它的品牌 mark；
+    //   3. 其余一律**单字**：名字首个字符（中文一个字，拉丁首字母大写）。
+    // 形状统一为正圆、颜色统一由 avatarColorFor 给的柔和底色决定 —— 一眼是同一套。
     const BOT_BRAND_SVGS = {
       // Bit Bot：四角火花（与「Bit Bot」火花主题一致）
       "agent-bit":
@@ -5483,28 +5493,27 @@
       "bot-c0e815":
         '<path d="M5 19c0-7.2 5.2-13.2 14.2-14.2-1 9.2-6.2 14.4-14.2 14.4z"/><path d="M5.4 18.6C7.4 14.6 10.4 11.6 14.2 9.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
     };
-    function avatarGlyphFor(seed) {
-      const s = String(seed || "");
-      let h = 0;
-      for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
-      return AVATAR_GLYPHS[h % AVATAR_GLYPHS.length];
+    /* 单字取值：按「第一个字素」切，不按 code unit —— 否则 emoji / 生僻字会截成半个。
+       拉丁名保留大写，中文名取第一个字。 */
+    function avatarInitial(name, seed) {
+      const raw = String(name || seed || "?").trim();
+      if (!raw) return "?";
+      const first = Array.from(raw)[0] || "?";
+      return /[a-z]/.test(first) ? first.toUpperCase() : first;
     }
-    // G-28: blob 形状变体（.blob-0..4，CSS 侧五组不规则圆角），按同款种子
-    // 稳定分配 —— Grok 的头像每只形状略不同，正圆一眼假。
-    function avatarBlobClass(seed) {
-      const s = String(seed || "");
-      let h = 0;
-      for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
-      const k = h % 5;
-      return k ? "blob-" + k : "";
-    }
-    // 把白色字形装进一个 span.sess-avatar（或同款头像位）
-    function fillAvatarGlyph(el, seed) {
+    // 把头像内容装进一个 span.sess-avatar（或同款头像位）：品牌 mark 用 SVG，其余用单字。
+    function fillAvatarGlyph(el, seed, name) {
       const brand = BOT_BRAND_SVGS[String(seed)];
-      el.innerHTML =
-        '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="currentColor">' +
-        (brand || avatarGlyphFor(seed)) +
-        "</svg>";
+      if (brand) {
+        el.innerHTML =
+          '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="currentColor">' +
+          brand +
+          "</svg>";
+        el.classList.add("is-brand");
+      } else {
+        el.textContent = avatarInitial(name, seed);
+        el.classList.remove("is-brand");
+      }
     }
 
     // G-28: build a Grok-style circular avatar for a bot identity. Uses the
@@ -7646,13 +7655,13 @@
        成员行 = 头像 + 名字/职责 + 移除；移除在只剩 2 人时置灰（2 人是群聊
        下限，Host 也会拒）——点不动比点完再报错诚实。加人走「从 Bot 库添加」
        展开的选人表，只列当前不在群里的可见 Bot。 */
-    function roomMemberAvatarEl(botId) {
+    function roomMemberAvatarEl(botId, name) {
       const av = document.createElement("span");
       av.className = "ri-av";
       av.style.setProperty("--av", avatarColorFor(botId));
       av.style.background = "var(--av)";
       av.setAttribute("aria-hidden", "true");
-      fillAvatarGlyph(av, botId);
+      fillAvatarGlyph(av, botId, name);
       return av;
     }
     function memberFailCopy(res) {
@@ -7717,7 +7726,7 @@
         const row = document.createElement("div");
         row.className = "ri-member";
         row.dataset.botId = id;
-        row.appendChild(roomMemberAvatarEl(id));
+        row.appendChild(roomMemberAvatarEl(id, roomBotNames[id] || id));
         const main = document.createElement("div");
         main.className = "ri-main";
         const nm = document.createElement("div");
@@ -7828,7 +7837,7 @@
           btn.className = "ri-pick";
           btn.dataset.botId = b.id;
           btn.dataset.act = "add-member";
-          btn.appendChild(roomMemberAvatarEl(b.id));
+          btn.appendChild(roomMemberAvatarEl(b.id, b.name || b.id));
           const nm = document.createElement("span");
           nm.className = "ri-pick-name";
           nm.textContent = b.name || b.id;
@@ -14312,8 +14321,6 @@
           chip.title = b.name || b.id;
           const av = document.createElement("span");
           av.className = "sess-avatar";
-          const blobCls = avatarBlobClass(b.id || b.name);
-          if (blobCls) av.classList.add(blobCls);
           if (b.avatar_data_url) {
             const img = document.createElement("img");
             img.alt = "";
@@ -14321,7 +14328,7 @@
             av.appendChild(img);
           } else {
             av.style.setProperty("--av", avatarColorFor(b.id || b.name));
-            fillAvatarGlyph(av, b.id || b.name);
+            fillAvatarGlyph(av, b.id || b.name, b.name);
           }
           chip.appendChild(av);
           chip.addEventListener("click", () => {
@@ -14368,9 +14375,6 @@
       el.dataset.agentId = b.id;
       const av = document.createElement("span");
       av.className = "sess-avatar";
-      // G-28: blob 形状变体（真源头像是有机圆团，不是正圆）
-      const blobCls = avatarBlobClass(b.id || b.name);
-      if (blobCls) av.classList.add(blobCls);
       if (b.avatar_data_url) {
         // GP-122: real avatar image from the Host store (data URL, no file://).
         const img = document.createElement("img");
@@ -14379,8 +14383,7 @@
         av.appendChild(img);
       } else {
         av.style.setProperty("--av", avatarColorFor(b.id || b.name));
-        // G-28: 白色字形代替首字母（Grok 的头像是彩色圆 + 白色 logo）
-        fillAvatarGlyph(av, b.id || b.name);
+        fillAvatarGlyph(av, b.id || b.name, b.name);
       }
       const main = document.createElement("div");
       main.className = "sess-main";
@@ -16378,7 +16381,9 @@
         }
         const routeBtn = document.getElementById("gp-route-toggle");
         if (routeBtn) {
-          routeBtn.textContent = inner.route_traffic ? wavegT("routeTraffic") + ": ON（记录态）" : wavegT("routeTraffic") + ": OFF";
+          routeBtn.textContent = inner.route_traffic
+            ? wavegT("routeTraffic") + ": " + wavegT("routeOnRecording")
+            : wavegT("routeTraffic") + ": OFF";
           routeBtn.classList.toggle("active", Boolean(inner.route_traffic));
         }
         wavegApplyAppearanceClass(inner.appearance || "system");
@@ -16723,6 +16728,16 @@
         alwaysAllowBtn: "总是允许",
         neverAllow: "从不允许",
         routeTraffic: "通过本机路由流量",
+        // 路由开关的 ON 态后缀。上一版把「（记录态）」硬编码在拼接里，切英文之后
+        // 会变成「Route traffic through this computer: ON（记录态）」—— 半个中文。
+        routeOnRecording: "记录中",
+        // 内核 step 行的措辞。上一版直接渲染 op 名（AgentLoop::run / llm_chat /
+        // exec_tool），等于把内部符号甩在对话记录里。
+        agentStepEntry: "开始处理",
+        agentStepLlm: "思考中",
+        agentStepTool: "执行工具",
+        agentStepApproval: "等待你确认",
+        agentStepDeliver: "整理回复",
         approvalRulesTitle: "其它动作的审批",
         approvalRulesHint: "发送消息、发邮件、购买这类动作要不要先问",
         allowAuto: "自动允许",
@@ -17648,6 +17663,12 @@
         alwaysAllowBtn: "總是允許",
         neverAllow: "從不允許",
         routeTraffic: "透過本機路由流量",
+        routeOnRecording: "記錄中",
+        agentStepEntry: "開始處理",
+        agentStepLlm: "思考中",
+        agentStepTool: "執行工具",
+        agentStepApproval: "等待你確認",
+        agentStepDeliver: "整理回覆",
         approvalRulesTitle: "其他動作的審批",
         approvalRulesHint: "傳送訊息、寄郵件、購買這類動作要不要先問",
         allowAuto: "自動允許",
@@ -18573,6 +18594,12 @@
         alwaysAllowBtn: "Always allow",
         neverAllow: "Never allow",
         routeTraffic: "Route traffic through this computer",
+        routeOnRecording: "recording",
+        agentStepEntry: "Working",
+        agentStepLlm: "Thinking",
+        agentStepTool: "Running a tool",
+        agentStepApproval: "Waiting for your approval",
+        agentStepDeliver: "Writing the reply",
         approvalRulesTitle: "Approval for other actions",
         approvalRulesHint: "Whether sending, mailing and purchases ask first",
         allowAuto: "Allow automatically",
@@ -19304,6 +19331,15 @@
         const caModal = document.getElementById("connect-apps-modal");
         if (caModal && caModal.style.display !== "none" && typeof renderConnectApps === "function")
           renderConnectApps();
+        // 进度行与内核 step 行都是「事件到达时才取词」，不吃 [data-i18n] 扫描。
+        // 设置面板里改语言是**不刷新页面**的（langSel change → 直接 wavegLangApply），
+        // 不在这里重刷，屏幕上就会留下上一种语言 —— 中文界面里挂着一行
+        // "Kernel continuing" 就是这么来的（真机见过）。
+        if (typeof renderProgressRow === "function") renderProgressRow();
+        document.querySelectorAll("#agent-step-live [data-agent-step-key]").forEach((el) => {
+          const k = el.getAttribute("data-agent-step-key");
+          if (k) el.textContent = wavegT(k);
+        });
       } catch (_) { /* not booted yet */ }
     }
     /** GP-70b: renderer-side theme override follows persisted appearance. */

@@ -314,9 +314,16 @@ async function main() {
   /* ---- 5) Renderer: i18n keys + lifecycle ---- */
   const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
   const i18nKeys = ["progTool", "progComputer", "progFiles", "progQuestion", "progApproval", "progVoice", "progModel", "progAwaiting", "progFailedSuffix", "progContinuing"];
-  const missing = i18nKeys.filter(k => !new RegExp(k + ":").test(html));
+  /* 上一版只判「这个 key 在文件里出现过」—— 三份字典里只要有一份写了就算过，
+     于是英文/繁体缺词条时门还是绿的（真机上就出现过中文界面挂英文进度行）。
+     现在按字典行数数：WAVEG_I18N 有 zh-CN / zh-TW / en 三份，每份一行，
+     少于 3 行就是缺语言。 */
+  const missing = i18nKeys
+    .map((k) => ({ k, n: (html.match(new RegExp("\\n\\s*" + k + ":", "g")) || []).length }))
+    .filter((x) => x.n < 3)
+    .map((x) => x.k + "×" + x.n);
   missing.length === 0
-    ? ok("GP-97 renderer i18n: 10 个 prog* 键 ×3 语言")
+    ? ok("GP-97 renderer i18n: 10 个 prog* 键 ×3 语言（按字典行数数）")
     : bad("GP-97 i18n keys", missing);
 
   /resetProgressRow\(\)/.test(html) && /finishProgressRow\(\)/.test(html)

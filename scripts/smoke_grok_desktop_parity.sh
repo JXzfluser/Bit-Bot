@@ -4156,6 +4156,57 @@ echo "    所以所有门都是绿的 —— 但每跑一次桌面就闪一个�
 echo "  · G-102 判据：Electron 的规则是「第一个不是 -- 开关的参数就是 app 路径」，按这条判，不猜语义；"
 echo "    args 整个是变量时回文件找它的赋值再判一次，认不出赋值就如实标「靠跑起来看」，不假装验过。"
 
+echo "== G-103 应用身份：菜单栏/Dock 必须叫 Bit Bot，不是 Electron =="
+node scripts/prove_app_identity.js >/tmp/g103-app-identity.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-103 $(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g103-app-identity.log)"
+else
+  bad "G-103 prove_app_identity（见 /tmp/g103-app-identity.log；$(grep '✗' /tmp/g103-app-identity.log | head -2 | tr '\n' ' ')）"
+fi
+for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b" "ID-08" "ID-10" "ID-10b"; do
+  if grep -q "✓ $g103_a" /tmp/g103-app-identity.log; then ok "G-103 锚点：$g103_a"; else bad "G-103 锚点没跑绿：$g103_a"; fi
+done
+echo "  · G-103 为什么长出来：真机 screencapture 菜单栏第一项写的是 Electron。app.setName() 只管"
+echo "    app.getName()/关于面板/⌘Q 条目，菜单栏那一格读的是**进程所在 bundle 的 CFBundleName**，"
+echo "    dev 下跑的 Electron.app 永远写 Electron。同一张截图还带出三件事：中文界面配英文菜单、"
+echo "    切语言菜单不跟着变（监听器在、渲染端从来不 send）、关于面板版本号是 Electron 的 37.x。"
+echo "  · G-103 判据：① dev 应用包 plist 的 CFBundleName/DisplayName/Executable/版本必须等于"
+echo "    package.json（真读 plutil，不猜）；② 菜单语言只有 en* 走英文；③ settings:set 收到"
+echo "    language 就重建菜单。每条都配一个注入对照（改回旧实现必须判红），ID-10 只扫代码不扫注释。"
+
+echo "== G-104 身份类文案在真渲染里对不对（含不刷新页面切语言）=="
+node scripts/prove_identity_render.mjs >/tmp/g104-identity-render.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-104 $(grep -m1 -o 'RR-0[0-9]' /tmp/g104-identity-render.log | head -1) … 全绿"
+else
+  bad "G-104 prove_identity_render（见 /tmp/g104-identity-render.log；$(grep '✗' /tmp/g104-identity-render.log | head -2 | tr '\n' ' ')）"
+fi
+for g104_a in "RR-00" "RR-01" "RR-02" "RR-03" "RR-04" "RR-04b" "RR-05" "RR-06" "RR-06b"; do
+  if grep -q "✓ $g104_a" /tmp/g104-identity-render.log; then ok "G-104 锚点：$g104_a"; else bad "G-104 锚点没跑绿：$g104_a"; fi
+done
+echo "  · G-104 为什么长出来：进度行和内核 step 行是「事件到达时才取词」，静态扫描看不到；"
+echo "    设置面板里换语言是**不刷新页面**的，不重刷就会留下上一种语言 —— 真机上「中文界面里"
+echo "    挂着一行 Kernel continuing」就是这么来的。G-103 只能证明源码写对了，证明不了这一层。"
+echo "  · G-104 判据：埋 window.__noReload 标记，切语言前后都还在 = 真的没刷新，此时的文案变化"
+echo "    只能来自重刷；再切回中文，两行必须回来（单方向通过不算）。"
+
+echo "== G-105 头像：一套配色 + 白字读得清（对比度可复算）=="
+node scripts/prove_avatar_contrast.js >/tmp/g105-avatar.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-105 $(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g105-avatar.log)（$(grep -o '白字对比度最低 [0-9.]*:1' /tmp/g105-avatar.log | head -1)）"
+else
+  bad "G-105 prove_avatar_contrast（见 /tmp/g105-avatar.log；$(grep '✗' /tmp/g105-avatar.log | head -2 | tr '\n' ' ')）"
+fi
+for g105_a in "AC-01" "AC-02" "AC-05" "AC-03" "AC-04" "AC-06" "AC-06b"; do
+  if grep -q "✓ $g105_a" /tmp/g105-avatar.log; then ok "G-105 锚点：$g105_a"; else bad "G-105 锚点没跑绿：$g105_a"; fi
+done
+echo "  · G-105 为什么长出来：用户第一眼说「显示的图标感觉和也奇怪」。当时是六个随机几何字形"
+echo "    + 五组随机圆角 + 十个高饱和采样色，一排头像像五个人拼的。改成「品牌 mark / 单字 +"
+echo "    正圆 + 统一色调」之后要盯的是**代价**：统一色调靠压亮度，压过头白字就读不清了。"
+echo "  · G-105 判据：AC-03 按 WCAG 公式逐色算白字对比度（15px/600 不算 large text，门槛 4.5:1），"
+echo "    实测最低 4.53:1；AC-04 拿**未 toned 的采样原色**跑同一个判定，最低只有 2.03:1 ——"
+echo "    这条反向对照证明 AC-03 的绿是 tone() 挣来的，不是本来就绿。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

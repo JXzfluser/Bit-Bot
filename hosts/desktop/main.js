@@ -40,12 +40,30 @@ const deviceRoster = (() => {
   }
 })();
 
-// GP-A1: 应用名必须在 app ready **之前** 设定。
-// macOS 的菜单栏第一项（以及「关于本应用」「退出 Bit Bot」等条目）读的是
-// 进程启动时就定下的 app.name，等到 whenReady 之后再 setName() 已经晚了 ——
-// 菜单栏会一直显示开发壳的 "Electron"。放在文件顶层是唯一可靠的位置。
+// GP-A1: 应用名必须在 app ready **之前** 设定 —— app.getName()、userData 目录、
+// 「关于 Bit Bot」面板、⌘Q 的条目名都吃这个名字。放文件顶层是唯一可靠的位置。
+//
+// 但它管不到 macOS **菜单栏第一项**：那一格读的是进程所在 bundle 的
+// CFBundleName，dev 下跑的是 node_modules 里的 Electron.app，于是不管
+// setName 怎么设，菜单栏都写 Electron（2026-11-07 screencapture 菜单栏实测，
+// 见 docs/design/desktop-target/report.md §8.92）。真正管用的是这一层：
+// scripts/make_dev_app_bundle.sh 造一个 CFBundleName=Bit Bot 的同构包，
+// start-desktop.sh 优先用那个二进制启动。打包产物（electron-builder 的
+// productName）本来就没这个问题，不需要这一层。
+//
+// 版本号同理不许用 app.getVersion() 糊过去：dev 下它读的是 app 路径里的
+// package.json（可能是临时宿主 app 的 0.0.0，甚至回落成 Electron 自己的
+// 37.x）。产品版本只有一个真相 —— hosts/desktop/package.json。
+const APP_PKG = (() => {
+  // dev: hosts/desktop/package.json；打包后 main 在 desktop/ 下，根上那份 package.json
+  try { return require("./package.json"); } catch (_e) { /* fall through */ }
+  try { return require("../package.json"); } catch (_e) { /* fall through */ }
+  return {};
+})();
+const PRODUCT_NAME = APP_PKG.productName || "Bit Bot";
+const PRODUCT_VERSION = APP_PKG.version || "";
 try {
-  app.setName("Bit Bot");
+  app.setName(PRODUCT_NAME);
 } catch (_) { /* no-op */ }
 
 // 单实例锁：同一个 user-data-dir 只允许一个 Electron 进程常驻。
@@ -1872,10 +1890,22 @@ ipcMain.handle("bitbot:settings:get", async () => {
   }
 });
 
+/* 切语言要重建原生菜单。
+   上一版这里是 `ipcMain.on("bitbot:menu-relocalize")` —— 监听在那儿，可渲染端
+   **从来没有发过这个事件**（全仓 grep 0 处 send），所以切完语言菜单永远是开机
+   时那一套，中文界面配英文菜单就是这条断链开出来的。
+   现在挂在 settings:set 这个唯一收口上：语言是设置项，改它就必须重排菜单，
+   不依赖渲染端记得补一条 IPC。relocalizeMenu 在 whenReady 里装配（菜单模板
+   是那边定义的）；没装好之前收到的通知直接丢弃，不缓存过期语言。 */
+let relocalizeMenu = null;
+
 ipcMain.handle("bitbot:settings:set", async (_e, patch) => {
   try {
     const res = surface.patchSettings(patch || {});
     if (res && res.ok && patch && patch.appearance) applyAppearance(String(patch.appearance));
+    if (res && res.ok && patch && patch.language && relocalizeMenu) {
+      try { relocalizeMenu(String(patch.language)); } catch (_) { /* 菜单重建失败不该拖垮设置写入 */ }
+    }
     // GP-72: new timezone must reach the routine daemon → env + restart cycle.
     if (res && res.ok && patch && patch.timezone) {
       process.env.BITBOT_TZ = String(patch.timezone);
@@ -5057,9 +5087,14 @@ ipcMain.handle("bitbot:pairing:lan", async (_e, enabled) => {
 app.whenReady().then(async () => {
   // GP-77: install state on disk for the shared Host `update_status` reader.
   persistAppInstallState();
-  // 启动自检：把真实的 app 名字打出来。macOS 菜单栏标题、关于面板、
-  // 退出项都吃这个名字，出问题（显示 Electron / bitbot-desktop）一眼可查。
-  process.stdout.write(`[desktop] app="${app.getName()}" version=${app.getVersion()}\n`);
+  // 启动自检：把真实的 app 名字 / 版本 / 菜单语言打出来。macOS 菜单栏标题、
+  // 关于面板、退出项都吃这几个值，出问题（显示 Electron / 37.x / 英文菜单）
+  // 一眼可查。
+  process.stdout.write(
+    `[desktop] app="${app.getName()}" version=${PRODUCT_VERSION || app.getVersion()}`
+    + ` bundle=${process.execPath.includes("/Electron.app/") ? "Electron.app(dev 兜底)" : "app bundle"}`
+    + `\n`,
+  );
   if (process.platform === "darwin" && app.dock) {
     try {
       app.dock.setIcon(path.join(__dirname, "build", "icon.png"));
@@ -5075,12 +5110,15 @@ app.whenReady().then(async () => {
   } catch (_) { /* keep OS default */ }
   // GP-A1 (revised): 完整产品菜单。应用名已在文件顶层 set 过（ready 前），
   // 这里只补 About 面板信息。补齐 关于 / 外观 / 设置 / 检查更新 / 窗口 / 帮助。
+  // 版本号走 package.json（PRODUCT_VERSION），**不用** app.getVersion()：
+  // 后者在 dev 下会随 app 路径变化，实测出现过 37.10.3（Electron 自己的版本）。
   try {
     app.setAboutPanelOptions({
-      applicationName: "Bit Bot",
-      applicationVersion: app.getVersion(),
-      version: app.getVersion(),
-      copyright: "Bit Bot",
+      applicationName: PRODUCT_NAME,
+      applicationVersion: PRODUCT_VERSION || app.getVersion(),
+      version: PRODUCT_VERSION || app.getVersion(),
+      copyright: `© ${new Date().getFullYear()} Bit Bot`,
+      iconPath: path.join(__dirname, "build", "icon.png"),
     });
   } catch (_) { /* no-op */ }
 
@@ -5152,7 +5190,13 @@ app.whenReady().then(async () => {
       window: "Window", help: "Help", openDataDir: "Open User Data Folder",
     },
   };
-  const menuLangOf = (lang) => (lang && /zh/i.test(String(lang)) ? "zh" : "en");
+  // 菜单标签不写死：按 language 取（zh / en，对齐内核 AskLanguage 的 Zh/En）。
+  //
+  // 回落方向必须跟界面一致：渲染端 wavegLang 的初值是 "zh-CN"，settings 里没有
+  // language 时界面就是中文。上一版这里回落 en，于是「中文界面 + 英文菜单栏」
+  // （真机 screencapture：Bit Bot / Edit / View / Window / Help 挂在中文界面上方）。
+  // 只有明确是 en* 才用英文，其余（缺值 / 未知值 / zh*）一律中文。
+  const menuLangOf = (lang) => (/^\s*en/i.test(String(lang || "")) ? "en" : "zh");
 
   const buildAppMenu = (lang) => {
     const t = MENU_I18N[menuLangOf(lang)] || MENU_I18N.zh;
@@ -5212,13 +5256,16 @@ app.whenReady().then(async () => {
   let currentMenuLang = menuLangOf((() => {
     try { return (surface.getSettings() || {}).language; } catch (_) { return null; }
   })());
-  Menu.setApplicationMenu(buildAppMenu(currentMenuLang));
-  // 渲染端侦测到语言变化后发来；lang 不变则跳过重建（避免每次设置改动都重排菜单）。
-  ipcMain.on("bitbot:menu-relocalize", (_e, lang) => {
+  relocalizeMenu = (lang) => {
     const next = menuLangOf(lang);
     if (next === currentMenuLang) return;
     currentMenuLang = next;
     Menu.setApplicationMenu(buildAppMenu(next));
+  };
+  Menu.setApplicationMenu(buildAppMenu(currentMenuLang));
+  // 兼容旧路径：仍接受渲染端显式发来的 relocalize（同一个收口，幂等）。
+  ipcMain.on("bitbot:menu-relocalize", (_e, lang) => {
+    if (relocalizeMenu) relocalizeMenu(String(lang));
   });
   if (AUTOSTART_ENABLED) {
     const login = applyLoginItem(true);

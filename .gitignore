@@ -98,3 +98,7 @@ docs/design/desktop-target/reference/modal-computed.json
 
 # 本机自证用的临时下载（Kotlin 编译器/JUnit jar，见 report §8.70）
 /.tmpdl/
+
+# 开发态应用包（scripts/make_dev_app_bundle.sh 用 electron dist 复制改写出来的
+# 250MB 产物，只为让菜单栏显示 Bit Bot；随时可重建，绝不入仓）
+/hosts/desktop/build/dev-app/
