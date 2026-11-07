@@ -244,6 +244,22 @@
     gap: var(--space-2);
   }
   .ri-item-off { opacity: 0.55; }
+  /* M52 归档区：一段折叠。summary 是「已归档 · n」这一行本身，收起时不占高度。
+     归档行整体压淡（它是历史，不是待办），但动作按钮保持正常对比度。 */
+  .ri-arch-fold { margin: var(--space-2) 0 var(--space-3); border-top: 1px solid var(--line); padding-top: var(--space-2); }
+  .ri-arch-fold > summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    list-style: none;
+    padding: 2px 0;
+  }
+  .ri-arch-fold > summary::-webkit-details-marker { display: none; }
+  .ri-arch-fold > summary::before { content: "▸ "; }
+  .ri-arch-fold[open] > summary::before { content: "▾ "; }
+  .ri-arch-fold > summary:hover { color: var(--ink); }
+  .ri-item-archived { border-style: dashed; margin-top: var(--space-3); }
+  .ri-item-archived .ri-prompt { color: var(--muted); }
   .ri-prompt { font-size: var(--text-sm); word-break: break-word; }
   .ri-meta { color: var(--muted); font-size: var(--text-sm); }
   .ri-err { color: var(--warn); font-size: var(--text-sm); word-break: break-word; }
@@ -1583,6 +1599,30 @@
     border-color: var(--muted);
     box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 10px 30px rgba(0,0,0,0.10);
   }
+  /* 回到底部：贴在输入卡上沿的圆形 ghost 钮。用 .row 当定位上下文（它在两张
+     屏幕上都是「输入框本体」），底边超出去 10px，浮在对话与输入框之间。 */
+  #composer .row { position: relative; }
+  #to-bottom {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%);
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 0.5px solid var(--line);
+    background: var(--surface);
+    color: var(--muted);
+    box-shadow: 0 4px 14px var(--fill);
+    cursor: pointer;
+    z-index: 30;
+  }
+  #to-bottom:hover { color: var(--ink); border-color: var(--ink); }
+  #to-bottom:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+  #to-bottom[hidden] { display: none; }
   #composer input, #composer textarea {
     flex: 1;
     background: transparent;
@@ -3991,6 +4031,8 @@
     </div>
     <div class="ri-panel" id="ri-panel-routines" data-panel="routines" role="tabpanel" aria-labelledby="ri-tab-routines" hidden>
       <div id="ri-routine-list" aria-live="polite"></div>
+      <!-- M52 归档区：折叠在常用列表下面。空的时候整块 hidden，不留一条空标题。 -->
+      <div id="ri-routine-archived" hidden></div>
       <!-- 时区说明讲的是「定时任务什么时候触发」——它必须跟着定时任务，
            不能被资料库区块隔到下面去。 -->
       <div class="ri-meta" id="ri-tz-note"></div>
@@ -4072,6 +4114,10 @@
       <button type="button" id="room-banner-exit" class="bb-btn" data-i18n="roomExit">退出群聊</button>
     </div>
     <div class="row">
+      <!-- Grok 真机：滚离底部后输入卡上沿浮起一枚「回到底部」。absolute 定位，
+           不占流 —— 输入卡不会因为它多出一行高度。 -->
+      <button type="button" id="to-bottom" hidden data-i18n-title="toBottom" data-i18n-aria="toBottom"
+              title="回到底部" aria-label="回到底部"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 4.5V19"/><path d="M5.8 12.8 12 19l6.2-6.2"/></svg></button>
       <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…" title="Enter 发送 · Shift+Enter 换行 · ↑ 调出上一条" autocomplete="off" autofocus></textarea>
       <button type="button" id="attach-btn" title="更多：附件 / 联网搜索 / 模型 / 语音对话"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       <button type="button" id="shot-btn" title="截图（框选区域 · Esc 取消）" aria-label="截图并作为附件"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2l1-1.6A1.4 1.4 0 0 1 8.9 3.7h6.2c.5 0 .9.2 1.2.7l1 1.6h1.2A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="12" cy="12.5" r="3.4"/></svg></button>
@@ -8358,14 +8404,18 @@
       }
       const rows = Array.isArray(res.routines) ? res.routines : [];
       roomRailRoutines = rows;
+      // M52：归档过的行不混在常用列表里（真机是「收进归档区」），否则用户
+      // 越归档列表越长，归档就没意义了。
+      const liveRows = rows.filter((r) => !r || r.archived !== true);
+      const archRows = rows.filter((r) => r && r.archived === true);
       host.textContent = "";
-      if (!rows.length) {
+      if (!liveRows.length) {
         const empty = document.createElement("div");
         empty.className = "ri-empty";
         empty.textContent = wavegT("riRoutinesEmpty");
         host.appendChild(empty);
       }
-      for (const r of rows) {
+      for (const r of liveRows) {
         const item = document.createElement("div");
         item.className = "ri-item" + (r.enabled === false ? " ri-item-off" : "");
         const prompt = document.createElement("div");
@@ -8417,6 +8467,15 @@
           });
           actRow.appendChild(btn);
         }
+        // M52：跑完的一次性任务最该「收起来」——它既不会再有下一次，也不该
+        // 占着常用列表的位置。暂停中的行同样可归档（归档会顺手确认已暂停）。
+        const arch = document.createElement("button");
+        arch.type = "button";
+        arch.className = "bb-btn ri-archive";
+        arch.textContent = wavegT("riArchive");
+        arch.title = wavegT("riArchiveHint");
+        arch.addEventListener("click", () => { archiveRoomRoutine(r.id, "archive", arch); });
+        actRow.appendChild(arch);
         const del = document.createElement("button");
         del.type = "button";
         del.className = "bb-btn bb-btn-danger-soft ri-remove";
@@ -8427,7 +8486,55 @@
         item.appendChild(actRow);
         host.appendChild(item);
       }
+      renderRoomRailArchived(archRows);
       if (tzNote && res.timezone) tzNote.textContent = t("riTzNote", { tz: res.timezone });
+    }
+    /* 归档区：默认收起（真机也是折叠的一段），标题带条数。归档行只给两个动作
+       ——「取消归档」和「删除」；不给「继续」，因为取消归档之后它本来就是暂停态，
+       要恢复排程再按「继续」，两个动作分开比合成一个更难误触。 */
+    function renderRoomRailArchived(rows) {
+      const host = document.getElementById("ri-routine-archived");
+      if (!host) return;
+      host.textContent = "";
+      if (!rows || !rows.length) { host.hidden = true; return; }
+      host.hidden = false;
+      const fold = document.createElement("details");
+      fold.className = "ri-arch-fold";
+      const sum = document.createElement("summary");
+      sum.textContent = t("riArchivedCount", { n: String(rows.length) });
+      fold.appendChild(sum);
+      for (const r of rows) {
+        const item = document.createElement("div");
+        item.className = "ri-item ri-item-archived";
+        const prompt = document.createElement("div");
+        prompt.className = "ri-prompt";
+        prompt.textContent = r.prompt || r.id;
+        item.appendChild(prompt);
+        const meta = document.createElement("div");
+        meta.className = "ri-meta";
+        const at = r.archived_at ? String(r.archived_at).slice(0, 10) : "";
+        meta.textContent = at ? t("riArchivedAt", { t: at }) : wavegT("riArchived");
+        item.appendChild(meta);
+        const act = document.createElement("div");
+        act.className = "ri-row";
+        const un = document.createElement("button");
+        un.type = "button";
+        un.className = "bb-btn ri-unarchive";
+        un.textContent = wavegT("riUnarchive");
+        un.title = wavegT("riUnarchiveHint");
+        un.addEventListener("click", () => { archiveRoomRoutine(r.id, "unarchive", un); });
+        act.appendChild(un);
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "bb-btn bb-btn-danger-soft ri-remove";
+        del.textContent = wavegT("riRemove");
+        del.title = wavegT("riRemoveHint");
+        del.addEventListener("click", () => { armRoomRoutineRemoval(r.id, del); });
+        act.appendChild(del);
+        item.appendChild(act);
+        fold.appendChild(item);
+      }
+      host.appendChild(fold);
     }
     /* ---- GP-154 续：群资料库（对标 Grok 群资料里的「文件 / 知识库」）----
        条目来自 rooms.json 的 room.library（[{ title, kind }]）。读不到 / 没有
@@ -8544,6 +8651,28 @@
         return;
       }
       railRoutineStatus(t("riToggleFailed", { e: routineFailCopy(res && res.error) }));
+      if (btn) btn.disabled = false;
+      await renderRoomRailRoutines();
+    }
+    /* M52 归档 / 取消归档。和暂停共用同一个 lifecycle 口（不新造第二条改库路径），
+       失败时把拒绝原因写进面板状态行 —— 归档没成功却把行挪进归档区，比不做更糟。 */
+    async function archiveRoomRoutine(id, action, btn) {
+      if (!roomRailId || !id) return;
+      if (btn) btn.disabled = true;
+      let res = null;
+      try {
+        res = await window.bitbot.routines.lifecycle({ roomId: roomRailId, id, action });
+      } catch (err) {
+        res = { ok: false, error: String((err && err.message) || err) };
+      }
+      if (res && res.ok) {
+        railRoutineStatus("");
+        await renderRoomRailRoutines();
+        return;
+      }
+      railRoutineStatus(t(action === "archive" ? "riArchiveFailed" : "riUnarchiveFailed", {
+        e: routineFailCopy(res && res.error),
+      }));
       if (btn) btn.disabled = false;
       await renderRoomRailRoutines();
     }
@@ -17203,6 +17332,7 @@
         findClose: "关闭（Esc）",
         findNoHits: "没有匹配",
         findCount: "{i}/{n}",
+        toBottom: "回到底部",
         deleteAction: "删除这条消息",
         deleteFailed: "删除失败",
         dayToday: "今天",
@@ -17529,6 +17659,15 @@
         riPauseHint: "先停掉这个定时任务，时间不变",
         riResumeHint: "恢复它，并按原时间重新排下一次",
         riToggleFailed: "改状态失败：{e}",
+        riArchive: "归档",
+        riArchiveHint: "收进归档区并不再触发（会先暂停这条排程）",
+        riUnarchive: "取消归档",
+        riUnarchiveHint: "移回常用列表；它仍是暂停状态，要跑再按「继续」",
+        riArchiveFailed: "归档失败：{e}",
+        riUnarchiveFailed: "取消归档失败：{e}",
+        riArchived: "已归档",
+        riArchivedCount: "已归档 · {n}",
+        riArchivedAt: "归档于 {t}",
         riErrNotFound: "这条定时任务已经不在了",
         riErrRoomMismatch: "这条定时任务不属于本群，不能在这里改",
         riErrTaken: "这句排程对应的定时任务已经属于别的群，不能在这里改写它的归属；想在本群单独来一份，换个说法再添加一次",
@@ -18162,6 +18301,7 @@
         findClose: "關閉（Esc）",
         findNoHits: "沒有符合",
         findCount: "{i}/{n}",
+        toBottom: "回到最底",
         deleteAction: "刪除這則訊息",
         deleteFailed: "刪除失敗",
         dayToday: "今天",
@@ -18484,6 +18624,15 @@
         riPauseHint: "先停掉這個定時任務，時間不變",
         riResumeHint: "恢復它，並按原時間重新排下一次",
         riToggleFailed: "改狀態失敗：{e}",
+        riArchive: "歸檔",
+        riArchiveHint: "收進歸檔區並不再觸發（會先暫停這條排程）",
+        riUnarchive: "取消歸檔",
+        riUnarchiveHint: "移回常用列表；它仍是暫停狀態，要跑再按「繼續」",
+        riArchiveFailed: "歸檔失敗：{e}",
+        riUnarchiveFailed: "取消歸檔失敗：{e}",
+        riArchived: "已歸檔",
+        riArchivedCount: "已歸檔 · {n}",
+        riArchivedAt: "歸檔於 {t}",
         riErrNotFound: "這條定時任務已經不在了",
         riErrRoomMismatch: "這條定時任務不屬於本群，不能在這裡改",
         riErrTaken: "這句排程對應的定時任務已經屬於別的群，不能在這裡改寫它的歸屬；想在本群單獨來一份，換個說法再添加一次",
@@ -19117,6 +19266,7 @@
         findClose: "Close (Esc)",
         findNoHits: "No matches",
         findCount: "{i}/{n}",
+        toBottom: "Scroll to bottom",
         deleteAction: "Delete message",
         deleteFailed: "Delete failed",
         dayToday: "Today",
@@ -19439,6 +19589,15 @@
         riPauseHint: "Stop this schedule for now; the time stays the same",
         riResumeHint: "Resume it and re-arm the next fire at the original time",
         riToggleFailed: "Could not update: {e}",
+        riArchive: "Archive",
+        riArchiveHint: "Move it to the archive and stop it firing (pauses the schedule first)",
+        riUnarchive: "Unarchive",
+        riUnarchiveHint: "Move it back to the active list; it stays paused — press Resume to run it again",
+        riArchiveFailed: "Could not archive: {e}",
+        riUnarchiveFailed: "Could not unarchive: {e}",
+        riArchived: "Archived",
+        riArchivedCount: "Archived · {n}",
+        riArchivedAt: "Archived on {t}",
         riErrNotFound: "This scheduled task no longer exists",
         riErrRoomMismatch: "This task belongs to another group; it cannot be changed here",
         riErrTaken: "That schedule already belongs to another group; its ownership cannot be rewritten here. To run your own copy in this group, add it with different wording.",
@@ -20859,6 +21018,31 @@
       if (next) next.addEventListener("click", () => stepFind(1));
       if (close) close.addEventListener("click", () => closeFindBar());
       if (count) count.textContent = "";
+    })();
+
+    /* ── 回到底部（Grok 真机：滚离底部后输入卡上沿浮起一枚圆形 ↓）
+       判据用「离底距离」而不是 scrollTop === 0：短对话不动也永远在底部，
+       长对话往回翻一屏才浮出来。三个触发点都要接 —— 用户滚动（scroll）、
+       新消息追加（MutationObserver，追加不一定伴随 scroll 事件）、窗口改尺寸。 */
+    const TO_BOTTOM_GAP = 240;
+    function syncToBottomBtn() {
+      const btn = document.getElementById("to-bottom");
+      if (!btn) return;
+      const gap = log.scrollHeight - log.scrollTop - log.clientHeight;
+      btn.hidden = !(gap > TO_BOTTOM_GAP);
+    }
+    (function wireToBottom() {
+      const btn = document.getElementById("to-bottom");
+      if (!btn) return;
+      log.addEventListener("scroll", syncToBottomBtn, { passive: true });
+      window.addEventListener("resize", syncToBottomBtn);
+      btn.addEventListener("click", () => {
+        log.scrollTo({ top: log.scrollHeight, behavior: "smooth" });
+      });
+      try {
+        new MutationObserver(syncToBottomBtn).observe(log, { childList: true });
+      } catch (_) { /* 老内核没有 MutationObserver 就只靠 scroll */ }
+      syncToBottomBtn();
     })();
 
     /* ── 日期分隔行（Grok 真机：居中的灰小字「今天」「10月17日周六 15:13」）

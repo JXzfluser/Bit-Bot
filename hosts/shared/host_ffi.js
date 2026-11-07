@@ -8916,6 +8916,10 @@ function createHostFfi(repoRoot, opts = {}) {
         // GP-157: 一次性任务跑完后 next_due 为空，界面不能再报「还没排上」，
         // 要如实说「已于 … 触发」。可选新字段，旧读取方按缺省处理。
         once_done: r.once_done === true,
+        // M52 归档态：archived 为真 = 面板把它收进归档区，且（归档动作保证）
+        // enabled 为假。旧读取方不认识这两个字段，按「没归档」处理即可。
+        archived: Boolean(r.archived_at),
+        archived_at: r.archived_at || null,
         next_due_label: r.next_due ? wallClockLabel(r.next_due, tz) : null,
         last_fired_label: r.last_fired_at ? wallClockLabel(r.last_fired_at, tz) : null,
       }));
@@ -8949,7 +8953,8 @@ function createHostFfi(repoRoot, opts = {}) {
     const act = String((opts && opts.action) || "");
     if (!want) return { ok: false, error: "room_required" };
     if (!rid) return { ok: false, error: "not_found" };
-    if (act !== "pause" && act !== "resume" && act !== "remove") {
+    if (act !== "pause" && act !== "resume" && act !== "remove"
+        && act !== "archive" && act !== "unarchive") {
       return { ok: false, error: "action_unsupported" };
     }
     const before = loadRoutines();
@@ -8957,6 +8962,7 @@ function createHostFfi(repoRoot, opts = {}) {
     if (!row) return { ok: false, error: "not_found" };
     if (String(row.room_id || "") !== want) return { ok: false, error: "room_mismatch" };
     if (act === "remove") return removeRoomRoutine(want, rid, row);
+    if (act === "archive" || act === "unarchive") return archiveRoomRoutine(want, rid, act);
     const kind = act === "pause" ? "routine_pause" : "routine_resume";
     const res = executeRoutineEffect(kind, rid);
     if (!res || res.ok !== true) {
@@ -8994,6 +9000,55 @@ function createHostFfi(repoRoot, opts = {}) {
     }
     const fresh = ((listRoomRoutines(want).routines) || []).find((r) => r && String(r.id) === rid) || mapped;
     return { ok: true, action: act, room_id: want, routine: fresh, rearmed };
+  }
+
+  /**
+   * M52「做完了/不想看了的定时任务收起来」— 归档态。
+   *
+   * 真机（Grok Bot）里归档是「收进归档区，不再出现在常用列表」，并且归档过的
+   * 任务不会继续触发。这里必须两件事一起做，只做一件都会出现「看不见却在跑」：
+   *   1. 暂停（走既有 routine_pause，不新造第二条改库路径）；
+   *   2. 在 Host 自己的行上打 archived_at 标记 —— 不新增 kernel effect kind，
+   *      内核的 effect 三元组（id|cron|prompt）一个字节都不动。
+   *
+   * 取消归档只把标记摘掉，**不自动恢复排程**：用户当初归档就是不想它跑，
+   * 摘标记那一刻默认继续「暂停」更安全（面板上「继续」按钮就在旁边）。
+   *
+   * error ∈ room_required | not_found | room_mismatch | effect_failed | not_reflected
+   */
+  function archiveRoomRoutine(want, rid, act) {
+    const now = new Date().toISOString();
+    if (act === "archive") {
+      const before = loadRoutines().find((r) => r && String(r.id) === rid);
+      if (!before) return { ok: false, error: "not_found" };
+      if (before.enabled !== false) {
+        const pr = executeRoutineEffect("routine_pause", rid);
+        if (!pr || pr.ok !== true) {
+          return {
+            ok: false,
+            error: "effect_failed",
+            detail: String((pr && (pr.error || pr.stderr)) || ""),
+          };
+        }
+      }
+    }
+    const rows = loadRoutines();
+    const hit = rows.find((r) => r && String(r.id) === rid);
+    if (!hit) return { ok: false, error: "not_found" };
+    if (String(hit.room_id || "") !== want) return { ok: false, error: "room_mismatch" };
+    if (act === "archive") hit.archived_at = now;
+    else delete hit.archived_at;
+    saveRoutines(rows);
+    // 回读判真值，不拿写盘当已归档（与 pause/remove 同一条纪律）。
+    const fresh = ((listRoomRoutines(want).routines) || []).find((r) => r && String(r.id) === rid) || null;
+    if (!fresh) return { ok: false, error: "not_reflected" };
+    if (act === "archive" && (fresh.archived !== true || fresh.enabled !== false)) {
+      return { ok: false, error: "not_reflected", routine: fresh };
+    }
+    if (act === "unarchive" && fresh.archived === true) {
+      return { ok: false, error: "not_reflected", routine: fresh };
+    }
+    return { ok: true, action: act, room_id: want, id: rid, routine: fresh, resumed: false };
   }
 
   /**
