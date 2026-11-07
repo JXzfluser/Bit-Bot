@@ -159,3 +159,20 @@ store 只留 `path / name / kind / bytes` 四个字段。
 
 回归：`prove_m38_copy` 11/0、`prove_m39_micro` 11/0、`prove_m33_grokchrome` 8/0、
 `e2e_desktop_room_orchestration` 63/0。
+
+## 八、M53b（2026-11-07 第五轮）：KP-02「停止」从有按钮到真能按
+
+判据：`scripts/prove_m53b_turn_cancel.js`（9/0，含 4 条负向对照）
++ `scripts/e2e_desktop_turn_cancel.mjs`（7/0，真 Electron + 慢 8s 的桩）。
+
+**先纠正一句之前的自述**：KP-02 缺的不是"取消要回执"，而是**这个动作在界面上不存在**。
+`#turn-cancel` 带 `hidden`，全仓没有一行代码取消隐藏 —— CSS 连"顶掉麦克风"的位置都排好了，
+白写。另有两条断链：引擎的 cancel scope 只挂在自己的 withTimeout 上（群回合停不下来）、
+回执拿不到"有没有在跑"（会对着正在跑的回合说「没有在执行的回合」）。
+
+**做法**：引擎把在跑的 scope 登记成表并导出；Host 用计数广播 `bitbot:turn-busy`
+（只在 0↔N 跃变发一帧，抛错也还回去，`busyMarked` 守卫防止误收别人的按钮）；
+渲染层按这帧显隐，不从流式片段猜（群回合不走 llm-stream）。
+
+**残留**：群里取消后 transcript 那一行没进 e2e（要种 3 Bot + 1 群）；
+`e2e_grok_desktop_boot` 在本机本来就红（基线 26/13，改后 28/11），未修。
