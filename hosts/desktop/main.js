@@ -147,6 +147,12 @@ const { buildDiscretionPrompt, parseDiscretionReply } = require("../shared/room_
 const { createRoomRuntime, roomSafeText: sharedRoomSafeText } = require("../shared/room_runtime");
 const { dispatchRoomTurn } = require("../shared/room_dispatch");
 const { resolveMachineId } = require("../shared/machine_identity");
+const { codeStamp: mainCodeStamp, reloadDecision } = require("./reload_policy");
+
+// ⌘R 只重载界面，主进程模块的 require 缓存不会动 —— 用户会看到「界面变了、行为没变」。
+// 这两个常量让它能自己判断：磁盘上的 .js 是不是比这个进程启动时更新。
+const MAIN_CODE_DIRS = [__dirname, path.join(__dirname, "..", "shared")];
+const MAIN_CODE_STAMP_AT_BOOT = mainCodeStamp(MAIN_CODE_DIRS);
 
 // GP-93/94/95 — Markdown/链接纪律 (official spec §5.6). Policy + open route in
 // one module pair used by both the main process and the smoke probe, so the
@@ -5306,7 +5312,24 @@ app.whenReady().then(async () => {
       {
         label: t.view,
         submenu: [
-          { role: "reload", label: t.reload },
+          {
+            label: t.reload,
+            accelerator: "CmdOrCtrl+R",
+            click: () => {
+              /* 代码换了就整进程重启，没换才只是重载界面。
+                 为什么不能一律 relaunch：改一行 CSS 也要重启太粗暴；为什么不能一律 reload：
+                 主进程模块（product_surface.js 等）改了之后 reload 出来的还是旧行为，
+                 用户会以为「改了没生效」。 */
+              const decision = reloadDecision(MAIN_CODE_STAMP_AT_BOOT, MAIN_CODE_DIRS);
+              if (decision.action === "restart") {
+                app.relaunch();
+                app.exit(0);
+                return;
+              }
+              const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+              if (w) w.reload();
+            },
+          },
           { role: "toggleDevTools", label: t.devTools },
           { type: "separator" },
           { role: "resetZoom", label: t.resetZoom },

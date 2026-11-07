@@ -4369,6 +4369,19 @@ echo "    写的预算就当没有历史（群共享上下文由 Host 的「最�
 echo "    私聊槽位**不**受这条影响（「它记得我」不能陪葬）；边界是严格超过（正好 24000 保留，"
 echo "    24001 才重置）；旧式平铺槽位的迁移路径同样要过这一关。"
 
+echo "== G-112 ⌘R：代码变了才重启进程，没变只重载界面 =="
+node scripts/prove_reload_policy.js >/tmp/g112-reload.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-112 prove_reload_policy（$(grep -c '✓ ' /tmp/g112-reload.log) 项全绿）"
+else
+  bad "G-112 prove_reload_policy（见 /tmp/g112-reload.log；$(grep '✗' /tmp/g112-reload.log | head -2 | tr '\n' ' ')）"
+fi
+echo "  · G-112 为什么长出来：改完群编排，用户按 ⌘R 重载，界面文案变了、行为没变，于是又问"
+echo "    「为什么还是这样」。index.html 是启动那一刻读进内存的，reload 就够；但"
+echo "    product_surface.js 这类主进程模块是 require 进来的，只有重启才读盘。"
+echo "  · G-112 判据：菜单的「重新载入」比一次代码时间戳（只看 .js），变了就 app.relaunch，"
+echo "    没变才 win.reload；负向对照「启动戳已是最新 → 仍然只重载」防止退化成每次都重启。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo
