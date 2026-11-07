@@ -2553,8 +2553,14 @@ body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error
 }
 
 /* 群里的用户气泡：外壳退成透明的一列，气泡本体落到 .body 上，这样
-   「我 · 时间」才能排到气泡外面（.msg 里 .body 之前）。 */
-body.grok-ui .msg.room-user {
+   「我 · 时间」才能排到气泡外面（.msg 里 .body 之前）。
+
+   选择器必须带 `.user`：下面还有一条 `body.grok-ui .msg.user { background:
+   var(--user-bubble) }`（私聊气泡的尺寸/配色），它与原来的 `.msg.room-user`
+   同为 (0,3,1)，位置更靠后 —— 同权重看先后，于是群里的整行（连身份行）都被
+   涂成深色，时间和 ✓ 变成深底上的深灰。加上 `.user` 变成 (0,4,1)，
+   谁的先后都不影响：外壳透明、气泡落在 .body 上，这一条才是准的。 */
+body.grok-ui .msg.user.room-user {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -2566,7 +2572,7 @@ body.grok-ui .msg.room-user {
   color: var(--ink);
   box-shadow: none;
 }
-body.grok-ui .msg.room-user .body {
+body.grok-ui .msg.user.room-user .body {
   max-width: min(558.4px, 100%);
   padding: 7px 12px;
   border-radius: var(--radius-user);
@@ -2579,13 +2585,16 @@ body.grok-ui .msg.room-user .body {
     0 -0.5px 0 inset rgba(255, 255, 255, 0.16),
     0 0 0 0.5px inset color-mix(in srgb, var(--ink) 6%, transparent);
 }
+/* 气泡外的东西一律回到页面底色上的对比：勾在深气泡里是「浅色 70%」，
+   挪到白底上那样就看不见了。 */
+body.grok-ui .msg.user.room-user .msg-status { color: var(--muted); }
 /* 气泡外的身份行：气泡内不再重复说一遍「我是谁」。 */
 body.grok-ui .msg > .room-speaker {
   margin: 0;
   font-size: 12px;
   line-height: 16px;
 }
-body.grok-ui .msg.room-user > .room-speaker { justify-content: flex-end; }
+body.grok-ui .msg.user.room-user > .room-speaker { justify-content: flex-end; }
 
 /* ============================================================================
    Grok parity block 4 — 操作条 ghost 图标化
