@@ -30,9 +30,41 @@ if (missing.length) {
   process.exit(1);
 }
 
+/* 必须给 Electron 一个真的 app 路径。
+ * 第一版只传了 --no-sandbox 这类开关，没传 app —— Electron 就把**自己的默认欢迎页**
+ * （「Electron v37… To run a local app…」那种窗口）开出来，脚本 goto 之后截图能成，
+ * 但每次都会先闪一个默认窗口，跑完没关掉还会一直留在桌面上。
+ * 这里现造一个最小的宿主 app：开一个空白窗，页面由 win.goto(file://…) 灌进去。 */
+const APP_DIR = path.join(os.tmpdir(), "bitbot-bind-shot-app");
+fs.mkdirSync(APP_DIR, { recursive: true });
+fs.writeFileSync(
+  path.join(APP_DIR, "package.json"),
+  JSON.stringify({ name: "bitbot-bind-shot", version: "0.0.0", main: "main.js" }),
+);
+fs.writeFileSync(
+  path.join(APP_DIR, "main.js"),
+  [
+    'const { app, BrowserWindow } = require("electron");',
+    "let win = null;",
+    "app.disableHardwareAcceleration();",
+    "app.whenReady().then(() => {",
+    "  win = new BrowserWindow({",
+    "    width: 390, height: 844, show: true,",
+    '    title: "bind-page-shot",',
+    "    webPreferences: { contextIsolation: true, nodeIntegration: false },",
+    "  });",
+    "  win.setMenuBarVisibility(false);",
+    '  win.loadURL("about:blank");',
+    "});",
+    'app.on("window-all-closed", () => app.quit());',
+    "",
+  ].join("\n"),
+);
+
 const app = await _electron.launch({
   executablePath: ELECTRON,
   args: [
+    APP_DIR,
     "--no-sandbox",
     "--disable-gpu",
     "--user-data-dir=" + electronUserDataDir("bind-shot"),

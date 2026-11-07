@@ -8321,3 +8321,38 @@ relay-only 时给如实提示。列为独立切片，不塞进本轮。
 门从 23 项扩到 **25 项**：BM-08 词条清单 +9 键；新增 BM-23（渠道名走词条，
 判据看「表里有键 + channelsForUi 透传 + 渲染层不直接吃 c.name/c.short」）
 与 BM-23b（把列表名退回硬编码 c.name，判据立刻转红——负向对照非恒真）。
+
+---
+
+## 8.91 门禁脚本启动 Electron 没给 app 路径 → 桌面反复弹「Electron 默认欢迎页」（2026-11-07 修）
+
+**现象**：桌面上反复出现一个标题为 `Electron` 的窗口，内容是
+「Electron v37.10.3 | Chromium … To run a local app, execute the following on
+the command line: `…/Electron.app/Contents/MacOS/Electron` path-to-app」。
+
+**根因**：`scripts/shot_bind_page.mjs`（昨天为截手机绑定页新写的）启动 Electron 时
+`args` 只写了 `--no-sandbox / --disable-gpu / --user-data-dir=…`，**没有 app 路径**。
+Electron 规则是「第一个不是 `--` 开关的参数就是 app」——一个都没有，它就把自带的
+默认 app 开出来。脚本随后 `win.goto(file://…)` 把内容换掉，所以截图是全对的：
+**这个错在按键、像素、DOM 三种门里全都是绿的**，只有看进程/看屏幕才发现。
+脚本被中断时（我跑截图时按过 Ctrl-C）那个窗口还会留在桌面上，于是「一直有」。
+
+**修法**：脚本现造一个最小宿主 app（临时目录 `package.json` + `main.js`，开空白窗，
+页面仍由 `win.goto` 灌入），启动时把这个目录当 app 路径传进去；进程也在 finally 里关。
+
+**门**（`scripts/prove_electron_app_path.js`，接进矩阵 G-102，6 项）：
+
+| 编号 | 判据 |
+| --- | --- |
+| AP-00 | 真的扫到了 `_electron.launch`（43 处 / 43 文件），尺子没指错地方 |
+| AP-01 | 所有启动都给了 app 路径，或 `executablePath` 指向打包产物（打包 app 自带路径） |
+| AP-02 | 负向对照：只有 `--` 开关的假启动必须判红 |
+| AP-03 | 正向对照：带 `mainJs` 的假启动必须判绿 |
+| AP-05 | 回归样本：**第一版真实写错的那段 args 原文**钉在门里，判据被改松就先红 |
+| AP-04 | 注入对照：把真仓库里一处 launch 的 app 路径摘掉，扫描转红 |
+
+判据只认 Electron 的真实规则（第一个非开关参数），不猜语义；`args` 整个是变量时
+回文件找它的赋值再判，认不出赋值如实标「靠跑起来看」，不假装验过。
+
+**残留（如实）**：AP-01 是静态扫描，`args` 由更深的构造（如函数返回数组）时静态判不出，
+只在输出里如实列出这几处；真正的兜底是「跑起来看窗口标题」，门里不做。

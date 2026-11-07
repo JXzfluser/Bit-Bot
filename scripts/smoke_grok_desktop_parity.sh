@@ -4139,6 +4139,23 @@ else
   bad "G-78 prove_w3_device_trust（见 /tmp/g78-w3-device.log；$(tail -3 /tmp/g78-w3-device.log | tr '\n' ' ')）"
 fi
 
+echo
+echo "== G-102 启动 Electron 必须给 app 路径（少了它弹的是 Electron 默认欢迎页）=="
+node scripts/prove_electron_app_path.js >/tmp/g102-app-path.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-102 $(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g102-app-path.log)（$(grep -o '扫到 [0-9]* 处 _electron.launch' /tmp/g102-app-path.log | head -1)）"
+else
+  bad "G-102 prove_electron_app_path（见 /tmp/g102-app-path.log；$(grep '✗' /tmp/g102-app-path.log | head -2 | tr '\n' ' ')）"
+fi
+for g102_a in "AP-00" "AP-01" "AP-02" "AP-03" "AP-05" "AP-04"; do
+  if grep -q "✓ $g102_a" /tmp/g102-app-path.log; then ok "G-102 锚点：$g102_a"; else bad "G-102 锚点没跑绿：$g102_a"; fi
+done
+echo "  · G-102 为什么长出来：shot_bind_page.mjs 第一版启动 Electron 只写了 --no-sandbox 这类开关、没给 app 路径，"
+echo "    Electron 就把自己的默认欢迎页（「Electron v37… To run a local app」）开出来。截图脚本 goto 之后照样截到图，"
+echo "    所以所有门都是绿的 —— 但每跑一次桌面就闪一个默认窗口，脚本被中断时它还留在屏幕上（用户就是这么看到的）。"
+echo "  · G-102 判据：Electron 的规则是「第一个不是 -- 开关的参数就是 app 路径」，按这条判，不猜语义；"
+echo "    args 整个是变量时回文件找它的赋值再判一次，认不出赋值就如实标「靠跑起来看」，不假装验过。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo
