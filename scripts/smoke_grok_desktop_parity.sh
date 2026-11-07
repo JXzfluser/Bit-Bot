@@ -4301,6 +4301,29 @@ echo "    outside===0；气泡正文 <200 字而 details 里保留 >900 字的�
 echo "    原文照旧超长 —— 折叠是展示层，不删数据）。dataRoot 走 BITBOT_DATA_ROOT 指到"
 echo "    <repo>/.room-ux-probe-*，真库 sha256 前后必须一致。"
 
+echo "== G-109 「连接应用」目录只干目录的事（重设计，且不把能力删掉） =="
+node scripts/prove_connect_apps_rework.mjs >/tmp/g109-ca-rework.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-109 prove_connect_apps_rework（真窗口：$(grep -c '✓ CA-' /tmp/g109-ca-rework.log) 项全绿）"
+else
+  bad "G-109 prove_connect_apps_rework（见 /tmp/g109-ca-rework.log；$(grep '✗' /tmp/g109-ca-rework.log | head -2 | tr '\n' ' ')）"
+fi
+for g109_a in "CA-00" "CA-01" "CA-02" "CA-03" "CA-04" "CA-04b" "CA-05" "CA-06" "CA-07" "CA-08" "CA-09"; do
+  if grep -q "✓ $g109_a" /tmp/g109-ca-rework.log; then ok "G-109 锚点：$g109_a"; else bad "G-109 锚点没跑绿：$g109_a"; fi
+done
+echo "  · G-109 为什么长出来：用户说「把连接应用 整体重新设计下，并把冗余的功能移除。"
+echo "    保持功能的易用设计」。先量了旧面板：同一张卡画两遍（「为你推荐」取未安装前 6 个，"
+echo "    与分类区完全重叠，实测 4 行 = 2 个应用 × 2 次）、13 个分类 chip 里 10 个点开是空、"
+echo "    标题右边「已连接 N+头像」与下面的列表是同一件事说两遍、卡片写「技能×N」而面板"
+echo "    底部另立一段技能列表、13 个渠道凭证框常驻摊在目录里、搜索框承诺搜技能却只过滤插件、"
+echo "    右上角「Bot 模板」点了跳去别的面板。"
+echo "  · G-109 判据：CA-01 目录 N 条 → DOM 恰好 N 张（旧版 2N，负向对照直接钉在数字上）；"
+echo "    CA-02 分类只剩有内容的，且「选中别的分类时通信 chip 不许自己消失」；CA-03 装了应用"
+echo "    只在一组里出现、总数守恒；CA-04 渠道卡默认收起（用 checkVisibility 判，不用几何量 ——"
+echo "    <details> 收起是 content-visibility，高度会读到上次布局值）而卡头就写着三家状态；"
+echo "    CA-05 技能跟着应用走、旧 #ca-skills 必须不存在；CA-07 展开占满整行；CA-08 无 pageerror；"
+echo "    CA-09 真库 sha256 前后一致。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

@@ -38,7 +38,7 @@ import { createRequire } from "module";
 import { execSync } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
@@ -82,7 +82,8 @@ async function shutdown(app) {
 }
 
 async function launchWith(w, h, opts = {}) {
-  const args = [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu"];
+  /* 同上：独立 user-data 目录，别和用户开着的实例抢单实例锁。 */
+  const args = [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu", "--user-data-dir=" + electronUserDataDir("shell-v2")];
   if (opts.env) for (const [k, v] of Object.entries(opts.env)) process.env[k] = v;
   const app = await _electron.launch({
     executablePath: ELECTRON,

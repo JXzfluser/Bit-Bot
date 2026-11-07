@@ -134,7 +134,11 @@ async function listSkills(cmd) {
   const checks = [
     ["`/` 菜单按来源分组", html.includes('const SKILL_SOURCE_LABEL = { user: t("caSkillUser")') && html.includes('caSkillUser: "我的 / 学习"')],
     ["无匹配 → 去连接应用引导", html.includes("去「连接应用」安装带技能的插件")],
-    ["Connect apps 技能区（按来源）", html.includes('id="ca-skills"') && html.includes("renderConnectAppsSkills")],
+    /* 2026-11-07 重构：连接应用面板不再另立一段「技能（按来源）」——技能是应用带来
+       的（装了插件才多出那些斜杠命令），所以它长在**该应用的展开区**里。判据跟着
+       改到新位置，并且**反向**钉住旧的独立列表不许再偷偷长回来。 */
+    ["插件技能跟应用走（caAppSkills + data-skill）", html.includes("function caAppSkills") && html.includes('row.dataset.skill = slug') && html.includes("caAppSkills:")],
+    ["对照组：面板里不再有独立的技能列表", !html.includes('id="ca-skills"') && !html.includes("renderConnectAppsSkills")],
   ];
   for (const [name, good] of checks) good ? ok(name) : bad(name);
 

@@ -2820,7 +2820,10 @@ body.grok-ui .bb-codeblock {
 body.grok-ui #connect-apps-modal .bb-sheet {
   width: 800px;
   max-width: min(800px, 92vw);
-  height: 666px;
+  /* 高度跟着内容走：旧版写死 666px，目录只有两个应用时下半屏全是空白。
+     有内容就长到 666（Grok 实测值）再开始滚，没内容就收成一张紧凑的卡。 */
+  height: auto;
+  min-height: 0;
   max-height: min(666px, 92vh);
 }
 
@@ -2847,67 +2850,30 @@ body.grok-ui .ca-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 20px 16px;
+  padding: 0 20px 16px;
 }
-body.grok-ui .ca-top { padding: 0 12px; }
-body.grok-ui .ca-head {
-  position: relative;
-  height: 24px;
-  margin: 0 0 18px;
-}
+body.grok-ui .ca-head { padding: 0 20px; margin: 0 0 14px; }
 body.grok-ui .ca-head .bb-sheet-title {
   font-size: 17px;
   font-weight: 500;
   line-height: 24px;
   letter-spacing: 0;
 }
-/* installed cluster: logo stack + "已连接 N 个" + chevron, 28px tall at the
-   title row's right edge (measured 164×28 r8, pad 4/8/4/4, gap 8) */
-body.grok-ui .ca-connected {
-  position: absolute;
-  top: -2px;
-  right: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 4px 8px 4px 4px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: color-mix(in srgb, var(--ink) 68%, transparent);
+/* 一句话说清这个面板是干什么的。旧版标题右边塞了一个「已连接 N 个」胶囊，
+   与下面的「已连接」分组是同一件事说两遍，删掉了。 */
+body.grok-ui .ca-sub {
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
   font-size: 12px;
-  font-weight: 420;
-  line-height: 16px;
-  cursor: pointer;
+  line-height: 18px;
 }
-body.grok-ui .ca-connected:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
-body.grok-ui .ca-connected[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
-body.grok-ui .ca-stack { display: inline-flex; align-items: center; }
-body.grok-ui .ca-stack-ic {
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: 1.5px solid var(--surface);
-  border-radius: 6px;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 1;
-}
-body.grok-ui .ca-stack-ic + .ca-stack-ic { margin-left: -6px; }
-body.grok-ui .ca-connected-txt { white-space: nowrap; }
-body.grok-ui .ca-chev { flex: 0 0 12px; color: color-mix(in srgb, var(--ink) 56%, transparent); }
 /* search row: 612.6×32 pill (0.5px ink8, pad 0 8 0 12, gap 6) + 113×32 Bot
    模板 pill (mark 18 + label + ↗ 16, pad 0 10 0 6), 8px apart */
 body.grok-ui .ca-search-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0;
+  margin: 0 20px;
 }
 body.grok-ui .ca-search {
   flex: 1 1 auto;
@@ -2943,39 +2909,16 @@ body.grok-ui .ca-search-input {
   color: var(--ink);
 }
 body.grok-ui .ca-search-input::placeholder { color: color-mix(in srgb, var(--ink) 48%, transparent); }
-body.grok-ui .ca-template-btn {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px 0 6px;
-  border: 0.5px solid color-mix(in srgb, var(--ink) 8%, transparent);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 420;
-  line-height: 18px;
-  cursor: pointer;
-}
-body.grok-ui .ca-template-btn:hover { background: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
-body.grok-ui .ca-tpl-mark {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  color: var(--ink);
-}
-body.grok-ui .ca-tpl-go { flex: 0 0 16px; color: color-mix(in srgb, var(--ink) 56%, transparent); }
 body.grok-ui #ca-cats {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 12px 0 0;
+  margin: 12px 20px 0;
 }
-body.grok-ui #ca-sections { margin-top: 20px; }
-body.grok-ui .ca-section { margin: 0 0 24px; }
+/* 只有一个「全部」时这一行没有信息量（全部分类里只有一个有内容），收起。 */
+body.grok-ui #ca-cats[hidden] { display: none; }
+body.grok-ui #ca-sections { margin-top: 16px; }
+body.grok-ui .ca-section { margin: 0 0 20px; }
 body.grok-ui .ca-section-head {
   display: flex;
   align-items: center;
@@ -3015,6 +2958,8 @@ body.grok-ui .ca-app {
 }
 body.grok-ui .ca-app:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 body.grok-ui .ca-app.is-installed > .ca-app-row { cursor: pointer; }
+/* 展开的应用占满整行：半宽的展开区会把工具描述截断、把「卸载」挤到没地方站。 */
+body.grok-ui .ca-app.is-open { grid-column: 1 / -1; }
 body.grok-ui .ca-app-row {
   display: flex;
   align-items: center;
@@ -3135,33 +3080,6 @@ body.grok-ui .ca-empty {
   color: color-mix(in srgb, var(--ink) 56%, transparent);
   font-size: 13px;
 }
-body.grok-ui .ca-skills-block { margin-top: 0; }
-body.grok-ui .ca-skills-block + .ca-auth { margin-top: 24px; }
-body.grok-ui .ca-skill-group {
-  margin: 8px 0 2px;
-  color: color-mix(in srgb, var(--ink) 56%, transparent);
-  font-size: 12px;
-  font-weight: 420;
-  letter-spacing: 0;
-  text-transform: none;
-}
-body.grok-ui .ca-skill-row {
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 13px;
-}
-body.grok-ui .ca-skill-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
-body.grok-ui .ca-skill-code { font-size: 12px; color: var(--ink); }
-body.grok-ui .ca-skill-desc { color: color-mix(in srgb, var(--ink) 56%, transparent); }
-body.grok-ui .ca-auth {
-  margin-top: 14px;
-  color: color-mix(in srgb, var(--ink) 48%, transparent);
-  font-size: 11px;
-  line-height: 16px;
-}
 /* 国内渠道: same section rhythm as the app groups, input rows compressed */
 body.grok-ui .ca-cn { margin-top: 24px; }
 body.grok-ui .ca-cn-hint {
@@ -3183,12 +3101,124 @@ body.grok-ui .ca-cn .bb-control {
   font-size: 13px;
 }
 body.grok-ui .ca-meta {
-  padding: 0 21px 12px;
-  color: color-mix(in srgb, var(--ink) 56%, transparent);
-  font-size: 11px;
+  flex: 0 0 auto;
+  padding: 10px 20px;
+  border-top: 0.5px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  color: color-mix(in srgb, var(--ink) 68%, transparent);
+  font-size: 12px;
   line-height: 16px;
 }
 body.grok-ui .ca-meta:empty { display: none; }
+
+/* ---- 应用展开区：工具 + 技能 ------------------------------------------
+   已添加的应用点开才是这些细节。旧版把「技能×N」印在卡片副标题上（内部计数），
+   技能本体却另立在面板底部一段「技能（按来源）」——同一件事在两个地方、两种说法。
+   现在技能跟着它的应用走：装了这个应用，才会多出这些斜杠命令。 */
+body.grok-ui .ca-app-tools-head,
+body.grok-ui .ca-app-skills-head {
+  margin: 2px 0 4px;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+body.grok-ui .ca-app-skills {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 0.5px solid color-mix(in srgb, var(--ink) 10%, transparent);
+}
+body.grok-ui .ca-app-skill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 12px;
+}
+body.grok-ui .ca-app-skill code {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+}
+body.grok-ui .ca-app-skill-desc {
+  min-width: 0;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- 国内通信渠道：一张可展开的卡 --------------------------------------
+   旧版把 13 个凭证输入框常驻摊在目录里（钉钉/飞书/企微 三行 + 四个密钥行），
+   和应用列表混在一起：想找应用的人被表单挡住，想填凭证的人又要在目录里翻。
+   现在它是一张卡：合计状态写在卡头（未开启也照样写出来），点开才填。 */
+body.grok-ui .ca-cn { margin: 8px 0 4px; }
+body.grok-ui .ca-cn-box {
+  border: 0.5px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+}
+body.grok-ui .ca-cn-sum {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+body.grok-ui .ca-cn-sum::-webkit-details-marker { display: none; }
+body.grok-ui .ca-cn-title {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+body.grok-ui .ca-cn-state {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.grok-ui .ca-cn-chev {
+  flex: 0 0 12px;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  transition: transform 0.16s ease;
+}
+body.grok-ui .ca-cn-box[open] .ca-cn-chev { transform: rotate(90deg); }
+body.grok-ui .ca-cn-body {
+  padding: 0 14px 14px;
+  border-top: 0.5px solid color-mix(in srgb, var(--ink) 10%, transparent);
+}
+body.grok-ui .ca-cn-lead {
+  margin: 10px 0 6px;
+  color: color-mix(in srgb, var(--ink) 56%, transparent);
+  font-size: 12px;
+  line-height: 18px;
+}
+body.grok-ui .ca-cn-vendor {
+  padding: 8px 0 2px;
+  border-bottom: 0.5px solid color-mix(in srgb, var(--ink) 8%, transparent);
+}
+body.grok-ui .ca-cn-vendor:last-of-type { border-bottom: 0; }
+body.grok-ui .ca-cn-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+body.grok-ui .ca-cn-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 /* ---- G-28 #12 命令回执（#cmd-toast）------------------------------------
    控制命令不再进消息流（见 index.html 里 isControlCommand 的说明），但

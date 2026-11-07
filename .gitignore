@@ -109,6 +109,7 @@ docs/design/desktop-target/reference/modal-computed.json
 /.tpl-probe-*/
 /.rename-probe-*/
 /.room-ux-probe-*/
+/.ca-probe-*/
 
 # 用户模板库的一次性备份（改库前留的手尾）
 /data/desktop/bot-templates.json.bak

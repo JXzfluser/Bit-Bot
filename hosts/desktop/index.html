@@ -2932,137 +2932,108 @@
       </div>
       <div id="lb-body" style="max-width:94vw;max-height:88vh;display:flex;align-items:center;justify-content:center;overflow:auto"></div>
     </div>
-    <!-- GP-A2/A3: Connect apps dialog (§2.5 · Cmd/Ctrl+Shift+M).
-         Content mirrors the measured Grok .ui-dialog (2026-10-25): title row
-         53/33, count right-aligned, close pinned 11/11, borderless search row
-         (14px input + Bot 模板 pill), 7 chips (更多 reveals the long tail),
-         then 14px/500 section headings over 2×375 compact rows. -->
+    <!-- GP-A2/A3 → 重构（2026-11-07）：连接应用只做一件事——装 / 断应用。
+         旧版一屏拼了四样东西：应用目录（「为你推荐」与分类区把同一张卡画两遍）、
+         按来源的技能列表、国内通信渠道的 13 个凭证输入框、一个跳去模板市场的按钮。
+         现在：目录（只列有内容的分类）→ 已连接 / 可添加 两组 → 通信渠道一张可展开的卡。
+         凭证字段 id 一个没改（门禁与保存链路都按 id 取），只是不再常驻摊开。 -->
     <div id="connect-apps-modal" class="bb-modal">
       <div class="bb-sheet bb-sheet-lg ca-dialog">
         <button type="button" id="ca-close" class="bb-btn bb-close" data-i18n="caClose">关闭</button>
-        <div class="ca-scroll">
-        <div class="ca-top">
         <div class="ca-head">
           <div class="bb-sheet-title ca-title" data-i18n="caTitle">连接应用</div>
-          <button type="button" id="ca-connected" class="ca-connected" aria-pressed="false">
-            <span id="ca-stack" class="ca-stack" aria-hidden="true"></span>
-            <span id="ca-connected-txt" class="ca-connected-txt"></span>
-            <svg class="ca-chev" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5"/></svg>
-          </button>
+          <div class="ca-sub" data-i18n="caSubtitle">把 Bit Bot 接到你已经在用的工具上；不用的随时断开。</div>
         </div>
         <div class="ca-search-row">
           <label class="ca-search">
             <span class="ca-search-ic" aria-hidden="true">
               <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><path d="m10.4 10.4 3.1 3.1"/></svg>
             </span>
-            <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="在应用和技能中搜索" class="ca-search-input" />
+            <input id="ca-search" type="text" data-i18n-ph="caSearchPh" placeholder="搜索应用" class="ca-search-input" />
           </label>
-          <button type="button" id="ca-template-btn" class="ca-template-btn">
-            <span class="ca-tpl-mark" aria-hidden="true">
-              <svg viewBox="0 0 18 18" width="18" height="18"><circle cx="9" cy="9" r="9" fill="currentColor"/><path d="M9 3.6l1.35 3.65L14 8.6l-3.65 1.35L9 13.6 7.65 9.95 4 8.6l3.65-1.35z" fill="var(--surface)"/></svg>
-            </span>
-            <span data-i18n="caBotTemplates">Bot 模板</span>
-            <svg class="ca-tpl-go" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5.5 10.5 10.5 5.5M6.5 5.5h4v4"/></svg>
-          </button>
         </div>
-        <!-- Grok-parity: category chips filter the plugin sections -->
+        <!-- 分类：只渲染「有内容」的。旧版 13 个 chip 里 11 个点开是空列表。 -->
         <div id="ca-cats" class="ca-cats">
           <button type="button" class="ca-chip active" data-cat="all" data-i18n="caCatAll">全部</button>
-          <button type="button" class="ca-chip" data-cat="password" data-i18n="caCatPassword">密码管理器</button>
-          <button type="button" class="ca-chip" data-cat="productivity" data-i18n="caCatProductivity">效率</button>
-          <button type="button" class="ca-chip" data-cat="communication" data-i18n="caCatCommunication">通信</button>
-          <button type="button" class="ca-chip" data-cat="design" data-i18n="caCatDesign">设计</button>
-          <button type="button" class="ca-chip" data-cat="code" data-i18n="caCatCode">代码</button>
-          <button type="button" class="ca-chip ca-more" data-cat="more" id="ca-more-chip" data-i18n="caMore">更多</button>
-          <button type="button" class="ca-chip ca-extra" data-cat="data" data-i18n="caCatData" hidden>数据</button>
-          <button type="button" class="ca-chip ca-extra" data-cat="sales" data-i18n="caCatSales" hidden>销售</button>
-          <button type="button" class="ca-chip ca-extra" data-cat="marketing" data-i18n="caCatMarketing" hidden>营销</button>
-          <button type="button" class="ca-chip ca-extra" data-cat="finance" data-i18n="caCatFinance" hidden>财务</button>
-          <button type="button" class="ca-chip ca-extra" data-cat="research" data-i18n="caCatResearch" hidden>研究</button>
-          <button type="button" class="ca-chip ca-extra" data-cat="support" data-i18n="caCatSupport" hidden>支持</button>
         </div>
-        </div><!-- /.ca-top -->
+        <div class="ca-scroll">
         <div id="ca-sections"></div>
-          <!-- GP-135 (§6.3): skills grouped by origin; plugin skills come with
-               their Connect app, managed skills are always listable, user skills
-               are authored/learned on this machine. -->
-          <div class="ca-skills-block">
-            <div class="ca-section-head"><div class="ca-section-title" data-i18n="caSkillTitle">技能（按来源）</div></div>
-            <div id="ca-skills"></div>
-          </div>
-          <!-- 国内渠道（钉钉/飞书/企微）凭证：归入「通信」分类，全部/通信 时可见。
-               仅调整位置与视觉权重；字段 id 不变，渲染层从不读取这些 input 的值。 -->
-          <div id="ca-cn-channels" class="ca-cn" data-cat="communication" style="display:none;flex-direction:column">
-            <div class="ca-section-head"><div class="ca-section-title">国内通信渠道</div><span class="ca-cn-hint">钉钉 / 飞书 / 企微</span></div>
-            <label class="st-field"><span class="st-field-name">钉钉 Webhook（勾选开启推送）</span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input id="sec-ding-post" type="checkbox" />
-                <!-- 这条 URL 本身就带着 access_token：明文摊在屏幕上等于把凭证给路过的人看。
-                     默认掩码，卡内点「显示」就地核对，不用去别处找。 -->
-                <input id="sec-ding-hook" type="password" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
-                <button type="button" id="cn-ding-reveal" class="bb-btn bb-btn-sm">显示</button>
+        <!-- 国内渠道：一张卡，默认收起；开没开就写在卡头，不展开也看得见。 -->
+        <div id="ca-cn-channels" class="ca-cn" data-cat="communication" style="display:none;flex-direction:column">
+          <details class="ca-cn-box" id="ca-cn-box">
+            <summary class="ca-cn-sum">
+              <span class="ca-cn-title">国内通信渠道</span>
+              <span id="cn-card-state" class="ca-cn-state">钉钉 未开启 · 飞书 未开启 · 企微 未开启</span>
+              <svg class="ca-cn-chev" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5"/></svg>
+            </summary>
+            <div class="ca-cn-body">
+              <p class="ca-cn-lead">勾选即开启推送，三项互不影响。写盘与「试连」在设置 → 凭证那一排。</p>
+              <div class="ca-cn-vendor">
+                <label class="ca-cn-switch"><input id="sec-ding-post" type="checkbox" /><span>钉钉</span></label>
+                <label class="st-field"><span class="st-field-name">Webhook 地址<span>（机器人设置里整段复制，地址自带 access_token）</span></span>
+                  <div class="ca-cn-line">
+                    <input id="sec-ding-hook" type="password" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
+                    <button type="button" id="cn-ding-reveal" class="bb-btn bb-btn-sm">显示</button>
+                  </div>
+                  <span id="sec-ding-hook-err" class="st-field-error" hidden></span>
+                </label>
+                <label class="st-field"><span class="st-field-name">加签密钥<span>（机器人安全设置里 SEC 开头那串，可选）</span></span>
+                  <div class="ca-cn-line">
+                    <input id="sec-ding-secret" data-secret-key="BITBOT_DINGTALK_APP_SECRET" type="password" autocomplete="off" placeholder="SEC…" class="bb-field bb-field-grow" />
+                    <button type="button" id="cn-ding-secret-reveal" class="bb-btn bb-btn-sm">显示</button>
+                    <span id="sec-ding-secret-state" class="cn-hint">未配置</span>
+                  </div>
+                </label>
               </div>
-              <span id="sec-ding-hook-err" class="st-field-error" hidden></span>
-            </label>
-            <label class="st-field"><span class="st-field-name">飞书 token + chat_id</span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input id="sec-feishu-post" type="checkbox" />
-                <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
-                <input class="bb-control" id="sec-feishu-chat" type="text" placeholder="chat_id" style="width:28%" />
+              <div class="ca-cn-vendor">
+                <label class="ca-cn-switch"><input id="sec-feishu-post" type="checkbox" /><span>飞书</span></label>
+                <label class="st-field"><span class="st-field-name">tenant token + chat_id</span>
+                  <div class="ca-cn-line">
+                    <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
+                    <input id="sec-feishu-chat" type="text" placeholder="chat_id" class="bb-field" style="flex:0 0 34%" />
+                  </div>
+                  <span id="sec-feishu-err" class="st-field-error" hidden></span>
+                </label>
+                <label class="st-field"><span class="st-field-name">Encrypt Key<span>（事件订阅「加密」用，可选）</span></span>
+                  <div class="ca-cn-line">
+                    <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow" />
+                    <button type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
+                    <span id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
+                  </div>
+                </label>
+                <label class="st-field"><span class="st-field-name">Verification Token<span>（事件订阅「验签」用，可选）</span></span>
+                  <div class="ca-cn-line">
+                    <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow" />
+                    <button type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
+                    <span id="sec-feishu-verify-state" class="cn-hint">未配置</span>
+                  </div>
+                </label>
               </div>
-              <span id="sec-feishu-err" class="st-field-error" hidden></span>
-            </label>
-            <label class="st-field"><span class="st-field-name">企微 token + agent + touser</span>
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input id="sec-wecom-post" type="checkbox" />
-                <input class="bb-control" id="sec-wecom-token" type="password" placeholder="access_token" style="flex:1;min-width:120px" />
-                <input class="bb-control" id="sec-wecom-agent" type="text" placeholder="agentid" style="width:88px" />
-                <input class="bb-control" id="sec-wecom-to" type="text" placeholder="touser" style="width:100px" />
+              <div class="ca-cn-vendor">
+                <label class="ca-cn-switch"><input id="sec-wecom-post" type="checkbox" /><span>企微</span></label>
+                <label class="st-field"><span class="st-field-name">access_token + agentid + touser</span>
+                  <div class="ca-cn-line">
+                    <input id="sec-wecom-token" type="password" placeholder="access_token" class="bb-field bb-field-grow" />
+                    <input id="sec-wecom-agent" type="text" placeholder="agentid" class="bb-field" style="flex:0 0 22%" />
+                    <input id="sec-wecom-to" type="text" placeholder="touser" class="bb-field" style="flex:0 0 24%" />
+                  </div>
+                  <span id="sec-wecom-err" class="st-field-error" hidden></span>
+                </label>
+                <label class="st-field"><span class="st-field-name">回调 Token<span>（接收事件服务器用，可选）</span></span>
+                  <div class="ca-cn-line">
+                    <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow" />
+                    <button type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
+                    <span id="sec-wecom-callback-state" class="cn-hint">未配置</span>
+                  </div>
+                </label>
               </div>
-              <span id="sec-wecom-err" class="st-field-error" hidden></span>
-            </label>
-            <!-- 加签 / 事件回调密钥：内核与发送路径早就支持（cn_inbound_server 真在读），
-                 之前界面上一个框都没有，用户只能去终端手改 .env.local —— 装完 app 还要改文件
-                 不等于能走通。这四栏一律**可选**：钉钉关键词/IP 白名单型机器人不该被自己的
-                 界面挡住，所以它们不进 CN_CHANNEL_ROWS 的必填校验。
-                 已配的密钥不回填进 input（那是把明文塞进 DOM），只在后面如实说「已配置 ****尾4」。 -->
-            <div class="ca-section-head" style="margin-top:var(--space-4)"><div class="ca-section-title">加签 / 事件回调密钥</div><span class="ca-cn-hint">可选</span></div>
-            <label class="st-field"><span class="st-field-name">钉钉 加签密钥<span>（机器人安全设置里 SEC 开头那串）</span></span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input id="sec-ding-secret" data-secret-key="BITBOT_DINGTALK_APP_SECRET" type="password" autocomplete="off" placeholder="SEC…" class="bb-field bb-field-grow" />
-                <button type="button" id="cn-ding-secret-reveal" class="bb-btn bb-btn-sm">显示</button>
-                <span id="sec-ding-secret-state" class="cn-hint">未配置</span>
-              </div>
-            </label>
-            <label class="st-field"><span class="st-field-name">飞书 Encrypt Key<span>（事件订阅「加密」用）</span></span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow" />
-                <button type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
-                <span id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
-              </div>
-            </label>
-            <label class="st-field"><span class="st-field-name">飞书 Verification Token<span>（事件订阅「验签」用）</span></span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow" />
-                <button type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
-                <span id="sec-feishu-verify-state" class="cn-hint">未配置</span>
-              </div>
-            </label>
-            <label class="st-field"><span class="st-field-name">企微 回调 Token<span>（接收事件服务器用）</span></span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow" />
-                <button type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
-                <span id="sec-wecom-callback-state" class="cn-hint">未配置</span>
-              </div>
-            </label>
-            <!-- 状态行：未开启也要写出来。空白一片等于让用户自己猜「我到底配没配上」。 -->
-            <div id="cn-card-state" class="cn-hint">钉钉 未开启 · 飞书 未开启 · 企微 未开启</div>
-            <p id="cn-next-hint" class="cn-hint">凭证在这张卡改；下一步的「保存并热加载」和「试连国内渠道」在同一排，点下面直接过去。</p>
-            <button type="button" id="cn-goto-credentials" class="bb-btn bb-btn-sm">去保存并试连</button>
-          </div>
-          <div class="ca-auth" data-i18n="caAuthNote">部分插件需先在浏览器完成 OAuth 登录才能调用其工具。</div>
+              <p id="cn-next-hint" class="cn-hint">这四栏密钥一律可选：留空不挡保存，已配过的会标「已配置 ****尾4」。</p>
+              <button type="button" id="cn-goto-credentials" class="bb-btn bb-btn-sm">去保存并试连</button>
+            </div>
+          </details>
         </div>
-        <div id="ca-meta" class="ca-meta"></div>
+        </div><!-- /.ca-scroll -->
+        <div id="ca-meta" class="ca-meta" role="status" aria-live="polite"></div>
       </div>
     </div>
     <!-- GP-120/121 (§2.2/§2.3): Edit Profile / Create Bot dialog. Fields match
@@ -8978,7 +8949,9 @@
             tail = "（" + held.map(function (f) { return CN_MASKED_PRESENT[f.key]; }).join(" / ") + " 已配置，无需重填）";
         }
         return name + " " + (box && box.checked ? "已开启" : "未开启") + tail;
-      }).join(" · ") + "。未开启的渠道不会真的发出去。";
+        /* 卡头只留「开没开」：这句劝告原来跟在状态后面，把一行话变成了两行，
+           在收起的卡片头上被省略号吃掉一半。它现在写在展开区的第一句里。 */
+      }).join(" · ");
     }
 
     /** 校验 + 回显；返回错误条数。save 按钮的可用性由这里统一管，别两边各写一套。 */
@@ -9018,8 +8991,13 @@
       /* 「保存并热加载」是这一页唯一的写盘口子，所以所有会写坏它的字段都归这里管：
          国内渠道缺字段 + 密钥栏粘错了，任何一个都得把按钮按下去之前挡住。 */
       const keyProblems = secretKeysProblems();
+      const bad = problems + keyProblems;
       const save = document.getElementById("sec-save");
-      if (save) save.disabled = problems + keyProblems > 0;
+      if (save) save.disabled = bad > 0;
+      /* 有错就把这张卡摊开。渠道卡默认是收起的——错误藏在收起的卡里，
+         等于"保存按钮按不下去，但没人告诉你在哪一步"，用户只会以为坏了。 */
+      const box = document.getElementById("ca-cn-box");
+      if (report && bad > 0 && box && !box.open) box.open = true;
       return problems;
     }
 
@@ -15469,13 +15447,17 @@
     // Reads/toggles go through window.bitbot.plugins.* → the same Host raw
     // handlers the kernel uses; Add/Uninstall write the durable catalogs.
     let caPlugins = [];
+    // 技能名 → { description } 的索引，只用于把「这个应用带来的技能」补一句人话。
+    // 拿不到就只显示 /斜杠名 —— 不编描述。
+    let caSkillIndex = {};
     function caMsg(text) {
       const el = document.getElementById("ca-meta");
       if (el) el.textContent = text || "";
     }
-    // Grok-parity rows: compact app cells (icon | name + blurb | 添加 / 已添加)
-    // inside 2×375 grids under 14/500 section headings. Installed rows expand
-    // to the real per-tool switches + uninstall, so no function is lost.
+    // 一个应用 = 一行：图标 | 名称 + 一句「它带来什么」 | 添加 / 已添加。
+    // 已添加的行点开才是细节：逐个工具开关、这个应用带来的技能、断开。
+    // 旧版把「技能×N」印在副标题上——那是我们的内部计数，不是用户做决定时
+    // 看的东西；现在副标题说工具数，技能挪进展开区。
     function caToolRow(plugin, t) {
       const row = document.createElement("div");
       row.className = "ca-tool";
@@ -15524,6 +15506,37 @@
       return row;
     }
 
+    /** 这个应用带来的技能（/斜杠名 + 一句话）。技能不是"另一个列表"，是应用的
+     *  一部分：装了这个应用才会多出这些斜杠命令 —— 所以它长在应用的展开区里，
+     *  而不是面板底部另立一段「技能（按来源）」。查不到描述就只给斜杠名。 */
+    function caAppSkills(plugin) {
+      const slugs = Array.isArray(plugin.skills) ? plugin.skills : [];
+      if (!slugs.length) return null;
+      const box = document.createElement("div");
+      box.className = "ca-app-skills";
+      const head = document.createElement("div");
+      head.className = "ca-app-skills-head";
+      head.textContent = wavegT("caAppSkills").replace("{n}", String(slugs.length));
+      box.appendChild(head);
+      for (const slug of slugs) {
+        const row = document.createElement("div");
+        row.className = "ca-app-skill";
+        row.dataset.skill = slug;
+        const code = document.createElement("code");
+        code.textContent = "/" + slug;
+        row.appendChild(code);
+        const info = caSkillIndex[slug];
+        if (info && info.description) {
+          const d = document.createElement("span");
+          d.className = "ca-app-skill-desc";
+          d.textContent = info.description;
+          row.appendChild(d);
+        }
+        box.appendChild(row);
+      }
+      return box;
+    }
+
     function caAppRow(plugin) {
       const outer = document.createElement("div");
       outer.className = "ca-app" + (plugin.installed ? " is-installed" : "");
@@ -15548,10 +15561,12 @@
       const sub = document.createElement("div");
       sub.className = "ca-app-sub";
       const ns = plugin.mcp_namespace ? plugin.mcp_namespace + " · " : "";
+      const toolCount = plugin.tool_count != null ? plugin.tool_count : (plugin.tools || []).length;
+      const skillCount = plugin.skill_count != null ? plugin.skill_count : (plugin.skills || []).length;
       sub.textContent =
         ns +
-        (plugin.description ||
-          wavegT("caSkills") + "×" + (plugin.skill_count != null ? plugin.skill_count : (plugin.skills || []).length));
+        wavegT("caToolCount").replace("{n}", String(toolCount)) +
+        (skillCount ? " · " + wavegT("caSkillCount").replace("{n}", String(skillCount)) : "");
       main.append(nameEl, sub);
       row.appendChild(main);
 
@@ -15588,7 +15603,15 @@
         const panel = document.createElement("div");
         panel.className = "ca-app-tools";
         panel.hidden = true;
+        if (tools.length) {
+          const th = document.createElement("div");
+          th.className = "ca-app-tools-head";
+          th.textContent = wavegT("caAppTools").replace("{n}", String(tools.length));
+          panel.appendChild(th);
+        }
         for (const t of tools) panel.appendChild(caToolRow(plugin, t));
+        const skills = caAppSkills(plugin);
+        if (skills) panel.appendChild(skills);
         const foot = document.createElement("div");
         foot.className = "ca-app-foot";
         const uninstall = document.createElement("button");
@@ -15617,10 +15640,11 @@
       }
       return outer;
     }
-    // GP-A2/A3 Grok-parity: category chips. The Host catalog carries no
-    // category field yet, so classify by id/namespace keywords — an unknown
-    // plugin stays under "all" only (never silently bucketed into a wrong
-    // group), and an empty category shows an honest empty state.
+
+    // 分类。Host 目录里没有 category 字段，按 id/命名空间关键词归类；认不出来的
+    // 只留在「全部」下（不硬塞进某个错的分组）。
+    // 旧版把 13 个分类写死在 markup 里、用「更多」展开尾巴——13 个里 11 个点开
+    // 是空列表。现在只渲染**有内容**的分类，候选集合直接来自数据。
     const CA_CATEGORY_RULES = [
       ["password", /password|1password|lastpass|bitwarden|vault/i],
       ["productivity", /calendar|slides|notion|atlassian|todo|task|meeting/i],
@@ -15635,30 +15659,20 @@
       return "";
     }
     let caActiveCat = "all";
-    let caInstalledOnly = false;
     const caExpandedSections = new Set();
-    const CA_SECTION_LIMIT = 6;
+    // 可添加的那一组先露 8 个（够看清目录长什么样），更多的点「查看全部」就地展开；
+    // 已连接的组不截断 —— 用户要能一眼看全"我现在连着哪些"。
+    const CA_AVAILABLE_LIMIT = 8;
+    const CA_CATEGORY_LABEL = {
+      password: "caCatPassword",
+      productivity: "caCatProductivity",
+      communication: "caCatCommunication",
+      design: "caCatDesign",
+      code: "caCatCode",
+    };
+    const CA_CATEGORY_ORDER = ["password", "productivity", "communication", "design", "code"];
 
-    // Section order mirrors the reference (为你推荐 is reference curation; we
-    // group by real category and fall back to 其他 for unclassified plugins).
-    const CA_SECTIONS = [
-      ["password", "caCatPassword"],
-      ["productivity", "caCatProductivity"],
-      ["communication", "caCatCommunication"],
-      ["design", "caCatDesign"],
-      ["code", "caCatCode"],
-      ["data", "caCatData"],
-      ["sales", "caCatSales"],
-      ["marketing", "caCatMarketing"],
-      ["finance", "caCatFinance"],
-      ["research", "caCatResearch"],
-      ["support", "caCatSupport"],
-    ];
-
-    // Grok section: 34px heading row (14/500), optional 查看全部 on the right,
-    // then the 2-col grid 8px lower. Groups over the 6-cell preview cap get the
-    // action; it expands in place and remembers while the sheet stays open.
-    function caSectionEl(key, label, plugins) {
+    function caSectionEl(key, label, plugins, limit) {
       const sec = document.createElement("div");
       sec.className = "ca-section";
       const head = document.createElement("div");
@@ -15668,7 +15682,8 @@
       title.textContent = label;
       head.appendChild(title);
       const expanded = caExpandedSections.has(key);
-      if (plugins.length > CA_SECTION_LIMIT) {
+      const capped = Number.isFinite(limit) && plugins.length > limit;
+      if (capped) {
         const action = document.createElement("button");
         action.type = "button";
         action.className = "ca-section-action";
@@ -15683,35 +15698,39 @@
       sec.appendChild(head);
       const grid = document.createElement("div");
       grid.className = "ca-grid";
-      for (const p of (expanded ? plugins : plugins.slice(0, CA_SECTION_LIMIT))) {
+      for (const p of capped && !expanded ? plugins.slice(0, limit) : plugins) {
         grid.appendChild(caAppRow(p));
       }
       sec.appendChild(grid);
       return sec;
     }
 
-    // Installed cluster beside the title: up to 4 logo tiles, count, chevron.
-    // Clicking it filters the sections down to installed apps.
-    function caRenderConnected(installed) {
-      const txt = document.getElementById("ca-connected-txt");
-      if (txt) txt.textContent = wavegT("caConnected").replace("{n}", String(installed.length));
-      const stack = document.getElementById("ca-stack");
-      if (stack) {
-        stack.textContent = "";
-        for (const p of installed.slice(0, 4)) {
-          const ic = document.createElement("span");
-          ic.className = "ca-stack-ic";
-          ic.textContent = String(p.display_name || p.id || "?").trim().slice(0, 1).toUpperCase();
-          ic.style.background = avatarColorFor(p.id || p.display_name);
-          stack.appendChild(ic);
-        }
-        stack.hidden = installed.length === 0;
-      }
-      const btn = document.getElementById("ca-connected");
-      if (btn) {
-        btn.hidden = installed.length === 0;
-        btn.setAttribute("aria-pressed", caInstalledOnly ? "true" : "false");
-      }
+    /** 分类条：全部 + 真的有内容的分类。 */
+    function caRenderCats() {
+      const box = document.getElementById("ca-cats");
+      if (!box) return;
+      const present = new Set(caPlugins.map(caCategoryOf).filter(Boolean));
+      /* 通信渠道那张卡是写死在面板里的，只有「全部 / 通信」下才露脸；
+       * 但分类条不能跟着当前选中项缩水 —— 否则选了「效率」，「通信」chip
+       * 当场消失，用户再也点不回去。所以这里只看卡在不在，不看它此刻显不显示。 */
+      const cnEl = document.getElementById("ca-cn-channels");
+      if (cnEl) present.add("communication");
+      const want = CA_CATEGORY_ORDER.filter((c) => present.has(c));
+      // 当前选中项若已经空掉（例如搜索后），回到「全部」，别让界面停在空白上。
+      if (caActiveCat !== "all" && !want.includes(caActiveCat)) caActiveCat = "all";
+      box.textContent = "";
+      const mk = (cat, label) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "ca-chip" + (cat === caActiveCat ? " active" : "");
+        b.dataset.cat = cat;
+        b.textContent = label;
+        box.appendChild(b);
+      };
+      mk("all", wavegT("caCatAll"));
+      for (const c of want) mk(c, wavegT(CA_CATEGORY_LABEL[c]));
+      // 只有一个「全部」时这一行没有信息量，收起来。
+      box.hidden = want.length === 0;
     }
 
     function renderConnectApps() {
@@ -15720,87 +15739,42 @@
       const scroller = document.querySelector("#connect-apps-modal .ca-scroll");
       const keepY = scroller ? scroller.scrollTop : 0;
       box.textContent = "";
-      const installed = caPlugins.filter((p) => p && p.installed);
-      caRenderConnected(installed);
+      caRenderCats();
       const inCat = (p) => caActiveCat === "all" || caCategoryOf(p) === caActiveCat;
-      let list = caPlugins.filter((p) => p && inCat(p));
-      if (caInstalledOnly) list = list.filter((p) => p.installed);
+      // 去重：同一个应用只能出现一次。旧版「为你推荐」与分类区各画一遍，屏幕上
+      // 同一张卡出现两次 —— 用户点「添加」都分不清点的是哪一行。
+      const seen = new Set();
+      const list = [];
+      for (const p of caPlugins) {
+        if (!p || !inCat(p)) continue;
+        const key = p.id || p.mcp_namespace || p.display_name;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        list.push(p);
+      }
       if (!list.length) {
         const empty = document.createElement("div");
         empty.className = "ca-empty";
-        empty.textContent = wavegT("caNoMatch");
+        const qEl = document.getElementById("ca-search");
+        const hasQuery = Boolean(qEl && String(qEl.value || "").trim());
+        empty.textContent = hasQuery ? wavegT("caNoMatch") : wavegT("caEmptyAll");
         box.appendChild(empty);
         if (scroller) scroller.scrollTop = keepY;
         return;
       }
-      if (caActiveCat === "all" && !caInstalledOnly) {
-        const rec = list.filter((p) => !p.installed).slice(0, CA_SECTION_LIMIT);
-        if (rec.length) box.appendChild(caSectionEl("__rec", wavegT("caRecommended"), rec));
+      const installed = list.filter((p) => p.installed);
+      const available = list.filter((p) => !p.installed);
+      if (installed.length) {
+        box.appendChild(
+          caSectionEl("__on", wavegT("caGroupConnected").replace("{n}", String(installed.length)), installed, Infinity),
+        );
       }
-      const groups = new Map();
-      for (const p of list) {
-        const cat = caCategoryOf(p) || "";
-        if (!groups.has(cat)) groups.set(cat, []);
-        groups.get(cat).push(p);
-      }
-      const order = CA_SECTIONS.map(([c]) => c).filter((c) => groups.has(c));
-      if (groups.has("")) order.push("");
-      for (const cat of order) {
-        const label = wavegT(cat === "" ? "caOther" : CA_SECTIONS.find(([c]) => c === cat)[1]);
-        box.appendChild(caSectionEl(cat || "__other", label, groups.get(cat)));
+      if (available.length) {
+        box.appendChild(
+          caSectionEl("__off", wavegT("caGroupAvailable").replace("{n}", String(available.length)), available, CA_AVAILABLE_LIMIT),
+        );
       }
       if (scroller) scroller.scrollTop = keepY;
-    }
-    // GP-135: Connect apps "skills by source" — the same Host list_skills
-    // payload the kernel uses (managed / user / plugin), grouped so a missing
-    // plugin skill is visibly tied to the app that ships it.
-    async function renderConnectAppsSkills() {
-      const box = document.getElementById("ca-skills");
-      if (!box) return;
-      box.textContent = "";
-      if (!window.bitbot || !window.bitbot.skills || !window.bitbot.skills.list) return;
-      let view = null;
-      try {
-        view = await window.bitbot.skills.list();
-      } catch (err) {
-        view = { ok: false, error: String(err && err.message ? err.message : err) };
-      }
-      const LABEL = { user: t("caSkillUser"), plugin: t("caSkillPlugin"), managed: t("caSkillManaged") };
-      const items = (view && view.skills) || [];
-      if (!items.length) {
-        const empty = document.createElement("div");
-        empty.className = "ca-skill-empty";
-        empty.textContent = view && view.error
-          ? t("caSkillUnavailable") + ": " + view.error
-          : t("caSkillEmpty");
-        box.appendChild(empty);
-        return;
-      }
-      const groups = { user: [], plugin: [], managed: [] };
-      for (const s of items) {
-        const src = groups[s.source] ? s.source : "managed";
-        groups[src].push(s);
-      }
-      for (const src of ["user", "plugin", "managed"]) {
-        if (!groups[src].length) continue;
-        const head = document.createElement("div");
-        head.className = "ca-skill-group";
-        head.textContent = LABEL[src] + " · " + groups[src].length;
-        box.appendChild(head);
-        for (const s of groups[src]) {
-          const row = document.createElement("div");
-          row.className = "ca-skill-row";
-          const code = document.createElement("code");
-          code.className = "ca-skill-code";
-          code.textContent = "/" + (s.name || s.id);
-          row.appendChild(code);
-          const desc = document.createElement("span");
-          desc.className = "ca-skill-desc";
-          desc.textContent = s.description || (s.plugin_id ? s.plugin_id : "");
-          row.appendChild(desc);
-          box.appendChild(row);
-        }
-      }
     }
     async function refreshConnectApps() {
       if (!window.bitbot || !window.bitbot.plugins || !window.bitbot.plugins.list) {
@@ -15810,7 +15784,24 @@
       const qEl = document.getElementById("ca-search");
       const query = (qEl && qEl.value ? String(qEl.value) : "").trim();
       caMsg(wavegT("caLoading"));
-      const r = await window.bitbot.plugins.list({ query });
+      /* 技能描述只用来给「这个应用带来的技能」补一句话；拿不到就算了 —— 面板里
+         没有独立的技能列表，所以这里失败不该把整张面板变成错误页。 */
+      const [r, sk] = await Promise.all([
+        window.bitbot.plugins.list({ query }),
+        (async () => {
+          try {
+            return window.bitbot.skills && window.bitbot.skills.list
+              ? await window.bitbot.skills.list()
+              : null;
+          } catch (_) {
+            return null;
+          }
+        })(),
+      ]);
+      caSkillIndex = {};
+      for (const s of (sk && sk.skills) || []) {
+        if (s && s.name) caSkillIndex[s.name] = s;
+      }
       if (r && r.ok) {
         caPlugins = Array.isArray(r.plugins) ? r.plugins : [];
         caMsg("");
@@ -15819,7 +15810,6 @@
         caMsg(wavegT("caOpFailed") + ": " + ((r && r.error) || "host_failed"));
       }
       renderConnectApps();
-      renderConnectAppsSkills();
     }
     // ---- Sheet manager: unified open/close stack, Esc + mask close, focus
     // return to the trigger. Used by the pinned sidebar-bottom entries and the
@@ -15869,8 +15859,9 @@
       if (!m) return;
       m.style.display = "flex";
       bbSheetOpened("connect-apps-modal", triggerEl);
-      caInstalledOnly = false;
-      refreshConnectApps();
+      caMsg("");
+      /* 通信渠道那张卡只在「全部 / 通信」下露出来，且**默认收起**：它是一个
+         配置卡，不是要浏览的目录。开没开写在卡头，要用的时候点一下。 */
       const cnCard0 = document.getElementById("ca-cn-channels");
       if (cnCard0) {
         cnCard0.style.display = (caActiveCat === "all" || caActiveCat === "communication") ? "flex" : "none";
@@ -15881,6 +15872,7 @@
         /* 未开启/缺字段的即时反馈不异步等：先按当前 DOM 画一次，status 回来再覆盖。 */
         cnValidateAndPaint(true);
       }
+      refreshConnectApps();
       const q = document.getElementById("ca-search");
       if (q) setTimeout(() => q.focus(), 50);
     }
@@ -15925,20 +15917,6 @@
     bbBindSheetMask("settings-panel");
     bbBindSheetMask("mobile-control-modal");
     bbBindSheetMask("bot-manager-modal");
-    const caTemplateBtn = document.getElementById("ca-template-btn");
-    if (caTemplateBtn) {
-      caTemplateBtn.addEventListener("click", (ev) => {
-        closeConnectApps();
-        openMarketplace(ev.currentTarget);
-      });
-    }
-    const caConnectedBtn = document.getElementById("ca-connected");
-    if (caConnectedBtn) {
-      caConnectedBtn.addEventListener("click", () => {
-        caInstalledOnly = !caInstalledOnly;
-        renderConnectApps();
-      });
-    }
     const caSearchEl = document.getElementById("ca-search");
     if (caSearchEl) {
       let caSearchTimer = null;
@@ -15952,18 +15930,8 @@
       caCatsEl.addEventListener("click", (ev) => {
         const btn = ev.target && ev.target.closest ? ev.target.closest(".ca-chip") : null;
         if (!btn) return;
-        if (btn.dataset.cat === "more") {
-          const open = btn.classList.toggle("expanded");
-          btn.setAttribute("aria-expanded", open ? "true" : "false");
-          caCatsEl.querySelectorAll(".ca-chip.ca-extra").forEach((b) => {
-            b.hidden = !open;
-          });
-          return;
-        }
         caActiveCat = String(btn.dataset.cat || "all");
-        caInstalledOnly = false;
         caCatsEl.querySelectorAll(".ca-chip").forEach((b) => {
-          if (b.dataset.cat === "more") return;
           b.classList.toggle("active", b === btn);
         });
         const cnCard = document.getElementById("ca-cn-channels");
@@ -17459,58 +17427,43 @@
         rResetComputer: "已发起重置 Bot 的 Computer（非首选；会重建云电脑）。",
         caTitle: "连接应用",
         caClose: "关闭",
-        caGlobal: "插件对这台电脑全局生效 — 安装后所有 Bot 都能使用。",
-        caSearchPh: "在应用和技能中搜索",
+        caSearchPh: "搜索应用",
+        caSubtitle: "把 Bit Bot 接到你已经在用的工具上；不用的随时断开。",
+        caGroupConnected: "已连接 · {n}",
+        caGroupAvailable: "可添加 · {n}",
+        caToolCount: "{n} 个工具",
+        caSkillCount: "{n} 个技能",
+        caAppTools: "可用的工具（{n}）",
+        caAppSkills: "带来的技能（{n}）",
+        caEmptyAll: "还没有可连接的应用。",
         caCatAll: "全部",
         caCatPassword: "密码管理器",
         caCatProductivity: "效率",
         caCatCommunication: "通信",
         caCatDesign: "设计",
         caCatCode: "代码",
-        caCatData: "数据",
-        caCatSales: "销售",
-        caCatMarketing: "营销",
-        caCatFinance: "财务",
-        caCatResearch: "研究",
-        caCatSupport: "支持",
-        caMore: "更多",
-        caBotTemplates: "Bot 模板",
-        caConnected: "已连接 {n} 个",
-        caOther: "其他",
         caNoMatch: "该分类暂无应用。",
-        caRecommended: "为你推荐",
         caViewAll: "查看全部",
         caCollapse: "收起",
         caAdded: "已添加",
         caAdding: "正在添加…",
-        caRefresh: "刷新",
-        caYour: "你的插件",
-        caBrowse: "浏览插件",
-        caSkillTitle: "技能（按来源）",
         caSkillUser: "我的 / 学习",
         caSkillPlugin: "插件",
         caSkillManaged: "托管",
-        caSkillEmpty: "暂无技能（安装带技能的插件或编写技能）",
         caSkillUnavailable: "技能列表不可用",
         skillNoMatch: "无匹配技能",
         skillInstallCta: "去「连接应用」安装带技能的插件 →",
-        caAuthNote: "部分插件需要先在浏览器完成登录授权（OAuth）才能使用其工具。",
         caAdd: "添加",
         caUninstall: "卸载",
         caInstalled: "已安装插件 {p}（Host 目录已就绪）。",
         caUninstalled: "已卸载插件 {p}（命名空间转为不可用）。",
         caOpFailed: "操作失败",
-        caSkills: "技能",
-        caOAuthHint: "需浏览器授权",
         caToolOn: "已启用",
         caToolOff: "已禁用",
         caToolEnabled: "已启用",
         caToolDisabled: "已禁用",
         caToolNeedInstall: "先安装插件后才能启用/禁用工具",
         caToolToggled: "工具开关已生效",
-        caNoneInstalled: "还没有安装插件。",
-        caNoneBrowse: "没有更多可浏览的插件。",
-        caCount: "插件",
         caLoading: "读取 Host 插件目录中…",
         rToolToggle: "已切换插件工具 {t} → {s}（Host 目录持久化）。",
         rPluginInstalled: "已安装插件 {p}，MCP Live 调用仍需 Host FFI。",
@@ -18397,58 +18350,43 @@
         rResetComputer: "已發起重設 Bot 的電腦（非首選；會重建雲端電腦）。",
         caTitle: "連接應用",
         caClose: "關閉",
-        caGlobal: "外掛對這台電腦全域生效 — 安裝後所有 Bot 都能使用。",
-        caSearchPh: "在應用與技能中搜尋",
+        caSearchPh: "搜尋應用",
+        caSubtitle: "把 Bit Bot 接到你已經在用的工具上；不用的隨時斷開。",
+        caGroupConnected: "已連接 · {n}",
+        caGroupAvailable: "可新增 · {n}",
+        caToolCount: "{n} 個工具",
+        caSkillCount: "{n} 個技能",
+        caAppTools: "可用的工具（{n}）",
+        caAppSkills: "帶來的技能（{n}）",
+        caEmptyAll: "還沒有可連接的應用。",
         caCatAll: "全部",
         caCatPassword: "密碼管理器",
         caCatProductivity: "效率",
         caCatCommunication: "通訊",
         caCatDesign: "設計",
         caCatCode: "程式碼",
-        caCatData: "資料",
-        caCatSales: "銷售",
-        caCatMarketing: "行銷",
-        caCatFinance: "財務",
-        caCatResearch: "研究",
-        caCatSupport: "支援",
-        caMore: "更多",
-        caBotTemplates: "Bot 範本",
-        caConnected: "已連接 {n} 個",
-        caOther: "其他",
         caNoMatch: "此分類暫無應用。",
-        caRecommended: "為你推薦",
         caViewAll: "查看全部",
         caCollapse: "收起",
         caAdded: "已新增",
         caAdding: "正在新增…",
-        caRefresh: "重新整理",
-        caYour: "你的外掛",
-        caBrowse: "瀏覽外掛",
-        caSkillTitle: "技能（依來源）",
         caSkillUser: "我的 / 學習",
         caSkillPlugin: "外掛",
         caSkillManaged: "託管",
-        caSkillEmpty: "暫無技能（安裝帶技能的外掛或撰寫技能）",
         caSkillUnavailable: "技能清單不可用",
         skillNoMatch: "無符合技能",
         skillInstallCta: "前往「連接應用」安裝帶技能的外掛 →",
-        caAuthNote: "部分外掛需先在瀏覽器完成登入授權（OAuth）才能使用其工具。",
         caAdd: "新增",
         caUninstall: "解除安裝",
         caInstalled: "已安裝外掛 {p}（Host 目錄已就緒）。",
         caUninstalled: "已解除安裝外掛 {p}（命名空間轉為不可用）。",
         caOpFailed: "操作失敗",
-        caSkills: "技能",
-        caOAuthHint: "需瀏覽器授權",
         caToolOn: "已啟用",
         caToolOff: "已停用",
         caToolEnabled: "已啟用",
         caToolDisabled: "已停用",
         caToolNeedInstall: "先安裝外掛後才能啟用/停用工具",
         caToolToggled: "工具開關已生效",
-        caNoneInstalled: "還沒有安裝外掛。",
-        caNoneBrowse: "沒有更多可瀏覽的外掛。",
-        caCount: "外掛",
         caLoading: "讀取 Host 外掛目錄中…",
         rToolToggle: "已切換外掛工具 {t} → {s}（Host 目錄持久化）。",
         rPluginInstalled: "已安裝外掛 {p}，MCP Live 呼叫仍需 Host FFI。",
@@ -19335,58 +19273,43 @@
         rResetComputer: "Reset Bot's Computer started (not preferred; rebuilds the box).",
         caTitle: "Connect apps",
         caClose: "Close",
-        caGlobal: "Plugins are global to this computer — every Bot can use them once installed.",
-        caSearchPh: "Search apps and skills",
+        caSearchPh: "Search apps",
+        caSubtitle: "Connect Bit Bot to the tools you already use — disconnect any time.",
+        caGroupConnected: "Connected · {n}",
+        caGroupAvailable: "Available · {n}",
+        caToolCount: "{n} tools",
+        caSkillCount: "{n} skills",
+        caAppTools: "Tools ({n})",
+        caAppSkills: "Skills ({n})",
+        caEmptyAll: "No apps to connect yet.",
         caCatAll: "All",
         caCatPassword: "Password managers",
         caCatProductivity: "Productivity",
         caCatCommunication: "Communication",
         caCatDesign: "Design",
         caCatCode: "Code",
-        caCatData: "Data",
-        caCatSales: "Sales",
-        caCatMarketing: "Marketing",
-        caCatFinance: "Finance",
-        caCatResearch: "Research",
-        caCatSupport: "Support",
-        caMore: "More",
-        caBotTemplates: "Bot templates",
-        caConnected: "Connected {n}",
-        caOther: "Other",
         caNoMatch: "No apps in this category.",
-        caRecommended: "Recommended for you",
         caViewAll: "View all",
         caCollapse: "Collapse",
         caAdded: "Added",
         caAdding: "Adding…",
-        caRefresh: "Refresh",
-        caYour: "Your plugins",
-        caBrowse: "Browse plugins",
-        caSkillTitle: "Skills by source",
         caSkillUser: "Mine / learned",
         caSkillPlugin: "Plugins",
         caSkillManaged: "Managed",
-        caSkillEmpty: "No skills yet (install a plugin that ships skills, or author one)",
         caSkillUnavailable: "Skill list unavailable",
         skillNoMatch: "No matching skills",
         skillInstallCta: "Install a skill plugin in Connect apps →",
-        caAuthNote: "Some plugins need browser sign-in (OAuth) before their tools work.",
         caAdd: "Add",
         caUninstall: "Uninstall",
         caInstalled: "Installed plugin {p} (Host catalog ready).",
         caUninstalled: "Uninstalled plugin {p} (namespace now unavailable).",
         caOpFailed: "Operation failed",
-        caSkills: "Skills",
-        caOAuthHint: "browser auth required",
         caToolOn: "Enabled",
         caToolOff: "Disabled",
         caToolEnabled: "enabled",
         caToolDisabled: "disabled",
         caToolNeedInstall: "Install the plugin first to toggle its tools",
         caToolToggled: "Tool toggle applied",
-        caNoneInstalled: "No plugins installed yet.",
-        caNoneBrowse: "No more plugins to browse.",
-        caCount: "Plugins",
         caLoading: "Reading Host plugin catalog…",
         rToolToggle: "Plugin tool {t} → {s} (persisted in Host catalog).",
         rPluginInstalled: "Installed plugin {p}; MCP Live calls still need Host FFI.",

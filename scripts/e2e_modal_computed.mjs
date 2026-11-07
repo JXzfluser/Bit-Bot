@@ -23,7 +23,7 @@ import { createRequire } from "module";
 import { execSync } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
@@ -128,7 +128,9 @@ async function shutdown(app) {
 }
 
 (async () => {
-  const args = [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu"];
+  /* 独立的 user-data 目录：门禁必须能在用户自己开着 Bit Bot 的时候跑，
+     否则会撞上单实例锁、Electron 直接退出（典型报错 Target page ... has been closed）。 */
+  const args = [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu", "--user-data-dir=" + electronUserDataDir("modal-computed")];
   const app = await _electron.launch({
     executablePath: ELECTRON,
     args,
@@ -215,11 +217,15 @@ async function shutdown(app) {
           tc.nav.background === "rgba(0, 0, 0, 0)" && tc.nav.borderWidth === "0px";
         navOk ? ok(`settings: nav is a transparent column (gap ${tc.nav.gap}, padding ${tc.nav.padding})`)
           : bad("settings: nav chrome drifted", JSON.stringify(tc.nav));
-        const tabsOk = tc.tabs.length === 6 && tc.tabs.every((t) =>
+        /* 这里原来写死 length === 6。设置页现在只有 5 个 tab（general / computer /
+         * credentials / usage / updates）—— 账号那一条在账号菜单做出来之后就搬走了，
+         * 这条断言从那时起就一直是红的，跟界面皮肤没关系（5 条皮肤完全一致）。
+         * 不写死数字：要求「至少 5 条」+ 每条皮肤都一样，判据比数个数更贴近要守的东西。 */
+        const tabsOk = tc.tabs.length >= 5 && tc.tabs.every((t) =>
           t.display === "flex" && t.width > 0 && t.height > 0 && t.fontSize === "14px" &&
           t.borderRadius === "999px" && t.padding === "9px 12px" &&
           t.iconContent === '""' && t.iconW === "17px" && t.iconH === "17px");
-        tabsOk ? ok("settings: 6 tab rows share one 14px/pill skin with 17px icon masks")
+        tabsOk ? ok(`settings: ${tc.tabs.length} tab rows share one 14px/pill skin with 17px icon masks`)
           : bad("settings: tab skin drifted", JSON.stringify(tc.tabs.map((t) => [t.stab, t.fontSize, t.borderRadius, t.padding, t.iconW, t.width])));
         const act = tc.tabs.find((t) => t.active);
         act && act.background !== "rgba(0, 0, 0, 0)" && act.background !== tc.tabs.find((t) => !t.active).background
