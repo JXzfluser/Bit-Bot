@@ -3879,8 +3879,18 @@ ipcMain.handle("bitbot:plugins:op", async (_e, opts) => {
 });
 
 ipcMain.handle("bitbot:turn:cancel", async () => {
-  if (typeof releaseActiveTurnCancel === "function") releaseActiveTurnCancel();
-  return { ok: true };
+  // KP-02：停止要给回执。had_active_turn 如实说「这一下到底停没停到东西」——
+  // 单会话回合看 releaseActiveTurnCancel 在不在，群回合看引擎里登记的取消 scope。
+  // 两条都没有 = 根本没有在跑的回合，界面据此说「没有在执行的回合」而不是假成功。
+  const hadSingle = typeof releaseActiveTurnCancel === "function";
+  if (hadSingle) releaseActiveTurnCancel();
+  let roomCancelled = 0;
+  try {
+    if (surface && typeof surface.cancelActiveRoomTurns === "function") {
+      roomCancelled = surface.cancelActiveRoomTurns("user_stop");
+    }
+  } catch (_) { /* 取消通道本身不能抛 */ }
+  return { ok: true, had_active_turn: hadSingle || roomCancelled > 0 };
 });
 
 ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
@@ -4180,6 +4190,23 @@ ipcMain.handle("bitbot:msg:regenerate", async (_e, payload) => {
     stored_ids: { assistant: assistantIds },
     error: result && result.ok === false ? String(result.error || "") : "",
   };
+});
+
+/** Grok Bot 真机有「删除这条消息」（Couldn't delete your message. Try again.）。
+ *  store 早就具备 removeMessage（regenerate 内部会用），这里把「用户主动删」
+ *  这条路口单独开出来：只删当前会话里那一条，不做级联，不碰其他会话。
+ *  事件镜像会在同一次落盘里记 message_removed，历史可追。 */
+ipcMain.handle("bitbot:msg:delete", async (_e, payload) => {
+  const p = payload || {};
+  const sessionId = String(p.sessionId || sessions.activeId() || "").trim();
+  const entryId = String(p.entryId || "").trim();
+  if (!sessionId || !entryId) return { ok: false, error: "invalid_request" };
+  const got = sessions.get(sessionId);
+  if (!got || !got.ok || !got.session) return { ok: false, error: "session_not_found" };
+  const rm = sessions.removeMessage(sessionId, entryId);
+  if (!rm || rm.ok === false) return { ok: false, error: (rm && rm.error) || "remove_failed" };
+  broadcast("bitbot:sessions-changed", sessions.list());
+  return { ok: true, session_id: sessionId, removed: entryId };
 });
 
 /** CHARTER Delivery: read Host artifact under repo for inline Desktop preview. */

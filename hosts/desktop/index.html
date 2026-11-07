@@ -1967,6 +1967,75 @@
     border: 0; background: none; font-size: var(--text-lg); cursor: pointer; padding: 4px 6px; border-radius: var(--radius-md);
   }
   .msg .reaction-picker button:hover { background: var(--accent-soft); }
+  /* ── Find in chat（Grok 真机 Cmd/Ctrl+F）：消息流右上角的浮条 ────────────
+     不加 !important、不引新色值：底色/描边/正文全走既有 token，命中色用
+     color-mix 从 --accent 派生（T-2 的硬编码 hex 计数不动）。 */
+  #main { position: relative; }
+  #find-bar {
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 6px 5px 10px;
+    background: var(--surface);
+    border: 0.5px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 6px 20px var(--fill);
+  }
+  #find-bar[hidden] { display: none; }
+  #find-input {
+    width: 170px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+  }
+  .find-count {
+    color: var(--muted);
+    font-size: 11px;
+    min-width: 34px;
+    text-align: right;
+  }
+  .find-btn {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .find-btn:hover { background: var(--fill); color: var(--ink); }
+  mark.find-hit {
+    /* 18% 的中性灰在白底上几乎看不见，黑气泡里更是没有对比 —— 用 warn 色系
+       做真高亮，并强制深字：无论落在白底还是黑气泡上都读得出来。 */
+    background: color-mix(in srgb, var(--warn) 62%, transparent);
+    color: var(--ink);
+    border-radius: 2px;
+  }
+  mark.find-hit.on {
+    /* 当前命中要能在「白底灰气泡」和「纯黑用户气泡」上都看得出来：实心
+       警示色 + 描边，而不是把底色换成 accent（黑底上等于没高亮）。 */
+    background: var(--warn);
+    color: var(--ink);
+    outline: 2px solid var(--warn-ink);
+    outline-offset: 1px;
+  }
+  /* 日期分隔行：Grok 真机是居中的灰小字（「今天」「10月17日周六」） */
+  .msg-day-sep {
+    align-self: center;
+    margin: 6px 0 2px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+  }
   .msg-reply-quote {
     border-left: 3px solid var(--accent);
     background: #f8f9fa;
@@ -3529,6 +3598,15 @@
           <button type="button" id="bot-delete-go-btn" class="bb-btn bb-btn-danger"></button>
         </div>
       </div>
+    </div>
+    <!-- Grok 真机的 Find in chat（Cmd/Ctrl+F）：只在消息流里找，不动输入框；
+         命中用 <mark> 包文本节点，关掉时拆回纯文本，markdown DOM 不被破坏。 -->
+    <div id="find-bar" hidden>
+      <input id="find-input" type="text" autocomplete="off" spellcheck="false" data-i18n-ph="findPlaceholder" />
+      <span id="find-count" class="find-count"></span>
+      <button type="button" id="find-prev" class="find-btn" data-i18n-title="findPrev" title="上一个">↑</button>
+      <button type="button" id="find-next" class="find-btn" data-i18n-title="findNext" title="下一个">↓</button>
+      <button type="button" id="find-close" class="find-btn" data-i18n-title="findClose" title="关闭">✕</button>
     </div>
     <div id="log">
       <div id="welcome">
@@ -5953,6 +6031,25 @@
         bar.appendChild(rg);
       }
       bar.appendChild(cp);
+      /* Grok 真机有「删除这条消息」。store 的 removeMessage 早就在（regenerate
+         内部会用），缺的只是用户主动删的入口。删完立刻把这一行从 DOM 摘掉，
+         会话列表由 main 的 sessions-changed 广播刷新；失败不假装成功。 */
+      const dl = iconActionBtn("🗑", "deleteAction");
+      dl.addEventListener("click", async () => {
+        if (!window.bitbot || !window.bitbot.messages || !window.bitbot.messages.delete) return;
+        const res = await window.bitbot.messages
+          .delete({ sessionId: activeSessionId, entryId: el.dataset.mid })
+          .catch(() => null);
+        if (!res || !res.ok) {
+          dl.textContent = "✗";
+          dl.title = wavegT("deleteFailed");
+          setTimeout(() => { dl.textContent = "🗑"; dl.title = wavegT("deleteAction"); }, 1200);
+          return;
+        }
+        el.remove();
+        if (convRailId === activeSessionId) refreshConvRail().catch(() => {});
+      });
+      bar.appendChild(dl);
       el.appendChild(bar);
     }
 
@@ -8874,8 +8971,11 @@
       }
       const byId = {};
       for (const m of msgs) if (m && m.id) byId[m.id] = m;
+      // 日期分隔：历史里每一天的第一条消息前插一行居中日期（今天/昨天/…）。
+      lastDayKey = "";
       for (const m of msgs) {
         if (!m || !m.text) continue;
+        if (dayKeyOf(m.at) && dayKeyOf(m.at) !== lastDayKey) appendDaySep(m.at);
         if (m.secret_handle) {
           // GP-102: a stored secret placeholder is rebuilt as `[REDACTED]`.
           const row = addMsg("assistant", "", { mid: m.id || "" });
@@ -10434,12 +10534,15 @@
       // Menu-driven protocol phrases (pin/hide/delete…) stay out of the
       // transcript — Grok's sidebar actions never echo raw commands.
       let userEl = null;
-      if (!(opts && opts.silentUser))
+      if (!(opts && opts.silentUser)) {
+        // 会话跨天时先补一行日期分隔，再画这条消息（历史路径同一套 lastDayKey）
+        ensureDaySepForNow();
         userEl = addMsg("user", text + (opts && opts.approved ? " [approved]" : ""), {
           // GP-14: show what this turn replies to (target id, resolved by Host).
           replyTo: (opts && opts.replyTo) || "",
           replyToText: (opts && opts.replyQuoteText) || "",
         });
+      }
       sendBtn.disabled = true;
       if (turnCancelBtn) turnCancelBtn.hidden = false;
       streamEl = null;
@@ -15169,6 +15272,35 @@
       renameBtn.textContent = wavegT("sessRename");
       renameBtn.addEventListener("click", () => openSessionRename(row));
       actEl.appendChild(renameBtn);
+      /* Grok 真机在会话菜单里有「Copy conversation ID」——排查、贴 issue、
+         和 Host 日志对账都要它。这里给一颗只读复制钮，不新增任何写操作。 */
+      const copyIdBtn = document.createElement("button");
+      copyIdBtn.type = "button";
+      copyIdBtn.className = "bb-btn bb-btn-sm";
+      copyIdBtn.textContent = wavegT("cvCopyId");
+      copyIdBtn.addEventListener("click", async () => {
+        const id = String(row.id || "");
+        let done = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(id);
+            done = true;
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = id;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            done = document.execCommand("copy");
+            ta.remove();
+          }
+        } catch (_) { done = false; }
+        copyIdBtn.textContent = wavegT(done ? "cvCopied" : "copyFailed");
+        setTimeout(() => { copyIdBtn.textContent = wavegT("cvCopyId"); }, 1200);
+      });
+      actEl.appendChild(copyIdBtn);
     }
     (function wireConvRail() {
       const close = document.getElementById("cv-close");
@@ -17063,6 +17195,18 @@
         cvNone: "（暂无消息）",
         cvGone: "会话不存在或已被删除",
         cvNote: "详情只读本机会话 store，改动走既有操作。",
+        cvCopyId: "复制会话 ID",
+        cvCopied: "已复制",
+        findPlaceholder: "在对话里查找",
+        findPrev: "上一个（Shift+Enter）",
+        findNext: "下一个（Enter）",
+        findClose: "关闭（Esc）",
+        findNoHits: "没有匹配",
+        findCount: "{i}/{n}",
+        deleteAction: "删除这条消息",
+        deleteFailed: "删除失败",
+        dayToday: "今天",
+        dayYesterday: "昨天",
         menuBotSettings: "Bot 设置",
         brAbout: "工作方式",
         brSettings: "设置",
@@ -17338,6 +17482,7 @@
         hkNewChat: "新建对话",
         hkSearch: "搜索会话",
         hkToggleSidebar: "折叠 / 展开侧栏",
+        hkFind: "在对话里查找",
         hkComputer: "打开 Computer 面板",
         hkConnectApps: "打开连接应用",
         hkVoice: "语音输入（录音中再按一次停止）",
@@ -18009,6 +18154,18 @@
         cvNone: "（暫無訊息）",
         cvGone: "工作階段不存在或已刪除",
         cvNote: "詳情唯讀本機工作階段 store，變更走既有操作。",
+        cvCopyId: "複製對話 ID",
+        cvCopied: "已複製",
+        findPlaceholder: "在對話裡尋找",
+        findPrev: "上一個（Shift+Enter）",
+        findNext: "下一個（Enter）",
+        findClose: "關閉（Esc）",
+        findNoHits: "沒有符合",
+        findCount: "{i}/{n}",
+        deleteAction: "刪除這則訊息",
+        deleteFailed: "刪除失敗",
+        dayToday: "今天",
+        dayYesterday: "昨天",
         menuBotSettings: "Bot 設定",
         brAbout: "工作方式",
         brSettings: "設定",
@@ -18280,6 +18437,7 @@
         hkNewChat: "新增對話",
         hkSearch: "搜尋會話",
         hkToggleSidebar: "折疊 / 展開側欄",
+        hkFind: "在對話裡尋找",
         hkComputer: "開啟電腦面板",
         hkConnectApps: "開啟連線應用",
         hkVoice: "語音輸入（錄音中再按一次停止）",
@@ -18951,6 +19109,18 @@
         cvNone: "(no messages yet)",
         cvGone: "Chat not found or deleted",
         cvNote: "Details read the local session store; changes go through the existing actions.",
+        cvCopyId: "Copy conversation ID",
+        cvCopied: "Copied",
+        findPlaceholder: "Find in chat",
+        findPrev: "Previous (Shift+Enter)",
+        findNext: "Next (Enter)",
+        findClose: "Close (Esc)",
+        findNoHits: "No matches",
+        findCount: "{i}/{n}",
+        deleteAction: "Delete message",
+        deleteFailed: "Delete failed",
+        dayToday: "Today",
+        dayYesterday: "Yesterday",
         menuBotSettings: "Bot settings",
         brAbout: "How it works",
         brSettings: "Settings",
@@ -19222,6 +19392,7 @@
         hkNewChat: "New chat",
         hkSearch: "Search chats",
         hkToggleSidebar: "Toggle sidebar",
+        hkFind: "Find in chat",
         hkComputer: "Open Computer panel",
         hkConnectApps: "Open Connect apps",
         hkVoice: "Voice input (press again to stop)",
@@ -20562,6 +20733,177 @@
     // 左边缘细长重开条（收起态时显示）：点一下把侧栏重新展开。
     const sidebarReopenTab = document.getElementById("sidebar-reopen-tab");
     if (sidebarReopenTab) sidebarReopenTab.addEventListener("click", () => toggleSidebarHidden());
+    /* ── Find in chat（Grok 真机的 Cmd/Ctrl+F）────────────────────────────
+       只在消息流的文本节点里找，命中用 <mark class="find-hit"> 包起来；
+       关闭/重新查找时把 mark 拆回纯文本并 normalize，markdown 结构不被改写。
+       为什么不用 window.find()：它会选中文本、抢焦点，也做不出「第 n / 共 m」；
+       为什么不重建 .body 的 innerHTML：那会把代码块 DOM 一起重建，复制按钮和
+       语言标签全丢 —— 改 DOM 只加一层 mark，其余节点一个不碰。 */
+    let findHits = [];
+    let findIdx = -1;
+    let findQuery = "";
+
+    function findBar() {
+      return {
+        bar: document.getElementById("find-bar"),
+        input: document.getElementById("find-input"),
+        count: document.getElementById("find-count"),
+      };
+    }
+    function clearFindHits() {
+      document.querySelectorAll("#log mark.find-hit").forEach((m) => {
+        const parent = m.parentNode;
+        if (!parent) return;
+        parent.replaceChild(document.createTextNode(m.textContent), m);
+        parent.normalize();
+      });
+      findHits = [];
+      findIdx = -1;
+    }
+    function collectFindHits(q) {
+      clearFindHits();
+      findQuery = q;
+      if (!q) return;
+      const root = document.getElementById("log");
+      if (!root) return;
+      const needle = q.toLowerCase();
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          const p = node.parentElement;
+          // 已经包过 mark 的、隐藏的（折叠块内容不在屏上）都不算
+          if (!p || p.closest("mark.find-hit") || p.closest("[hidden]")) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      const targets = [];
+      while (walker.nextNode()) targets.push(walker.currentNode);
+      for (const node of targets) {
+        const text = node.nodeValue || "";
+        const lower = text.toLowerCase();
+        let at = lower.indexOf(needle);
+        if (at < 0) continue;
+        const frag = document.createDocumentFragment();
+        let cur = 0;
+        while (at >= 0) {
+          if (at > cur) frag.appendChild(document.createTextNode(text.slice(cur, at)));
+          const mk = document.createElement("mark");
+          mk.className = "find-hit";
+          mk.textContent = text.slice(at, at + q.length);
+          frag.appendChild(mk);
+          findHits.push(mk);
+          cur = at + q.length;
+          at = lower.indexOf(needle, cur);
+        }
+        if (cur < text.length) frag.appendChild(document.createTextNode(text.slice(cur)));
+        if (node.parentNode) node.parentNode.replaceChild(frag, node);
+      }
+    }
+    function paintFindCount() {
+      const { count } = findBar();
+      if (!count) return;
+      if (!findQuery) { count.textContent = ""; return; }
+      count.textContent = findHits.length
+        ? wavegT("findCount").replace("{i}", String(findIdx + 1)).replace("{n}", String(findHits.length))
+        : wavegT("findNoHits");
+    }
+    function stepFind(dir) {
+      if (!findHits.length) { paintFindCount(); return; }
+      findHits.forEach((m) => m.classList.remove("on"));
+      findIdx = (findIdx + dir + findHits.length) % findHits.length;
+      const hit = findHits[findIdx];
+      hit.classList.add("on");
+      if (hit.scrollIntoView) hit.scrollIntoView({ block: "center", behavior: "smooth" });
+      paintFindCount();
+    }
+    function openFindBar() {
+      const { bar, input } = findBar();
+      if (!bar || !input) return;
+      bar.hidden = false;
+      input.focus();
+      input.select();
+      if (findQuery) { collectFindHits(input.value.trim()); stepFind(1); }
+    }
+    function closeFindBar() {
+      const { bar, input, count } = findBar();
+      clearFindHits();
+      findQuery = "";
+      if (count) count.textContent = "";
+      if (bar) bar.hidden = true;
+      if (input) input.value = "";
+    }
+    (function wireFindBar() {
+      const { bar, input, count } = findBar();
+      if (!bar || !input) return;
+      const prev = document.getElementById("find-prev");
+      const next = document.getElementById("find-next");
+      const close = document.getElementById("find-close");
+      let timer = null;
+      input.addEventListener("input", () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          collectFindHits(input.value.trim());
+          stepFind(1);
+        }, 120);
+      });
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          stepFind(ev.shiftKey ? -1 : 1);
+        } else if (ev.key === "Escape") {
+          ev.preventDefault();
+          closeFindBar();
+        }
+      });
+      if (prev) prev.addEventListener("click", () => stepFind(-1));
+      if (next) next.addEventListener("click", () => stepFind(1));
+      if (close) close.addEventListener("click", () => closeFindBar());
+      if (count) count.textContent = "";
+    })();
+
+    /* ── 日期分隔行（Grok 真机：居中的灰小字「今天」「10月17日周六 15:13」）
+       历史加载与实时发送都要有：只靠在 load 里插会漏掉「开着会话过零点」，
+       只靠发送时插会漏掉历史。用 lastDayKey 去重，历史加载前重置。 */
+    let lastDayKey = "";
+    function dayKeyOf(iso) {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
+    }
+    function dayLabelOf(iso) {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      const now = new Date();
+      const midnight = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+      const diffDays = Math.round((midnight(now) - midnight(d)) / 86400000);
+      if (diffDays === 0) return wavegT("dayToday");
+      if (diffDays === 1) return wavegT("dayYesterday");
+      const lang = wavegLang === "en" ? "en-US" : wavegLang === "zh-TW" ? "zh-TW" : "zh-CN";
+      try {
+        return d.toLocaleDateString(lang, { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+      } catch (_) {
+        return d.toISOString().slice(0, 10);
+      }
+    }
+    function appendDaySep(iso) {
+      const el = document.createElement("div");
+      el.className = "msg-day-sep";
+      el.textContent = dayLabelOf(iso);
+      log.appendChild(el);
+      lastDayKey = dayKeyOf(iso);
+      return el;
+    }
+    // 群聊消息走 .room-thread（不是直接进 #log），日期分隔只做 DM：
+    // 群里每条消息自带「谁 · 时间」，再插一行居中日期反而更吵。
+    function inRoomView() {
+      return !!(roomThread && document.contains(roomThread));
+    }
+    function ensureDaySepForNow() {
+      if (inRoomView()) return;
+      const iso = new Date().toISOString();
+      if (dayKeyOf(iso) !== lastDayKey) appendDaySep(iso);
+    }
+
     function wireAccelerators() {
       document.addEventListener("keydown", (ev) => {
         const meta = ev.metaKey || ev.ctrlKey;
@@ -20582,7 +20924,9 @@
           openHotkeysSheet();
         } else if (ev.key === "f" || ev.key === "F") {
           ev.preventDefault();
-          openGpPanel("computer");
+          /* Grok 真机 Cmd/Ctrl+F 是「在对话里查找」；电脑预览让位到 Shift+F。 */
+          if (ev.shiftKey) openGpPanel("computer");
+          else openFindBar();
         } else if (ev.key === "d" || ev.key === "D") {
           /* Wave M36: Cmd/Ctrl+D → 语音输入开关（复用 startVoiceInput，与 🎙 同一入口）。 */
           ev.preventDefault();
@@ -20607,8 +20951,9 @@
     const HOTKEYS = [
       ["Cmd / Ctrl + N", "hkNewChat"],
       ["Cmd / Ctrl + K", "hkSearch"],
+      ["Cmd / Ctrl + F", "hkFind"],
       ["Cmd / Ctrl + B", "hkToggleSidebar"],
-      ["Cmd / Ctrl + F", "hkComputer"],
+      ["Cmd / Ctrl + Shift + F", "hkComputer"],
       ["Cmd / Ctrl + Shift + M", "hkConnectApps"],
       ["Cmd / Ctrl + D", "hkVoice"],
       ["Enter", "hkSend"],

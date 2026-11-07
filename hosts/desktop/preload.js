@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld("bitbot", {
   // Replica C3: regenerate an assistant reply (atomic replace-in-place).
   messages: {
     regenerate: (payload) => ipcRenderer.invoke("bitbot:msg:regenerate", payload || {}),
+    // Grok 真机的「删除这条消息」：只删当前会话的某一条，store 走 removeMessage。
+    delete: (payload) => ipcRenderer.invoke("bitbot:msg:delete", payload || {}),
   },
   // Wave G — Grok desktop parity (docs/grok-desktop-parity/ipc-contract.md §4).
   bots: {
