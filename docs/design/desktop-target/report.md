@@ -8477,7 +8477,12 @@ $ /Users/zfl/Downloads/bitbot/hosts/desktop/build/dev-app/Bit Bot.app/Contents/M
    于是 **`app.isPackaged` 变成 true**，`process.resourcesPath`（找内核）、
    userData 里的 `.env.local`、自动更新这三处会按「安装版」走。新增
    `IS_DEV_BUILD = !app.isPackaged || execPath 在 build/dev-app 下`，三处分支改用它。
-3. **dev 不再注册登录项**（并把历史遗留的撤掉）。原来每次 dev 启动都
+3. **包图标也要换**。`Electron.app` 自带 `electron.icns`（那个深色原子图），
+   包里不改的话 Finder 里这个 `Bit Bot.app` 显示的就是 Electron 标志、⌘Tab 与 Dock
+   未启动时也是它 —— `app.dock.setIcon()` 只在运行后生效，等于「点开之前都是别人的脸」。
+   现在造包时把 `build/icon.icns` 覆盖到 `Contents/Resources/electron.icns`
+   （`CFBundleIconFile` 本来指的就是这个名字），自检里用 `cmp` 逐字节比。
+4. **dev 不再注册登录项**（并把历史遗留的撤掉）。原来每次 dev 启动都
    `openAtLogin=true`、`path=process.execPath`、`args=[]` —— 登录时被拉起时同样
    不带 app 路径，是欢迎页的另一个来源；用户还会看到「两套 user-data-dir 各开一个窗口」。
 
@@ -8489,7 +8494,8 @@ $ /Users/zfl/Downloads/bitbot/hosts/desktop/build/dev-app/Bit Bot.app/Contents/M
 | `bash scripts/start-desktop.sh`（显式传 `.`） | 同上，`ready: /v1/pair/discover → 200` |
 | 登录项 | `[desktop] openAtLogin=false ok=true` |
 
-**门**（都接进 G-103）：ID-14 dev 包自给自足（`Resources/app` 的 `realpath` 必须等于
+**门**（都接进 G-103）：ID-18 包图标与 `build/icon.icns` 逐字节相同（且必须不同于
+Electron 自带那张 —— 相同就说明压根没换，判红）、ID-14 dev 包自给自足（`Resources/app` 的 `realpath` 必须等于
 应用目录，且里面有 `package.json`）、ID-15 dev 早返回 + 撤销旧项 + 标 `skipped`、
 ID-16 `IS_DEV_BUILD` 必须覆盖 bundle 路径、ID-17 三处行为分支都走它。
 四条各配一个注入对照（把 `Resources/app` 指到 `/tmp`、摘掉 dev 守卫、退回只看

@@ -445,5 +445,37 @@ if (/^\d+\.\d+\.\d+/.test(String(pkg.version || ""))) {
   else bad("ID-17", "还有分支裸用 app.isPackaged（双击启动时会按安装版走）：" + left.join(", "));
 }
 
+/* ---------------- 11) 包图标必须是产品的，不是 Electron 那张 ---------------- */
+
+{
+  const appPath = path.join(DESKTOP, "build/dev-app", PRODUCT_NAME + ".app");
+  const shipped = path.join(appPath, "Contents/Resources/electron.icns");
+  const ours = path.join(DESKTOP, "build/icon.icns");
+  const electronOwn = path.join(DESKTOP, "node_modules/electron/dist/Electron.app/Contents/Resources/electron.icns");
+  if (!fs.existsSync(appPath)) {
+    skip("ID-18", "还没造过 dev 应用包");
+  } else {
+    const same = (a, b) => {
+      try {
+        const ba = fs.readFileSync(a);
+        const bb = fs.readFileSync(b);
+        return ba.length === bb.length && ba.equals(bb);
+      } catch (_) {
+        return false;
+      }
+    };
+    if (!fs.existsSync(ours)) {
+      bad("ID-18", "没有 build/icon.icns（产品图标缺失）");
+    } else if (!same(shipped, ours)) {
+      bad("ID-18", "包里的 electron.icns 不是产品图标（Finder / ⌘Tab 会显示 Electron 标志）");
+    } else if (fs.existsSync(electronOwn) && same(shipped, electronOwn)) {
+      // 负向对照兼自证：如果它和 Electron 自带那张一模一样，说明压根没换
+      bad("ID-18b", "包图标与 Electron 自带图标逐字节相同 —— 没换");
+    } else {
+      ok("ID-18", "包图标 = build/icon.icns（与 Electron 自带图标不同）");
+    }
+  }
+}
+
 console.log("\nprove_app_identity: PASS=" + PASS + " FAIL=" + FAIL);
 process.exit(FAIL ? 1 : 0);

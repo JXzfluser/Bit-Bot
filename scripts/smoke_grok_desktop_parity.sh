@@ -4163,7 +4163,7 @@ if [ $? -eq 0 ]; then
 else
   bad "G-103 prove_app_identity（见 /tmp/g103-app-identity.log；$(grep '✗' /tmp/g103-app-identity.log | head -2 | tr '\n' ' ')）"
 fi
-for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b" "ID-08" "ID-10" "ID-10b" "ID-14" "ID-14b" "ID-15" "ID-15b" "ID-16" "ID-16b" "ID-17"; do
+for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b" "ID-08" "ID-10" "ID-10b" "ID-14" "ID-14b" "ID-15" "ID-15b" "ID-16" "ID-16b" "ID-17" "ID-18"; do
   if grep -q "✓ $g103_a" /tmp/g103-app-identity.log; then ok "G-103 锚点：$g103_a"; else bad "G-103 锚点没跑绿：$g103_a"; fi
 done
 echo "  · G-103 为什么长出来：真机 screencapture 菜单栏第一项写的是 Electron。app.setName() 只管"

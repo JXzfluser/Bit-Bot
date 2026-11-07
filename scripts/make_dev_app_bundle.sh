@@ -79,6 +79,12 @@ if [[ "$FORCE" == "0" && -f "$OUTDIR/.stamp" && -x "$EXE" ]] \
     ln -sfn "$DESKTOP" "$APP_LINK"
     echo "[dev-app] 补上 Resources/app → hosts/desktop（原地补，不重建）"
   fi
+  # 同理：早期版本没换图标，也原地补（否则 Finder 里一直显示 Electron 标志）
+  if [[ -f "$DESKTOP/build/icon.icns" ]] && ! cmp -s "$DESKTOP/build/icon.icns" "$APP/Contents/Resources/electron.icns"; then
+    cp -f "$DESKTOP/build/icon.icns" "$APP/Contents/Resources/electron.icns"
+    touch "$APP"
+    echo "[dev-app] 补上产品图标（原地补，不重建）"
+  fi
   echo "[dev-app] 已最新（${STAMP}）"
   echo "DEV_APP=$APP"
   exit 0
@@ -108,6 +114,20 @@ mv "$APP/Contents/MacOS/Electron" "$EXE"
 # 传了 app 路径的启动（start-desktop.sh 的 `… .`）优先级更高，不受这条影响。
 ln -sfn "$DESKTOP" "$APP_LINK"
 
+# ③' 图标也得换成产品的。Electron.app 自带 electron.icns（那个深色原子图）：
+# 包里不改，Finder 里这个 Bit Bot.app 显示的是 Electron 标志，⌘Tab 与 Dock
+# 未启动时也是 —— app.dock.setIcon() 只在运行后生效，等于「点开之前都是别人的脸」。
+# CFBundleIconFile 仍指向 electron.icns，把这个文件本身替换成产品图标即可。
+ICNS_SRC="$DESKTOP/build/icon.icns"
+ICNS_DST="$APP/Contents/Resources/electron.icns"
+if [[ -f "$ICNS_SRC" ]]; then
+  cp -f "$ICNS_SRC" "$ICNS_DST"
+else
+  echo "  ! 没找到 ${ICNS_SRC}，包里会留着 Electron 的图标" >&2
+fi
+# 让 Finder/LaunchServices 重读图标（缓存按包 mtime 记）
+touch "$APP"
+
 # 自检：PlistBuddy 的 Set 在键不存在时是 Add，键名拼错就静默多一个键，
 # 所以这里逐项读回来对，不对就整体失败（不留下一个「看起来建好了」的包）。
 fail=0
@@ -133,6 +153,16 @@ if [[ -f "$APP_LINK/package.json" ]]; then
 else
   echo "  ✗ Resources/app 没指到应用目录（双击 .app 会开默认欢迎页）" >&2
   fail=1
+fi
+
+# 图标必须是产品图标（和 build/icon.icns 同内容），不是 Electron 那张
+if [[ -f "$ICNS_SRC" ]]; then
+  if cmp -s "$ICNS_SRC" "$ICNS_DST"; then
+    echo "  ✓ 包图标 = build/icon.icns"
+  else
+    echo "  ✗ 包图标还是 Electron 的（Finder/⌘Tab 会显示 Electron 标志）" >&2
+    fail=1
+  fi
 fi
 
 if [[ "$fail" != "0" ]]; then
