@@ -8505,3 +8505,79 @@ ID-16 `IS_DEV_BUILD` 必须覆盖 bundle 路径、ID-17 三处行为分支都走
 非 `/Applications` 下的包，系统大概率没真的登记（Sonoma 起走 SMAppService）。
 所以「欢迎页反复出现」的主因是**有人（我，或用户）直接点开了那个 .app**，
 登录项最多是次要来源。现在两条路都堵了：点开能起、登录项不注册。
+
+### 8.92.7 「点开了，但首屏是一个红框」（2026-11-07 再补）
+
+上一条修完，我按用户的做法又走了一遍：`open -a "…/build/dev-app/Bit Bot.app"`（等同
+Finder 双击）。欢迎页确实没了，菜单栏是 `Bit Bot 编辑 视图 窗口 帮助`，Dock 是产品图标，
+只有一个实例。但窗口正中是一整块红字：
+
+```
+Error invoking remote method 'bitbot:boot': Error: moon exited 255
+Error: failed to resolve path `cmd/main`
+Caused by: No such file or directory (os error 2)
+```
+
+也就是说，**「能起来」和「像个产品」是两件事**，上一轮只做到了前者。
+
+#### 根因：`isPackaged` 的副作用漏了一处
+
+dev 包从 `Contents/Resources/app`（软链）启动，Electron 报 `app.isPackaged = true`。
+上一轮把 `IS_DEV_BUILD` 接进了三处（资源目录、`userData/.env.local`、OTA），
+**漏了 `DATA_ROOT`**：
+
+| 量 | 上一版（bundle 启动） | 应该是 |
+| --- | --- | --- |
+| `DATA_ROOT` | `~/Library/Application Support/Bit Bot/data` | `<repo>/data` |
+| 内核 `cwd` = `dirname(DATA_ROOT)` | `~/Library/Application Support/Bit Bot` | `<repo>`（有 `moon.mod`） |
+| `moon run cmd/main` | 找不到包 → exit 255 | 正常 |
+
+两处伤口，一处在脸上，一处在背后：
+
+1. **脸上**：`bitbot:boot` 走的就是 `moon run cmd/main`，它 reject → IPC rethrow →
+   渲染端 `catch` 把 Electron 统一加的 `Error invoking remote method …` 前缀原样
+   打出来。用户开屏第一眼看到的是这句话。
+2. **背后**（更贵）：两条启动路径在读**两份 `sessions.json`**
+   （`<repo>/data/desktop/sessions.json` 34 KB vs 落错位置那份 257 B）。
+   `start-desktop.sh` 里有一屋子历史，双击打开却是空的 —— 这类「历史丢了」的
+   投诉，根因往往就是「数据根跟着启动方式变」。
+
+#### 修法
+
+- `main.js`：`packaged: Boolean(app.isPackaged) && !IS_DEV_BUILD`。dev 包仍按
+  checkout 用 `<repo>/data`，两条启动路径共用一份数据。
+- `run_moon_turn.js`：`bootBanner` 自己接住失败，返回 `{ok:false, banner:"MoonBit
+  内核未就绪：…", error}`。横幅是锦上添花，取不到就说不取到，不该把握手打断、
+  更不该让 Electron 的 IPC 前缀当文案。
+- `paths.js`：`resolveMoonBin` 补 `~/.moon/bin/moon`。GUI 启动继承的是 launchd 的
+  PATH，不是登录 shell 的 PATH —— `moon` 明明装着却 ENOENT，是同一类问题。
+
+#### 验证（真机，不是推演）
+
+| 场景 | 修复前 | 修复后 |
+| --- | --- | --- |
+| `open -a …/Bit Bot.app` 首屏 | 红框 `moon exited 255` | 正常会话界面，无红框 |
+| 读到的会话库 | 落错位置那份（257 B，空） | `<repo>/data`（34 KB，真有历史） |
+| 主进程 `cwd` | `/`（launchd） | 不变；内核 `cwd` 显式传 `<repo>` |
+| 菜单栏 / Dock / 实例数 | 已正常 | 保持正常（1 个主进程） |
+
+#### 门（都接进 G-103，各带注入对照）
+
+| 编号 | 判什么 | 注入对照 |
+| --- | --- | --- |
+| ID-19 | `DATA_ROOT` 的 `packaged` 走 `IS_DEV_BUILD` | 退回裸 `Boolean(app.isPackaged)` → 判红 |
+| ID-19c | 后果：dev 判定的内核 `cwd` 落在 checkout（真有 `moon.mod`）；按安装版判定会掉到 userData | —— |
+| ID-20 | `bootBanner` 必须自带 `try/catch` + `ok:false` + 可读文案 | 退回裸 `await` → 判红 |
+| ID-21 | 给一个没有 PATH 的 env，仍能从 `~/.moon/bin` 定位 `moon` | 家目录没有 `.moon` → 必须返回 `null`，不许瞎猜 |
+
+#### 残留（如实）
+
+- 落错位置那份数据还在：`~/Library/Application Support/Bit Bot/data`
+  （`llm/providers.json` 929 B，与仓库那份逐字节相同且不含任何 key 字段；
+  `desktop/sessions.json` 257 B，是空壳）。那是坏启动留下的，**没有删**——
+  `~/Library` 下的东西我不动手。需要清就一句话。
+- `bootBanner` 现在失败会显示「MoonBit 内核未就绪：…」。这仍然是失败态
+  （红色小字），只是不再是 Electron 的 IPC 前缀 —— 想让它彻底不出现，得让
+  dev 包也带上编译好的内核（`kernel/bin/desktop_turn`），那是打包话题。
+- 活动监视器里渲染进程仍叫 `Electron Helper (Renderer)`：改这个要重签
+  Frameworks 下的五个 helper，收益小、风险大，留作已知项。

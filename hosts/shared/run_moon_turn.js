@@ -893,18 +893,34 @@ function createTurnRunner(repoRoot, opts = {}) {
   }
 
   async function bootBanner() {
-    const { stdout, stderr } = await runMoon([
-      "run",
-      "cmd/main",
-      "--target",
-      MOON_TARGET,
-    ]);
-    return {
-      ok: true,
-      banner: stdout.trim() || stderr.trim(),
-      target: MOON_TARGET,
-      note: "Product brain is MoonBit. Multi-end Host FFI via hosts/shared.",
-    };
+    /* The banner is a nicety; the product is the turn loop. This used to
+       reject, the `bitbot:boot` IPC rethrew it, and the renderer's catch-all
+       printed the raw "Error invoking remote method 'bitbot:boot'" string in
+       a red box — the very first thing an end user saw on launch. Report a
+       failed banner instead of breaking the handshake. */
+    try {
+      const { stdout, stderr } = await runMoon([
+        "run",
+        "cmd/main",
+        "--target",
+        MOON_TARGET,
+      ]);
+      return {
+        ok: true,
+        banner: stdout.trim() || stderr.trim(),
+        target: MOON_TARGET,
+        note: "Product brain is MoonBit. Multi-end Host FFI via hosts/shared.",
+      };
+    } catch (err) {
+      const detail = String((err && err.message) || err).split(/\r?\n/).filter(Boolean);
+      return {
+        ok: false,
+        banner: "MoonBit 内核未就绪" + (detail[0] ? "：" + detail[0] : ""),
+        error: String((err && err.message) || err),
+        target: MOON_TARGET,
+        note: "Product brain is MoonBit. Multi-end Host FFI via hosts/shared.",
+      };
+    }
   }
 
   // 把自己注册给 FFI:群回合的扇出需要一个「懂群上下文」的 runner

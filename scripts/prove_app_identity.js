@@ -477,5 +477,139 @@ if (/^\d+\.\d+\.\d+/.test(String(pkg.version || ""))) {
   }
 }
 
+/* ---------------- 12) 双击启动不该被当成「安装版」 ----------------
+ *
+ * 真机上看到的现象：`open -a "…/build/dev-app/Bit Bot.app"`（等同 Finder
+ * 双击）后，窗口正中是红框「Error invoking remote method 'bitbot:boot':
+ * Error: moon exited 255 / failed to resolve path `cmd/main`」，而
+ * `start-desktop.sh` 启动完全正常。
+ *
+ * 根因不是内核坏了，是 isPackaged 的副作用漏了一处：dev 包从
+ * Contents/Resources/app 起来，Electron 报 isPackaged=true，
+ * resolveDataRoot 于是把数据根挪到 ~/Library/Application Support/Bit Bot/data，
+ * 而 hosts/shared/run_moon_turn.js 的 KERNEL_CWD = dirname(DATA_ROOT) ——
+ * 内核 cwd 就此离开 checkout，`moon run cmd/main` 自然找不到包。
+ * 顺带说明：两条启动路径在读两份 sessions.json，历史像是丢了。
+ */
+
+{
+  const pathsJs = require(path.join(DESKTOP, "paths.js"));
+
+  const judgeDataRootFlag = (src) => {
+    const m = src.match(/const DATA_ROOT = resolveDataRoot\(\{[\s\S]*?\n?\}\);/);
+    if (!m) return { ok: false, why: "找不到 DATA_ROOT 的解析调用" };
+    const block = m[0];
+    if (!/repoRoot:\s*SRC_ROOT/.test(block)) return { ok: false, why: "DATA_ROOT 没拿 SRC_ROOT 兜底" };
+    if (/packaged:\s*Boolean\(app\.isPackaged\)\s*&&\s*!IS_DEV_BUILD/.test(block)) {
+      return { ok: true, why: "packaged 走了 IS_DEV_BUILD（dev 包仍用 <repo>/data）" };
+    }
+    if (/packaged:\s*Boolean\(app\.isPackaged\)\s*,/.test(block)) {
+      return { ok: false, why: "packaged 裸用 app.isPackaged —— dev 包启动会切到 userData/data" };
+    }
+    return { ok: false, why: "packaged 的取值认不出来：" + block.replace(/\s+/g, " ") };
+  };
+
+  const r = judgeDataRootFlag(main);
+  if (r.ok) ok("ID-19", "DATA_ROOT：" + r.why);
+  else bad("ID-19", "DATA_ROOT 会被误判成安装版：" + r.why);
+
+  // 负向对照：把修复前那一行喂回去必须判红
+  const oldLine = "const DATA_ROOT = resolveDataRoot({\n  repoRoot: SRC_ROOT,\n  userDataDir: USER_DATA_DIR,\n  packaged: Boolean(app.isPackaged),\n});";
+  if (judgeDataRootFlag(oldLine).ok) {
+    bad("ID-19b", "注入对照失效：裸 packaged: Boolean(app.isPackaged) 仍判绿");
+  } else {
+    ok("ID-19b", "注入对照：退回裸 packaged: Boolean(app.isPackaged) → 判红");
+  }
+
+  /* 后果对照（不判字面量，判它会掉到哪个目录）：内核的 cwd 是
+     dirname(DATA_ROOT)，只有它落在带 moon.mod 的 checkout 上，
+     `moon run cmd/main` 才可能成立。 */
+  const repo = "/tmp/fake-bitbot-repo";
+  const ud = "/tmp/fake-bitbot-userdata";
+  const devCwd = path.dirname(pathsJs.resolveDataRoot({ repoRoot: repo, userDataDir: ud, packaged: false }));
+  const pkgCwd = path.dirname(pathsJs.resolveDataRoot({ repoRoot: repo, userDataDir: ud, packaged: true }));
+  const repoHasMod = fs.existsSync(path.join(ROOT, "moon.mod"));
+  if (devCwd === repo && pkgCwd === ud && repoHasMod) {
+    ok("ID-19c", "对照：dev 判定的内核 cwd = checkout（有 moon.mod）；按安装版判定会掉到 userData —— 这就是 cmd/main 找不到的来路");
+  } else {
+    bad("ID-19c", "内核 cwd 推演不合预期", { devCwd, pkgCwd, repoHasMod });
+  }
+}
+
+/* ---------------- 13) 启动横幅失败不许变成红框 ----------------
+ *
+ * 红框那行原文是 Electron 给 IPC 异常统一加的前缀（"Error invoking remote
+ * method '…'"），它出现在首屏只说明一件事：主进程把异常抛给了渲染进程。
+ * 横幅是锦上添花，取不到就说不取到，不配把整个握手打断。
+ */
+
+{
+  const runner = read(path.join(ROOT, "hosts/shared/run_moon_turn.js"));
+  const judgeBootBanner = (src) => {
+    const i = src.indexOf("async function bootBanner()");
+    if (i < 0) return { ok: false, why: "找不到 bootBanner" };
+    const j = src.indexOf("\n  }", src.indexOf("\n  }", i) + 1);
+    const block = src.slice(i, j < 0 ? i + 2000 : j + 4);
+    if (!/try\s*\{/.test(block)) return { ok: false, why: "runMoon 外面没有 try —— 失败会抛穿 IPC" };
+    if (!/catch\s*\(/.test(block)) return { ok: false, why: "没有 catch —— 失败会抛穿 IPC" };
+    if (!/ok:\s*false/.test(block)) return { ok: false, why: "catch 分支没给出 ok:false" };
+    // 失败态得有一句人话，而不是把 JSON 整个倒出来（渲染端是 r.banner || JSON.stringify(r)）。
+    const catchBranch = block.slice(block.indexOf("catch ("));
+    if (!/banner:\s*["'`]/.test(catchBranch)) {
+      return { ok: false, why: "失败态没有可读的 banner 文案" };
+    }
+    return { ok: true, why: "runMoon 失败被接住，返回 ok:false + 可读文案" };
+  };
+
+  const r = judgeBootBanner(runner);
+  if (r.ok) ok("ID-20", "bootBanner：" + r.why);
+  else bad("ID-20", "bootBanner 仍会把异常抛给渲染进程：" + r.why);
+
+  // 负向对照：把修复前那版（裸 await，没有 try）喂进去必须判红
+  const oldBoot = '  async function bootBanner() {\n' +
+    '    const { stdout, stderr } = await runMoon([\n      "run",\n      "cmd/main",\n      "--target",\n      MOON_TARGET,\n    ]);\n' +
+    '    return {\n      ok: true,\n      banner: stdout.trim() || stderr.trim(),\n      target: MOON_TARGET,\n' +
+    '      note: "Product brain is MoonBit. Multi-end Host FFI via hosts/shared.",\n    };\n  }';
+  if (judgeBootBanner(oldBoot).ok) {
+    bad("ID-20b", "注入对照失效：裸 await 版本仍判绿");
+  } else {
+    ok("ID-20b", "注入对照：退回裸 await（异常抛穿 IPC）→ 判红");
+  }
+}
+
+/* ---------------- 14) 从 Finder 起来也要找得到 moon ----------------
+ *
+ * GUI 启动继承的是 launchd 的 PATH，不是登录 shell 的 PATH；
+ * `~/.moon/bin` 就在后者里、不在前者里。判据不能只看 PATH 里有没有，
+ * 得看「给一个没有 PATH 的 env，还认得出来吗」。
+ */
+
+{
+  const os = require("os");
+  const pathsJs = require(path.join(DESKTOP, "paths.js"));
+  let tmpHome = "";
+  try {
+    tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-moon-home-"));
+    const binDir = path.join(tmpHome, ".moon", "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, "moon"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const found = pathsJs.resolveMoonBin({ env: { HOME: tmpHome }, resourcesPath: null });
+    if (found === path.join(binDir, "moon")) {
+      ok("ID-21", "GUI 启动（PATH 里没有 ~/.moon/bin）也能定位 moon：" + found);
+    } else {
+      bad("ID-21", "resolveMoonBin 找不到 ~/.moon/bin/moon（Finder 双击会 ENOENT）", found);
+    }
+    // 负向对照：家目录里没有 .moon 时必须老实返回 null，而不是瞎猜一个路径
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-moon-bare-"));
+    const none = pathsJs.resolveMoonBin({ env: { HOME: bare }, resourcesPath: null });
+    if (none === null) ok("ID-21b", "注入对照：家目录没有 .moon/bin/moon → 返回 null（不瞎猜）");
+    else bad("ID-21b", "注入对照失效：没有 .moon 仍返回了 " + JSON.stringify(none));
+  } catch (e) {
+    bad("ID-21", "自检抛错：" + (e && e.message));
+  } finally {
+    try { if (tmpHome) fs.rmSync(tmpHome, { recursive: true, force: true }); } catch (_) { /* ignore */ }
+  }
+}
+
 console.log("\nprove_app_identity: PASS=" + PASS + " FAIL=" + FAIL);
 process.exit(FAIL ? 1 : 0);

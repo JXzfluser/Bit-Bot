@@ -115,6 +115,22 @@ function resolveMoonBin(opts = {}) {
   const env = opts.env || process.env;
   if (env.MOON_BIN && fs.existsSync(env.MOON_BIN)) return env.MOON_BIN;
 
+  /* A GUI launch (Finder double-click, login item) inherits launchd's PATH,
+     not the login shell's — so `~/.moon/bin`, where the MoonBit installer
+     puts the toolchain, is invisible to spawn(). Probe that one well-known
+     location rather than dying with ENOENT on a machine where `moon` IS
+     installed; a checkout launched from a terminal resolves via PATH first
+     either way. */
+  const home = env.HOME || env.USERPROFILE || "";
+  if (home) {
+    for (const rel of [".moon/bin/moon", ".moon/bin/moon.exe"]) {
+      const candidate = path.join(home, rel);
+      try {
+        if (fs.existsSync(candidate)) return candidate;
+      } catch (_) { /* ignore */ }
+    }
+  }
+
   const roots = [];
   if (opts.resourcesPath) roots.push(opts.resourcesPath);
   if (opts.kernelRoot) roots.push(path.join(opts.kernelRoot, ".."));

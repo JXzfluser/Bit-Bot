@@ -374,11 +374,21 @@ const USER_DATA_DIR = (() => {
   }
 })();
 
-/** User data root. Dev keeps the historical <repo>/data layout. */
+/** User data root. Dev keeps the historical <repo>/data layout.
+ *
+ *  `packaged` must go through IS_DEV_BUILD, not `app.isPackaged` alone: the
+ *  dev-app bundle runs from `Contents/Resources/app`, so Electron reports
+ *  isPackaged=true even though this IS a checkout. Trusting it moved two
+ *  things at once — user data to `~/Library/Application Support/Bit Bot/data`
+ *  and (worse) the kernel cwd to `dirname(DATA_ROOT)`, i.e. a directory with
+ *  no `moon.mod`. Double-clicking the app then opened on a red
+ *  "moon exited 255 / failed to resolve path cmd/main" box while
+ *  `start-desktop.sh` worked fine, and the two launchers quietly kept two
+ *  different session stores. */
 const DATA_ROOT = resolveDataRoot({
   repoRoot: SRC_ROOT,
   userDataDir: USER_DATA_DIR,
-  packaged: Boolean(app.isPackaged),
+  packaged: Boolean(app.isPackaged) && !IS_DEV_BUILD,
 });
 
 /** The root the host modules work from. In dev it IS the source tree.

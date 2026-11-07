@@ -4163,7 +4163,7 @@ if [ $? -eq 0 ]; then
 else
   bad "G-103 prove_app_identity（见 /tmp/g103-app-identity.log；$(grep '✗' /tmp/g103-app-identity.log | head -2 | tr '\n' ' ')）"
 fi
-for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b" "ID-08" "ID-10" "ID-10b" "ID-14" "ID-14b" "ID-15" "ID-15b" "ID-16" "ID-16b" "ID-17" "ID-18"; do
+for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b" "ID-08" "ID-10" "ID-10b" "ID-14" "ID-14b" "ID-15" "ID-15b" "ID-16" "ID-16b" "ID-17" "ID-18" "ID-19" "ID-19b" "ID-19c" "ID-20" "ID-20b" "ID-21" "ID-21b"; do
   if grep -q "✓ $g103_a" /tmp/g103-app-identity.log; then ok "G-103 锚点：$g103_a"; else bad "G-103 锚点没跑绿：$g103_a"; fi
 done
 echo "  · G-103 为什么长出来：真机 screencapture 菜单栏第一项写的是 Electron。app.setName() 只管"
@@ -4179,6 +4179,13 @@ echo "    窗口标题还叫 Electron。所以包里必须有 Resources/app 指�
 echo "    又因为这样启动时 app.isPackaged 会变成 true，dev 判定得改成 IS_DEV_BUILD（ID-16），"
 echo "    三处行为分支（资源目录 / .env.local / 自动更新）跟着一起改（ID-17）；"
 echo "    dev 也不再注册登录项，并把历史遗留的撤掉（ID-15）—— 登录项就是「不带参数拉起」的另一个来源。"
+echo "  · G-103 再补的一刀（ID-19..21）：包能点开了，但 open -a 起来后首屏是一个红框 ——"
+echo "    「Error invoking remote method 'bitbot:boot' / moon exited 255 / failed to resolve"
+echo "    path cmd/main」。isPackaged 的副作用还漏了一处：DATA_ROOT 仍按安装版算，数据根挪到"
+echo "    ~/Library/Application Support，而内核 cwd = dirname(DATA_ROOT)，于是离开了 checkout；"
+echo "    同时两条启动路径在读两份 sessions.json（历史看着像丢了）。ID-19 判这个接线，ID-19c 判"
+echo "    后果（cwd 落到哪），ID-20 判横幅失败不许抛穿 IPC 变成红框，ID-21 判「GUI 启动没有"
+echo "    登录 shell 的 PATH 时仍找得到 ~/.moon/bin/moon」。四条都带注入对照。"
 
 echo "== G-104 身份类文案在真渲染里对不对（含不刷新页面切语言）=="
 node scripts/prove_identity_render.mjs >/tmp/g104-identity-render.log 2>&1
