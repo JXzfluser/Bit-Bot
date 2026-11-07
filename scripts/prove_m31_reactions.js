@@ -29,7 +29,11 @@ const mainJs = fs.readFileSync(path.join(REPO, "hosts/desktop/main.js"), "utf8")
 const preloadJs = fs.readFileSync(path.join(REPO, "hosts/desktop/preload.js"), "utf8");
 const sessionsJs = fs.readFileSync(path.join(REPO, "hosts/desktop/sessions.js"), "utf8");
 
-/const rct = document\.createElement\("button"\);/.test(html) &&
+// 这条原来断言 `const rct = document.createElement("button")` —— 那是当时的实现细节。
+// 后来反应按钮改成统一的 iconActionBtn（为了和 Reply 同一套样式/aria），断言就恒假了。
+// 判据要盯「入口在不在、什么时候在」，不是「用哪个 API 造按钮」。
+/const rct = iconActionBtn\("😊", "reactAction"\);/.test(html) &&
+  /bar\.appendChild\(rct\);/.test(html) &&
   /"👍", "❤️", "😂", "🎉", "😮", "😢"/.test(html) &&
   /reaction-picker/.test(html)
   ? ok("hover「反应」按钮 + 6 emoji picker（与 Reply 同一条 msg-actions）")

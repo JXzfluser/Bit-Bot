@@ -187,3 +187,39 @@ store 只留 `path / name / kind / bytes` 四个字段。
 （群 + cron + 原话）、归属不猜（找不到/重名都拒绝）。暂停态跟着迁（走 routineLifecycle）。
 
 迁过来的是排程定义；本机没开常驻授权时到点只落草稿，脚本每次都会打印这一点。
+
+## 十、M53d（2026-11-07 第七轮）：直接读本机 Grok Bot 的库，把 Bot/群/对话建过来
+
+判据：`scripts/prove_m53d_grok_bot_import.js`（40/0，含 4 条负向对照）。
+用法、映射表与边界见 `docs/grok-bot-migration.md`。
+
+用户原话是「我电脑安装了 grok bot，你自动从我电脑提前，然后创建到我项目来」——不许手工抄。
+做法是读 `~/Library/Application Support/Grok Bot/sand-client-persistence/*.blob`：
+**文件名是键名的 base32 编码**，内容是 `{"schemaVersion":1,"value":{…}}`。
+用到的两个键：`.roster.last-roster`（Bot 与群同表，`isGroup`/`memberIds` 区分）、
+`.transcript.replicas.<id>`（`entries[]`，`kind: message` / `send-message`）。
+**里面没有定时任务切片** —— 反过来验证 M53c 走清单是对的。
+
+真跑结果：24 条目 → 建 Bot 21 / 群 2 / 会话 24 / 1466 条消息；42 条选项卡片转成
+「问题 + · 选项」文字；51 条跳过逐类记账。幂等实测第二遍建 0 / 跳过 47。
+
+五条硬规矩：键名解错=静默丢数据（非 base32 返回 null，不做往返不认）；转不了的条目记 skip
+不写空消息；群成员只认 roster 里的非群行（群不塞成群成员）；空跑不留痕（备份惰性，
+第一版空跑会堆一模一样的 `import-backup-*`）；幂等靠台账 `data/desktop/grok-import-map.json`。
+
+**一个措辞教训**：3 个群里那个只有 1 名成员的，本机建群要 ≥2 人所以没建成 ——
+第一版回执报 `members_unmapped`（成员对不上）是**假原因**，成员一个没缺。
+改成按房间记 `missing_count` 再区分 `members_unmapped` / `members_too_few`。
+它那 18 条对话没丢，作为普通会话留着了。
+
+**一个真 bug**：`sessions.appendMessages` 无视传入的 `at`，一律写 now —— 按 `timestampMs`
+算好的 1466 条历史时间一条都没生效，全成了导入那一刻（`2026-11-07T13:31:41`），
+而最早的真实消息是 `2026-10-13T02:52:05`。修法：`appendMessages` 支持合法 `m.at`
+（不传仍写现在，现有调用方不受影响）+ `convertEntry`/`isoFrom` 缺时间就留空不编"现在"，
+然后重灌 24 个会话。门禁加 T7 跨源对拍（最早一条时间 == 源端最早 `timestampMs`），
+修前红修后绿。顺带修了 `prove_m31_reactions` 一条过期判据
+（断言 `document.createElement("button")` 造按钮，实现早已改成 `iconActionBtn`，
+恒假 → 17/0）。
+
+**残留**：无界面入口；绑定桌面版内部格式（升级换格式会保守拒绝）；附件只留占位；
+快照式不做增量。

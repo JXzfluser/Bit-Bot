@@ -304,14 +304,20 @@ function createSessionStore(repoRoot, opts = {}) {
     const hit = state.sessions.find((s) => s.id === want);
     if (!hit) return { ok: false, error: "unknown session" };
     if (!Array.isArray(hit.messages)) hit.messages = [];
-    const at = new Date().toISOString();
+    const now = new Date().toISOString();
     for (const m of messages || []) {
       if (!m || !m.role) continue;
+      // 迁移/回放要保留原来的时间。之前这里无条件写 now，于是
+      // import_grok_bot 算出来的历史时间被静默丢掉 —— 参数存在却不生效，
+      // 比没有这个参数更坏：调用方以为自己保留了时间。
+      // 不传 at（现有全部调用方）时行为完全不变，仍写这一刻。
+      const atRow =
+        m.at && !Number.isNaN(Date.parse(String(m.at))) ? new Date(m.at).toISOString() : now;
       const row = {
         id: m.id || newMessageId(),
         role: String(m.role),
         text: String(m.text || ""),
-        at,
+        at: atRow,
       };
       // GP-14: keep the replied-to id in the transcript row so the quote
       // survives a reload instead of only living in this turn's memory.
@@ -344,7 +350,7 @@ function createSessionStore(repoRoot, opts = {}) {
         hit.title = firstUser.text.trim().slice(0, 28) || hit.title;
       }
     }
-    hit.updated_at = at;
+    hit.updated_at = now;
     save(state);
     return { ok: true, session: hit, active_id: state.active_id };
   }
