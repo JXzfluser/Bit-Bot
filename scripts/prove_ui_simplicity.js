@@ -200,13 +200,18 @@ async function main() {
 
   /* ---- ⑤ 简洁 ≠ 砍功能：既有 id 全在 ---- */
   {
+    /* 渠道卡片（mc-channel-card / mc-ch-* / mc-goto-channels）**故意**移出主弹窗：
+       它们属于「机器人管理」。这一条改成钉住那些能力的新落点，而不是删掉断言 ——
+       删断言等于把「能力还在」这件事也一起丢了。 */
     const ids = ["mc-title", "mc-hint", "mc-dot", "mc-status", "mc-enable-btn",
       "mc-copy-url-btn", "mc-code-block", "mc-code-title", "mc-gen-btn", "mc-code",
       "mc-countdown", "mc-code-display", "mc-code-actions", "mc-revoke-btn",
-      "mc-scope-note", "mc-pair-note", "mc-channel-card", "mc-ch-ding", "mc-ch-feishu",
-      "mc-ch-wecom", "mc-goto-channels", "mc-roster-card", "mc-relay-entry-card",
-      "mc-relay-open", "mc-relay-save", "mc-relay-disable", "mc-relay-bootstrap",
-      "mc-relay-bootstrap-copy", "mc-relay-close", "mc-close"];
+      "mc-scope-note", "mc-pair-note", "mc-roster-card", "mc-open-manager",
+      "mc-relay-entry-card", "mc-relay-open", "mc-relay-save", "mc-relay-disable",
+      "mc-relay-bootstrap", "mc-relay-bootstrap-copy", "mc-relay-close", "mc-close",
+      /* 新落点：机器人管理里的渠道与扫码关联 */
+      "bot-manager-modal", "bm-title", "bm-list", "bm-qr", "bm-qr-empty", "bm-begin",
+      "bm-copy", "bm-bind-status", "bm-badge", "bm-unbind", "bm-open-connect"];
     const lost = ids.filter((i) => !html.includes('id="' + i + '"'));
     if (lost.length) bad("UI-11 改版把既有能力/门禁锚点删了", lost.join(","));
     else ok("UI-11 " + ids.length + " 个既有 id 全保留（MC 门与真交互没被砍）");
@@ -217,6 +222,28 @@ async function main() {
     if (!/6\s*位/.test(hint)) bad("UI-12 mc-hint 丢了「6 位」（MC-02 会红）", hint);
     else if (tokenIds.length) bad("UI-12 主弹窗出现令牌控件（MC-02 会红）", tokenIds.join(","));
     else ok("UI-12 MC-02 契约保持：说明含「6 位」、主弹窗零令牌控件");
+  }
+
+  /* ---- ⑤b IA 边界：渠道在机器人管理，不在配对弹窗 ---- */
+  {
+    const noChannelInMc = (h) => {
+      const b = blockOf(h, "mobile-control-modal");
+      return !/mc-ch-|mc-channel-card|使用 Bot Channel/.test(b);
+    };
+    const hasChannelsInBm = (h) => {
+      const b = blockOf(h, "bot-manager-modal");
+      return /bmPaintList/.test(h) && /class="bm-list"/.test(b) && /id="bm-qr"/.test(b);
+    };
+    /* 负向对照：把渠道块塞回配对弹窗，判据必须转红 —— 否则这条是恒真。 */
+    const injected = html.replace(
+      '<section class="mc-card mc-roster-card" id="mc-roster-card">',
+      '<section class="mc-card" id="mc-channel-card"><div id="mc-ch-ding">钉钉</div></section>' +
+        '<section class="mc-card mc-roster-card" id="mc-roster-card">',
+    );
+    if (!noChannelInMc(html)) bad("UI-14 配对弹窗里仍有渠道卡片（渠道属于机器人管理）");
+    else if (!hasChannelsInBm(html)) bad("UI-14 机器人管理里没有渠道列表/扫码区");
+    else if (noChannelInMc(injected)) bad("UI-14 负向对照失效：把渠道塞回主弹窗竟然仍判通过");
+    else ok("UI-14 IA 边界成立：配对弹窗零渠道、机器人管理有渠道与扫码；塞回去立刻被抓");
   }
 
   /* ---- ⑥ 负向对照：把折叠打开 / 删掉脚本，判据必须转红 ---- */

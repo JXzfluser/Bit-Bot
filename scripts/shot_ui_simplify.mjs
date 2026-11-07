@@ -111,40 +111,76 @@ try {
   await win.screenshot({ path: p1c });
   console.log("saved " + p1c);
 
-  // 图 2：机器人管理（走「机器人管理」按钮，验证真跳转）
+  // 图 2：机器人管理（走「机器人管理」按钮，验证真跳转 + 四条渠道）
   await win.click("#mc-open-manager");
-  await win.waitForSelector("#relay-settings-modal", { state: "visible", timeout: 8000 });
-  await win.waitForTimeout(500);
+  await win.waitForSelector("#bot-manager-modal", { state: "visible", timeout: 8000 });
+  await win.waitForTimeout(600);
   const p2 = path.join(OUT, "02-bot-manager.png");
   await win.screenshot({ path: p2 });
   const state2 = await win.evaluate(() => {
-    const m = document.getElementById("relay-settings-modal");
-    const adv = document.getElementById("mc2-relay-advanced");
+    const m = document.getElementById("bot-manager-modal");
+    const typing = Array.from(m.querySelectorAll("input,textarea,select")).filter((e) => {
+      const t = String(e.getAttribute("type") || "").toLowerCase();
+      return t !== "checkbox" && t !== "radio" && t !== "hidden" && e.offsetParent !== null;
+    }).length;
     return {
-      visibleInputs: Array.from(m.querySelectorAll("input,textarea,select"))
-        .filter((e) => e.offsetParent !== null).length,
-      advancedOpen: adv?.open,
-      lanPanelShown: !document.getElementById("mc2-panel-lan")?.hidden,
-      qrSvg: Boolean(document.getElementById("mc2-qr")?.querySelector("svg")),
-      listItems: m.querySelectorAll(".mc2-item").length,
+      visibleTypingInputs: typing,
+      channelItems: m.querySelectorAll(".bm-item").length,
+      channelNames: Array.from(m.querySelectorAll(".bm-item b")).map((b) => b.textContent),
+      mcStillOpen: document.getElementById("mobile-control-modal").style.display !== "none",
     };
   });
   console.log("图2", JSON.stringify(state2));
+  if (state2.visibleTypingInputs !== 0) { console.error("FAIL 机器人管理主区还有输入框"); code = 1; }
+  if (state2.channelItems !== 4) { console.error("FAIL 渠道不是四条"); code = 1; }
+  if (state2.mcStillOpen) { console.error("FAIL 两层弹窗叠着"); code = 1; }
   console.log("saved " + p2);
 
-  // 展开高级后再截一张，确认字段确实还在（不是删了）
-  await win.click("#mc2-item-relay");
-  await win.waitForTimeout(200);
-  await win.evaluate(() => { document.getElementById("mc2-relay-advanced").open = true; });
-  await win.waitForTimeout(250);
-  const p3 = path.join(OUT, "03-advanced-open.png");
+  // 图 3：微信这一条 —— 不给假码，如实给企业微信路径
+  /* 按名字**精确**匹配：/微信/ 会先命中「企业微信」，第一版就是这么错的。 */
+  await win.evaluate(() => {
+    const wx = Array.from(document.querySelectorAll("#bot-manager-modal .bm-item"))
+      .filter((i) => {
+        const n = i.querySelector("b");
+        return n && n.textContent.trim() === "微信";
+      })[0];
+    if (wx) wx.click();
+  });
+  await win.waitForTimeout(350);
+  const p3 = path.join(OUT, "03-bot-manager-wechat.png");
   await win.screenshot({ path: p3 });
-  const state3 = await win.evaluate(() => ({
-    visibleInputs: Array.from(document.querySelectorAll("#relay-settings-modal input, #relay-settings-modal textarea, #relay-settings-modal select"))
-      .filter((e) => e.offsetParent !== null).length,
-  }));
-  console.log("图3(展开高级)", JSON.stringify(state3));
+  const state3 = await win.evaluate(() => {
+    const begin = document.getElementById("bm-begin");
+    const qr = document.getElementById("bm-qr");
+    return {
+      beginHidden: Boolean(begin && begin.hidden),
+      qrHidden: Boolean(qr && qr.hidden),
+      fact: (document.getElementById("bm-fact-cred") || {}).textContent || "",
+      pathBtnShown: !(document.getElementById("bm-path") || {}).hidden,
+    };
+  });
+  console.log("图3(微信)", JSON.stringify(state3));
+  if (!state3.beginHidden || !state3.qrHidden) { console.error("FAIL 微信居然给了二维码"); code = 1; }
   console.log("saved " + p3);
+
+  // 图 4：钉钉点「生成二维码」→ 局域网没开时如实拦一次（不偷改用户偏好）
+  await win.evaluate(() => {
+    const ding = Array.from(document.querySelectorAll("#bot-manager-modal .bm-item"))
+      .filter((i) => /钉钉/.test(String(i.textContent || "")))[0];
+    if (ding) ding.click();
+  });
+  await win.waitForTimeout(300);
+  await win.click("#bm-begin");
+  await win.waitForTimeout(700);
+  const p4 = path.join(OUT, "04-bot-manager-bind-gate.png");
+  await win.screenshot({ path: p4 });
+  const state4 = await win.evaluate(() => ({
+    status: (document.getElementById("bm-bind-status-tx") || {}).textContent || "",
+    lanNoteShown: !(document.getElementById("bm-lan-note") || {}).hidden,
+    beginText: (document.getElementById("bm-begin") || {}).textContent || "",
+  }));
+  console.log("图4(局域网拦截)", JSON.stringify(state4));
+  console.log("saved " + p4);
 } catch (e) {
   console.error("SHOT FAIL " + ((e && e.stack) || e));
   code = 1;

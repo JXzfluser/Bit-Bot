@@ -151,6 +151,14 @@ try {
   createCnInboundServer = require("../shared/cn_inbound_server").createCnInboundServer;
 }
 
+/* 渠道扫码关联的一次性绑定码（纯状态机，不碰磁盘/网络）。 */
+let createChannelBindManager;
+try {
+  createChannelBindManager = require("./shared/channel_bind").createChannelBindManager;
+} catch (_e) {
+  createChannelBindManager = require("../shared/channel_bind").createChannelBindManager;
+}
+
 // A3-7（关 R-A3-6d/e）：桌面的「我接在哪个中转上」与「以 box 角色登记上去」。
 // 这两个模块放在 hosts/shared/relay/ 而不是 desktop/ 里，因为服务器侧（box_main）
 // 与门禁都要用同一份归一逻辑 —— 两处各写一遍就会出现「门禁认、产品不认」。
@@ -4573,6 +4581,8 @@ async function ensureCnInbound() {
       // 发生（syncRelayBoxRegistration），运行中才写配置会得到「有四栏却 NOBOX」—— R-A3-6h。
       // 没配 / 半套一律 null，回执逐字节不变。
       relayHandoff: () => currentRelayHandoff(),
+      /* 同一份 manager 实例：IPC 签发、HTTP /bind 消费，切局域网重建服务也不丢 token。 */
+      channelBind: channelBindManager,
     });
   }
   const started = await cnInbound.start();
@@ -4853,13 +4863,154 @@ ipcMain.handle("bitbot:relay:bootstrap", async () => {
  * 允许 / 禁止局域网里的手机连进来。ADR 0008 默认 loopback；这里改的是同一个
  * 开关（BITBOT_BIND_LAN），并把入站监听重建一次 —— 端口、鉴权、路由都不变。
  */
-ipcMain.handle("bitbot:pairing:lan", async (_e, enabled) => {
-  const next = Boolean(enabled);
-  if (!writePairingPrefs({ lan_enabled: next })) {
-    return { ok: false, error: "pairing_prefs_write_failed", ...pairingState() };
+/* ---------- 渠道「扫码关联」（机器人管理） ------------------------------ *
+ * 钉钉 / 飞书 / 企微 的凭据原本只能在「连接应用」里逐栏粘。扫码要解决的是
+ * **输入位置**：桌面出码 → 手机打开本机这一页填 → 桌面自动变「已关联」。
+ * 不是去厂商换授权 —— 那几家没有这种公开能力，个人微信更没有机器人接口。
+ *
+ * 这个 manager 必须在模块级只建一次：切局域网开关会重建 cn_inbound 服务，
+ * 已经签发出去的绑定码不能跟着服务一起失效。
+ * ------------------------------------------------------------------------ */
+const CHANNEL_ENABLE_KEY = {
+  dingtalk: "BITBOT_DINGTALK_POST",
+  feishu: "BITBOT_FEISHU_POST",
+  wecom: "BITBOT_WECOM_POST",
+};
+/* 「已关联」的判据：这几把键真在磁盘/环境里。只认主键，可选键不算 —— 
+ * 否则用户只填了个加签密钥，界面就说「已关联」，发出去才发现没有 Webhook。 */
+const CHANNEL_MAIN_KEYS = {
+  dingtalk: ["BITBOT_DINGTALK_WEBHOOK"],
+  feishu: ["BITBOT_FEISHU_TOKEN", "BITBOT_FEISHU_CHAT_ID"],
+  wecom: ["BITBOT_WECOM_TOKEN", "BITBOT_WECOM_AGENT_ID"],
+};
+
+function maskTail(v) {
+  const s = String(v || "");
+  if (!s) return "";
+  if (s.length <= 8) return "****";
+  return "****" + s.slice(-4);
+}
+
+const channelBindManager = createChannelBindManager({
+  onBound: async ({ channel, patch }) => {
+    const saved = upsertDesktopEnvLocal(patch || {});
+    if (!saved || !saved.ok) return saved || { ok: false, error: "env_write_failed" };
+    /* 有凭据就应该开着：配完却仍显示「未开启」是最常见的「为什么发不出去」。 */
+    const enableKey = CHANNEL_ENABLE_KEY[channel];
+    if (enableKey) upsertDesktopEnvLocal({ [enableKey]: "1" });
+    loadEnvLocalFiles({ overwrite: true });
+    try {
+      broadcast("bitbot:channel-bound", { channel, keys: Object.keys(patch || {}) });
+    } catch (_) {
+      /* 渲染层没就绪不影响已写盘的事实 */
+    }
+    return { ok: true, path: saved.path || "" };
+  },
+});
+
+function channelStatusList() {
+  const out = [];
+  for (const it of channelBindManager.channelsForUi()) {
+    const mains = CHANNEL_MAIN_KEYS[it.id] || [];
+    const present = mains.filter((k) => String(process.env[k] || "").trim());
+    const enableKey = CHANNEL_ENABLE_KEY[it.id];
+    out.push({
+      id: it.id,
+      name: it.name,
+      short: it.short,
+      bindable: it.bindable,
+      note: it.note,
+      reason: it.reason,
+      path: it.path,
+      field_count: it.field_count,
+      bound: it.bindable ? mains.length > 0 && present.length === mains.length : false,
+      enabled: enableKey ? String(process.env[enableKey] || "") === "1" : false,
+      // 只回尾 4 位：界面要能回答「它到底在不在」，但不把凭据摊在屏幕上。
+      masked: present.length && String(process.env[mains[0]] || "")
+        ? maskTail(process.env[mains[0]])
+        : "",
+    });
   }
-  if (next) process.env.BITBOT_BIND_LAN = "1";
-  else delete process.env.BITBOT_BIND_LAN;
+  return out;
+}
+
+ipcMain.handle("bitbot:channel:list", async () => ({ ok: true, channels: channelStatusList() }));
+
+/**
+ * 签发一个绑定码。局域网没放开时手机根本扫不到这个地址，
+ * 所以默认**不偷偷**替用户改偏好：如实拒绝，由界面给一次明确的「开启并生成」。
+ */
+ipcMain.handle("bitbot:channel:begin-bind", async (_e, payload) => {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const channel = String(p.channel || "").trim();
+  const st = pairingState();
+  let autoEnabled = false;
+  if (!st.lan_open) {
+    if (p.allow_lan !== true) {
+      return { ok: false, error: "lan_closed", state: st };
+    }
+    const on = await enableLanForPairing();
+    if (!on.ok) return { ok: false, error: on.error || "lan_enable_failed", state: pairingState() };
+    autoEnabled = true;
+  }
+  const fresh = pairingState();
+  const begun = channelBindManager.begin(channel);
+  if (!begun.ok) return { ok: false, error: begun.error, reason: begun.reason || "" };
+  const base = fresh.pair_base || fresh.loopback_base || "";
+  const url = base
+    ? base + "/bind?t=" + encodeURIComponent(begun.token) + "&ch=" + encodeURIComponent(channel)
+    : "";
+  return {
+    ok: true,
+    channel,
+    url,
+    // 只给界面算倒计时，不回 token 本体之外的任何东西。
+    expires_at: begun.expires_at,
+    ttl_ms: begun.ttl_ms,
+    field_count: (begun.fields || []).length,
+    lan_auto_enabled: autoEnabled,
+    base_is_loopback: /127\.0\.0\.1|localhost/.test(base),
+  };
+});
+
+ipcMain.handle("bitbot:channel:set-enabled", async (_e, payload) => {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const channel = String(p.channel || "").trim();
+  const key = CHANNEL_ENABLE_KEY[channel];
+  if (!key) return { ok: false, error: "channel_unknown" };
+  const saved = upsertDesktopEnvLocal({ [key]: p.enabled === false ? "0" : "1" });
+  if (!saved || !saved.ok) return saved || { ok: false, error: "env_write_failed" };
+  loadEnvLocalFiles({ overwrite: true });
+  return { ok: true, channels: channelStatusList() };
+});
+
+ipcMain.handle("bitbot:channel:unbind", async (_e, payload) => {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const channel = String(p.channel || "").trim();
+  const ch = channelBindManager.channels[channel];
+  if (!ch) return { ok: false, error: "channel_unknown" };
+  if (ch.bindable === false) return { ok: false, error: "channel_not_bindable" };
+  /* 解除关联 = 把这几个键从 .env.local 删掉（upsert 传空串即删除），
+   * 顺手把开关关掉，免得留一个「开着但没有凭据」的渠道。 */
+  const clear = {};
+  for (const f of ch.fields || []) clear[f.env] = "";
+  const enableKey = CHANNEL_ENABLE_KEY[channel];
+  if (enableKey) clear[enableKey] = "";
+  const saved = upsertDesktopEnvLocal(clear);
+  if (!saved || !saved.ok) return saved || { ok: false, error: "env_write_failed" };
+  loadEnvLocalFiles({ overwrite: true });
+  try {
+    broadcast("bitbot:channel-bound", { channel, keys: [], unbound: true });
+  } catch (_) {}
+  return { ok: true, channels: channelStatusList() };
+});
+
+/** 把「开启局域网」抽成函数：IPC 与扫码关联的 allow_lan 路径共用同一套。 */
+async function enableLanForPairing() {
+  if (!writePairingPrefs({ lan_enabled: true })) {
+    return { ok: false, error: "pairing_prefs_write_failed" };
+  }
+  process.env.BITBOT_BIND_LAN = "1";
   try {
     if (cnInbound) {
       await cnInbound.stop();
@@ -4867,14 +5018,38 @@ ipcMain.handle("bitbot:pairing:lan", async (_e, enabled) => {
     }
     await ensureCnInbound();
   } catch (err) {
-    return {
-      ok: false,
-      error: err && err.message ? err.message : String(err),
-      ...pairingState(),
-    };
+    return { ok: false, error: err && err.message ? err.message : String(err) };
   }
+  return { ok: true };
+}
+
+ipcMain.handle("bitbot:pairing:lan", async (_e, enabled) => {
+  const next = Boolean(enabled);
+  if (!next) {
+    if (!writePairingPrefs({ lan_enabled: false })) {
+      return { ok: false, error: "pairing_prefs_write_failed", ...pairingState() };
+    }
+    delete process.env.BITBOT_BIND_LAN;
+    try {
+      if (cnInbound) {
+        await cnInbound.stop();
+        cnInbound = null;
+      }
+      await ensureCnInbound();
+    } catch (err) {
+      return {
+        ok: false,
+        error: err && err.message ? err.message : String(err),
+        ...pairingState(),
+      };
+    }
+    return { ok: true, ...pairingState() };
+  }
+  const r = await enableLanForPairing();
+  if (!r.ok) return { ok: false, error: r.error, ...pairingState() };
   return { ok: true, ...pairingState() };
 });
+
 
 app.whenReady().then(async () => {
   // GP-77: install state on disk for the shared Host `update_status` reader.

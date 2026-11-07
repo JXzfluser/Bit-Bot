@@ -3225,37 +3225,22 @@
             </div>
           </section>
 
-          <!-- 次区（右）：渠道卡片。只列真跑通的三条（MC-07 禁止假入口）。 -->
-          <section class="mc-card mc-channels" id="mc-channel-card">
+          <!-- 次区（右）：已登记的设备。
+               渠道（钉钉/飞书/企微/微信）属于「机器人」，不属于这里 ——
+               这一栏只回答一个问题：哪些手机已经连上这台桌面。 -->
+          <section class="mc-card mc-roster-card" id="mc-roster-card">
             <div class="mc-card-head">
-              <span class="mc-card-ic" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4.5h12v7H6.5L3.5 14v-2.5H2z"/><path d="M5 8h6"/></svg></span>
-              <span class="mc-card-title" data-i18n="mcChannelTitle">使用 Bot Channel</span>
+              <span class="mc-card-ic" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 7h.01M8 7h.01M11 7h.01M5.5 10h5"/></svg></span>
+              <span class="mc-card-title" id="mc-roster-title" data-i18n="mcRosterTitle">已登记的设备</span>
             </div>
-            <p class="mc-card-note" data-i18n="mcChannelNote">连接聊天 Bot，适合更长时间的移动端访问。</p>
-            <div class="mc-ch-list">
-              <div class="mc-ch" id="mc-ch-ding">
-                <span class="mc-ch-ic mc-ch-ding" aria-hidden="true">钉</span>
-                <div class="mc-ch-tx"><b data-i18n="mcChDingName">钉钉</b><small data-i18n="mcChDingNote">从钉钉群打开这个工作区。</small></div>
-              </div>
-              <div class="mc-ch" id="mc-ch-feishu">
-                <span class="mc-ch-ic mc-ch-feishu" aria-hidden="true">飞</span>
-                <div class="mc-ch-tx"><b data-i18n="mcChFeishuName">飞书</b><small data-i18n="mcChFeishuNote">从飞书打开这个工作区。</small></div>
-              </div>
-              <div class="mc-ch" id="mc-ch-wecom">
-                <span class="mc-ch-ic mc-ch-wecom" aria-hidden="true">企</span>
-                <div class="mc-ch-tx"><b data-i18n="mcChWecomName">企业微信</b><small data-i18n="mcChWecomNote">从企业微信打开这个工作区。</small></div>
-              </div>
+            <p class="mc-note" id="mc-roster-empty" data-i18n="mcRosterEmpty">还没有已登记的设备。手机配对成功后，会出现在这一栏。</p>
+            <p class="mc-note" id="mc-roster-error" hidden></p>
+            <ul class="mc-roster" id="mc-roster-list"></ul>
+            <!-- 渠道不在这里管：给一个明确去处，而不是把四条渠道塞在配对弹窗里。 -->
+            <div class="mc-manager-entry">
+              <p class="mc-note" data-i18n="mcManagerHint">要让群里同事直接找机器人说话，去机器人管理。</p>
+              <button type="button" id="mc-open-manager" class="bb-btn bb-btn-sm mc-manager-btn" data-i18n="mcManager">机器人管理</button>
             </div>
-            <!-- MC-07 门要它可点、且点了真落到「连接应用」的国内渠道卡。 -->
-            <button type="button" id="mc-goto-channels" class="bb-btn bb-btn-sm bb-btn-primary mc-ch-go" data-i18n="mcGotoChannels">去配置</button>
-            <section class="mc-card mc-adv-card mc-roster-inline" id="mc-roster-card">
-              <div class="mc-card-title" id="mc-roster-title" data-i18n="mcRosterTitle">已登记的设备</div>
-              <p class="mc-note" id="mc-roster-empty" data-i18n="mcRosterEmpty">还没有已登记的设备。手机配对成功后，会出现在这一栏。</p>
-              <p class="mc-note" id="mc-roster-error" hidden></p>
-              <ul class="mc-roster" id="mc-roster-list"></ul>
-            </section>
-            <!-- 图 2 的入口：机器人/连接管理，主区不放任何输入框。 -->
-            <button type="button" id="mc-open-manager" class="bb-btn bb-btn-sm mc-manager-btn" data-i18n="mcManager">机器人管理</button>
           </section>
         </div>
 
@@ -3287,6 +3272,92 @@
         </details>
       </div>
     </div>
+    <!-- 机器人管理：渠道（钉钉/飞书/企微/微信）本来就该在这里 ——
+         它们是「机器人怎么被找到」，不是「这台桌面怎么被手机连上」。
+         参考稿的形态（左列表 + 右详情 + 关联二维码），但只保留**真有的**设置：
+         启用开关 / 凭据尾号 / 解除关联。不摆没有后端的「回复颗粒度」下拉。 -->
+    <div id="bot-manager-modal" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="bm-title" style="display:none">
+      <div class="bb-sheet bb-sheet-lg mc-sheet bm-sheet">
+        <div class="bb-sheet-head mc-sheet-head">
+          <div class="mc-heading">
+            <span class="mc-heading-ic" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.5" y="4.5" width="11" height="8.5" rx="2.2"/><path d="M8 4.5V2.2M5.6 7.6h.01M10.4 7.6h.01M6 10.4h4"/></svg></span>
+            <div class="mc-heading-tx">
+              <div class="bb-sheet-title" id="bm-title" data-i18n="bmTitle">机器人管理</div>
+              <div class="mc-subtitle" data-i18n="bmSubtitle">把聊天工具接成机器人。扫一下码，凭据在手机上填，桌面不用粘任何字段。</div>
+            </div>
+          </div>
+          <button type="button" id="bm-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose">×</button>
+        </div>
+
+        <div class="bm-layout">
+          <aside class="bm-list" id="bm-list">
+            <div class="bm-list-title" data-i18n="bmListTitle">机器人</div>
+            <!-- 四项由 JS 按 channels 单一真源渲染：状态点/名称/已关联都在一处算，
+                 不在 HTML 里再抄一份会过期的副本。 -->
+          </aside>
+
+          <div class="bm-detail" id="bm-detail">
+            <div class="bm-detail-head">
+              <span class="bm-avatar" id="bm-avatar" aria-hidden="true">微</span>
+              <div class="bm-detail-tx">
+                <b id="bm-name">微信</b>
+                <small id="bm-state" data-i18n="bmStateIdle">读取中…</small>
+              </div>
+              <label class="bm-switch" id="bm-switch-wrap">
+                <input type="checkbox" id="bm-enabled">
+                <span class="bm-switch-ui" aria-hidden="true"></span>
+                <span class="bm-switch-tx" data-i18n="bmEnable">启用</span>
+              </label>
+            </div>
+
+            <section class="bm-card" id="bm-bind-card">
+              <div class="bm-card-head">
+                <span class="bm-card-title" data-i18n="bmBindTitle">关联机器人</span>
+                <span class="bm-badge" id="bm-badge" data-state="off" data-i18n="bmNotBound">未关联</span>
+              </div>
+              <p class="bm-card-note" id="bm-bind-note" data-i18n="bmBindNote">扫码后自动保存凭据。</p>
+              <div class="bm-bind">
+                <div class="bm-qr-wrap" id="bm-qr-wrap">
+                  <div id="bm-qr" class="bm-qr" role="img" aria-label="关联二维码"></div>
+                  <div id="bm-qr-empty" class="mc-qr-empty" data-i18n="bmQrEmpty">点「生成二维码」，这里才会出现码。</div>
+                </div>
+                <div class="bm-bind-side">
+                  <p class="bm-bind-hint" id="bm-bind-hint" data-i18n="bmBindHint">用手机相机扫这个码，在手机上打开绑定页。</p>
+                  <p class="bm-bind-status" id="bm-bind-status" data-state="idle">○ <span id="bm-bind-status-tx" data-i18n="bmWaitingIdle">还没生成</span></p>
+                  <div class="bm-actions">
+                    <button type="button" id="bm-begin" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="bmBegin">生成二维码</button>
+                    <button type="button" id="bm-copy" class="bb-btn bb-btn-sm" disabled data-i18n="bmCopy">复制链接</button>
+                    <!-- 微信这一条没有官方机器人接口：不给假码，给真路径。 -->
+                    <button type="button" id="bm-path" class="bb-btn bb-btn-sm" hidden data-i18n="bmOpenWecom">去企业微信关联</button>
+                  </div>
+                  <p class="bm-note" id="bm-lan-note" hidden></p>
+                </div>
+              </div>
+            </section>
+
+            <!-- 只有真实存在的状态：启没启用、凭据在不在（只给尾 4 位）。
+                 完整字段仍在「连接应用 → 通信」里，两处读的是同一份 .env.local。 -->
+            <section class="bm-card bm-facts">
+              <div class="bm-row">
+                <div class="bm-row-tx"><b data-i18n="bmFactCred">凭据</b><small id="bm-fact-cred" data-i18n="bmFactCredNone">还没有存过。</small></div>
+              </div>
+              <div class="bm-row">
+                <div class="bm-row-tx"><b data-i18n="bmFactWhere">完整字段在哪</b><small data-i18n="bmFactWhereHint">加签密钥、回调 Token 这类高级项在「连接应用 → 通信」里，和这里是同一份配置。</small></div>
+                <button type="button" id="bm-open-connect" class="bb-btn bb-btn-sm" data-i18n="bmOpenConnect">打开</button>
+              </div>
+            </section>
+
+            <section class="bm-card bm-danger">
+              <div class="bm-row">
+                <div class="bm-row-tx"><b data-i18n="bmUnbind">解除关联</b><small data-i18n="bmUnbindHint">从这台桌面删掉这个渠道的凭据，随时可以重新扫码。</small></div>
+                <button type="button" id="bm-unbind" class="bb-btn bb-btn-sm bb-btn-danger-soft" data-i18n="bmUnbindBtn">解除关联</button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- A3-14 独立的中转设置弹窗：与手机配对主路分开，MC-02 的「零令牌控件」口径
          只管 #mobile-control-modal。凭证框是 password 且永不预填明文。 -->
     <div id="relay-settings-modal" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="mc-relay-modal-title" style="display:none">
@@ -3295,8 +3366,8 @@
           <div class="mc-heading">
             <span class="mc-heading-ic" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 7h.01M8 7h.01M11 7h.01M5.5 10h5"/></svg></span>
             <div class="mc-heading-tx">
-              <div class="bb-sheet-title" id="mc-relay-modal-title" data-i18n="mcManager">机器人管理</div>
-              <div class="mc-subtitle" data-i18n="mc2Subtitle">选一个连接，点一下就能用；只有需要自定义时才展开高级设置。</div>
+              <div class="bb-sheet-title" id="mc-relay-modal-title" data-i18n="mcRelayTitle">跨网中转</div>
+              <div class="mc-subtitle" data-i18n="mc2Subtitle">手机不在同一个 Wi-Fi 时用这里；同网直连不需要动它。</div>
             </div>
           </div>
           <button type="button" id="mc-relay-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose">×</button>
@@ -13195,8 +13266,9 @@
       // 弹窗打开时刷一次：openRelay 调 load()，这里挂同一个入口的 click 后置钩子
       const relayOpen = $("mc-relay-open");
       if (relayOpen) relayOpen.addEventListener("click", () => { select("lan"); refreshManagerQr(); });
-      const managerOpen = $("mc-open-manager");
-      if (managerOpen) managerOpen.addEventListener("click", () => { select("lan"); refreshManagerQr(); });
+      /* 注意：#mc-open-manager 现在开的是「机器人管理」（bot-manager-modal），
+         不再是这个中转弹窗。这里刻意不再挂它 —— 两处都挂会出现
+         「点一下同时改两个弹窗状态」的幽灵行为。 */
       // 「生成并复制」：沿用既有 bootstrap 按钮的真逻辑，再自动点一次复制
       const genCopy = $("mc-relay-bootstrap");
       if (genCopy) {
@@ -13572,27 +13644,423 @@
         try { await refreshMobileControl(); } finally { mcQrRefresh.disabled = false; }
       });
     }
-    /* 「机器人管理」→ 图 2 的连接/机器人配置页（本项目即中转设置弹窗）。
-       先关主弹窗避免两层叠着；openRelay 在 initRelaySettings 闭包内，
-       这里转发点击到它已绑定的入口，不复制一份开关逻辑。 */
+    /* ---------- 机器人管理（渠道 + 扫码关联）------------------------------
+     * 渠道是「机器人怎么被找到」，不是「这台桌面怎么被手机连上」——
+     * 所以它从这里开，不在配对弹窗里。
+     *
+     * 二维码编码的是本机的一次性绑定页（/bind?t=…&ch=…）：
+     *   手机扫码 → 打开这一页 → 在手机上填凭据 → 桌面自动翻成「已关联」。
+     * 桌面全程零输入框，这是这一屏的设计目标，也是 UI 门的判据。
+     * 它不是「去厂商授权」——钉钉/飞书/企微 没有那种公开能力，个人微信更没有。
+     */
+    const bmEls = {
+      modal: document.getElementById("bot-manager-modal"),
+      list: document.getElementById("bm-list"),
+      avatar: document.getElementById("bm-avatar"),
+      name: document.getElementById("bm-name"),
+      state: document.getElementById("bm-state"),
+      enabled: document.getElementById("bm-enabled"),
+      switchWrap: document.getElementById("bm-switch-wrap"),
+      badge: document.getElementById("bm-badge"),
+      bindCard: document.getElementById("bm-bind-card"),
+      bindNote: document.getElementById("bm-bind-note"),
+      bindHint: document.getElementById("bm-bind-hint"),
+      bindStatus: document.getElementById("bm-bind-status"),
+      bindStatusTx: document.getElementById("bm-bind-status-tx"),
+      qr: document.getElementById("bm-qr"),
+      qrWrap: document.getElementById("bm-qr-wrap"),
+      qrEmpty: document.getElementById("bm-qr-empty"),
+      begin: document.getElementById("bm-begin"),
+      copy: document.getElementById("bm-copy"),
+      path: document.getElementById("bm-path"),
+      lanNote: document.getElementById("bm-lan-note"),
+      factCred: document.getElementById("bm-fact-cred"),
+      unbind: document.getElementById("bm-unbind"),
+      openConnect: document.getElementById("bm-open-connect"),
+      close: document.getElementById("bm-close"),
+    };
+    const bmState = {
+      channels: [],
+      active: "",
+      url: "",
+      expiresAt: 0,
+      timer: null,
+      lanArmed: false,
+      unbindAt: 0,
+      loaded: false,
+    };
+
+    function bmActive() {
+      return bmState.channels.filter((c) => c.id === bmState.active)[0] || null;
+    }
+
+    function bmSetStatus(kind, text) {
+      if (!bmEls.bindStatus) return;
+      bmEls.bindStatus.dataset.state = kind;
+      if (bmEls.bindStatusTx) bmEls.bindStatusTx.textContent = text;
+    }
+
+    function bmPaintQr(url) {
+      const qr = window.BitBotQR;
+      if (!bmEls.qr || !bmEls.qrEmpty) return;
+      if (!url || !qr || typeof qr.toSvg !== "function") {
+        bmEls.qr.innerHTML = "";
+        bmEls.qr.hidden = true;
+        bmEls.qrEmpty.hidden = false;
+        return;
+      }
+      const svg = qr.toSvg(url, { border: 4, scale: 1 });
+      if (!svg) {
+        bmEls.qr.innerHTML = "";
+        bmEls.qr.hidden = true;
+        bmEls.qrEmpty.hidden = false;
+        bmEls.qrEmpty.textContent = wavegT("mcQrTooLong");
+        return;
+      }
+      bmEls.qr.innerHTML = svg; // toSvg 只由黑白模块拼成，URL 不进 DOM 文本
+      bmEls.qr.hidden = false;
+      bmEls.qrEmpty.hidden = true;
+    }
+
+    function bmStopTimer() {
+      if (bmState.timer) {
+        clearInterval(bmState.timer);
+        bmState.timer = null;
+      }
+    }
+
+    function bmTick() {
+      if (!bmState.expiresAt) return;
+      const left = bmState.expiresAt - Date.now();
+      if (left <= 0) {
+        bmStopTimer();
+        bmState.url = "";
+        bmPaintQr("");
+        if (bmEls.qrEmpty) bmEls.qrEmpty.textContent = wavegT("bmExpired");
+        bmSetStatus("expired", wavegT("bmExpired"));
+        if (bmEls.copy) bmEls.copy.disabled = true;
+        if (bmEls.begin) bmEls.begin.disabled = false;
+        return;
+      }
+      const s = Math.ceil(left / 1000);
+      const mm = Math.floor(s / 60);
+      const ss = s % 60;
+      bmSetStatus(
+        "waiting",
+        t("bmWaiting", { t: mm + ":" + (ss < 10 ? "0" : "") + ss }),
+      );
+    }
+
+    function bmPaintList() {
+      if (!bmEls.list) return;
+      const keep = bmEls.list.querySelector(".bm-list-title");
+      bmEls.list.innerHTML = "";
+      if (keep) bmEls.list.appendChild(keep);
+      for (const c of bmState.channels) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "bm-item" + (c.id === bmState.active ? " is-active" : "");
+        b.dataset.bm = c.id;
+        const ic = document.createElement("span");
+        ic.className = "bm-item-ic bm-ic-" + c.id;
+        ic.setAttribute("aria-hidden", "true");
+        ic.textContent = c.short || "";
+        const tx = document.createElement("span");
+        tx.className = "bm-item-tx";
+        const nm = document.createElement("b");
+        nm.textContent = c.name;
+        const meta = document.createElement("small");
+        meta.textContent = c.bindable === false
+          ? wavegT("bmNotBindable")
+          : c.bound
+            ? wavegT("bmBoundMeta") + (c.enabled ? " · " + wavegT("bmEnabledMeta") : "")
+            : wavegT("bmNotBoundMeta");
+        tx.appendChild(nm);
+        tx.appendChild(meta);
+        const dot = document.createElement("span");
+        dot.className = "bm-dot";
+        dot.dataset.state = c.bindable === false ? "na" : c.bound ? "on" : "off";
+        dot.setAttribute("aria-hidden", "true");
+        b.appendChild(ic);
+        b.appendChild(tx);
+        b.appendChild(dot);
+        b.addEventListener("click", () => bmSelect(c.id));
+        bmEls.list.appendChild(b);
+      }
+    }
+
+    function bmPaintDetail() {
+      const c = bmActive();
+      if (!c) return;
+      if (bmEls.avatar) {
+        bmEls.avatar.className = "bm-avatar bm-ic-" + c.id;
+        bmEls.avatar.textContent = c.short || "";
+      }
+      if (bmEls.name) bmEls.name.textContent = c.name;
+      const bindable = c.bindable !== false;
+      if (bmEls.state) {
+        bmEls.state.textContent = !bindable
+          ? wavegT("bmNotBindable")
+          : c.bound
+            ? wavegT("bmBound") + (c.masked ? " · " + c.masked : "")
+            : wavegT("bmNotBound");
+      }
+      if (bmEls.badge) {
+        bmEls.badge.dataset.state = c.bound ? "on" : "off";
+        bmEls.badge.textContent = c.bound ? wavegT("bmBound") : wavegT("bmNotBound");
+      }
+      if (bmEls.enabled) {
+        bmEls.enabled.checked = Boolean(c.enabled);
+        /* 没凭据就不许「启用」：写一个 BITBOT_*_POST=1 却没 Webhook，
+           结果是「显示已开启、消息永远发不出去」—— 这是最费工单的一种状态。
+           绑定成功后主进程会顺手把它打开，所以这里不需要用户先来点。 */
+        bmEls.enabled.disabled = !bindable || !c.bound;
+      }
+      if (bmEls.switchWrap) {
+        bmEls.switchWrap.style.opacity = bindable && c.bound ? "" : ".45";
+        bmEls.switchWrap.title = bindable
+          ? c.bound ? wavegT("bmEnable") : wavegT("bmEnableNeedBind")
+          : wavegT("bmNotBindable");
+      }
+
+      /* 不可绑定的渠道（微信）：不给二维码，如实说原因 + 给可达的那条路。 */
+      if (bmEls.bindNote) bmEls.bindNote.textContent = bindable ? wavegT("bmBindNote") : (c.reason || "");
+      if (bmEls.bindHint) {
+        bmEls.bindHint.textContent = bindable
+          ? t("bmBindHintCh", { ch: c.name })
+          : wavegT("bmNoQrHint");
+      }
+      const showQr = bindable;
+      /* 不可绑定的渠道（微信）连那块白底都不该出现：一个空的白方块
+         看起来就是「二维码加载失败」，比没有更糟（截图验收抓到的）。 */
+      if (bmEls.qrWrap) bmEls.qrWrap.hidden = !bindable;
+      if (bmEls.bindStatus) bmEls.bindStatus.hidden = !bindable;
+      if (bmEls.qr) bmEls.qr.hidden = !showQr || !bmState.url;
+      if (bmEls.qrEmpty) bmEls.qrEmpty.hidden = !bindable || Boolean(bmState.url);
+      if (bmEls.begin) {
+        bmEls.begin.hidden = !bindable;
+        bmEls.begin.disabled = false;
+        bmEls.begin.textContent = bmState.lanArmed ? wavegT("bmLanEnable") : wavegT("bmBegin");
+      }
+      if (bmEls.copy) bmEls.copy.hidden = !bindable;
+      if (bmEls.path) {
+        bmEls.path.hidden = !(c.bindable === false && c.path);
+      }
+      if (bmEls.factCred) {
+        bmEls.factCred.textContent = !bindable
+          ? wavegT("bmFactCredWechat")
+          : c.masked
+            ? t("bmFactCredSome", { m: c.masked })
+            : wavegT("bmFactCredNone");
+      }
+      if (bmEls.unbind) bmEls.unbind.disabled = !bindable || !c.bound;
+      if (bmEls.openConnect) bmEls.openConnect.disabled = false;
+    }
+
+    function bmResetBindUi() {
+      bmStopTimer();
+      bmState.url = "";
+      bmState.expiresAt = 0;
+      bmState.lanArmed = false;
+      bmPaintQr("");
+      if (bmEls.qrEmpty) bmEls.qrEmpty.textContent = wavegT("bmQrEmpty");
+      bmSetStatus("idle", wavegT("bmWaitingIdle"));
+      if (bmEls.copy) bmEls.copy.disabled = true;
+      if (bmEls.lanNote) {
+        bmEls.lanNote.hidden = true;
+        bmEls.lanNote.textContent = "";
+      }
+    }
+
+    function bmSelect(id) {
+      if (id === bmState.active) return;
+      bmState.active = id;
+      bmResetBindUi();
+      bmPaintList();
+      bmPaintDetail();
+    }
+
+    async function bmLoad() {
+      if (!window.bitbot || !window.bitbot.channel) return;
+      try {
+        const r = await window.bitbot.channel.list();
+        bmState.channels = (r && r.channels) || [];
+      } catch (_) {
+        bmState.channels = [];
+      }
+      if (!bmState.active) {
+        const firstBindable = bmState.channels.filter((c) => c.bindable !== false)[0];
+        bmState.active = (firstBindable || bmState.channels[0] || {}).id || "";
+      }
+      bmState.loaded = true;
+      bmPaintList();
+      bmPaintDetail();
+    }
+
+    async function bmBegin() {
+      const c = bmActive();
+      if (!c || c.bindable === false) return;
+      if (bmEls.begin) bmEls.begin.disabled = true;
+      try {
+        const r = await window.bitbot.channel.beginBind({
+          channel: c.id,
+          // 第二次点击才带 allow_lan：改用户偏好这件事要他自己点那一下。
+          allow_lan: bmState.lanArmed === true,
+        });
+        if (!r || !r.ok) {
+          if (r && r.error === "lan_closed") {
+            bmState.lanArmed = true;
+            if (bmEls.begin) {
+              bmEls.begin.textContent = wavegT("bmLanEnable");
+              bmEls.begin.disabled = false;
+            }
+            if (bmEls.lanNote) {
+              bmEls.lanNote.hidden = false;
+              bmEls.lanNote.textContent = wavegT("bmLanClosed");
+            }
+            bmSetStatus("error", wavegT("bmLanClosedShort"));
+            return;
+          }
+          bmSetStatus("error", t("bmBeginFail", { err: (r && (r.reason || r.error)) || "unknown" }));
+          if (bmEls.begin) bmEls.begin.disabled = false;
+          return;
+        }
+        bmState.lanArmed = false;
+        bmState.url = r.url || "";
+        bmState.expiresAt = Number(r.expires_at) || 0;
+        bmPaintQr(bmState.url);
+        if (bmEls.copy) bmEls.copy.disabled = !bmState.url;
+        if (bmEls.lanNote) {
+          bmEls.lanNote.hidden = !r.lan_auto_enabled;
+          if (r.lan_auto_enabled) bmEls.lanNote.textContent = wavegT("bmLanAuto");
+        }
+        bmStopTimer();
+        bmTick();
+        bmState.timer = setInterval(bmTick, 1000);
+        /* 已经有码了还写「生成二维码」，用户会以为点一下只是刷新显示，
+           其实会作废旧码。文案跟着状态走。 */
+        if (bmEls.begin) bmEls.begin.textContent = wavegT("bmRegen");
+      } catch (e) {
+        bmSetStatus("error", String((e && e.message) || e));
+      } finally {
+        if (bmEls.begin) bmEls.begin.disabled = false;
+      }
+    }
+
+    function bmClose() {
+      if (bmEls.modal) bmEls.modal.style.display = "none";
+      bmResetBindUi();
+      bbSheetClosed("bot-manager-modal");
+    }
+
+    function openBotManager(triggerEl) {
+      if (!bmEls.modal) return;
+      bmEls.modal.style.display = "flex";
+      bbSheetOpened("bot-manager-modal", triggerEl || document.getElementById("account-avatar-btn"));
+      bmLoad().catch(() => {});
+    }
+
     const mcOpenManager = document.getElementById("mc-open-manager");
     if (mcOpenManager) {
       mcOpenManager.addEventListener("click", () => {
+        // 两层弹窗叠着会让人不知道该关哪个：先关自己再开。
         closeMobileControl();
-        const relayEntry = document.getElementById("mc-relay-open");
-        if (relayEntry) relayEntry.click();
+        openBotManager(mcOpenManager);
       });
     }
-    const mcGotoChannels = document.getElementById("mc-goto-channels");
-    if (mcGotoChannels) {
-      mcGotoChannels.addEventListener("click", () => {
-        // 跳走就先关自己：两层弹窗叠着，用户不知道该关哪一个。
-        closeMobileControl();
+    if (bmEls.close) bmEls.close.addEventListener("click", bmClose);
+    if (bmEls.begin) bmEls.begin.addEventListener("click", bmBegin);
+    if (bmEls.path) {
+      bmEls.path.addEventListener("click", () => {
+        const target = (bmActive() && bmActive().path) || "wecom";
+        bmSelect(target);
+      });
+    }
+    if (bmEls.copy) {
+      bmEls.copy.addEventListener("click", async () => {
+        if (!bmState.url) return;
+        try {
+          await navigator.clipboard.writeText(bmState.url);
+          bmSetStatus("waiting", wavegT("bmCopied"));
+        } catch (_) {
+          bmSetStatus("error", wavegT("bmCopyFail"));
+        }
+      });
+    }
+    if (bmEls.enabled) {
+      bmEls.enabled.addEventListener("change", async () => {
+        const c = bmActive();
+        if (!c) return;
+        const want = Boolean(bmEls.enabled.checked);
+        try {
+          const r = await window.bitbot.channel.setEnabled({ channel: c.id, enabled: want });
+          if (r && r.ok) {
+            bmState.channels = r.channels || bmState.channels;
+            bmPaintList();
+            bmPaintDetail();
+          } else {
+            bmEls.enabled.checked = !want;
+          }
+        } catch (_) {
+          bmEls.enabled.checked = !want;
+        }
+      });
+    }
+    if (bmEls.unbind) {
+      /* 两次点击才真删：这是不可逆的（凭据被清掉），不做静默一键。
+         4 秒内没跟上第二次就自己复位，避免「按钮一直红着等误触」。 */
+      bmEls.unbind.addEventListener("click", async () => {
+        const c = bmActive();
+        if (!c) return;
+        if (!bmState.unbindAt) {
+          bmState.unbindAt = Date.now();
+          bmEls.unbind.textContent = wavegT("bmUnbindConfirm");
+          bmEls.unbind.classList.add("is-armed");
+          setTimeout(() => {
+            if (bmState.unbindAt && Date.now() - bmState.unbindAt >= 3800) {
+              bmState.unbindAt = 0;
+              bmEls.unbind.textContent = wavegT("bmUnbindBtn");
+              bmEls.unbind.classList.remove("is-armed");
+            }
+          }, 4000);
+          return;
+        }
+        bmState.unbindAt = 0;
+        bmEls.unbind.textContent = wavegT("bmUnbindBtn");
+        bmEls.unbind.classList.remove("is-armed");
+        try {
+          const r = await window.bitbot.channel.unbind({ channel: c.id });
+          if (r && r.ok) {
+            bmState.channels = r.channels || bmState.channels;
+            bmResetBindUi();
+            bmPaintList();
+            bmPaintDetail();
+            bmSetStatus("idle", wavegT("bmUnbound"));
+          }
+        } catch (_) {
+          /* 失败就别装作删了：状态不改，用户再点一次即可 */
+        }
+      });
+    }
+    if (bmEls.openConnect) {
+      bmEls.openConnect.addEventListener("click", () => {
+        bmClose();
         openConnectApps(document.getElementById("account-avatar-btn"));
         const cn = document.getElementById("ca-cn-channels");
         if (cn && cn.scrollIntoView) cn.scrollIntoView({ block: "start" });
       });
     }
+    /* 手机那边提交成功后主进程广播过来：不用轮询，也不用手点刷新。 */
+    if (window.bitbot && typeof window.bitbot.onChannelBound === "function") {
+      window.bitbot.onChannelBound(() => {
+        if (!bmEls.modal || bmEls.modal.style.display === "none") return;
+        const c = bmActive();
+        bmResetBindUi();
+        bmSetStatus("done", wavegT("bmBoundDone"));
+        if (c) bmLoad().catch(() => {});
+      });
+    }
+
     const apRemote = document.getElementById("ap-remote");
     if (apRemote) {
       apRemote.addEventListener("click", () => {
@@ -15167,6 +15635,7 @@
       "connect-apps-modal": () => closeConnectApps(),
       "settings-panel": () => closeSettingsPanel(),
       "mobile-control-modal": () => closeMobileControl(),
+      "bot-manager-modal": () => bmClose(),
     };
     window.__bbSheetStack = window.__bbSheetStack || [];
     function bbSheetOpened(id, triggerEl) {
@@ -15260,6 +15729,7 @@
     bbBindSheetMask("model-modal");
     bbBindSheetMask("settings-panel");
     bbBindSheetMask("mobile-control-modal");
+    bbBindSheetMask("bot-manager-modal");
     const caTemplateBtn = document.getElementById("ca-template-btn");
     if (caTemplateBtn) {
       caTemplateBtn.addEventListener("click", (ev) => {
@@ -15954,6 +16424,52 @@
     let wavegLang = "zh-CN";
     const WAVEG_I18N = {
       "zh-CN": {
+        bmTitle: "机器人管理",
+        bmSubtitle: "把聊天工具接成机器人。扫一下码，凭据在手机上填，桌面不用粘任何字段。",
+        bmListTitle: "机器人",
+        bmStateIdle: "读取中…",
+        bmEnable: "启用",
+        bmEnableNeedBind: "先关联才能启用",
+        bmBindTitle: "关联机器人",
+        bmNotBound: "未关联",
+        bmBound: "已关联",
+        bmBindNote: "扫码后自动保存凭据。",
+        bmBindHint: "用手机相机扫这个码，在手机上打开绑定页。",
+        bmBindHintCh: "用手机相机扫这个码，在手机上把 {ch} 的凭据填好。",
+        bmQrEmpty: "点「生成二维码」，这里才会出现码。",
+        bmWaitingIdle: "还没生成",
+        bmWaiting: "等待扫码 · 还剩 {t}",
+        bmBegin: "生成二维码",
+        bmRegen: "重新生成",
+        bmCopy: "复制链接",
+        bmCopied: "已复制 · 链接 5 分钟内有效",
+        bmCopyFail: "复制失败：这台机器不让写剪贴板，手动选中链接吧",
+        bmExpired: "这个码过期了，重新生成一个",
+        bmBoundMeta: "已关联",
+        bmEnabledMeta: "已启用",
+        bmNotBoundMeta: "未关联",
+        bmNotBindable: "不支持扫码",
+        bmLanEnable: "开启局域网并生成",
+        bmLanClosed: "手机要能访问到这个地址，得先放开局域网（同一 Wi-Fi 下的设备才能连这台桌面）。点「开启局域网并生成」就一起做了。",
+        bmLanClosedShort: "需要先开启局域网",
+        bmLanAuto: "已顺带开启局域网：手机要能扫到这个地址。",
+        bmBeginFail: "生成失败：{err}",
+        bmFactCred: "凭据",
+        bmFactCredNone: "还没有存过。",
+        bmFactCredSome: "已存在本地配置（{m}），界面只显示尾号。",
+        bmFactCredWechat: "微信这一侧没有可存的机器人凭据。",
+        bmFactWhere: "完整字段在哪",
+        bmFactWhereHint: "加签密钥、回调 Token 这类高级项在「连接应用 → 通信」里，和这里是同一份配置。",
+        bmOpenConnect: "打开",
+        bmUnbind: "解除关联",
+        bmUnbindHint: "从这台桌面删掉这个渠道的凭据，随时可以重新扫码。",
+        bmUnbindBtn: "解除关联",
+        bmUnbindConfirm: "再点一次确认",
+        bmUnbound: "已解除，凭据已删掉",
+        bmBoundDone: "手机上提交成功 · 已关联",
+        bmNoQrHint: "这一条没有二维码可扫，原因见下。",
+        bmOpenWecom: "去企业微信关联",
+        mcManagerHint: "要让群里同事直接找机器人说话，去机器人管理。",
         newChat: "新建对话",
         chats: "会话",
         bots: "Bot 列表",
@@ -16374,7 +16890,7 @@
         mcChFeishuNote: "从飞书打开这个工作区。",
         mcChWecomName: "企业微信",
         mcChWecomNote: "从企业微信打开这个工作区。",
-        mc2Subtitle: "选一个连接，点一下就能用；只有需要自定义时才展开高级设置。",
+        mc2Subtitle: "手机不在同一个 Wi-Fi 时用这里；同网直连不需要动它。",
         mc2ListTitle: "连接",
         mc2LanName: "本机同网",
         mc2LanMeta: "和手机在同一个 Wi-Fi",
@@ -16824,6 +17340,52 @@
         chatCreatedHint: "新会话已创建 · 输入消息开始",
       },
       "zh-TW": {
+        bmTitle: "機器人管理",
+        bmSubtitle: "把聊天工具接成機器人。掃一下碼，憑據在手機上填，桌面不用貼任何欄位。",
+        bmListTitle: "機器人",
+        bmStateIdle: "讀取中…",
+        bmEnable: "啟用",
+        bmEnableNeedBind: "先關聯才能啟用",
+        bmBindTitle: "關聯機器人",
+        bmNotBound: "未關聯",
+        bmBound: "已關聯",
+        bmBindNote: "掃碼後自動儲存憑據。",
+        bmBindHint: "用手機相機掃這個碼，在手機上開啟綁定頁。",
+        bmBindHintCh: "用手機相機掃這個碼，在手機上把 {ch} 的憑據填好。",
+        bmQrEmpty: "點「生成二維碼」，這裡才會出現碼。",
+        bmWaitingIdle: "還沒生成",
+        bmWaiting: "等待掃碼 · 還剩 {t}",
+        bmBegin: "生成二維碼",
+        bmRegen: "重新生成",
+        bmCopy: "複製連結",
+        bmCopied: "已複製 · 連結 5 分鐘內有效",
+        bmCopyFail: "複製失敗：這台機器不讓寫剪貼簿，手動選取連結吧",
+        bmExpired: "這個碼過期了，重新生成一個",
+        bmBoundMeta: "已關聯",
+        bmEnabledMeta: "已啟用",
+        bmNotBoundMeta: "未關聯",
+        bmNotBindable: "不支援掃碼",
+        bmLanEnable: "開啟區域網路並生成",
+        bmLanClosed: "手機要能存取到這個位址，得先放開區域網路（同一 Wi-Fi 下的裝置才能連這台桌面）。點「開啟區域網路並生成」就一起做了。",
+        bmLanClosedShort: "需要先開啟區域網路",
+        bmLanAuto: "已順帶開啟區域網路：手機要能掃到這個位址。",
+        bmBeginFail: "生成失敗：{err}",
+        bmFactCred: "憑據",
+        bmFactCredNone: "還沒有存過。",
+        bmFactCredSome: "已存在本機設定（{m}），介面只顯示尾號。",
+        bmFactCredWechat: "微信這一側沒有可存的機器人憑據。",
+        bmFactWhere: "完整欄位在哪",
+        bmFactWhereHint: "加簽密鑰、回呼 Token 這類進階項在「連接應用 → 通訊」裡，和這裡是同一份設定。",
+        bmOpenConnect: "開啟",
+        bmUnbind: "解除關聯",
+        bmUnbindHint: "從這台桌面刪掉這個渠道的憑據，隨時可以重新掃碼。",
+        bmUnbindBtn: "解除關聯",
+        bmUnbindConfirm: "再點一次確認",
+        bmUnbound: "已解除，憑據已刪掉",
+        bmBoundDone: "手機上提交成功 · 已關聯",
+        bmNoQrHint: "這一條沒有二維碼可掃，原因見下。",
+        bmOpenWecom: "去企業微信關聯",
+        mcManagerHint: "要讓群組同事直接找機器人說話，去機器人管理。",
         newChat: "新對話",
         chats: "工作",
         bots: "Bot 清單",
@@ -17244,7 +17806,7 @@
         mcChFeishuNote: "從飛書開啟這個工作區。",
         mcChWecomName: "企業微信",
         mcChWecomNote: "從企業微信開啟這個工作區。",
-        mc2Subtitle: "選一個連線，點一下就能用；只有需要自訂時才展開進階設定。",
+        mc2Subtitle: "手機不在同一個 Wi-Fi 時用這裡；同網直連不需要動它。",
         mc2ListTitle: "連線",
         mc2LanName: "本機同網",
         mc2LanMeta: "和手機在同一個 Wi-Fi",
@@ -17694,6 +18256,52 @@
         chatCreatedHint: "新工作已建立 · 輸入訊息開始",
       },
       en: {
+        bmTitle: "Bots",
+        bmSubtitle: "Turn a chat app into a bot. Scan once, fill the credential on your phone — nothing to paste here.",
+        bmListTitle: "Bots",
+        bmStateIdle: "Reading…",
+        bmEnable: "Enabled",
+        bmEnableNeedBind: "Link it first",
+        bmBindTitle: "Link this bot",
+        bmNotBound: "Not linked",
+        bmBound: "Linked",
+        bmBindNote: "Scanning saves the credential for you.",
+        bmBindHint: "Scan this with your phone camera to open the setup page on your phone.",
+        bmBindHintCh: "Scan this with your phone camera and fill in the {ch} credential there.",
+        bmQrEmpty: "Tap Generate QR code to get a code here.",
+        bmWaitingIdle: "Not generated yet",
+        bmWaiting: "Waiting for scan · {t} left",
+        bmBegin: "Generate QR code",
+        bmRegen: "Generate again",
+        bmCopy: "Copy link",
+        bmCopied: "Copied · the link is valid for 5 minutes",
+        bmCopyFail: "Copy failed: clipboard is blocked here, select the link manually",
+        bmExpired: "This code expired — generate a new one",
+        bmBoundMeta: "Linked",
+        bmEnabledMeta: "on",
+        bmNotBoundMeta: "Not linked",
+        bmNotBindable: "No QR setup",
+        bmLanEnable: "Allow LAN and generate",
+        bmLanClosed: "The phone must be able to reach this address, so LAN access has to be opened first. The next tap does both.",
+        bmLanClosedShort: "LAN access is required first",
+        bmLanAuto: "LAN access was turned on too — the phone must be able to reach this address.",
+        bmBeginFail: "Could not generate: {err}",
+        bmFactCred: "Credential",
+        bmFactCredNone: "Nothing saved yet.",
+        bmFactCredSome: "Stored locally ({m}); only the last digits are shown.",
+        bmFactCredWechat: "There is no bot credential to store on the WeChat side.",
+        bmFactWhere: "Where the full fields are",
+        bmFactWhereHint: "Advanced items such as the signing secret and callback token live under Connect apps → Communication; it is the same config.",
+        bmOpenConnect: "Open",
+        bmUnbind: "Unlink",
+        bmUnbindHint: "Removes this channel's credential from this desktop. You can scan again any time.",
+        bmUnbindBtn: "Unlink",
+        bmUnbindConfirm: "Tap again to confirm",
+        bmUnbound: "Unlinked — the credential is gone",
+        bmBoundDone: "Submitted on your phone · linked",
+        bmNoQrHint: "There is no QR code for this one — see why below.",
+        bmOpenWecom: "Link via WeCom",
+        mcManagerHint: "To let teammates in a chat talk to a bot, open Bots.",
         newChat: "New chat",
         chats: "Chats",
         bots: "Bots",
@@ -18114,7 +18722,7 @@
         mcChFeishuNote: "Open this workspace from Feishu.",
         mcChWecomName: "WeCom",
         mcChWecomNote: "Open this workspace from WeCom.",
-        mc2Subtitle: "Pick a connection and go. Only open Advanced if you need custom settings.",
+        mc2Subtitle: "Use this when the phone is on a different network. Same Wi-Fi needs nothing here.",
         mc2ListTitle: "Connections",
         mc2LanName: "Same Wi-Fi",
         mc2LanMeta: "Phone and desktop on one Wi-Fi",

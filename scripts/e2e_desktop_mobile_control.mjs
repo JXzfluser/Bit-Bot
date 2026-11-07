@@ -489,63 +489,90 @@ let app2 = null;
       }
     }
 
-    /* ---------- MC-07 Bot Channel 一列：只列真支持的，点了真跳 ---------- */
+    /* ---------- MC-07 渠道不在这张弹窗里：渠道属于「机器人管理」----------
+     * 这一条以前判的是「弹窗里要列三条真渠道」。IA 改过之后判据反过来了：
+     * 渠道挂在配对弹窗里会让人以为钉钉是「连手机的另一种方式」。
+     * 所以现在钉的是**边界**：配对弹窗里零渠道卡片 + 有一个去机器人管理的入口；
+     * 点进去之后四条渠道（含微信）在那边，并且微信不给假二维码。 */
     {
-      const ch = await readIds(win, ["mc-channel-card", "mc-ch-ding", "mc-ch-feishu", "mc-ch-wecom", "mc-goto-channels"]);
-      if (!ch["mc-channel-card"]) bad("MC-07 弹窗内没有 Bot Channel 一列（#mc-channel-card 不存在）");
+      const inside = await win.evaluate(() => {
+        const m = document.getElementById("mobile-control-modal");
+        if (!m) return null;
+        return {
+          channelRows: m.querySelectorAll("[id^='mc-ch-']").length,
+          oldCard: Boolean(m.querySelector("#mc-channel-card")),
+          managerEntry: (() => {
+            const b = m.querySelector("#mc-open-manager");
+            if (!b) return null;
+            const s = getComputedStyle(b);
+            return { text: String(b.textContent || "").trim(), shown: s.display !== "none" };
+          })(),
+          bodyText: String(m.textContent || ""),
+        };
+      });
+      if (!inside) bad("MC-07 配对弹窗不存在，边界无从判");
+      else if (inside.channelRows || inside.oldCard)
+        bad("MC-07 渠道卡片又回到了手机配对弹窗", JSON.stringify({ rows: inside.channelRows, old: inside.oldCard }));
+      else if (/使用 Bot Channel/.test(inside.bodyText))
+        bad("MC-07 弹窗里还留着 Bot Channel 那一栏的文案");
+      else if (!inside.managerEntry || !inside.managerEntry.shown)
+        bad("MC-07 没有去机器人管理的入口（渠道搬走了却没留门）", JSON.stringify(inside.managerEntry));
       else {
-        const names = ["mc-ch-ding", "mc-ch-feishu", "mc-ch-wecom"].map((id) => ch[id]);
-        if (names.some((n) => !n)) bad("MC-07 渠道行不齐（钉钉/飞书/企业微信要各一行）", names.map((n, i) => (n ? "" : "missing#" + i)).join(","));
-        else if (!/钉钉/.test(names[0].text) || !/飞书/.test(names[1].text) || !/企业微信|企微/.test(names[2].text))
-          bad("MC-07 渠道行名字没写清是哪一路", JSON.stringify(names.map((n) => n.text)));
-        else {
-          const fake = await win.evaluate(() => {
-            const card = document.getElementById("mc-channel-card");
-            /* 「假入口」的判据是**可点的东西**与**渠道行**：说明文案里出现
-               "没列出的渠道目前没有适配器" 这种话是诚实，不是入口。 */
-            const controls = Array.from(card.querySelectorAll("button, a, [id^='mc-ch-'], li"));
-            const t = controls.map((c) => String(c.textContent || "")).join(" | ");
-            const hits = [];
-            for (const w of ["微信个人号", "Telegram", "电报", "Lark", "WhatsApp", "Discord", "Slack", "飞书国际版"]) if (t.includes(w)) hits.push(w);
-            // 「企业微信」里含「微信」是正常名字，先剔掉再找个人号那一路
-            const stripped = t.replace(/企业微信|企微/g, "");
-            if (/微信/.test(stripped)) hits.push("微信");
-            const rows = card.querySelectorAll("[id^='mc-ch-']").length;
-            return { hits, rows };
-          });
-          if (fake.hits.length) bad("MC-07 列了做不到的渠道（假入口比没有入口更坏）", fake.hits.join(","));
-          else if (fake.rows !== 3) bad("MC-07 渠道行数不等于真支持的三条", "rows=" + fake.rows);
-          else if (!ch["mc-goto-channels"] || ch["mc-goto-channels"].disabled) bad("MC-07 没有可用的「去配置」入口", JSON.stringify(ch["mc-goto-channels"]));
-          else {
-            await win.click("#mc-goto-channels");
-            await win.waitForTimeout(500);
-            const landed = await win.evaluate(() => {
-              const ca = document.getElementById("connect-apps-modal");
-              const cn = document.getElementById("ca-cn-channels");
-              const mc = document.getElementById("mobile-control-modal");
-              const vis = (el) => {
-                if (!el) return false;
-                const s = getComputedStyle(el);
-                return s.display !== "none" && s.visibility !== "hidden";
-              };
-              const b = cn ? cn.getBoundingClientRect() : null;
+        await win.click("#mc-open-manager");
+        await win.waitForTimeout(600);
+        const bm = await win.evaluate(() => {
+          const el = document.getElementById("bot-manager-modal");
+          const vis = (n) => {
+            if (!n) return false;
+            const s = getComputedStyle(n);
+            return s.display !== "none" && s.visibility !== "hidden";
+          };
+          const items = el ? Array.from(el.querySelectorAll(".bm-item")) : [];
+          const typing = el
+            ? Array.from(el.querySelectorAll("input, textarea, select")).filter((n) => {
+                const t = String(n.getAttribute("type") || "").toLowerCase();
+                return t !== "checkbox" && t !== "radio" && t !== "hidden";
+              }).length
+            : -1;
+          return {
+            shown: vis(el),
+            count: items.length,
+            names: items.map((i) => String(i.textContent || "").replace(/\s+/g, " ").trim()),
+            mcStill: vis(document.getElementById("mobile-control-modal")),
+            typing,
+            wechatQrBtn: (() => {
+              /* 选中微信后「生成二维码」应当是隐藏的 —— 它没有可扫的东西。
+                 名字要**精确**匹配：/微信/ 会先命中「企业微信」。 */
+              const wx = items.filter((i) => {
+                const n = i.querySelector("b");
+                return n && n.textContent.trim() === "微信";
+              })[0];
+              if (!wx) return { found: false };
+              wx.click();
+              const btn = document.getElementById("bm-begin");
+              const qr = document.getElementById("bm-qr");
               return {
-                connectApps: vis(ca),
-                cnShown: vis(cn),
-                cnInView: Boolean(b && b.height > 0 && b.y >= 0 && b.y < window.innerHeight),
-                mcStill: vis(mc),
+                found: true,
+                beginHidden: btn ? btn.hidden : null,
+                qrHidden: qr ? qr.hidden : null,
               };
-            });
-            if (!landed.connectApps || !landed.cnShown)
-              bad("MC-07 「去配置」没把用户送到 连接应用 的国内渠道卡", JSON.stringify(landed));
-            else if (landed.mcStill) bad("MC-07 跳过去之后两层弹窗还叠着（用户关掉哪个？）", JSON.stringify(landed));
-            else ok("MC-07 只列钉钉/飞书/企业微信三条真渠道，「去配置」直接落到连接应用的国内渠道卡" + (landed.cnInView ? "（已在视口内）" : ""));
-            /* 收摊：连接应用那张卡的遮罩会盖住账户按钮，不关掉的话后面每条
-               「点入口」都变成点不到 —— 这是真实层级，不是门禁的毛病。 */
-            await win.keyboard.press("Escape");
-            await win.waitForTimeout(400);
-          }
-        }
+            })(),
+          };
+        });
+        const wantNames = ["钉钉", "飞书", "企业微信", "微信"];
+        const nameOk = wantNames.every((w) => bm.names.some((n) => n.indexOf(w) >= 0));
+        if (!bm.shown) bad("MC-07 「机器人管理」没打开", JSON.stringify(bm));
+        else if (bm.mcStill) bad("MC-07 两层弹窗叠着（用户不知道该关哪个）", JSON.stringify(bm));
+        else if (bm.count !== 4 || !nameOk)
+          bad("MC-07 机器人管理里的渠道不是四条（钉钉/飞书/企微/微信）", JSON.stringify(bm.names));
+        else if (bm.typing !== 0)
+          bad("MC-07 机器人管理主区出现了 " + bm.typing + " 个打字控件（这一屏应当零输入）");
+        else if (!bm.wechatQrBtn.found || bm.wechatQrBtn.beginHidden !== true || bm.wechatQrBtn.qrHidden !== true)
+          bad("MC-07 微信这一条给出了二维码（它没有官方机器人接口，扫了没用）", JSON.stringify(bm.wechatQrBtn));
+        else
+          ok("MC-07 配对弹窗零渠道卡片、留了去机器人管理的门；那边四条渠道齐全，微信不给假码，主区零输入框");
+        await win.keyboard.press("Escape");
+        await win.waitForTimeout(400);
       }
     }
 
@@ -759,7 +786,8 @@ let app2 = null;
             const r = s.getBoundingClientRect();
             return { w: Math.round(r.width), x: Math.round(r.x), right: Math.round(r.right) };
           })(),
-          cards: [read("mc-pair-card"), read("mc-channel-card")],
+          /* 右栏现在是「已登记的设备」（渠道已移去机器人管理），量它而不是旧的渠道卡 */
+          cards: [read("mc-pair-card"), read("mc-roster-card")],
           close: read("mc-close"),
           gen: read("mc-gen-btn"),
         };
@@ -769,8 +797,8 @@ let app2 = null;
       else if (!geo.sheet || geo.sheet.w > geo.innerW) bad("MC-09 sheet 宽超出视口", JSON.stringify(geo.sheet || {}) + " innerW=" + geo.innerW);
       else if (!geo.cards[0] || !geo.cards[1]) bad("MC-09 窄屏找不到两张卡", JSON.stringify(geo.cards));
       else if (Math.abs(geo.cards[0].x - geo.cards[1].x) > 2)
-        bad("MC-09 窄屏没降成单列（两卡左右并排 = 480 宽里挤两张）", JSON.stringify({ pair: geo.cards[0].x, channel: geo.cards[1].x }));
-      else if (!(geo.cards[1].y > geo.cards[0].y)) bad("MC-09 单列顺序不对（渠道卡跑到配对卡上面）", JSON.stringify(geo.cards));
+        bad("MC-09 窄屏没降成单列（两卡左右并排 = 480 宽里挤两张）", JSON.stringify({ pair: geo.cards[0].x, roster: geo.cards[1].x }));
+      else if (!(geo.cards[1].y > geo.cards[0].y)) bad("MC-09 单列顺序不对（设备卡跑到扫码卡上面）", JSON.stringify(geo.cards));
       else if (!geo.close || !geo.close.inView || geo.close.h <= 0) bad("MC-09 关闭键在窄屏点不到", JSON.stringify(geo.close));
       else if (!geo.gen || !geo.gen.inView || geo.gen.h <= 0) bad("MC-09 生成配对码键在窄屏点不到", JSON.stringify(geo.gen));
       else ok("MC-09 480×720：sheet " + geo.sheet.w + "px ≤ 视口 " + geo.innerW + "px、无横向滚动、两卡竖排，关闭/生成都在视口内");

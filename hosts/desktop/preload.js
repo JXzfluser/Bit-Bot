@@ -287,6 +287,19 @@ contextBridge.exposeInMainWorld("bitbot", {
     ipcRenderer.on("bitbot:bots-changed", handler);
     return () => ipcRenderer.removeListener("bitbot:bots-changed", handler);
   },
+  /* 扫码关联成功后主进程广播，渲染层据此把「等待扫码」翻成「已关联」，
+     不用轮询，也不用用户手点刷新。 */
+  onChannelBound: (cb) => {
+    const handler = (_e, payload) => {
+      try {
+        cb(payload);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:channel-bound", handler);
+    return () => ipcRenderer.removeListener("bitbot:channel-bound", handler);
+  },
   onFocusSession: (cb) => {
     const handler = (_e, payload) => {
       try {
@@ -379,6 +392,14 @@ contextBridge.exposeInMainWorld("bitbot", {
     copy: (what) => ipcRenderer.invoke("bitbot:pairing:copy", what),
     setLan: (enabled) => ipcRenderer.invoke("bitbot:pairing:lan", enabled),
     code: (payload) => ipcRenderer.invoke("bitbot:pairing:code", payload),
+  },
+  /* 机器人管理：渠道列表 / 扫码关联 / 开关 / 解除。
+   * 渲染层永远拿不到凭据明文 —— 列表只回 masked 尾 4 位。 */
+  channel: {
+    list: () => ipcRenderer.invoke("bitbot:channel:list"),
+    beginBind: (payload) => ipcRenderer.invoke("bitbot:channel:begin-bind", payload || {}),
+    setEnabled: (payload) => ipcRenderer.invoke("bitbot:channel:set-enabled", payload || {}),
+    unbind: (payload) => ipcRenderer.invoke("bitbot:channel:unbind", payload || {}),
   },
   // A3-14 跨网中转设置：get 只回掩码视图，save 把两把凭证交给主进程的
   // secret vault（渲染端拿不到明文，也不会把明文写回 DOM）。

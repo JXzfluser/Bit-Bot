@@ -202,6 +202,146 @@ function pairPageHtml(info) {
   );
 }
 
+/* ── 手机端「关联机器人」页（扫码打开的就是这一页）─────────────────────
+ * 为什么是普通 <form> 而不是 fetch：这一页的 CSP 是 default-src 'none'，
+ * 没有脚本可跑；而且手机浏览器/内置 WebView 关掉 JS 的情况下也该能用。
+ * 表单 POST 是唯一在「无 JS + 无第三方脚本」下还能工作的提交通道。
+ * 页面里没有任何厂商 SDK，也不放二维码 —— 它是被扫的那一头。 */
+function bindFormFieldsHtml(fields, values) {
+  const v = values || {};
+  return (fields || [])
+    .map((f) => {
+      const name = escHtml(f.env);
+      const label = escHtml(f.label);
+      const type = f.type === "password" ? "password" : "text";
+      const hint = f.hint ? '<p class="hint">' + escHtml(f.hint) + "</p>" : "";
+      const req = f.required ? ' required' : "";
+      const cur = v[f.env] != null ? escHtml(String(v[f.env])) : "";
+      /* 密码类不回填：提交失败重渲染时把用户刚粘的凭据再吐回 DOM 没必要。 */
+      const val = type === "password" || !cur ? "" : ' value="' + cur + '"';
+      return (
+        "<label><span>" + label + (f.required ? ' <em>必填</em>' : " <i>可选</i>") + "</span>" +
+        '<input type="' + type + '" name="' + name + '"' + val + req +
+        ' autocomplete="off" autocapitalize="off" spellcheck="false">' +
+        hint +
+        "</label>"
+      );
+    })
+    .join("");
+}
+
+function bindPageHtml(info) {
+  const host = escHtml(info.host || "Desktop");
+  const chName = escHtml(info.channel_name || "");
+  const token = escHtml(info.token || "");
+  const channel = escHtml(info.channel || "");
+  const ttlMin = Math.max(1, Math.round((Number(info.ttl_left_ms) || 0) / 60000));
+  const problems = Array.isArray(info.problems) ? info.problems : [];
+  const problemHtml = problems.length
+    ? '<section class="bad"><h2>这几栏还要改</h2><ul class="plain">' +
+      problems
+        .map((p) => "<li><b>" + escHtml(p.field) + "</b>：" + escHtml(p.message) + "</li>")
+        .join("") +
+      "</ul></section>"
+    : "";
+  return (
+    "<!doctype html>\n" +
+    '<html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
+    "<title>关联 " + chName + " · " + host + "</title>" +
+    "<style>" +
+    ":root{color-scheme:light dark}" +
+    "body{margin:0;padding:24px 18px 40px;background:#f6f6f4;color:#1c1c1a;" +
+    "font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}" +
+    "main{max-width:520px;margin:0 auto}" +
+    "h1{font-size:19px;margin:0 0 4px}" +
+    ".sub{margin:0 0 18px;color:#6b6b66;font-size:14px}" +
+    "section{background:#fff;border:1px solid #e2e2dd;border-radius:12px;padding:16px;margin-bottom:12px}" +
+    "section.bad{background:#fdf1f0;border-color:#e8bdb8}" +
+    "h2{font-size:14px;margin:0 0 8px}" +
+    "label{display:block;margin:0 0 14px}" +
+    "label>span{display:block;font-size:13px;color:#3c3c38;margin-bottom:5px}" +
+    "label em{font-style:normal;color:#b3261e;font-size:11px;margin-left:4px}" +
+    "label i{font-style:normal;color:#8a8a84;font-size:11px;margin-left:4px}" +
+    "input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:16px;" +
+    "border:1px solid #d8d8d2;border-radius:9px;background:#fff;color:#1c1c1a}" +
+    "input:focus{outline:2px solid #1c1c1a;outline-offset:1px}" +
+    ".hint{margin:5px 0 0;font-size:12px;color:#7a7a74;line-height:1.45}" +
+    "button{width:100%;padding:13px;font-size:16px;font-weight:600;border:0;border-radius:10px;" +
+    "background:#1c1c1a;color:#fff}" +
+    ".plain{list-style:none;margin:0;padding:0;font-size:13px}" +
+    ".plain li{margin:4px 0}" +
+    ".note{margin:14px 0 0;font-size:12px;color:#7a7a74;line-height:1.5}" +
+    "@media (prefers-color-scheme:dark){body{background:#141412;color:#eceae6}" +
+    "section{background:#1d1d1b;border-color:#2c2c29}section.bad{background:#2a1b19;border-color:#5a2f2a}" +
+    "label>span{color:#c9c5be}input{background:#141412;border-color:#3a3a35;color:#eceae6}" +
+    "button{background:#eceae6;color:#141412}.sub,.hint,.note{color:#9a978f}}" +
+    "</style></head><body><main>" +
+    "<h1>关联 " + chName + "</h1>" +
+    '<p class="sub">这台桌面是 <strong>' + host + "</strong> · 这一页 " + ttlMin + " 分钟内有效</p>" +
+    problemHtml +
+    "<section><h2>把凭据填在这里</h2>" +
+    '<form method="post" action="/v1/bind/claim">' +
+    '<input type="hidden" name="t" value="' + token + '">' +
+    '<input type="hidden" name="ch" value="' + channel + '">' +
+    bindFormFieldsHtml(info.fields, info.values) +
+    "<button type=\"submit\">保存并关联</button></form>" +
+    '<p class="note">提交后桌面那边会自动变成「已关联」，不用回去再点一次。' +
+    "凭据只写进这台桌面的本地配置，不经过任何第三方；提交一次这条链接就失效。</p>" +
+    "</section></main></body></html>"
+  );
+}
+
+function bindResultHtml(info) {
+  const ok = info.ok === true;
+  const host = escHtml(info.host || "Desktop");
+  const chName = escHtml(info.channel_name || "");
+  const msg = escHtml(info.message || "");
+  return (
+    "<!doctype html>\n" +
+    '<html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    "<title>" + (ok ? "已关联" : "没有保存") + " · " + host + "</title>" +
+    "<style>" +
+    ":root{color-scheme:light dark}" +
+    "body{margin:0;padding:40px 20px;background:#f6f6f4;color:#1c1c1a;" +
+    "font:15px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif}" +
+    "main{max-width:480px;margin:0 auto;background:#fff;border:1px solid #e2e2dd;" +
+    "border-radius:12px;padding:22px}" +
+    "h1{font-size:18px;margin:0 0 8px}" +
+    "p{margin:0 0 8px;color:#4a4a45;font-size:14px}" +
+    ".k{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;" +
+    "border:1px solid #d8d8d2;color:#6b6b66;margin-bottom:12px}" +
+    "@media (prefers-color-scheme:dark){body{background:#141412;color:#eceae6}" +
+    "main{background:#1d1d1b;border-color:#2c2c29}p{color:#bdb9b2}.k{border-color:#3a3a35;color:#9a978f}}" +
+    "</style></head><body><main>" +
+    '<div class="k">' + (ok ? "已关联" : "未保存") + "</div>" +
+    "<h1>" + (ok ? chName + " 已关联到这台桌面" : "这次没有保存成功") + "</h1>" +
+    "<p>" + msg + "</p>" +
+    "<p>" + (ok ? "可以回到桌面了：那一栏会自己变成「已关联」。" : "回桌面重新生成二维码再扫一次。") + "</p>" +
+    "</main></body></html>"
+  );
+}
+
+/* 失败原因说人话，且不泄漏「哪个 token 存在过」——未知 / 过期 / 用过
+ * 对使用者是同一件事：回桌面重新生成。 */
+function bindErrorCopy(error) {
+  switch (String(error || "")) {
+    case "bind_token_unknown":
+    case "bind_token_expired":
+    case "bind_token_used":
+      return "这条关联链接已经失效（过期或已用过一次）。回桌面重新生成二维码再扫。";
+    case "bind_channel_mismatch":
+      return "这条链接不是给这个渠道的。回桌面重新生成二维码。";
+    case "bind_channel_not_bindable":
+      return "这个渠道不支持扫码关联。";
+    case "bind_field_invalid":
+      return "有几栏还要改，改完再提交一次。";
+    default:
+      return "没有保存成功（" + String(error || "unknown") + "）。回桌面重新生成二维码再试。";
+  }
+}
+
 function html(res, code, body) {
   const buf = Buffer.from(body, "utf8");
   res.writeHead(code, {
@@ -586,6 +726,10 @@ function createCnInboundServer(opts = {}) {
   // instance so IPC and HTTP routes see the same codes.
   const pairingManager = opts.pairingManager || createPairingCodeManager();
 
+  /* 渠道「扫码关联」：由桌面注入（同一实例要能被 IPC 签发、被这里的 HTTP 消费）。
+   * 没注入时相关路由如实 404，不假装有这能力。 */
+  const channelBind = opts.channelBind || null;
+
   // W2/A1-1: 跨端事件流（SSE）的可读句柄。优先用调用方注入的（活路径——
   // 桌面把双写库句柄传进来）；没注入时，仅当默认事件库文件已存在才懒加载它。
   // §5.4 规则4：开关没开时绝不在「加载期」require event_log（旧 Electron 运行时
@@ -817,8 +961,21 @@ function createCnInboundServer(opts = {}) {
         throw err;
       }
       let payload = null;
+      /* 手机端「关联机器人」页是一个无脚本 <form>，提交上来是 urlencoded。
+         这里必须单开一支：走下面的 JSON 分支会 parse 失败，页面就永远报错。
+         formPost 只是用来决定回执形态（HTML 页 vs JSON），不影响鉴权。 */
+      let formPost = false;
       const ct = String(req.headers["content-type"] || "");
-      if (raw.length && ct.includes("json")) {
+      if (raw.length && ct.includes("application/x-www-form-urlencoded")) {
+        formPost = true;
+        try {
+          const sp = new URLSearchParams(raw.toString("utf8"));
+          payload = {};
+          for (const [k, v] of sp) payload[k] = v;
+        } catch (_) {
+          payload = null;
+        }
+      } else if (raw.length && ct.includes("json")) {
         try {
           payload = JSON.parse(raw.toString("utf8"));
         } catch (_) {
@@ -989,6 +1146,98 @@ function createCnInboundServer(opts = {}) {
             codeActive: Boolean(ps.code_active),
           }),
         );
+        return;
+      }
+
+      /* ── 扫码关联机器人：手机扫码打开的那一页 + 表单提交 ──────────────
+       * 「扫码」在这里的真实含义是**把填凭据这件事搬到手机上**，不是
+       * 去厂商那边换授权（钉钉/飞书/企微 没有这种公开能力）。
+       * 安全口径：token 一次性 + 5 分钟 + 单渠道；页面无脚本、无第三方资源；
+       * 密码类输入不回填；日志不记 token 也不记提交值。 */
+      if (p === "/bind" && (req.method === "GET" || req.method === "HEAD")) {
+        if (!channelBind) {
+          html(res, 404, bindResultHtml({ ok: false, host: os.hostname(), message: "这台桌面没开渠道关联。" }));
+          return;
+        }
+        const tok = String(urlObj.searchParams.get("t") || "");
+        const chId = String(urlObj.searchParams.get("ch") || "");
+        const pk = channelBind.peek(tok, chId);
+        if (!pk.ok) {
+          html(res, 410, bindResultHtml({ ok: false, host: os.hostname(), message: bindErrorCopy(pk.error) }));
+          return;
+        }
+        html(
+          res,
+          200,
+          bindPageHtml({
+            host: os.hostname(),
+            token: tok,
+            channel: pk.channel,
+            channel_name: pk.name,
+            fields: pk.fields,
+            ttl_left_ms: pk.ttl_left_ms,
+          }),
+        );
+        return;
+      }
+
+      if (p === "/v1/bind/claim" && req.method === "POST") {
+        if (!channelBind) {
+          json(res, 404, { ok: false, error: "bind_unavailable" });
+          return;
+        }
+        const body = payload && typeof payload === "object" ? payload : {};
+        const tok = String(body.t || "");
+        const chId = String(body.ch || "");
+        const values = {};
+        for (const k of Object.keys(body)) {
+          if (k !== "t" && k !== "ch") values[k] = body[k];
+        }
+        const r = await channelBind.claim(tok, { channel: chId, values });
+        if (formPost) {
+          const hostname = os.hostname();
+          if (r.ok) {
+            html(
+              res,
+              200,
+              bindResultHtml({
+                ok: true,
+                host: hostname,
+                channel_name: r.name,
+                message: "凭据已存进这台桌面的本地配置（" + (r.saved_keys || []).length + " 项）。",
+              }),
+            );
+            return;
+          }
+          if (r.error === "bind_field_invalid") {
+            /* 校验失败不消费 token：改一栏再提交，不该被判过期。 */
+            const pk = channelBind.peek(tok, chId);
+            if (pk.ok) {
+              html(
+                res,
+                400,
+                bindPageHtml({
+                  host: hostname,
+                  token: tok,
+                  channel: pk.channel,
+                  channel_name: pk.name,
+                  fields: pk.fields,
+                  ttl_left_ms: pk.ttl_left_ms,
+                  problems: r.problems,
+                  values,
+                }),
+              );
+              return;
+            }
+          }
+          html(
+            res,
+            400,
+            bindResultHtml({ ok: false, host: hostname, message: bindErrorCopy(r.error) }),
+          );
+          return;
+        }
+        json(res, r.ok ? 200 : 400, r);
         return;
       }
 
