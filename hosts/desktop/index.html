@@ -1625,6 +1625,39 @@
   #to-bottom[hidden] { display: none; }
   /* M52b：库里记着、磁盘上已经没有的产物。如实写一行灰字，不画点开是空的破卡。 */
   .artifact-gone { color: var(--muted); font-size: var(--text-sm); }
+  /* 画布：产物墙。三列网格，卡片高度由缩略图定（图是主角），
+     非图片类的产物用「种类 + 名字 + 字节」占位，不假装有预览。 */
+  .cv-sheet { --sheet-w: 900px; }
+  .cv-count { color: var(--muted); font-size: var(--text-sm); margin-left: 8px; }
+  .cv-note { color: var(--muted); font-size: var(--text-sm); margin: 4px 0 12px; }
+  .cv-empty { color: var(--muted); font-size: var(--text-base); padding: 28px 0; text-align: center; }
+  .cv-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: stretch; grid-auto-rows: 1fr; }
+  @media (max-width: 780px) { .cv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .cv-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+  }
+  .cv-thumb {
+    height: 132px;
+    background: var(--fill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .cv-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .cv-thumb .cv-kind { color: var(--muted); font: var(--text-sm)/1.3 var(--font-mono); }
+  .cv-meta { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+  .cv-name { font-size: var(--text-sm); font-weight: 600; word-break: break-all; }
+  .cv-sub { color: var(--muted); font-size: var(--text-xs); }
+  .cv-card .cv-open { align-self: flex-start; }
+  .cv-card.cv-gone { opacity: 0.6; border-style: dashed; }
   #composer input, #composer textarea {
     flex: 1;
     background: transparent;
@@ -3641,6 +3674,22 @@
         </div>
       </div>
     </div>
+    <!-- 画布（Grok 真机的 Canvas / Artifacts）：把**这个对话**里的产物铺成一面墙。
+         只读 + 打开：不在画布上改文件（那要另一条写入路径）。
+         数据来自消息行上的 artifacts[]（M52b 落库），不是扫描目录猜出来的。 -->
+    <div id="canvas-panel" class="bb-modal" role="dialog" aria-modal="true" aria-label="画布" hidden>
+      <div class="bb-sheet cv-sheet">
+        <div class="bb-sheet-head">
+          <div class="bb-sheet-title" data-i18n="canvasTitle">画布</div>
+          <span id="canvas-count" class="cv-count"></span>
+          <span style="flex:1"></span>
+          <button type="button" id="canvas-close" class="bb-btn bb-btn-sm" data-i18n="gpClose">关闭</button>
+        </div>
+        <div id="canvas-note" class="cv-note" data-i18n="canvasNote">这里只把对话里的产物铺开，不在画布上改文件。</div>
+        <div id="canvas-empty" class="cv-empty" data-i18n="canvasEmpty" hidden>这个对话还没有产物。</div>
+        <div id="canvas-grid" class="cv-grid"></div>
+      </div>
+    </div>
     <!-- Grok 真机的 Find in chat（Cmd/Ctrl+F）：只在消息流里找，不动输入框；
          命中用 <mark> 包文本节点，关掉时拆回纯文本，markdown DOM 不被破坏。 -->
     <div id="find-bar" hidden>
@@ -4137,6 +4186,7 @@
       <button type="button" class="bb-chip bb-chip--toggle" id="web-search-toggle" aria-pressed="false" title="联网搜索（本轮是否会真的检索网页）"><span data-i18n="webSearch">联网搜索</span></button>
       <button type="button" class="bb-chip" id="model-switch-chip" aria-haspopup="listbox" title="切换模型" aria-label="切换模型"><span id="active-model-label">默认</span></button>
       <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn">🎧 语音对话</button>
+      <button type="button" id="canvas-open-btn" title="把本对话的产物铺开（只读）" data-i18n="canvasOpenBtn">🖼 画布</button>
     </div>
     <div id="composer-menu" class="composer-menu" hidden></div>
   </form>
@@ -17367,6 +17417,13 @@
         toBottom: "回到底部",
         deleteAction: "删除这条消息",
         artifactGone: "产物已不在本机：{n}",
+        canvasOpenBtn: "🖼 画布",
+        canvasTitle: "画布",
+        canvasNote: "这里只把本对话的产物铺开，不在画布上改文件。",
+        canvasEmpty: "这个对话还没有产物。",
+        canvasCount: "{n} 个产物",
+        canvasOpen: "打开",
+        canvasGone: "已不在本机",
         deleteFailed: "删除失败",
         dayToday: "今天",
         dayYesterday: "昨天",
@@ -18337,6 +18394,13 @@
         toBottom: "回到最底",
         deleteAction: "刪除這則訊息",
         artifactGone: "產物已不在本機：{n}",
+        canvasOpenBtn: "🖼 畫布",
+        canvasTitle: "畫布",
+        canvasNote: "這裡只把本對話的產物鋪開，不在畫布上改檔案。",
+        canvasEmpty: "這個對話還沒有產物。",
+        canvasCount: "{n} 個產物",
+        canvasOpen: "開啟",
+        canvasGone: "已不在本機",
         deleteFailed: "刪除失敗",
         dayToday: "今天",
         dayYesterday: "昨天",
@@ -19303,6 +19367,13 @@
         toBottom: "Scroll to bottom",
         deleteAction: "Delete message",
         artifactGone: "This artifact is no longer on this machine: {n}",
+        canvasOpenBtn: "🖼 Canvas",
+        canvasTitle: "Canvas",
+        canvasNote: "This only lays out this conversation's artifacts; it does not edit files on the canvas.",
+        canvasEmpty: "This conversation has no artifacts yet.",
+        canvasCount: "{n} artifacts",
+        canvasOpen: "Open",
+        canvasGone: "No longer on this machine",
         deleteFailed: "Delete failed",
         dayToday: "Today",
         dayYesterday: "Yesterday",
@@ -21078,6 +21149,114 @@
         new MutationObserver(syncToBottomBtn).observe(log, { childList: true });
       } catch (_) { /* 老内核没有 MutationObserver 就只靠 scroll */ }
       syncToBottomBtn();
+    })();
+
+    /* ── 画布（Grok 的 Canvas / Artifacts）──────────────────────────────
+       只读：把**这个对话**里出现过的产物铺成一面墙。数据源是消息行上的
+       artifacts[]（M52b 落库），不是扫描目录猜出来的 —— 所以每张卡都能说出
+       「哪一轮产生的」，也不会把别人的文件混进来。
+       不在画布上改文件：可编辑画布要另一条写入路径（改动要落回磁盘），
+       那是独立一件事，这里先把「看得见、打得开」做对。 */
+    const CV_IMAGE_KINDS = /^(generate_image|structured_chart|watch_frame|screenshot)$/;
+    async function canvasCollect() {
+      const out = [];
+      if (!window.bitbot || !window.bitbot.sessions || !activeSessionId) return out;
+      const got = await window.bitbot.sessions.get(activeSessionId).catch(() => null);
+      const msgs = (got && got.ok && got.session && got.session.messages) || [];
+      for (const m of msgs) {
+        if (!m || !Array.isArray(m.artifacts)) continue;
+        for (const a of m.artifacts) {
+          if (a && a.path) out.push({ path: String(a.path), name: String(a.name || ""), kind: String(a.kind || ""), bytes: a.bytes, at: String(m.at || "") });
+        }
+      }
+      return out;
+    }
+    function cvSize(bytes) {
+      const n = Number(bytes);
+      if (!Number.isFinite(n) || n <= 0) return "";
+      if (n < 1024) return n + " B";
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+      return (n / 1024 / 1024).toFixed(1) + " MB";
+    }
+    async function openCanvas() {
+      const panel = document.getElementById("canvas-panel");
+      const grid = document.getElementById("canvas-grid");
+      const empty = document.getElementById("canvas-empty");
+      const count = document.getElementById("canvas-count");
+      if (!panel || !grid) return;
+      panel.hidden = false;
+      panel.style.display = "flex";
+      grid.textContent = "";
+      const items = await canvasCollect();
+      if (count) count.textContent = items.length ? t("canvasCount", { n: String(items.length) }) : "";
+      if (empty) empty.hidden = items.length > 0;
+      for (const it of items) {
+        const card = document.createElement("div");
+        card.className = "cv-card";
+        const thumb = document.createElement("div");
+        thumb.className = "cv-thumb";
+        // 文件还在不在，问 Host 要真值（不是假设库里的路径一定还活着）。
+        const pv = window.bitbot && window.bitbot.attachments && window.bitbot.attachments.preview
+          ? await window.bitbot.attachments.preview(it.path).catch(() => null)
+          : null;
+        const alive = Boolean(pv && pv.ok);
+        if (!alive) card.classList.add("cv-gone");
+        if (alive && CV_IMAGE_KINDS.test(it.kind) && pv.data_url) {
+          const img = document.createElement("img");
+          img.src = String(pv.data_url);
+          img.alt = it.name || it.path;
+          thumb.appendChild(img);
+        } else {
+          const k = document.createElement("span");
+          k.className = "cv-kind";
+          k.textContent = alive ? (it.kind || "file") : t("canvasGone");
+          thumb.appendChild(k);
+        }
+        card.appendChild(thumb);
+        const meta = document.createElement("div");
+        meta.className = "cv-meta";
+        const nm = document.createElement("div");
+        nm.className = "cv-name";
+        nm.textContent = it.name || it.path;
+        meta.appendChild(nm);
+        const sub = document.createElement("div");
+        sub.className = "cv-sub";
+        const bits = [it.kind || "", cvSize(it.bytes), it.at ? String(it.at).slice(0, 10) : ""].filter(Boolean);
+        sub.textContent = bits.join(" · ");
+        meta.appendChild(sub);
+        if (alive) {
+          const open = document.createElement("button");
+          open.type = "button";
+          open.className = "bb-btn bb-btn-sm cv-open";
+          open.textContent = wavegT("canvasOpen");
+          open.addEventListener("click", async () => {
+            const res = await window.bitbot.openArtifact(it.path).catch(() => null);
+            if (!res || !res.ok) addMsg("assistant", wavegT("roomDeliverableOpenFail") + " · " + String((res && res.error) || ""));
+          });
+          meta.appendChild(open);
+        }
+        card.appendChild(meta);
+        grid.appendChild(card);
+      }
+    }
+    function closeCanvas() {
+      const panel = document.getElementById("canvas-panel");
+      if (!panel) return;
+      panel.style.display = "none";
+      panel.hidden = true;
+    }
+    (function wireCanvas() {
+      const btn = document.getElementById("canvas-open-btn");
+      const panel = document.getElementById("canvas-panel");
+      const close = document.getElementById("canvas-close");
+      if (btn) btn.addEventListener("click", () => { openCanvas().catch(() => {}); });
+      if (close) close.addEventListener("click", closeCanvas);
+      if (panel) panel.addEventListener("click", (ev) => { if (ev.target === panel) closeCanvas(); });
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Escape") return;
+        const p = document.getElementById("canvas-panel");
+        if (p && p.style.display !== "none" && !p.hidden) closeCanvas();
+      });
     })();
 
     /* ── 日期分隔行（Grok 真机：居中的灰小字「今天」「10月17日周六 15:13」）

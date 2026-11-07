@@ -166,6 +166,66 @@ const r = (kind, obj, okFlag = true) => ({ kind, ok: okFlag, stdout: JSON.string
   !still ? ok("T9 负向对照 b：抹掉 store 持久化 → 落库断言翻假（非恒真）") : bad("T9 负向对照 b 恒真");
 }
 
+/* ===== 画布（只读产物墙）===== */
+
+/* T10 DOM 与入口 */
+{
+  const dom = HTML.includes('id="canvas-panel"') && HTML.includes('id="canvas-grid"') &&
+    HTML.includes('id="canvas-empty"') && HTML.includes('id="canvas-open-btn"') &&
+    HTML.includes('data-i18n="canvasTitle"');
+  dom ? ok("T10 画布面板 + 网格 + 空态 + 「＋」菜单入口都在")
+    : bad("T10 画布 DOM 不完整");
+}
+
+/* T11 数据源是消息行上的 artifacts[]，不是扫目录 */
+{
+  const src = HTML.includes("async function canvasCollect()") &&
+    HTML.includes("window.bitbot.sessions.get(activeSessionId)") &&
+    HTML.includes("if (!m || !Array.isArray(m.artifacts)) continue;") &&
+    !/canvasCollect[\s\S]{0,400}readdir/.test(HTML);
+  src ? ok("T11 画布只铺「这个对话」的产物（读消息行 artifacts[]，不扫目录猜）")
+    : bad("T11 画布数据源不对");
+}
+
+/* T12 图片给缩略图、缺失给「已不在本机」、别的给种类 —— 三种不混 */
+{
+  const three = HTML.includes("const CV_IMAGE_KINDS = /^(generate_image|structured_chart|watch_frame|screenshot)$/;") &&
+    HTML.includes("await window.bitbot.attachments.preview(it.path)") &&
+    HTML.includes('card.classList.add("cv-gone")') &&
+    HTML.includes('k.textContent = alive ? (it.kind || "file") : t("canvasGone");');
+  three ? ok("T12 图片→缩略图、其它→种类、文件没了→已不在本机（三态分开）")
+    : bad("T12 卡片三态没分开");
+}
+
+/* T13 Esc / 背景 / ✕ 三个出口 */
+{
+  const exits = HTML.includes('if (close) close.addEventListener("click", closeCanvas);') &&
+    HTML.includes('if (ev.target === panel) closeCanvas();') &&
+    HTML.includes('if (ev.key !== "Escape") return;');
+  exits ? ok("T13 画布三个出口都在（✕ / 点背景 / Esc）")
+    : bad("T13 出口不全（Esc 关不掉最招骂）");
+}
+
+/* T14 六个画布键 × 三语 */
+{
+  const keys = ["canvasOpenBtn", "canvasTitle", "canvasNote", "canvasEmpty", "canvasCount", "canvasOpen", "canvasGone"];
+  const missing = [];
+  for (const k of keys) {
+    const n = (HTML.match(new RegExp("^\\s*" + k + ": ", "gm")) || []).length;
+    if (n !== 3) missing.push(k + "×" + n);
+  }
+  missing.length === 0 ? ok("T14 画布 7 个键在 zh-CN / zh-TW / en 各一条（7×3）")
+    : bad("T14 三语不齐", missing.join(", "));
+}
+
+/* T15 负向对照 c：抹掉产物遍历 → T11 翻假 */
+{
+  const broken = HTML.replace("if (!m || !Array.isArray(m.artifacts)) continue;", "");
+  !broken.includes("if (!m || !Array.isArray(m.artifacts)) continue;")
+    ? ok("T15 负向对照 c：抹掉产物遍历 → T11 翻假（非恒真）")
+    : bad("T15 负向对照 c 恒真");
+}
+
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {}
 
 console.log("\nprove_m52b_artifact_persist: PASS=" + pass + " FAIL=" + fail);

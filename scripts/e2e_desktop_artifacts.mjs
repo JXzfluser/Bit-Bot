@@ -124,6 +124,45 @@ const env = electronLaunchEnv(
       : bad("history broken by artifacts", JSON.stringify({ msgs: state.msgs, laterMsg: state.laterMsg }));
 
     await win.screenshot({ path: path.join(os.tmpdir(), "bb-artifacts.png") });
+
+    // ---------- 画布：把本对话的产物铺开 ----------
+    await win.click("#attach-btn");
+    await win.waitForTimeout(250);
+    const menuOpen = await win.evaluate(() => !document.getElementById("composer-more").hidden);
+    menuOpen ? ok("「＋」菜单里有画布入口（可发现）") : bad("composer-more not open", "menu hidden");
+    await win.click("#canvas-open-btn");
+    await win.waitForTimeout(900);
+    const cv = await win.evaluate(() => {
+      const panel = document.getElementById("canvas-panel");
+      return {
+        shown: !!panel && panel.style.display === "flex" && !panel.hidden,
+        cards: document.querySelectorAll("#canvas-grid .cv-card").length,
+        imgs: document.querySelectorAll("#canvas-grid .cv-card img").length,
+        gone: document.querySelectorAll("#canvas-grid .cv-card.cv-gone").length,
+        count: (document.getElementById("canvas-count") || {}).textContent || "",
+        note: (document.getElementById("canvas-note") || {}).textContent || "",
+        empty: document.getElementById("canvas-empty").hidden,
+      };
+    });
+    cv.shown && cv.cards === 2
+      ? ok("画布铺开 2 张产物卡（" + cv.count + "）")
+      : bad("canvas cards", JSON.stringify(cv));
+    cv.imgs === 1 && cv.gone === 1
+      ? ok("一张是图的缩略图，另一张如实标「已不在本机」（不画破图）")
+      : bad("canvas card kinds", JSON.stringify(cv));
+    cv.empty === true ? ok("有产物时不显示空态") : bad("canvas empty flag", JSON.stringify(cv.empty));
+    /只把本对话的产物铺开/.test(cv.note) ? ok("画布明说自己是只读的（不在画布上改文件）") : bad("canvas note", cv.note);
+
+    await win.screenshot({ path: path.join(os.tmpdir(), "bb-canvas.png") });
+    await win.keyboard.press("Escape");
+    await win.waitForTimeout(300);
+    const cvClosed = await win.evaluate(() => {
+      const p = document.getElementById("canvas-panel");
+      return { hidden: p.hidden, display: p.style.display };
+    });
+    cvClosed.hidden && cvClosed.display === "none"
+      ? ok("Esc 关掉画布（回到对话，不留在半透明遮罩上）")
+      : bad("canvas not closed", JSON.stringify(cvClosed));
   } finally {
     await app.close();
   }
