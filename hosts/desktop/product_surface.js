@@ -1962,7 +1962,11 @@ function createProductSurface(repoRoot, opts = {}) {
     // spaces ("市场 分析员") — at each position the longest member name wins,
     // then the single-token form, so both spellings keep routing.
     let responders = members;
-    let responder_policy = "bot_discretion";
+    /* 没有 @ 的时候，以前的默认是 bot_discretion（每个成员都被问一遍「你要不要答」，
+       然后所有说「要」的同时各跑一轮）。用户看到的是「一堆活全部 bot 开始工作」。
+       现在默认 auto_route：宿主按对话内容算**唯一负责人**，一次只跑一个，
+       做完交给下一棒；看不出该谁做就停下来问用户。 */
+    let responder_policy = "auto_route";
     const namedResponders = [];
     const unknownMentions = [];
     let wantsAll = false;
@@ -2017,8 +2021,11 @@ function createProductSurface(repoRoot, opts = {}) {
       at: now || nowIso()
     };
     // AR-08：无 @ 时 responders 是候选池，不是已确定的发言者；真正的选择由
-    // 每个 Bot 的 discretion 回合决定，final_report.responders 才是结果。
-    if (responder_policy === "bot_discretion") transcript_entry.responders_are_candidates = true;
+    // auto_route（宿主按内容派给一个负责人）或 discretetion（每个成员自己决定）落定，
+    // final_report.responders 才是结果。
+    if (responder_policy === "bot_discretion" || responder_policy === "auto_route") {
+      transcript_entry.responders_are_candidates = true;
+    }
 
     return {
       ok: true,
@@ -2057,6 +2064,8 @@ function createProductSurface(repoRoot, opts = {}) {
   const ROOM_SUMMARY_MAX = 240;
   const ROOM_REASON_MAX = 200;
   const ROOM_TASK_MAX = 240;
+  // 「停下来确认」那一问的正文上限：问题是给人读的，太长就不成问题了。
+  const CONFIRM_MAX_CHARS = 300;
   function clipRoomText(raw, max) {
     const s = String(raw == null ? "" : raw);
     const limit = Number(max) > 0 ? Number(max) : ROOM_TEXT_MAX;
@@ -2088,8 +2097,79 @@ function createProductSurface(repoRoot, opts = {}) {
     });
   }
 
-  function orchestrateRoom(input) {
-    const opts = input || {};
+  /* ===== 群任务的「产物」：宿主落盘，不靠模型工具 =====
+     用户要的是「最后输出按要求的产物」。这里由宿主把接力链合成一份 markdown 写到
+     data/desktop/room-deliverables/<room>/ 下，群里给一个可点开的路径 —— 是真文件，
+     可校验（存在 / 字节数 / 内容含各棒成果），不是一句「我做到了」。 */
+  function roomDeliverableDir(roomId) {
+    return path.join(DESKTOP_DIR, "room-deliverables", roomOrchestrator.sanitizeBoardKey(roomId));
+  }
+  function writeRoomDeliverable(input) {
+    const o = input || {};
+    const room = o.room || {};
+    const markdown = String(o.markdown || "");
+    if (!markdown.trim()) return { ok: false, error: "empty_deliverable" };
+    const dir = roomDeliverableDir(room.id);
+    const base = String(roomOrchestrator.clip(String(o.task || "群任务"), 24))
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/[\s-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "群任务";
+    const sig = roomOrchestrator.sanitizeBoardKey(String(o.taskSig || "")).slice(-10) || "d";
+    const name = base + "-" + sig + ".md";
+    const file = path.join(dir, name);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const tmp = file + ".tmp." + Date.now();
+      fs.writeFileSync(tmp, markdown, "utf8");
+      fs.renameSync(tmp, file);
+      return { ok: true, name, path: file, bytes: Buffer.byteLength(markdown, "utf8") };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
+  /* 上一轮有没有「停下来等用户回答」的那一问。
+     转录是唯一的状态源：用户这句已经落盘了，所以先跳过本轮这条 user 行，再看上一行。 */
+  function pendingConfirmOf(room, messageId) {
+    const t = Array.isArray(room && room.transcript) ? room.transcript : [];
+    if (!t.length) return null;
+    let i = t.length - 1;
+    const last = t[i];
+    if (last && last.kind === "user") {
+      // 只有当它就是本轮这条投递（或调用方没给 id）时才跳过，避免把上一轮的提问错认。
+      const sameId = String(last.message_id || "") === String(messageId || "");
+      if (!sameId && messageId) return null;
+      i--;
+    }
+    for (; i >= 0; i--) {
+      const e = t[i];
+      if (!e || !e.kind) continue;
+      if (e.kind === "confirm_request") return e.answered_at ? null : e;
+      return null;
+    }
+    return null;
+  }
+  function markConfirmAnswered(roomId, confirmAt, answer) {
+    try {
+      const rooms = requireWritableRooms();
+      const room = (rooms.rooms || []).find((r) => r.id === roomId);
+      if (!room || !Array.isArray(room.transcript)) return false;
+      for (let i = room.transcript.length - 1; i >= 0; i--) {
+        const e = room.transcript[i];
+        if (e && e.kind === "confirm_request" && String(e.at || "") === String(confirmAt || "")) {
+          e.answered_at = nowIso();
+          e.answer = clipRoomText(answer, ROOM_SUMMARY_MAX).text;
+          saveRooms(rooms);
+          return true;
+        }
+      }
+    } catch (_) {
+      /* 标记失败不影响本轮继续：最多下次再问一遍 */
+    }
+    return false;
+  }
+
+  function orchestrateRoom(input) {    const opts = input || {};
     const deps = opts.deps || {};
     const roomKey = String(opts.room || "").trim();
     const task = String(opts.task || "").trim();
@@ -2123,7 +2203,9 @@ function createProductSurface(repoRoot, opts = {}) {
     }
     if (responders.length < 1) return { ok: false, error: "no_responders", mode: "host_orchestrate_room" };
     if (responders.length > 6) return { ok: false, error: "too_many_responders", count: responders.length, max: 6, mode: "host_orchestrate_room" };
-    const responderPolicy = String(opts.policy || (toList.length ? "mentioned_only" : "bot_discretion")).trim();
+    // 没有点名时默认 auto_route（单负责人串行接力），不再是「所有人自己决定要不要答」。
+    // `bot_discretion` / `all` / `mentioned_only` 仍是显式可选策略（用户点名或调用方指定）。
+    const responderPolicy = String(opts.policy || (toList.length ? "mentioned_only" : "auto_route")).trim();
 
     // Q-5: 幂等键 = 房间 + **投递 id**。
     // 没有 id 时退回文字(向后兼容旧转录),但那时「同样的字」只能当同一次投递。
@@ -2132,12 +2214,19 @@ function createProductSurface(repoRoot, opts = {}) {
     if (_orchInflight.has(taskSig)) {
       return { ok: false, error: "orchestrate_recursion", depth: 1, mode: "host_orchestrate_room" };
     }
-    const prior = (room.transcript || []).find(e => e && e.kind === "final_report" && e.task_sig === taskSig);
+    const prior = (room.transcript || []).find(
+      (e) => e && (e.kind === "final_report" || e.kind === "confirm_request") && e.task_sig === taskSig,
+    );
     if (prior && !opts.force) {
       // 幂等命中：不扇出、不起新回合，只回既有汇报。渲染层据此说明「未重复执行」，
       // 不能让人以为刚刚又跑了一遍。
+      // confirm_request 也进幂等：停下来问用户的那一轮同样只能问一次。
       return {
         ok: true, mode: "host_orchestrate_room", deduped: true,
+        paused: prior.kind === "confirm_request" || undefined,
+        awaiting: prior.kind === "confirm_request"
+          ? { bot_id: prior.bot_id || "", name: prior.name || "", question: prior.question || "", stage: prior.stage || "" }
+          : undefined,
         returned: prior.returned, total: prior.total, partial: prior.partial,
         responder_policy: prior.responder_policy || opts.policy || "", final_report: prior,
       };
@@ -2199,8 +2288,290 @@ function createProductSurface(repoRoot, opts = {}) {
       maxMembers: 6,
     });
 
+    // ===== auto_route：单负责人 + 串行接力 + 产物落盘 + 遇不明就停 =====
+    // 用户的诉求原话：「针对对话内容，分配给某一个 bot，然后一步一步的进行协作，
+    // 最后输出按要求的产物（如果中间某一个 bot 有不明确的就停下来进行确认之后再继续）」。
+    // 这一条路径就是那句话的实现；上层扇出（@A @B / 全员）保持不变。
+    const isRelay = responderPolicy === "auto_route";
+    const pendingConfirm = isRelay ? pendingConfirmOf(room, opts.message_id) : null;
+
+    async function relayTurn() {
+      const roster = candidates.map((r) => ({
+        id: r.id, name: r.name, job: r.job, description: r.description,
+      }));
+      const answer = pendingConfirm ? task : "";
+      // 上一轮宿主问过「该谁做」，用户回了一句「大家一起」——用户要全员，但这里仍然
+      // 一次只跑一位；只是把第一个人当作本棒负责人，让它按需往下交接。
+      const wantsEveryone = Boolean(pendingConfirm) && /大家|全体|都上|一起|all\b/i.test(task);
+      let route = roomOrchestrator.routeTask({
+        task,
+        members: roster,
+        explicitTo: "",
+        resume: pendingConfirm && pendingConfirm.bot_id ? { bot_id: pendingConfirm.bot_id } : null,
+      });
+      if (route.mode === "unclear" && wantsEveryone) {
+        route = {
+          mode: "user_all_to_first", owner: roster[0], ranking: route.ranking,
+          margin: route.margin, reason: "user_asked_everyone_relay_keeps_serial",
+        };
+      }
+      const routeOut = {
+        mode: route.mode, reason: route.reason,
+        owner: route.owner ? route.owner.id : "",
+        owner_name: route.owner ? route.owner.name : "",
+        margin: route.margin,
+        ranking: (route.ranking || []).slice(0, 4).map((x) => ({ id: x.id, name: x.name, score: x.score })),
+      };
+      if (pendingConfirm && pendingConfirm.at) {
+        markConfirmAnswered(room.id, pendingConfirm.at, task);
+      }
+
+      // ---- 停点 1：看不出该谁做。不开工，先问用户；问完这轮就结束。 ----
+      if (route.mode === "unclear" || !route.owner) {
+        const names = roster.map((r) => r.name).join("、");
+        const question = route.reason === "two_equally_likely"
+          ? "这句话我看两个人都像：{a}、{b}。要谁来做？回一句名字就行。"
+              .replace("{a}", (route.ranking[0] && route.ranking[0].name) || "?")
+              .replace("{b}", (route.ranking[1] && route.ranking[1].name) || "?")
+          : "这句话我没看出该谁做（本群成员：" + names + "）。回一句名字，或者直接说「大家一起」。";
+        const q = clipRoomText(question, CONFIRM_MAX_CHARS).text;
+        const entry = {
+          kind: "confirm_request", room_id: room.id, speaker: "host", stage: "route",
+          question: q, candidates: roster.map((r) => ({ id: r.id, name: r.name })),
+          task: clipRoomText(task, ROOM_TASK_MAX).text, task_sig: taskSig, at,
+        };
+        appendRoomTranscript(room.id, entry);
+        return {
+          ok: true, mode: "host_orchestrate_room", paused: true, needs_route: true,
+          routed: routeOut, awaiting: { bot_id: "", name: "", question: q, stage: "route" },
+          message: q, returned: 0, total: 0, partial: false, final_report: null,
+        };
+      }
+
+      // ---- 串行接力：一次只跑一个成员，上一棒的产出交给下一棒 ----
+      const chain = [];
+      const seen = new Set();
+      let current = route.owner;
+      let prev = null;
+      let confirmAnswer = answer && pendingConfirm && pendingConfirm.bot_id ? answer : "";
+      let paused = null;
+      const maxHops = Math.max(1, Math.min(
+        Number(deps.maxHops || process.env.BITBOT_ROOM_RELAY_MAX_HOPS || roomOrchestrator.RELAY_MAX_HOPS),
+        roster.length,
+        roomOrchestrator.RELAY_MAX_HOPS,
+      ));
+      for (let hop = 0; hop < maxHops && current; hop++) {
+        if (seen.has(current.id)) break; // 踢皮球：同一个人不跑第二棒
+        seen.add(current.id);
+        if (typeof deps.onFanout === "function") {
+          // 每一棒都播一次：界面上的「工作中」必须跟着**当前这一棒**走。
+          // 只播第一棒的话，第二棒在跑时用户还看着第一个人的名字。
+          try {
+            deps.onFanout({
+              room: room.id, task, responders: [current], candidates,
+              policy: responderPolicy, member_count: memberIds.length,
+              relay: true, hop, route: routeOut,
+            });
+          } catch (_) {
+            /* 进度提示是 best effort */
+          }
+        }
+        const boardText = roomBoard.snapshot(room.id).text;
+        const prompt = roomOrchestrator.buildRelayPrompt({
+          task, roster, hop, prev, boardText, confirmAnswer, maxHops,
+        });
+        const promptTokens = roomOrchestrator.estimateTokens(prompt);
+        const gate = budget.canStart({ tokens: promptTokens });
+        if (!gate.ok) {
+          budget.mark(gate.reason);
+          chain.push({
+            bot_id: current.id, name: current.name, ok: false, skipped: true,
+            text: "", artifacts: [], error: "budget_" + gate.reason, hop,
+          });
+          break;
+        }
+        const scope = roomOrchestrator.createCancelScope();
+        const ctx = {
+          room: room.id, bot_id: current.id, name: current.name,
+          job: current.job, description: current.description,
+          mentioned_names: [], role: "member", relay: true, hop,
+          userText: String(task || ""),
+          subtask: null, subtasks: [],
+          shared_board: boardText, board_group_id: room.id,
+          previous_turn: prev
+            ? { bot_id: prev.bot_id, name: prev.name, text: clipRoomText(prev.text, 800).text }
+            : null,
+          confirm_answer: confirmAnswer || "",
+          cancelPromise: scope.promise,
+          isCancelled: () => scope.isCancelled(),
+          timeoutMs: Math.max(1, Math.min(timeoutMs, budget.remainingMs() || timeoutMs)),
+        };
+        budget.spend({ turns: 1, tokens: promptTokens });
+        let res;
+        try {
+          const out = await withTimeout(
+            runResponderTurn(current.id, prompt, ctx),
+            ctx.timeoutMs,
+            () => scope.cancel("timeout"),
+          );
+          const text = String((out && out.text) || "");
+          budget.spend({ turns: 0, tokens: roomOrchestrator.estimateTokens(text) });
+          res = {
+            bot_id: current.id, name: current.name, ok: !!(out && out.ok !== false),
+            text, artifacts: (out && out.artifacts) || [], error: (out && out.error) || null, hop,
+          };
+        } catch (e) {
+          scope.cancel("timeout_or_error");
+          res = {
+            bot_id: current.id, name: current.name, ok: false, text: "", artifacts: [],
+            error: String((e && e.message) || e), cancelled: true, hop,
+          };
+        }
+        // 转录一行：和扇出路径同 schema（渲染层不变），只是多了 hop。
+        const body = clipRoomText(res.text, ROOM_TEXT_MAX);
+        const row = {
+          kind: res.ok ? "bot_reply" : "bot_reply_error",
+          room_id: room.id, speaker: res.bot_id, bot_id: res.bot_id, name: res.name,
+          text: body.text, hop, at,
+        };
+        if (body.truncated) row.text_truncated = true;
+        if (!res.ok) {
+          const why = clipRoomText(res.error || "no_reply", ROOM_REASON_MAX);
+          row.error = why.text;
+          if (why.truncated) row.error_truncated = true;
+        }
+        appendRoomTranscript(room.id, row);
+        roomBoard.post(
+          room.id, "relay", res.bot_id,
+          res.ok ? (res.text || "") : "（这一棒没成功）",
+          "接力第 " + (hop + 1) + " 棒 · " + res.name,
+        );
+        chain.push(res);
+        if (!res.ok) break; // 这一棒失败：不再往下传（传下去就是拿失败当进度）
+        const parsed = roomOrchestrator.parseRelayReply(res.text);
+        // ---- 停点 2：成员说「要先问清楚」。这一轮到此为止，等用户回答后继续。 ----
+        if (parsed.confirm !== null) {
+          paused = {
+            bot_id: res.bot_id, name: res.name,
+            question: clipRoomText(parsed.confirm || "（这位成员没有写清要确认什么）", CONFIRM_MAX_CHARS).text,
+          };
+          res.needs_confirm = paused.question;
+          break;
+        }
+        const handoffRaw = parsed.handoff ? String(parsed.handoff) : "";
+        const nextMember = handoffRaw
+          ? candidates.find((m) => m.id === handoffRaw || m.name === handoffRaw)
+            || candidates.find((m) => m.name && handoffRaw.includes(m.name))
+            || null
+          : null;
+        res.handoff_to = nextMember ? nextMember.id : "";
+        if (nextMember && !seen.has(nextMember.id)) {
+          prev = res;
+          current = nextMember;
+          confirmAnswer = "";
+          continue;
+        }
+        break; // 没有交接 = 这一棒就是收尾
+      }
+
+      const okChain = chain.filter((c) => c.ok && String(c.text || "").trim());
+      const chainOut = chain.map((c) => ({
+        bot_id: c.bot_id, name: c.name, ok: c.ok, hop: c.hop,
+        skipped: c.skipped || false,
+        handoff_to: c.handoff_to || "",
+        needs_confirm: c.needs_confirm || "",
+        summary: clipRoomText(c.ok ? c.text : "(" + (c.error || "no reply") + ")", ROOM_SUMMARY_MAX).text,
+      }));
+
+      // ---- 停点 2 的落盘：群里出现一张「等你回答」的卡片，这一轮不再往下跑 ----
+      if (paused) {
+        const entry = {
+          kind: "confirm_request", room_id: room.id, speaker: paused.bot_id, stage: "member",
+          bot_id: paused.bot_id, name: paused.name, question: paused.question,
+          relay: chainOut,
+          task: clipRoomText(task, ROOM_TASK_MAX).text, task_sig: taskSig, at,
+        };
+        appendRoomTranscript(room.id, entry);
+        return {
+          ok: true, mode: "host_orchestrate_room", paused: true,
+          awaiting: Object.assign({ stage: "member" }, paused),
+          routed: routeOut, relay: chainOut,
+          returned: okChain.length, total: chain.length, partial: true,
+          deliverable: null, final_report: null,
+        };
+      }
+
+      // ---- 产物：把接力链合成一份真文件落盘 ----
+      let deliverable = null;
+      try {
+        const md = roomOrchestrator.composeDeliverable({
+          task, relay: chain, roomTitle: room.title, at,
+        });
+        deliverable = okChain.length
+          ? writeRoomDeliverable({ room, task, taskSig, markdown: md })
+          : { ok: false, error: "no_content" };
+      } catch (e) {
+        deliverable = { ok: false, error: String((e && e.message) || e) };
+      }
+
+      const duplication = roomOrchestrator.duplicateWorkRate(
+        chain.map((c) => ({ bot_id: c.bot_id, name: c.name, ok: c.ok, text: c.text })),
+        { threshold: Number(deps.duplicateThreshold || roomOrchestrator.DUPLICATE_THRESHOLD) },
+      );
+      const final_report = {
+        kind: "final_report", room_id: room.id, responder_policy: responderPolicy,
+        task: clipRoomText(task, ROOM_TASK_MAX).text,
+        task_sig: taskSig,
+        task_title: clipRoomText(String(opts.report || task).trim() || task, ROOM_TASK_MAX).text,
+        responders: chain.map((c) => c.bot_id),
+        total: chain.length,
+        returned: okChain.length,
+        partial: okChain.length < chain.length || !(deliverable && deliverable.ok),
+        sections: chain.map((c) => {
+          const sum = clipRoomText(c.ok ? c.text : "(" + (c.error || "no reply") + ")", ROOM_SUMMARY_MAX);
+          return {
+            bot_id: c.bot_id, name: c.name, ok: c.ok,
+            summary: sum.text, summary_truncated: sum.truncated || undefined,
+            artifacts: c.artifacts || [],
+          };
+        }),
+        artifacts: chain.flatMap((c) => c.artifacts || []),
+        route: routeOut,
+        relay: chainOut,
+        deliverable: deliverable && deliverable.ok
+          ? { name: deliverable.name, path: deliverable.path, bytes: deliverable.bytes }
+          : undefined,
+        deliverable_error: deliverable && !deliverable.ok ? deliverable.error : undefined,
+        budget: budget.snapshot(),
+        duplication,
+        at,
+      };
+      appendRoomTranscript(room.id, final_report);
+
+      const notice = [];
+      if (deliverable && deliverable.ok) {
+        notice.push("产物：" + deliverable.name + "（" + deliverable.path + "）");
+      } else {
+        notice.push("这一轮没有产出可用产物：" + String((deliverable && deliverable.error) || "unknown"));
+      }
+      if (budget.snapshot().exceeded) {
+        notice.push("团队预算用尽（" + (budget.snapshot().reason || "exhausted") + "），接力的后续棒次已停止。");
+      }
+      appendRoomTranscript(room.id, {
+        kind: "system", room_id: room.id, speaker: "system", text: notice.join("\n"), at,
+      });
+      return {
+        ok: true, mode: "host_orchestrate_room",
+        returned: final_report.returned, total: final_report.total,
+        partial: final_report.partial, final_report,
+        routed: routeOut, relay: chainOut,
+        deliverable: final_report.deliverable || null,
+      };
+    }
+
     _orchInflight.add(taskSig);
     return (async () => {
+      if (isRelay) return await relayTurn();
       let selected = candidates;
       let discretion = [];
       let degraded = false;

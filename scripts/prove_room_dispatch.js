@@ -192,29 +192,55 @@ console.log("prove_room_dispatch — 群消息真的有人回(Q-6)+ 幂等认投
     );
   }
 
-  /* ───────── 6. 成员自决(没有 @):每个成员真的跑一轮自决 ───────── */
+  /* ───────── 6. 没有 @:按内容派给**一个**负责人(G-110 起的默认) ───────── */
   {
     const decisions = [];
+    const ran = [];
     const runner = makeRunner();
     const res = await dispatchRoomTurn({
       surface,
       roomId: ROOM2_ID,
       text: "这个要不要一起看",
       deps: {
-        runResponderTurn: runner.runResponderTurn,
+        runResponderTurn: async (botId, prompt, ctx) => {
+          ran.push(botId);
+          return runner.runResponderTurn(botId, prompt, ctx);
+        },
         selectResponders: async ({ room, task, candidates }) => {
           decisions.push({ room, task, candidates: (candidates || []).map((c) => c.id) });
           return { ok: true, responders: ["b1"], decisions: [{ bot_id: "b1", name: "Alice", respond: true }] };
         },
       },
     });
-    check(res.ok === true, "Q-5 自决路径派发成功", JSON.stringify(res).slice(0, 200));
-    check(decisions.length === 1, "Q-5 自决真的跑了一轮(不是默认全员)", decisions.length);
+    check(res.ok === true, "Q-5 无 @ 派发成功", JSON.stringify(res).slice(0, 200));
+    /* G-110 改了默认语义:没有 @ 不再是「每个成员自己决定要不要答」(那会让所有说
+       「要」的成员同时开跑),而是宿主按内容派给唯一负责人、串行接力。
+       所以这里判的是:**只唤醒一个人**,而且不再花 N 次「你要不要答」的模型回合。 */
+    check(ran.length === 1, "Q-5 无 @ 只唤醒一个成员(不是全员并发)", JSON.stringify(ran));
     check(
-      decisions[0] && decisions[0].candidates.length === 1,
-      "Q-5 自决拿到的是候选成员",
-      JSON.stringify(decisions[0] || {}),
+      decisions.length === 0,
+      "Q-5 负向对照:auto_route 不再逐人问「你要不要答」(旧的全员自决回合已关闭)",
+      decisions.length,
     );
+    check(
+      res.routed && ["single_member", "content_match", "social"].includes(res.routed.mode) && res.routed.owner === "b1",
+      "Q-5 路由依据随结果带出(这个群只有一个成员 → single_member → Alice)",
+      JSON.stringify(res.routed || {}),
+    );
+    /* 旧路径仍在:调用方显式要 bot_discretion 时,自决回合照旧真跑。 */
+    const legacy = await dispatchRoomTurn({
+      surface,
+      roomId: ROOM2_ID,
+      text: "@Alice 显式点名时才走自决对照",
+      deps: {
+        runResponderTurn: runner.runResponderTurn,
+        selectResponders: async ({ candidates }) => {
+          decisions.push({ legacy: true, candidates: (candidates || []).map((c) => c.id) });
+          return { ok: true, responders: [] , decisions: [] };
+        },
+      },
+    });
+    check(legacy.ok === true, "Q-5 显式点名路径仍可用", JSON.stringify(legacy).slice(0, 160));
   }
 
   /* ───────── 7. 接线:桌面和别的端走的是同一个函数 ───────── */

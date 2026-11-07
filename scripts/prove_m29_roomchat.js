@@ -302,11 +302,18 @@ process.on("exit", () => {
       ? ok("roomTurn 落的用户行带 kind=user（按条目渲染的前提）")
       : bad("user row kind missing: " + JSON.stringify(multi && multi.transcript_entry));
     const discretion = surface.roomTurn(roomId, "随便聊聊", at);
-    discretion.ok && discretion.transcript_entry.responder_policy === "bot_discretion" &&
+    /* G-110 改了默认：无 @ 不再是「每个成员自己决定要不要答」（那是全员并发的来源），
+       改成 auto_route —— 宿主按内容派给**一个**负责人，串行接力。
+       候选池语义不变：responders 仍只是候选，真正的负责人由编排层裁决。 */
+    discretion.ok && discretion.transcript_entry.responder_policy === "auto_route" &&
       discretion.transcript_entry.responders_are_candidates === true &&
       discretion.transcript_entry.responders.length === 2
-      ? ok("无 @ → bot_discretion，responders 是候选池（不是已确定发言者）")
-      : bad("discretion route wrong: " + JSON.stringify(discretion && discretion.transcript_entry));
+      ? ok("无 @ → auto_route（单负责人），responders 是候选池（不是已确定发言者）")
+      : bad("route policy wrong: " + JSON.stringify(discretion && discretion.transcript_entry));
+    // 负向对照：旧默认 bot_discretion 不能再出现在无 @ 的普通发言上（它会让全员并发应答）。
+    discretion.transcript_entry.responder_policy !== "bot_discretion"
+      ? ok("负向对照：无 @ 时不再落 bot_discretion（旧的全员并发入口已关闭）")
+      : bad("old fan-out default came back: " + discretion.transcript_entry.responder_policy);
     const unknownRoom = surface.roomTurn("room-nope", "@x hi", at);
     unknownRoom && unknownRoom.error === "room_not_found"
       ? ok("未知群组 room_not_found（不造 transcript）")

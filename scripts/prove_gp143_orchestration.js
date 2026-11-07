@@ -441,9 +441,11 @@ const count = (arr, k) => arr.filter(e => e && e.kind === k).length;
     const { surface } = mkSurface();
     const r = surface.roomTurn("room-t", "@GhostBot 帮我核对数字", "2026-10-23T00:00:00.000Z");
     const e = r && r.transcript_entry;
-    (e && e.responder_policy === "bot_discretion" && Array.isArray(e.unknown_mentions) &&
+    /* G-110：无 @ 的默认策略从 bot_discretion 改成 auto_route（宿主按内容派给一个
+       负责人）。@非成员 的语义没变：仍记 unknown_mentions 且按「未点名」处理。 */
+    (e && e.responder_policy === "auto_route" && Array.isArray(e.unknown_mentions) &&
       e.unknown_mentions[0] === "GhostBot" && e.responders.length === 2)
-      ? ok("P @非成员：记 unknown_mentions + 按未点名处理（成员自行判断），不伪造定向")
+      ? ok("P @非成员：记 unknown_mentions + 按未点名处理（交给 auto_route 裁决），不伪造定向")
       : bad("P unknown mention", JSON.stringify(e && { p: e.responder_policy, u: e.unknown_mentions, n: e.responders.length }));
     const clean = surface.roomTurn("room-t", "@Researcher 帮我核对数字", "2026-10-23T00:00:01.000Z");
     const ce = clean && clean.transcript_entry;

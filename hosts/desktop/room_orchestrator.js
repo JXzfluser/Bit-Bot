@@ -228,10 +228,292 @@ function buildBoardText(snapshot, opts) {
   return text;
 }
 
+/* ==========================================================================
+ * 接力协议（auto_route）：一个群任务**只由一个 Bot 接下**，做完交给下一位，
+ * 一路串行；最后一棒的成果由宿主合成产物落盘。
+ *
+ * 为什么要有这一段：此前的 bot_discretion 是「群里每个成员都被问一遍要不要答」，
+ * 然后所有说「要」的成员**同时**各跑一轮 —— 用户的感受是「一堆活全部 bot 开始
+ * 工作」，互相重复、互相覆盖，最后只剩一段综合说明。真团队不是这样：活派给一个人，
+ * 做完交下一棒，谁不清楚就停下来问。
+ *
+ * 宿主职责（确定性，不花模型钱）：按对话内容算出唯一负责人、限制接力棒数、
+ * 预算与取消；模型只负责「这一棒做什么」和「要不要交给谁 / 要不要先问清楚」。
+ * ========================================================================== */
+
+/** 回复里的三个协议标记。成员用它们表达「要交接 / 要先问 / 已交付」。 */
+const RELAY_MARKERS = {
+  confirm: "【需要确认】",
+  handoff: "【交给】",
+  deliver: "【交付】",
+};
+/** 一次群任务最多几棒。超过就停并如实说明（防止两个 Bot 互相踢皮球）。 */
+const RELAY_MAX_HOPS = 4;
+/** 内容路由：低于这个分数视为「看不出该谁做」，要停下来问用户。 */
+const ROUTE_MIN_SCORE = 0.12;
+/** 第一名与第二名的差距小于它，说明两个人一样像——同样停下来问。 */
+const ROUTE_MIN_MARGIN = 0.06;
+
+/** 匹配用的停用二元组：这些词在任何职责描述里都可能出现，命中它没有信息量。 */
+const MATCH_STOP_GRAMS = new Set([
+  "帮我", "我们", "你们", "他们", "这个", "那个", "一个", "一下", "怎么", "什么",
+  "可以", "需要", "然后", "已经", "就是", "以及", "还有", "给我", "的把", "了吗",
+  "你要", "你把", "的话", "现在", "今天", "明天", "出一", "个短", "条的",
+]);
+
+/**
+ * 把一段话切成可比较的片段：拉丁词（≥3 字符）+ 中文二元组。
+ * 中文用二元组而不是分词，是因为职责描述普遍很短（「负责选题与脚本」），
+ * 二元组已经够判「谁更像」，又不需要词表。
+ */
+function matchFragments(text) {
+  const s = String(text == null ? "" : text).toLowerCase();
+  const latin = (s.match(/[a-z0-9][a-z0-9._-]{1,}/g) || []).filter((w) => w.length >= 3);
+  const runs = s.match(/[\u3400-\u9fff\uf900-\ufaff]+/g) || [];
+  const grams = [];
+  for (const run of runs) {
+    if (run.length === 1) {
+      grams.push(run);
+      continue;
+    }
+    for (let i = 0; i + 1 < run.length; i++) {
+      const g = run.slice(i, i + 2);
+      if (!MATCH_STOP_GRAMS.has(g)) grams.push(g);
+    }
+  }
+  return { latin: Array.from(new Set(latin)), grams: Array.from(new Set(grams)) };
+}
+
+/**
+ * 寒暄/回执类消息：没有任务内容，不值得开会讨论「谁来做」。
+ * 命中的话仍然**只派给一个成员**（用一句话回应，不展开、不派活）。
+ */
+const SOCIAL_RE = /^(大家好|各位好|hi\b|hello\b|hey\b|在吗|在不在|早\b|早上好|晚上好|晚安|谢谢|多谢|辛苦了|收到|好的|ok\b|嗯+|哈+|test\b)/i;
+
+/**
+ * 按**对话内容**算出这一轮该谁做（唯一负责人）。
+ *
+ * 返回 mode：
+ *   explicit       —— 调用了点名，用户已经决定了
+ *   resume_confirm —— 上一轮某位成员停下来问用户，这句是答复，回到他手上
+ *   single_member  —— 群里只有一个人（没有选择余地）
+ *   content_match  —— 内容匹配出唯一最像的人
+ *   social         —— 寒暄/回执，派一个人简短应一声，不派活
+ *   unclear        —— 看不出该谁做 / 两个人一样像 → **不开工，先问用户**
+ *
+ * 这是宿主裁决，不是模型裁点：同样的输入永远得到同样的负责人。
+ */
+function routeTask(input) {
+  const opts = input || {};
+  const task = String(opts.task || "").trim();
+  const members = (Array.isArray(opts.members) ? opts.members : [])
+    .filter((m) => m && (m.id || m.name))
+    .map((m) => ({
+      id: String(m.id || m.name),
+      name: String(m.name || m.id),
+      job: String(m.job || ""),
+      description: String(m.description || ""),
+    }));
+  const explicit = String(opts.explicitTo || "").trim();
+  const resume = opts.resume && (opts.resume.bot_id || opts.resume.botId)
+    ? String(opts.resume.bot_id || opts.resume.botId)
+    : "";
+  if (!members.length) {
+    return { mode: "unclear", owner: null, ranking: [], reason: "no_members" };
+  }
+  if (explicit) {
+    const hit = members.find((m) => m.id === explicit || m.name === explicit);
+    if (hit) return { mode: "explicit", owner: hit, ranking: [], reason: "user_mentioned" };
+  }
+  if (resume) {
+    const hit = members.find((m) => m.id === resume);
+    if (hit) return { mode: "resume_confirm", owner: hit, ranking: [], reason: "answer_to_pending_question" };
+  }
+  if (members.length === 1) {
+    return { mode: "single_member", owner: members[0], ranking: [], reason: "only_one_member" };
+  }
+  const taskFrags = matchFragments(task);
+  const total = taskFrags.latin.length + taskFrags.grams.length || 1;
+  /* IDF：一个片段如果**每个成员的职责里都有**（「负责」「内容」），它说明不了该找谁；
+     只有一个人有的片段才是真信号。所以按「命中人数」的倒数加权 —— 这是判「谁更像」
+     和判「都一样像」的关键，不然两个人都命中一个常用词就会永远打平。 */
+  const profiles = members.map((m) => matchFragments([m.name, m.job, m.description].join(" ")));
+  const hitCount = new Map();
+  for (const p of profiles) {
+    const set = new Set(p.latin.concat(p.grams));
+    for (const f of set) hitCount.set(f, (hitCount.get(f) || 0) + 1);
+  }
+  const ranking = members.map((m, i) => {
+    const profile = profiles[i];
+    const profileSet = new Set(profile.latin.concat(profile.grams));
+    const matched = [];
+    let weight = 0;
+    for (const f of taskFrags.latin.concat(taskFrags.grams)) {
+      if (!profileSet.has(f)) continue;
+      matched.push(f);
+      weight += 1 / Math.max(1, hitCount.get(f) || 1);
+    }
+    let score = weight / total;
+    // 名字出现在任务里是强信号（用户可能直接叫了它的名字而没打 @）。
+    if (m.name && task.toLowerCase().includes(m.name.toLowerCase())) score += 0.6;
+    return {
+      id: m.id, name: m.name, job: m.job,
+      score: Math.round(Math.min(1, score) * 1000) / 1000,
+      matched: Array.from(new Set(matched)).slice(0, 8),
+    };
+  }).sort((a, b) => b.score - a.score);
+  const top = ranking[0];
+  const second = ranking[1] || { score: 0 };
+  const margin = Math.round((top.score - second.score) * 1000) / 1000;
+  if (top.score < ROUTE_MIN_SCORE) {
+    // 没有任务内容（寒暄/回执）：不开会决定谁做，派一个人简短应一声。
+    if (SOCIAL_RE.test(task) || task.replace(/\s+/g, "").length <= 4) {
+      const owner = members.find((m) => m.id === top.id) || members[0];
+      return { mode: "social", owner, ranking, margin, reason: "social_message" };
+    }
+    return { mode: "unclear", owner: null, ranking, margin, reason: "no_content_match" };
+  }
+  if (top.score < 1 && margin < ROUTE_MIN_MARGIN) {
+    return { mode: "unclear", owner: null, ranking, margin, reason: "two_equally_likely" };
+  }
+  const owner = members.find((m) => m.id === top.id) || null;
+  return { mode: "content_match", owner, ranking, margin, reason: "content_match" };
+}
+
+/**
+ * 解析成员回复里的协议标记。
+ * 三个标记都是**人话**，用户在气泡里直接读得懂，不是给机器看的协议串。
+ */
+function parseRelayReply(text) {
+  const raw = String(text == null ? "" : text);
+  const pick = (marker) => {
+    const at = raw.indexOf(marker);
+    if (at < 0) return null;
+    const after = raw.slice(at + marker.length);
+    const line = after.split(/\r?\n/)[0].replace(/^[：:\s、]+/, "").trim();
+    if (line) return line;
+    // 标记后面没跟内容（换了行）：取后面第一段非空文本。
+    const para = after.split(/\r?\n+/).map((s) => s.trim()).find(Boolean);
+    return para || "";
+  };
+  const confirm = pick(RELAY_MARKERS.confirm);
+  const handoffRaw = pick(RELAY_MARKERS.handoff);
+  return {
+    // 空字符串 = 写了标记但没写内容，也算「要确认」——宁可多问一句，不要猜着往下做。
+    confirm: confirm === null ? null : String(confirm),
+    handoff: handoffRaw || null,
+    delivered: raw.includes(RELAY_MARKERS.deliver),
+  };
+}
+
+/**
+ * 这一棒的 prompt。和旧的 buildResponderPrompt 的差别是三条纪律，而不是措辞：
+ *   1) 这一轮只有你在做（不会有人同时和你抢同一件事）；
+ *   2) 做完交付**成果正文**，不是「我做到了」；
+ *   3) 缺信息就写【需要确认】并停下 —— 这一轮真的会停在这里等用户回答。
+ */
+function buildRelayPrompt(input) {
+  const opts = input || {};
+  const task = String(opts.task || "").trim();
+  const roster = Array.isArray(opts.roster) ? opts.roster : [];
+  const hop = Math.max(0, Number(opts.hop || 0)) | 0;
+  const prev = opts.prev && opts.prev.text ? opts.prev : null;
+  const boardText = String(opts.boardText || "").trim();
+  const confirmAnswer = String(opts.confirmAnswer || "").trim();
+  const maxHops = Math.max(1, Number(opts.maxHops || RELAY_MAX_HOPS));
+  const lines = [];
+  lines.push("【群任务】" + (task || "（空）"));
+  lines.push(
+    "这一轮只有你在做这件事（第 " + (hop + 1) + " 棒，最多 " + maxHops + " 棒）。群里其他成员不会同时开工，所以不用抢、也不用替他们做。",
+  );
+  if (roster.length) {
+    lines.push("【群成员】");
+    for (const m of roster) {
+      const role = String(m.job || m.description || "").trim();
+      lines.push("- " + String(m.name || m.id) + (role ? "：" + clip(role, 60) : ""));
+    }
+  }
+  if (prev) {
+    lines.push("【上一棒】" + String(prev.name || prev.bot_id || "") + " 交给你：" + clip(prev.text, 400));
+  }
+  if (confirmAnswer) {
+    lines.push("【你的上一问的答复】" + confirmAnswer);
+  }
+  if (boardText) lines.push(boardText);
+  lines.push("怎么做：");
+  lines.push("1. 只做这一棒该做的部分；上一棒已经做完的不要重做，也不要把整件事再复述一遍。");
+  if (hop === 0) {
+    lines.push("2. 先判断：这件事是不是靠你一个人就能做完？能做完就一路做完，不要为了「显得在协作」硬交给别人。");
+  } else {
+    lines.push("2. 接着上一棒的成果往下做；能收尾就收尾。");
+  }
+  lines.push(
+    "3. 交付时直接给**成果本身**（成稿的正文、脚本、清单、结论都行），不要只写「已完成」「如上」。",
+  );
+  lines.push(
+    "4. 确实需要另一位成员的专业能力才能继续时，另起一行写：" +
+      RELAY_MARKERS.handoff + "<成员名字>：<要他做什么>。能自己做完就不要写。",
+  );
+  lines.push(
+    "5. 信息不足、或要在两种做法里二选一时，不要猜也不要编，另起一行写：" +
+      RELAY_MARKERS.confirm + "<你要问用户的那一个问题>，然后停下。这一轮会停在这里，等用户回答后你再继续。",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * 把接力链合成一份**真产物**（markdown 正文）。
+ * 最后一棒是权威交付内容，前面几棒作为过程记录保留 —— 谁做了什么都留痕。
+ */
+function composeDeliverable(input) {
+  const opts = input || {};
+  const task = String(opts.task || "").trim();
+  const relay = Array.isArray(opts.relay) ? opts.relay : [];
+  const title = clip(task || "群任务产物", 80);
+  const done = relay.filter((r) => r && r.ok && String(r.text || "").trim());
+  const lines = [];
+  lines.push("# " + title);
+  lines.push("");
+  const meta = [];
+  if (opts.roomTitle) meta.push("群：" + String(opts.roomTitle));
+  if (opts.at) meta.push("时间：" + String(opts.at));
+  if (relay.length) meta.push("接力：" + relay.map((r) => String(r.name || r.bot_id || "")).join(" → "));
+  if (meta.length) {
+    lines.push("> " + meta.join("｜"));
+    lines.push("");
+  }
+  if (done.length) {
+    const last = done[done.length - 1];
+    lines.push("## 交付内容");
+    lines.push("");
+    lines.push(String(last.text || "").trim());
+    lines.push("");
+    if (done.length > 1) {
+      lines.push("## 过程");
+      lines.push("");
+      for (let i = 0; i < done.length - 1; i++) {
+        lines.push("### 第 " + (i + 1) + " 棒 · " + String(done[i].name || done[i].bot_id || ""));
+        lines.push("");
+        lines.push(String(done[i].text || "").trim());
+        lines.push("");
+      }
+    }
+  } else {
+    lines.push("## 交付内容");
+    lines.push("");
+    lines.push("（这一轮没有成员交出可用内容，产物为空。原因见群里的失败记录。）");
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 /**
  * 成员回合的 prompt：原始任务 + 你的分工 + 共享任务板。
  * 关键：**分工不同**（不再是同一份 task 广播 N 份），且每个人都能看到别人
  * 认领了什么、做到哪了。
+ *
+ * 注意：这是 `@A @B` / 全员 这类**用户显式要求多人**时的旧路径。没有点名时
+ * 走的是上面的 buildRelayPrompt（单负责人串行接力）。
  */
 function buildResponderPrompt(input) {
   const opts = input || {};
@@ -604,10 +886,19 @@ module.exports = {
   SUBTASK_MAX_CHARS,
   SUBTASK_MAX_COUNT,
   DUPLICATE_THRESHOLD,
+  RELAY_MARKERS,
+  RELAY_MAX_HOPS,
+  ROUTE_MIN_SCORE,
+  ROUTE_MIN_MARGIN,
   createRoomBoard,
   buildBoardText,
   buildResponderPrompt,
   buildSynthesisPrompt,
+  buildRelayPrompt,
+  composeDeliverable,
+  matchFragments,
+  parseRelayReply,
+  routeTask,
   decomposeTask,
   normalizeSubtaskProposal,
   assignSubtasks,

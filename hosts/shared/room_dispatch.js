@@ -263,6 +263,17 @@ async function dispatchRoomTurn(o) {
     partial: Boolean(res.partial) || returned < total,
     deduped: Boolean(res.deduped),
     skipped: Boolean(res.skipped),
+    // auto_route（单负责人串行接力）的四个新事实，必须一路透到渲染层：
+    //   paused / awaiting —— 这一轮停在「等用户回答」，不是失败也不是完成；
+    //   routed            —— 宿主凭什么把活派给他（内容匹配 / 用户点名 / 上一问的答复）；
+    //   relay / deliverable —— 走了哪几棒、产物落在哪。
+    // 少带一个，用户就分不清「卡住了」和「问完了」，也点不到产物。
+    paused: Boolean(res.paused) || undefined,
+    awaiting: res.awaiting || undefined,
+    message: res.message || undefined,
+    routed: res.routed || undefined,
+    relay: res.relay || undefined,
+    deliverable: res.deliverable === undefined ? undefined : res.deliverable,
     final_report: res.final_report || null,
     handoff_retry: handoffRetry,
   };

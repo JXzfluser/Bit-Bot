@@ -34,7 +34,7 @@ import { createRequire } from "module";
 import { execSync, spawn } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
@@ -166,7 +166,15 @@ const DOM_COUNTS = () => ({
     stub = await startStub();
     app = await _electron.launch({
       executablePath: ELECTRON,
-      args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu"],
+      // 独立 user-data-dir：应用已经开着时（用户自己的 Bit Bot 实例），主进程的
+      // 单实例锁会让第二个实例立刻退出，playwright 只看到「browser has been closed」。
+      // 这不是产品缺陷，是同一个 Electron 用户数据目录被两个进程抢。
+      args: [
+        path.join(DESKTOP, "main.js"),
+        "--no-sandbox",
+        "--disable-gpu",
+        "--user-data-dir=" + electronUserDataDir("room-orchestration"),
+      ],
       cwd: REPO,
       env: electronLaunchEnv({
         DISPLAY: process.env.DISPLAY || "",
@@ -510,17 +518,24 @@ const DOM_COUNTS = () => ({
       evidence.s8 = { dm_session_title: dmSessionTitle, dm_messages: (dm && dm.messages) || [] };
     }
 
-    /* ---------- S9: 幂等（同任务再走 IPC 不重复落盘） ---------- */
+    /* ---------- S9: 幂等（同一个投递 id 重投 → 不重复落盘） ----------
+       Q-5/ADR-0013 的口径是「幂等认**投递**，不认文字」：用户再发一遍同一句，那是
+       两条消息、两个任务；只有同一次投递的重试（渠道重投、客户端重试）才复用
+       message_id。所以这里必须**带 id 重投**才能测到幂等面 —— 不带 id 的两次调用
+       本来就是两个不同的投递（composer 每次也会现生成一个）。 */
     {
+      const redeliver = "e2e-redeliver-" + Date.now().toString(36);
+      const runOnce = async () => win.evaluate(async ([rid, task, mid]) => {
+        const r = await window.bitbot.rooms.orchestrate({ room_id: rid, text: task, message_id: mid });
+        return { ok: !!(r && r.ok), deduped: !!(r && r.deduped), returned: r && r.returned, total: r && r.total };
+      }, [roomId, task3, redeliver]);
+      const first = await runOnce();
       const before = reportsOf(roomId).length;
-      const res = await win.evaluate(async ([rid, task]) => {
-        const r = await window.bitbot.rooms.orchestrate({ room_id: rid, text: task });
-        return { ok: !!(r && r.ok), deduped: !!(r && r.deduped), returned: r && r.returned, total: r && r.total, error: (r && r.error) || "" };
-      }, [roomId, task3]);
+      const second = await runOnce();
       const after = reportsOf(roomId).length;
-      res.deduped && after === before
-        ? ok("幂等：重发同任务 → deduped 且 final_report 不重复落盘（" + before + " 张）")
-        : bad("idempotency over IPC", JSON.stringify({ res, before, after }));
+      first.ok && !first.deduped && second.deduped && after === before
+        ? ok("幂等：同一投递 id 重投 → deduped 且 final_report 不重复落盘（" + before + " 张）")
+        : bad("idempotency over IPC", JSON.stringify({ first, second, before, after }));
     }
 
     /* ---------- S10: 有界字段 / 本地化失败原因 / 汇报带路由语义 ---------- */
@@ -555,7 +570,9 @@ const DOM_COUNTS = () => ({
         : bad("durable reason lost", JSON.stringify(durableReason).slice(0, 200));
     }
 
-    /* ---------- S11: 同任务经 composer 重发 → 不闪运行态、说明卡不被重绘吞掉 ---------- */
+    /* ---------- S11: composer 重发同一句话 = 新一轮（Q-5），不误判成「已汇报过」 ----------
+       幂等认投递不认文字（见 S9）。用户在输入框里再发一遍同一句，Host 会现生成新的
+       投递 id ⇒ 这是**第二个任务**，应该有新的汇报，且绝不能闪一张「已经汇报过」的假卡。 */
     {
       await openRoom();
       await win.evaluate(() => {
@@ -574,20 +591,24 @@ const DOM_COUNTS = () => ({
       });
       const before11 = reportsOf(roomId).length;
       await sendText(task3);
-      await win.waitForFunction(
-        () => document.querySelectorAll("#log .msg.room-deduped").length >= 1, null, { timeout: 25000 }).catch(() => {});
+      await waitForReportCount(roomId, before11 + 1);
       const seen11 = await win.evaluate(() => ({
         workingAdded: typeof window.__gp145WorkingAdded === "number" ? window.__gp145WorkingAdded : -1,
         notes: Array.from(document.querySelectorAll("#log .msg.room-deduped .body")).map((e) => e.innerText || ""),
         reports: document.querySelectorAll("#log .msg.room-report").length,
       }));
       const after11 = reportsOf(roomId).length;
-      seen11.workingAdded === 0 && after11 === before11
-        ? ok("同任务重发：不闪「工作中」卡、不新增汇报（运行态与真相同步）")
-        : bad("dedupe through composer", JSON.stringify({ seen11, before11, after11 }));
-      /已经汇报过/.test(seen11.notes.join("|"))
-        ? ok("幂等说明卡在整表重绘后仍在（拒绝/说明卡不能一闪就没）")
-        : bad("outcome card swallowed by re-render", JSON.stringify(seen11).slice(0, 300));
+      after11 === before11 + 1 && seen11.notes.length === 0
+        ? ok("重发同一句话 = 新一轮（新投递 ≠ 重复投递），且不会闪「已经汇报过」的假卡")
+        : bad("re-send is a new delivery", JSON.stringify({ seen11, before11, after11 }));
+      // 重开一次群（整表重绘）后，汇报卡数与「最近 60 条里该有几张」必须逐张相等。
+      const beforeReload = reportsOf(roomId).length;
+      await openRoom();
+      const domAfterReload = await win.evaluate(() => document.querySelectorAll("#log .msg.room-report").length);
+      const expectedReports = txOf(roomId).slice(-60).filter((e) => e && e.kind === "final_report").length;
+      domAfterReload === expectedReports && reportsOf(roomId).length === beforeReload
+        ? ok("整表重绘后汇报卡逐张还在（" + domAfterReload + " 张，与磁盘一致且不重复写盘）")
+        : bad("outcome card swallowed by re-render", JSON.stringify({ domAfterReload, expectedReports, beforeReload }));
       await win.screenshot({ path: path.join(SHOT_DIR, "gp145-7-room-deduped.png") });
     }
 
@@ -595,32 +616,51 @@ const DOM_COUNTS = () => ({
     {
       const ghostTask = "@GhostNotInRoom 请说明你的职责";
       const before12 = reportsOf(roomId).length;
+      const confirmsBefore12 = rowsOf(roomId, "confirm_request").length;
       await sendText(ghostTask);
-      await waitForReportCount(roomId, before12 + 1);
+      /* 这一轮两种收尾都合法：按内容派了人 → 落 final_report；看不出该谁做 →
+         落 confirm_request 停下来问。两种都算「这一轮结束了」。 */
+      for (let i = 0; i < 240; i++) {
+        if (reportsOf(roomId).length > before12 ||
+            rowsOf(roomId, "confirm_request").length > confirmsBefore12) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
       const users = rowsOf(roomId, "user");
       const last = users[users.length - 1] || {};
       const note12 = await win.evaluate(() => {
         const els = Array.from(document.querySelectorAll("#log .room-mention-note"));
         return els.length ? (els[els.length - 1].innerText || "") : "";
       });
+      /* G-110：无 @ 的默认策略从 bot_discretion 改成 auto_route（按内容派给一个负责人）。
+         「点名未命中」的语义没变：照旧记 unknown_mentions、照旧按未点名处理、照旧不伪造定向。 */
       Array.isArray(last.unknown_mentions) && last.unknown_mentions[0] === "GhostNotInRoom" &&
-        last.responder_policy === "bot_discretion" && last.responders_are_candidates === true
-        ? ok("Host 记下未命中的点名并按「未点名」处理（不伪造定向给谁，候选池交给 Bot 自行判断）")
+        last.responder_policy === "auto_route" && last.responders_are_candidates === true
+        ? ok("Host 记下未命中的点名并按「未点名」处理（不伪造定向给谁，候选池交给 auto_route 裁决）")
         : bad("unknown mention durable", JSON.stringify({ u: last.unknown_mentions, p: last.responder_policy, c: last.responders_are_candidates }));
-      /GhostNotInRoom/.test(note12) && /不在本群成员里/.test(note12) && /由各 Bot 自行决定/.test(note12)
-        ? ok("界面把「点名未命中」如实告诉用户（改由各 Bot 自行决定，不伪造定向）")
+      /GhostNotInRoom/.test(note12) && /不在本群成员里/.test(note12)
+        ? ok("界面把「点名未命中」如实告诉用户（不伪造定向）")
         : bad("unknown mention notice", JSON.stringify(note12).slice(0, 300));
+      /* G-110：无 @ 的轮次不再逐人问「你要不要答」，所以也不会再有 discretion 的
+         fail-open 噪声（那三行 decisions 本来就是「我们没问出来，只好当他愿意答」）。
+         新判据是：这一轮要么按内容派了人（report.route 说明是谁、凭什么），要么干脆
+         停下来问用户（confirm_request）—— 两者都不许出现 discretion_fail_open。 */
       const rep12 = lastReport(roomId);
-      const failOpenNote = await win.evaluate(() => {
-        const els = Array.from(document.querySelectorAll("#log .room-report .rr-fail-open"));
-        return els.length ? (els[els.length - 1].innerText || "") : "";
-      });
-      rep12 && rep12.responder_policy === "bot_discretion" &&
-        (rep12.responders || []).length === 3 && Array.isArray(rep12.discretion) &&
-        rep12.discretion.length === 3 && rep12.discretion.every((d) => d && d.fail_open === true) &&
-        rep12.discretion_fail_open === 3 && /选择失败/.test(failOpenNote)
-        ? ok("无 @ 决策失败 fail-open：三人仍应答，但 decisions/UI 都明示 fail_open（不伪装成真实选择）")
-        : bad("discretion fail-open evidence", JSON.stringify({ p: rep12 && rep12.responder_policy, r: rep12 && rep12.responders, d: rep12 && rep12.discretion, n: rep12 && rep12.discretion_fail_open, ui: failOpenNote }).slice(0, 400));
+      const paused12 = rowsOf(roomId, "confirm_request").slice(-1)[0] || null;
+      // 「没有 discretion 噪声」= 没有 fail-open 计数、也没有非空的逐人决策表。
+      // 旧汇报里 discretion 是空数组（字段一直在），空数组不算噪声。
+      const noisyDiscretion = Boolean(rep12) && (
+        Number(rep12.discretion_fail_open || 0) > 0 ||
+        (Array.isArray(rep12.discretion) && rep12.discretion.length > 0)
+      );
+      const routedOrPaused = Boolean(paused12) || Boolean(rep12 && rep12.route);
+      routedOrPaused && !noisyDiscretion
+        ? ok("无 @ 轮次：按内容派了人（route）或停下来问用户（confirm_request），且没有 discretion fail-open 噪声")
+        : bad("auto_route evidence", JSON.stringify({
+            route: rep12 && rep12.route,
+            p: rep12 && rep12.responder_policy,
+            d: rep12 && rep12.discretion,
+            paused: Boolean(paused12),
+          }).slice(0, 400));
       await win.screenshot({ path: path.join(SHOT_DIR, "gp145-8-unknown-mention.png") });
     }
 

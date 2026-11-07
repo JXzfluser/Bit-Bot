@@ -1330,6 +1330,44 @@
     border-radius: var(--radius-pill); padding: 2px 8px; color: var(--muted);
   }
   .room-report .rr-arts-label { font-size: var(--text-xs); color: var(--muted); margin-top: 8px; }
+  /* 接力链：第 1 棒 → 第 2 棒。谁交给谁必须看得见，否则「一步一步协作」等于没发生。 */
+  .room-report .rr-relay { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; }
+  .room-report .rr-hop {
+    font-size: var(--text-xs); border: 1px solid var(--line); border-radius: var(--radius-pill);
+    padding: 2px 8px; color: var(--ink); display: inline-flex; align-items: center; gap: 4px;
+  }
+  .room-report .rr-hop.bad { border-color: var(--warn-line); color: var(--warn-ink); }
+  .room-report .rr-hop-n { color: var(--muted); }
+  .room-report .rr-hop-arrow { color: var(--muted); font-size: var(--text-xs); }
+  /* 产物：这是用户真正要的东西，给它一条独立的、可点开的行（不是灰色小字）。 */
+  .room-report .rr-deliverable {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 10px; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: var(--radius-sm, 8px); background: var(--surface, transparent);
+  }
+  .room-report .rr-deliverable-label { font-size: var(--text-xs); color: var(--muted); }
+  .room-report .rr-deliverable-name { font-weight: 600; color: var(--ink); word-break: break-all; }
+  .room-report .rr-deliverable-open {
+    margin-left: auto; font-size: var(--text-xs); cursor: pointer;
+    border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 10px;
+    background: transparent; color: var(--ink);
+  }
+  .room-report .rr-deliverable-open:hover { border-color: var(--ink); }
+  .room-report .rr-deliverable-meta { font-size: var(--text-xs); color: var(--muted); }
+  /* 「等你确认」卡：群里真正会打断流程的一步，视觉上要压过普通回执。 */
+  .msg.room-confirm { border-left: 3px solid var(--warn-line); padding-left: 10px; }
+  .room-confirm .rc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .room-confirm .rc-title { font-weight: 600; color: var(--ink); }
+  .room-confirm .rc-who { font-size: var(--text-xs); color: var(--muted); }
+  .room-confirm .rc-q { color: var(--ink); font-size: var(--text-sm); line-height: 1.6; white-space: pre-wrap; }
+  .room-confirm .rc-hint { color: var(--muted); font-size: var(--text-xs); margin-top: 6px; }
+  .room-confirm .rc-cands { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .room-confirm .rc-cand {
+    font-size: var(--text-xs); border: 1px solid var(--line); border-radius: var(--radius-pill);
+    padding: 2px 10px; color: var(--ink); cursor: pointer; background: transparent;
+  }
+  .room-confirm .rc-cand:hover { border-color: var(--ink); }
+  .room-confirm .rc-done { font-size: var(--text-xs); color: var(--muted); margin-top: 6px; }
   /* 执行回执折叠（未配模型时内核会把 Host 干了什么原样贴回来）：
      首屏只留人话，回执默认收起 —— 一进群不再是一屏 JSON 和绝对路径。 */
   .rr-fold { margin-top: 8px; }
@@ -7328,6 +7366,7 @@
     function roomPolicyLabel(p) {
       if (p === "all") return wavegT("roomPolicyAll");
       if (p === "mentioned_only") return wavegT("roomPolicyMentioned");
+      if (p === "auto_route") return wavegT("roomPolicyAutoRoute");
       if (p === "bot_discretion") return wavegT("roomPolicyDiscretion");
       return "";
     }
@@ -7543,6 +7582,70 @@
       }
       return el;
     }
+    /* 「等你确认」卡：群协作唯一会**打断流程**的一步。
+       两种情况共用一张卡：
+         stage=route  —— 宿主看不出该谁做，先问用户点谁（带候选，点一下就填进输入框）
+         stage=member —— 某个成员干到一半发现信息不够，停下来问用户
+       回答后这一轮会回到同一个 Bot 继续，所以卡片必须说清「回答就能继续」。 */
+    function renderRoomConfirm(e) {
+      const el = document.createElement("div");
+      el.className = "msg assistant room-confirm";
+      if (e.bot_id) el.style.setProperty("--bot-avatar", avatarColorFor(e.bot_id));
+      const body = document.createElement("div");
+      body.className = "body";
+      el.appendChild(body);
+      const head = document.createElement("div");
+      head.className = "rc-head";
+      const title = document.createElement("span");
+      title.className = "rc-title";
+      title.textContent = wavegT("roomConfirmHead");
+      head.appendChild(title);
+      const who = document.createElement("span");
+      who.className = "rc-who";
+      const whoName = e.bot_id ? (e.name || roomSpeakerName(e.bot_id)) : wavegT("roomSystemSpeaker");
+      who.textContent = (e.stage === "route" ? wavegT("roomConfirmRouteWho") : whoName) +
+        (e.at ? " · " + roomTime(e.at) : "");
+      head.appendChild(who);
+      body.appendChild(head);
+      const q = document.createElement("div");
+      q.className = "rc-q";
+      q.textContent = String(e.question || "");
+      body.appendChild(q);
+      if (e.answered_at) {
+        const done = document.createElement("div");
+        done.className = "rc-done";
+        done.textContent = wavegT("roomConfirmAnswered").replace("{a}", String(e.answer || ""));
+        body.appendChild(done);
+        roomAppend(el);
+        return el;
+      }
+      // 候选名单：点一下把名字填进输入框，不用记成员名单。
+      const cands = Array.isArray(e.candidates) ? e.candidates.filter((c) => c && c.name) : [];
+      if (cands.length) {
+        const row = document.createElement("div");
+        row.className = "rc-cands";
+        for (const c of cands) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "rc-cand";
+          chip.textContent = c.name;
+          chip.addEventListener("click", () => {
+            const input = document.getElementById("text");
+            if (!input) return;
+            input.value = c.name + " " + String(input.value || "").trim();
+            input.focus();
+          });
+          row.appendChild(chip);
+        }
+        body.appendChild(row);
+      }
+      const hint = document.createElement("div");
+      hint.className = "rc-hint";
+      hint.textContent = e.stage === "route" ? wavegT("roomConfirmRouteHint") : wavegT("roomConfirmMemberHint");
+      body.appendChild(hint);
+      roomAppend(el);
+      return el;
+    }
     function renderRoomFinalReport(e) {
       const el = document.createElement("div");
       const partial = Boolean(e.partial);
@@ -7579,6 +7682,31 @@
         head.appendChild(tm);
       }
       body.appendChild(head);
+      /* 接力链：一步接一步到底走了几棒、谁交给谁、哪一棒没成。
+         用户投诉的正是「看不出一堆活是怎么被干完的」——这里把它摆在明面上。 */
+      const relay = Array.isArray(e.relay) ? e.relay.filter((h) => h && (h.name || h.bot_id)) : [];
+      if (relay.length) {
+        const chain = document.createElement("div");
+        chain.className = "rr-relay";
+        relay.forEach((h, i) => {
+          if (i > 0) {
+            const arrow = document.createElement("span");
+            arrow.className = "rr-hop-arrow";
+            arrow.textContent = "→";
+            chain.appendChild(arrow);
+          }
+          const chip = document.createElement("span");
+          chip.className = "rr-hop" + (h.ok ? "" : " bad");
+          const n = document.createElement("span");
+          n.className = "rr-hop-n";
+          n.textContent = String((h.hop == null ? i : h.hop) + 1) + ".";
+          chip.appendChild(n);
+          chip.appendChild(document.createTextNode(String(h.name || roomSpeakerName(h.bot_id))));
+          if (!h.ok) chip.appendChild(document.createTextNode(" · " + wavegT("roomReplyFailed")));
+          chain.appendChild(chip);
+        });
+        body.appendChild(chain);
+      }
       const failOpen = Number(e.discretion_fail_open || 0);
       if (failOpen > 0) {
         const note = document.createElement("div");
@@ -7615,6 +7743,50 @@
         }
       }
       roomArtifacts(body, e.artifacts);
+      /* 产物：这是用户真正要的东西。有就给它一行可点开的文件，没有就如实说没有 ——
+         不含糊成「成员们已完成」。 */
+      const dv = e.deliverable;
+      if (dv && dv.path) {
+        const row = document.createElement("div");
+        row.className = "rr-deliverable";
+        const lb = document.createElement("span");
+        lb.className = "rr-deliverable-label";
+        lb.textContent = wavegT("roomDeliverableLabel");
+        row.appendChild(lb);
+        const nm = document.createElement("span");
+        nm.className = "rr-deliverable-name";
+        nm.textContent = String(dv.name || "产物");
+        row.appendChild(nm);
+        if (dv.bytes) {
+          const sz = document.createElement("span");
+          sz.className = "rr-deliverable-meta";
+          sz.textContent = wavegT("roomDeliverableBytes").replace("{n}", String(dv.bytes));
+          row.appendChild(sz);
+        }
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "rr-deliverable-open";
+        btn.textContent = wavegT("roomDeliverableOpen");
+        btn.addEventListener("click", async () => {
+          try {
+            const res = window.bitbot && window.bitbot.openArtifact
+              ? await window.bitbot.openArtifact(String(dv.path))
+              : null;
+            if (!res || !res.ok) {
+              addMsg("assistant", wavegT("roomDeliverableOpenFail") + " · " + String((res && res.error) || ""));
+            }
+          } catch (err) {
+            addMsg("assistant", wavegT("roomDeliverableOpenFail") + " · " + String((err && err.message) || err));
+          }
+        });
+        row.appendChild(btn);
+        body.appendChild(row);
+      } else if (e.deliverable_error) {
+        const miss = document.createElement("div");
+        miss.className = "rr-task";
+        miss.textContent = wavegT("roomDeliverableMissing");
+        body.appendChild(miss);
+      }
       return roomAppend(el);
     }
     function clearRoomWorking() {
@@ -7675,6 +7847,7 @@
       for (const e of shown) {
         const kind = String((e && e.kind) || "");
         if (kind === "final_report") renderRoomFinalReport(e);
+        else if (kind === "confirm_request") renderRoomConfirm(e);
         else if (kind === "bot_reply") renderRoomBotReply(e, false);
         else if (kind === "bot_reply_error") renderRoomBotReply(e, true);
         else if (kind === "system") renderRoomSystem(e); // GP-148：建房回执
@@ -8372,6 +8545,15 @@
         } else if (res.deduped) {
           // 同一任务的汇报已存在：如实说明「没有重复跑」，不能让人以为又执行了一遍。
           outcome = { kind: "deduped", text: wavegT("roomReportDeduped") };
+        } else if (res.paused) {
+          /* 这一轮停在「等你回答」。不加成品卡（会和转录里的 confirm_request 卡重复），
+             只把焦点送到输入框：用户要做的就一件事 —— 回一句。 */
+          setTimeout(() => {
+            try {
+              const box = document.getElementById("text");
+              if (box && !box.value) box.focus();
+            } catch (_) { /* 焦点是锦上添花 */ }
+          }, 0);
         }
       } catch (err) {
         outcome = { kind: "error", reason: roomOpFailReason(err && err.message) };
@@ -16736,7 +16918,7 @@
         roomTextClipped: "（内容较长，这里只保留开头，完整正文见上方该成员的回复）",
         roomReceipt: "执行回执（点击展开）",
         roomMoreText: "展开全文（{n} 字）",
-        roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（本轮由各 Bot 自行决定是否应答）。",
+        roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（本轮按内容派给一个成员）。",
         roomReportDeduped: "这件事已经汇报过了：同一任务不会重复执行成员回合。",
         roomTranscriptReadFail: "群聊记录暂时读不到（存储不可读）—— 这不代表群里没有消息，恢复后历史仍在。",
         roomReportHead: "群协作汇总",
@@ -16751,6 +16933,17 @@
         roomPolicyMentioned: "点名成员",
         roomPolicyAll: "全体成员",
         roomPolicyDiscretion: "由 Bot 自行决定",
+        roomPolicyAutoRoute: "按内容派给一个负责人",
+        roomConfirmHead: "需要你确认",
+        roomConfirmRouteWho: "这句话没人接得住",
+        roomConfirmAnswered: "已答复：{a}",
+        roomConfirmRouteHint: "回一句名字就能继续（也可以说「大家一起」）。这句话我还不会派给任何人。",
+        roomConfirmMemberHint: "回答这一句后，同一流程会从这位成员继续往下走。",
+        roomDeliverableLabel: "产物",
+        roomDeliverableBytes: "{n} 字节",
+        roomDeliverableOpen: "打开",
+        roomDeliverableOpenFail: "打不开这个产物",
+        roomDeliverableMissing: "这一轮没有产出可用产物（原因见上面的失败记录）。",
         roomStartFailed: "未启动",
         roomStartFailedHint: "这次群协作没有启动，成员没有收到任务。",
         sessSearchPh: "搜索会话",
@@ -17672,7 +17865,7 @@
         roomTextClipped: "（內容較長，這裡只保留開頭，完整正文見上方該成員的回覆）",
         roomReceipt: "執行回執（點擊展開）",
         roomMoreText: "展開全文（{n} 字）",
-        roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（本輪由各 Bot 自行決定是否應答）。",
+        roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（本輪依內容派給一位成員）。",
         roomReportDeduped: "這件事已經匯報過了：同一任務不會重複執行成員回合。",
         roomTranscriptReadFail: "群聊記錄暫時讀不到（儲存不可讀）—— 這不代表群裡沒有訊息，恢復後歷史仍在。",
         roomReportHead: "群協作彙總",
@@ -17687,6 +17880,17 @@
         roomPolicyMentioned: "點名成員",
         roomPolicyAll: "全體成員",
         roomPolicyDiscretion: "由 Bot 自行決定",
+        roomPolicyAutoRoute: "依內容派給一位負責人",
+        roomConfirmHead: "需要你確認",
+        roomConfirmRouteWho: "這句話沒人接得住",
+        roomConfirmAnswered: "已答覆：{a}",
+        roomConfirmRouteHint: "回一句名字就能繼續（也可以說「大家一起」）。這句話我還不會派給任何人。",
+        roomConfirmMemberHint: "回答這一句後，同一流程會從這位成員繼續往下走。",
+        roomDeliverableLabel: "產出",
+        roomDeliverableBytes: "{n} 位元組",
+        roomDeliverableOpen: "打開",
+        roomDeliverableOpenFail: "打不開這個產出",
+        roomDeliverableMissing: "這一輪沒有產出可用檔案（原因見上面的失敗記錄）。",
         roomStartFailed: "未啟動",
         roomStartFailedHint: "這次群協作沒有啟動，成員沒有收到任務。",
         sessSearchPh: "搜尋會話",
@@ -18604,7 +18808,7 @@
         roomTextClipped: " (long content truncated here; the member's reply above keeps the full text)",
         roomReceipt: "Execution receipt (click to expand)",
         roomMoreText: "Show full text ({n} chars)",
-        roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (each bot decides whether to reply this round).",
+        roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (this round routes by content to one member).",
         roomReportDeduped: "Already reported: the same task does not run member turns twice.",
         roomTranscriptReadFail: "Room history is unreadable right now (store unavailable) — that does not mean the room is empty; the messages come back when it recovers.",
         roomReportHead: "Group report",
@@ -18619,6 +18823,17 @@
         roomPolicyMentioned: "named members",
         roomPolicyAll: "all members",
         roomPolicyDiscretion: "bots decide",
+        roomPolicyAutoRoute: "routed to one owner",
+        roomConfirmHead: "Needs your answer",
+        roomConfirmRouteWho: "Nobody clearly owns this",
+        roomConfirmAnswered: "Answered: {a}",
+        roomConfirmRouteHint: "Reply with a name to continue (or say “everyone”). Nothing has been dispatched yet.",
+        roomConfirmMemberHint: "After you answer, the same run continues from this member.",
+        roomDeliverableLabel: "Deliverable",
+        roomDeliverableBytes: "{n} bytes",
+        roomDeliverableOpen: "Open",
+        roomDeliverableOpenFail: "Could not open the deliverable",
+        roomDeliverableMissing: "This round produced no usable deliverable (see the failure rows above).",
         roomStartFailed: "not started",
         roomStartFailedHint: "This group run never started — no member received the task.",
         sessSearchPh: "Search chats",

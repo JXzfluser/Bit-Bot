@@ -4324,6 +4324,31 @@ echo "    <details> 收起是 content-visibility，高度会读到上次布局�
 echo "    CA-05 技能跟着应用走、旧 #ca-skills 必须不存在；CA-07 展开占满整行；CA-08 无 pageerror；"
 echo "    CA-09 真库 sha256 前后一致。"
 
+echo "== G-110 群任务：按内容派给一个负责人、串行接力、产物落盘、遇不明就停 =="
+node scripts/prove_room_relay.js >/tmp/g110-relay.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-110 prove_room_relay（$(grep -c '✓ ' /tmp/g110-relay.log) 项全绿）"
+else
+  bad "G-110 prove_room_relay（见 /tmp/g110-relay.log；$(grep '✗' /tmp/g110-relay.log | head -2 | tr '\n' ' ')）"
+fi
+for g110_a in "A" "B" "C" "D" "E" "F" "G" "H"; do
+  if grep -q "✓ $g110_a " /tmp/g110-relay.log; then ok "G-110 锚点：$g110_a"; else bad "G-110 锚点没跑绿：$g110_a"; fi
+done
+echo "  · G-110 为什么长出来：用户原话「为什么一堆活就全部 bot 开始工作？而不是针对对话"
+echo "    内容，分配给某一个 bot，然后一步一步的进行协作，最后输出按要求的产物（如果中间"
+echo "    某一个 bot 有不明确的就停下来进行确认之后再继续的哦）」。改之前 engine 的默认策"
+echo "    略是 bot_discretion：先让**每个成员各跑一轮**模型回合判断「我要不要答」，再把所有"
+echo "    说「要」的成员按 concurrency=selected.length **同时**开跑，最后 lead 汇总一句。"
+echo "    实测那条 4 人群转录里，每轮都是 4 个 bot 同时回、其中一个还 token 预算耗尽。"
+echo "  · G-110 判据：A 一句普通任务 → runResponderTurn 恰好 1 次且是内容最匹配的那位；"
+echo "    B 第一棒写【交给】X 才有人接着跑，且第二棒 prompt 里带着第一棒的成果；C 产物是"
+echo "    data/desktop/room-deliverables 下真文件、正文含最后一棒内容、群里给可点路径；"
+echo "    D 成员写【需要确认】→ 不写 final_report、不产出文件、群里落 confirm_request，"
+echo "    用户答一句后回到**同一个** Bot 并带上答复；E 看不出该谁做 → 一个 Bot 都不跑先问；"
+echo "    F 显式 @ 两人仍按点名跑（用户点名就是用户的决定）；G A→B→A 踢皮球被拦；"
+echo "    H 负向对照：把 auto_route 关掉换回旧的全员并发，同一句话立刻唤醒 4 个成员 —— "
+echo "    A 的判据确实会红，证明它不是恒真。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo
