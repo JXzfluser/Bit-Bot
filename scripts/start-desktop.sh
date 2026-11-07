@@ -145,12 +145,15 @@ wait_ready() {
   return 1
 }
 
+# bash 3.2（macOS /bin/bash 就是它）在 set -u 下把空数组的 "${A[@]}" 当未绑定
+# 变量，直接 abort —— SAFE=0 时这里一个 Electron 都起不来。${A[@]+...} 是 3.2
+# 也认的空数组安全展开写法。
 if [[ "${BITBOT_DESKTOP_NO_WAIT:-0}" == "1" ]]; then
-  exec "${CLEAN_ENV[@]}" "$ELECTRON_BIN" . "${SAFE_ARGS[@]}" > "$LOG" 2>&1
+  exec "${CLEAN_ENV[@]}" "$ELECTRON_BIN" . ${SAFE_ARGS[@]+"${SAFE_ARGS[@]}"} > "$LOG" 2>&1
 fi
 
 # 前台语义：app 跑在后台子进进、判活通过后 wait 它，Ctrl-C 一起收。
-"${CLEAN_ENV[@]}" "$ELECTRON_BIN" . "${SAFE_ARGS[@]}" > "$LOG" 2>&1 &
+"${CLEAN_ENV[@]}" "$ELECTRON_BIN" . ${SAFE_ARGS[@]+"${SAFE_ARGS[@]}"} > "$LOG" 2>&1 &
 APP_PID=$!
 trap 'kill "$APP_PID" 2>/dev/null || true' EXIT INT TERM
 if ! wait_ready; then

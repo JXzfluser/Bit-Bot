@@ -29,7 +29,13 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { decodePng, avgLuma, pixelAt, encodeRgbPng } from "./lib_png_pixel.mjs";
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir } from "./electron_env.mjs";
+
+/* Chromium 的单实例锁是按 user-data-dir 算的，而 app.getName() 跟着 productName
+   走（"Bit Bot"）。不显式隔离时，用户自己开着的 Bit Bot 会让门禁实例在窗口出现
+   之前就 app.quit()，Playwright 只报 "Target page, context or browser has been
+   closed" —— 看起来像产品崩了，其实是尺子撞了锁。 */
+const UD = electronUserDataDir("grok-boot");
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..");
@@ -292,6 +298,7 @@ async function launchOnce(extraEnv) {
       "--disable-gpu",
       "--use-fake-ui-for-media-stream",
       "--use-fake-device-for-media-stream",
+      "--user-data-dir=" + UD,
     ],
     cwd: REPO,
     env: electronLaunchEnv({

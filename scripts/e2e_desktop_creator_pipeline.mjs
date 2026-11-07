@@ -42,7 +42,9 @@ import { createRequire } from "module";
 import { execSync } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
+/* 单实例锁按 user-data-dir 算：不隔离就会撞上用户自己开着的 Bit Bot。 */
+const UD = electronUserDataDir("creator-pipeline");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -190,7 +192,7 @@ function startStub() {
     stub = await startStub();
     app = await _electron.launch({
       executablePath: ELECTRON,
-      args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu"],
+      args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu", "--user-data-dir=" + UD],
       cwd: REPO,
       env: electronLaunchEnv({
         DISPLAY: process.env.DISPLAY || "",

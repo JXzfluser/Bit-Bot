@@ -55,6 +55,25 @@ const headings = (t) =>
 
 const hs = headings(text);
 
+/* 显式改名清单（old → new）。RH-06/07 的目的是「段落不许被悄悄吃掉」，不是
+ * 「标题字符串永不许动」：编号写错位的子节要就地改号，内容一行不删。
+ * 2026-11-07：§8.92 的两个子节当初被误编成顶层 8.93/8.94，与后面真正的
+ * ## 8.93/## 8.94 撞号（RH-03 红）。改号为 8.92.8/8.92.9，正文原样保留。
+ * 这份清单不是豁免洞：RH-08 会断言每个 new 标题真的在当前文件里，
+ * 只写 old 不写 new、或 new 不存在，一律翻红。 */
+const RENAMED = new Map([
+  [
+    "### 8.93 「我之前加了自媒体相关的模板，怎么都不见了」",
+    "### 8.92.8 「我之前加了自媒体相关的模板，怎么都不见了」",
+  ],
+  [
+    "### 8.94 「两个自媒体内容团队」「没开始聊就很多内容」「群不能改名」",
+    "### 8.92.9 「两个自媒体内容团队」「没开始聊就很多内容」「群不能改名」",
+  ],
+]);
+/** 一个 HEAD 标题算「还在」：原文在，或它被显式改名且新标题真的在。 */
+const survived = (h, cur) => cur.has(h) || (RENAMED.has(h) && cur.has(RENAMED.get(h)));
+
 /* RH-01：这些段落是已经交付过的波次的唯一证据，一个都不能少 */
 {
   const REQUIRED = [
@@ -146,7 +165,7 @@ const hs = headings(text);
     bad("RH-06 读取 HEAD 版本的报告失败（这道门需要在 git 工作区里跑）", String(e.message || e));
   }
   if (headText !== null) {
-    const gone = headings(headText).filter((h) => !hs.includes(h) && !MOVED_OUT.has(h));
+    const gone = headings(headText).filter((h) => !survived(h, new Set(hs)) && !MOVED_OUT.has(h));
     if (gone.length) bad("RH-06 不得删除 HEAD 里已提交的段落", "消失的标题：" + gone.join(" / "));
     else ok("RH-06 HEAD 版本的段落一节没少（当前为纯增量或等价）");
   }
@@ -191,11 +210,25 @@ const hs = headings(text);
       continue;
     }
     const cur = new Set(headings(fs.readFileSync(path.join(REPO, rel), "utf8")));
-    const gone = headings(headText).filter((h) => !cur.has(h));
+    const gone = headings(headText).filter((h) => !survived(h, cur));
     if (gone.length) problems.push(rel + " 消失的标题：" + gone.slice(0, 8).join(" / "));
   }
   if (problems.length) bad("RH-07 已提交的过程文档不许丢段落", problems.join(" | "));
   else ok("RH-07 两份过程文档（验收报告 + parity 清单）相对 HEAD 一节没少");
+}
+
+/* RH-08：改名清单本身要被量。RENAMED 是 RH-06/07 唯一的豁免口子，
+ * 若只声明 old 而 new 不在文件里，等于把「删段落」伪装成「改名」。
+ * 这条断言每个 new 标题真的存在，且 old 已不再以原标题出现（否则是复制不是改名）。 */
+{
+  const cur = new Set(hs);
+  const problems = [];
+  for (const [oldH, newH] of RENAMED) {
+    if (!cur.has(newH)) problems.push("改名目标不存在：" + newH);
+    if (cur.has(oldH)) problems.push("原标题仍在（是复制不是改名）：" + oldH);
+  }
+  if (problems.length) bad("RH-08 显式改名清单必须兑现（新标题在、旧标题不在）", problems.join(" / "));
+  else ok("RH-08 " + RENAMED.size + " 条显式改名全部兑现（段落就地改号，正文未删）");
 }
 
 done();

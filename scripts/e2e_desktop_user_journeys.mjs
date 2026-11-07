@@ -33,7 +33,10 @@ import { createRequire } from "module";
 import { execSync, execFileSync, spawn } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
+/* 单实例锁按 user-data-dir 算：不隔离就会撞上用户自己开着的 Bit Bot，
+   门禁实例在窗口出现前就 quit，报成 "Target page … has been closed"。 */
+const UD = electronUserDataDir("user-journeys");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
@@ -243,7 +246,7 @@ const forbiddenHit = (text) => {
   const newWindow = async () => {
     app = await _electron.launch({
       executablePath: ELECTRON,
-      args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu"],
+      args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu", "--user-data-dir=" + UD],
       cwd: REPO,
       env: launchEnv({}),
       timeout: 120000,

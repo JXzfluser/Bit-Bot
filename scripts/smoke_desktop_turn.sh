@@ -905,13 +905,18 @@ PY
 node hosts/cli_host/run_turn.js "uninstall plugin plugin-slides" >/tmp/bitbot-mcp-uninstall.json
 python3 -c "import json,os;d=json.load(open('/tmp/bitbot-mcp-uninstall.json'));assert d.get('intent')=='uninstall_plugin';h=next(x for x in d['host_results'] if x.get('kind')=='mcp_uninstall');assert h.get('ok');p=json.loads(h['stdout']);assert p.get('pretend_uninstalled') is False;assert p.get('namespace')=='user-Slides';assert p.get('status')=='Unavailable';assert p.get('usable') is False;assert p.get('namespace_gone') is True;assert p.get('path') and os.path.isfile(p['path']);cat=json.load(open(p['catalog_path']));assert (cat.get('namespaces') or {}).get('user-Slides',{}).get('usable') is False;assert 'plugin-slides' not in (cat.get('installed_plugins') or []);print('mcp_uninstall Unavailable ok', p.get('namespace'), p.get('path'))"
 echo "==> Desktop Electron Host smoke turn (ADR 0005 product path)"
+# 单实例锁按 user-data-dir 算（app.getName() 跟 productName 走 = "Bit Bot"）。
+# 不隔离时用户自己开着的 app 会让这个实例在窗口出现前就 quit，下面那条 python
+# 断言只会报「文件不存在」，看起来像产品没跑回合，其实是尺子撞了锁。
+SMOKE_UD="$(mktemp -d "${TMPDIR:-/tmp}/bitbot-smoke-turn-ud.XXXXXX")"
 (
   cd "$ROOT/hosts/desktop"
   BITBOT_DESKTOP_SMOKE_TURN="ListMachines" \
   BITBOT_REPO_ROOT="$ROOT" \
   ELECTRON_ENABLE_LOGGING=1 \
-  npx --no-install electron . --no-sandbox >/tmp/bitbot-desktop-electron-smoke.log 2>&1
+  npx --no-install electron . --no-sandbox "--user-data-dir=$SMOKE_UD" >/tmp/bitbot-desktop-electron-smoke.log 2>&1
 )
+rm -rf "$SMOKE_UD"
 python3 -c "import json,os;p='data/tmp/desktop-electron-turn.json';assert os.path.isfile(p), open('/tmp/bitbot-desktop-electron-smoke.log').read()[-2000:];d=json.load(open(p));assert d.get('via_electron') is True;assert d.get('moonbit_brain') is True;assert d.get('local_brain') is False;assert d.get('pretend_desktop') is False;assert d.get('ok') is True;t=d.get('turn') or {};assert t.get('intent')=='list_machines';assert t.get('machine_kind')=='desktop';print('desktop electron smoke turn ok', t.get('intent'), p)"
 
 echo "==> Host durable routines"

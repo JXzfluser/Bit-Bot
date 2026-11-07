@@ -73,6 +73,7 @@
  */
 import path from "path";
 import fs from "fs";
+import net from "net";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 
@@ -150,6 +151,19 @@ fs.writeFileSync(
 );
 const UD = electronUserDataDir("mobctl");
 
+/* MC-03 要量「点了允许手机连接之后真的放开了局域网地址」。入站默认钉 18765，
+   而用户自己开着的 Bit Bot 正占着 *:18765 —— 门禁实例 bind 失败，pairingState()
+   如实回 listening:false / lan_ips:[]，于是这条红看起来像产品没放开，其实是
+   两个进程抢同一个端口。向 OS 要一个空闲端口，尺子就不再依赖用户开没开 app。 */
+const INBOUND_PORT = await new Promise((resolve, reject) => {
+  const s = net.createServer();
+  s.once("error", reject);
+  s.listen(0, "127.0.0.1", () => {
+    const p = s.address().port;
+    s.close(() => resolve(p));
+  });
+});
+
 let launchSeq = 0;
 function launch(w, h) {
   return _electron.launch({
@@ -167,6 +181,7 @@ function launch(w, h) {
         BITBOT_LLM_API_KEY: "gate-no-call",
         BITBOT_LLM_MODEL: "gate-no-call",
         BITBOT_LLM_STREAM: "0",
+        BITBOT_CN_INBOUND_PORT: String(INBOUND_PORT),
       }),
     ),
   });
