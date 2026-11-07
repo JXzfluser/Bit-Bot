@@ -8356,3 +8356,97 @@ Electron 规则是「第一个不是 `--` 开关的参数就是 app」——一�
 
 **残留（如实）**：AP-01 是静态扫描，`args` 由更深的构造（如函数返回数组）时静态判不出，
 只在输出里如实列出这几处；真正的兜底是「跑起来看窗口标题」，门里不做。
+
+## 8.92 应用身份与「看起来不像产品」的一组突兀点（2026-11-07 修）
+
+用户的原话是「为什么这个项目是 Electron？显示的图标感觉也奇怪。这些都不符合产品
+交付哦。找出这些突兀的点，进行一一修复好」。这里逐条列：看到什么、根因是什么、
+怎么修、用什么门钉住。凡是「看不出根因就不算修完」的，都如实标成残留。
+
+### 8.92.1 清单与根因
+
+| # | 现象 | 根因 | 处理 |
+| --- | --- | --- | --- |
+| 1 | 菜单栏第一项写 `Electron`，⌘Q 里也写 `Electron Quit` | macOS 那一格读**进程所在 bundle 的 `CFBundleName`**；dev 跑的是 `node_modules/electron/dist/Electron.app`。`app.setName()` 只改 `app.getName()`/关于面板/菜单模板 label，改不动它 | 造 dev 同构包（`scripts/make_dev_app_bundle.sh`），`start-desktop.sh` 优先用它启动 |
+| 2 | 中文界面上方挂一排 `Edit / View / Window / Help` | `menuLangOf` 在 settings 没有 `language` 时回落 `en`，而渲染端 `wavegLang` 初值是 `zh-CN` | 回落方向改成「只有 `en*` 走英文，其余一律 zh」 |
+| 3 | 设置里切成英文再切回来，菜单永远是开机那套 | 主进程监听 `bitbot:menu-relocalize`，**渲染端从来没有 send 过这个事件**（全仓 0 处），监听器在、链路是断的 | 改挂在 `bitbot:settings:set` 这个唯一收口上，看到 `language` 就重建菜单；旧监听保留但走同一个幂等收口 |
+| 4 | 关于面板版本号 `37.10.3` | `app.getVersion()` 在 dev 下读 app 路径里的 `package.json`，临时宿主 app / 默认 app 时它就是 Electron 的版本 | 产品版本只有 `hosts/desktop/package.json` 一个真相（`PRODUCT_VERSION`），About 面板与启动日志都用它 |
+| 5 | 对话记录里出现 `AgentLoop::run`，以及 `llm_chat / exec_tool` 这些 op 名 | `projectAgentStepRow` 直接把内核符号写成 `textContent` | op → 词条表 `AGENT_STEP_LABEL`，`dataset.agentStep` 仍保留原始 op（排障与门要它） |
+| 6 | 路由开关在英文下变成 `… : ON（记录态）` | `"（记录态）"` 硬编码在拼接里 | 新增 `routeOnRecording` 词条 ×3 语言 |
+| 7 | 头像有的是四瓣花、有的星芒，圆角还各不相同 | 六个随机几何字形 + 五组随机 blob 圆角 | 收敛为「品牌 mark / 单字 + 正圆 + 统一色调」，见 8.92.3 |
+| 8 | 渠道图标里的白字糊在色块上（微信那块最明显） | 四个底色直接用品牌原色（12px/700 白字，对比度 2.86–4.28:1，全部不达 AA） | 只压亮度不动色相，压到 4.57–4.62:1，见 8.92.3 |
+
+### 8.92.2 菜单栏这件事：实测证据与修法
+
+真机 `screencapture -R 0,0,1200,32`，同一台机器、同一份源码：
+
+```
+dev 直接跑 Electron.app 的二进制  →  Electron   File Edit View Window Help
+跑 build/dev-app/Bit Bot.app      →  Bit Bot   编辑 视图 窗口 帮助
+```
+
+修法是「造一个身份正确的同构包」，不碰 `node_modules`：`ditto` 整包复制到
+`hosts/desktop/build/dev-app/`（`cp -R` 在本机会在 `default_app.asar` 上撞
+`Operation not permitted`），`PlistBuddy` 改 6 个键（`CFBundleName` /
+`CFBundleDisplayName` / `CFBundleIdentifier` / `CFBundleExecutable` /
+`CFBundleShortVersionString` / `CFBundleVersion`），可执行文件同步改名，写完
+**逐项读回来自检**，任何一项对不上就整体失败、不留半改的包。
+
+不重签名是量过的，不是猜的：`codesign -dv` 显示官方 Electron.app 是
+`adhoc, linker-signed` + `Info.plist=not bound` + `Sealed Resources=none` ——
+Info.plist 不在签名封条里，改它不破坏签名（改完实测能正常启动，arm64）。
+
+幂等：三项值（electron 版本 / productName / version）写进 `.stamp`，没变就秒回
+（实测 0.2s），变了才重建（250MB，一次）。`build/dev-app/` 进 `.gitignore`。
+
+打包产物本来就没这个问题（`electron-builder` 按 `productName` 写 plist，
+`dist/mac-arm64/Bit Bot.app` 实测 `CFBundleName=Bit Bot / 0.1.0`），所以这层只补
+「开发/自测的启动路径」。造不出来（非 macOS / PlistBuddy 异常）时**不静默降级**：
+`start-desktop.sh` 会打一行「菜单栏会显示 Electron」，让人知道看到的是什么。
+
+### 8.92.3 头像体系：从「六个随机字形 + 五种随机圆角」到一套
+
+原来的 `AVATAR_GLYPHS`（四瓣花/气泡/六边形/星芒/圆环/菱形）按 id 哈希取一个，
+圆角再从 `blob-*` 五组里哈希取一个 —— 同一个应用里两套随机，看起来像五个人拼的。
+现在：
+
+* 有品牌图的 Bot（钉钉/飞书/企微/微信/内核）→ 品牌 mark SVG；
+* 其余 → **名字首字**（`avatarInitial`，英文取大写首字母）；
+* 形状一律正圆（`border-radius: 50%`，`.strip-av` 的不规则圆角一并删掉）；
+* 底色从品牌色采样后统一降饱和 + 夹亮度（`avatar_palette.js` 的 `tone()`：
+  `S×0.70`、`L` 夹到 `[0.26, 0.34]`）。
+
+那条亮度带是**量出来的**：`L=[0.38,0.45]` 时 15px/600 白字最低只有 3.37:1
+（不达 WCAG AA 4.5:1），逐组试算到 `[0.26,0.34]` 后十个色最低 **4.53:1**。
+注释里写的就是这个数和这条试算路径，不是「看起来还行」。
+
+同一次量尺顺手抓到**渠道图标**的同一类问题：`.bm-ic-*` 四个底色原来是品牌原色
+（`#2f7cf6 / #3370ff / #2f9e6f / #17b04a`），里面是 12px/700 白字，对比度
+**3.94 / 4.28 / 3.36 / 2.86** —— 四个全部不达标，微信那块白字几乎糊在绿底上。
+做法一样：只压亮度、不动色相，压到刚好过线（`#196ef5 / #2969ff / #27845d / #128739`，
+4.57 / 4.61 / 4.62 / 4.61）。钉钉还是蓝的、微信还是绿的，变的是读不读得清。
+
+### 8.92.4 门
+
+| 门 | 判据 | 负向/注入对照 |
+| --- | --- | --- |
+| `prove_app_identity.js`（G-103，20 项） | dev 应用包 plist 四项与 `package.json` 相等（真读 `plutil`）；`setName` 在 `whenReady` 之前且取 `PRODUCT_NAME`；About 的 `applicationVersion` 不是裸 `app.getVersion()`；菜单语言只有 `en*` 走英文；`settings:set` 里真的调 `relocalizeMenu`；step 行走词条表；6 个新词条 ×3 语言（按字典行数数） | ID-04b 换回 `app.getVersion()` 必须红；ID-05b 喂修复前那一行必须红、ID-05c 喂正确实现必须绿；ID-06b 摘掉 `language` 分支必须红；ID-07b 把 plist 的 `CFBundleName` 改回 `Electron` 必须红；ID-10b 把内核符号塞回渲染点必须红 |
+| `prove_identity_render.mjs`（G-104，9 项） | 真起 Electron：进度行 = `内核继续下一步`；step 行 = `开始处理 / 执行工具` 且**不含** `Foo::bar` / op 名；原生菜单第二项 = `编辑`；切 en 且**不刷新页面**（`window.__noReload` 全程为 1）后两行变英文、菜单变 `Edit`；切回 zh-CN 两行与菜单都回来 | 「切回中文也绿」这条本身就是反方向对照：单向实现过不了双向 |
+| `prove_gp96_progress.js`（加强） | 10 个 `prog*` 键改成「按字典行数数 ≥ 3」，不再是「出现一次就算」 | — |
+| `prove_avatar_contrast.js`（G-105，7 项） | 头像容器正圆、随机字形/圆角代码 0 处、`avatarColorFor` 真的覆盖整张表、十个上屏色白字 ≥ 4.5:1（实测 4.53）、四个渠道图标白字 ≥ 4.5:1（实测 4.57） | AC-04 拿**未 toned 的采样原色**跑同一判定，最低 2.03:1；AC-06b 拿**品牌原色**跑，最低 2.86:1 —— 两条反向对照证明这几个绿是压亮度挣来的 |
+
+两个新门都接进了 `scripts/smoke_grok_desktop_parity.sh`（G-103 / G-104，含锚点逐个校验
+与两段「为什么长出来 / 判据是什么」的说明）。
+
+### 8.92.5 残留（如实）
+
+* **dev 下 Activity Monitor 里仍能看到 `Electron Helper (Renderer)`**。改名要连
+  助手 app 自己的 `Info.plist` 和 Framework 内部引用一起动，收益只是活动监视器那一行，
+  风险是起不来。菜单栏 / Dock / ⌘Q / 关于面板这几个用户真正看得到的地方已经对了。
+* **`ID-07` 在没造过包时是 SKIP，不计 PASS**。门里如实打「没验到」，不假装验过。
+* **dev 启动仍会注册开机自启项**（`AUTOSTART_ENABLED` 默认 true，`path` 取
+  `process.execPath`）。这是「开着电脑就是唤醒源」的产品行为，dev/打包走同一条路；
+  但现在 dev 的 execPath 指向 `build/dev-app`，删掉那个目录自启项就会指空。这一条
+  没动，因为改变它等于改产品行为（不是修 bug），要单独拍。
+* **手机端 `/bind` 页仍是中文单语**（上一轮就记着的跨端切片），以及手机 UI 的语言
+  跟随**手机系统**而不是桌面设置 —— 同一轮里看到的英文进度行有一部分来自这一侧。
