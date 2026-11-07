@@ -66,7 +66,8 @@ fi
 if [[ "$(uname -s)" == "Darwin" ]]; then
   DEV_APP_TMP="$(mktemp -t bitbot-dev-app)"
   if bash "$ROOT/scripts/make_dev_app_bundle.sh" > "$DEV_APP_TMP" 2>&1; then
-    grep -v '^DEV_APP=' "$DEV_APP_TMP" | sed 's/^/[dev-app] /' || true
+    # 造包脚本自己就带 [dev-app] 前缀，这里不再套一层（套了会打出 "[dev-app] [dev-app] …"）
+    grep -v '^DEV_APP=' "$DEV_APP_TMP" || true
     DEV_APP="$(sed -n 's/^DEV_APP=//p' "$DEV_APP_TMP" | tail -1)"
     if [[ -n "$DEV_APP" && -x "$DEV_APP/Contents/MacOS/Bit Bot" ]]; then
       ELECTRON_BIN="$DEV_APP/Contents/MacOS/Bit Bot"
