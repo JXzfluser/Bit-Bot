@@ -17,6 +17,8 @@
  *   S9 幂等：同一条群任务再走 IPC → deduped，final_report 不重复落盘。
  *   S10 细节面：转录逐字段有界；失败卡在产品面说人话（本地化），磁盘仍留可审计原因。
  *   S11 幂等经 composer：不闪「工作中」卡，幂等说明卡在整表重绘后仍在（不一闪就没）。
+ *   S11b 无 @ 的一句话：宿主按内容认出唯一负责人 → 只跑一棒 → 真文件产物 + 卡上可打开；
+ *      单人成功时汇报卡只留产物行（正文已经在那张成员气泡里），多人的卡不许跟着瘦身。
  *   S12 点名不在群里的人：Host 记 unknown_mentions 并按未点名处理，界面如实告知。
  *   S13 rooms.json 坏掉：转录与侧栏如实报「读不到」（不演成空群/没有群），恢复后
  *       按原文件重建卡片；坏存储上的运行被拒绝且绝不落空目录覆盖历史。
@@ -486,6 +488,8 @@ const DOM_COUNTS = () => ({
       vis.found && vis.text.length > 0 && !/Host FFI|moon run|needs_host_ffi|__bb|entry=|account=|masked=|data\/desktop\/|ADR 0002/.test(vis.text)
         ? ok("产品态群线程（可见文字，含卡片正文）看不到调试串/内部路径")
         : bad("visible debug strings", JSON.stringify(vis).slice(0, 400));
+      // 可见文字原样留档：产品面到底给用户看了什么，靠这段复核（不是靠我们读代码猜）。
+      evidence.s7_visible_text = vis.text.slice(0, 4000);
     }
 
     /* ---------- S8: Bot 私聊人设 + 群回合不污染 DM 会话 ---------- */
@@ -698,7 +702,38 @@ const DOM_COUNTS = () => ({
       dvDom && dvDom.hasRow && /\.md$/.test(dvDom.name) && dvDom.btn.length > 0
         ? ok("汇报卡上有产物行（" + dvDom.label + "：" + dvDom.name + " ·「" + dvDom.btn + "」）")
         : bad("deliverable row in DOM", JSON.stringify(dvDom));
-      evidence.s11b = { route: repD && repD.route, deliverable: dv || null, workers: workersD.length };
+      /* 单人成功时这张卡只留产物行：正文已经长在上面那张成员气泡里，再抄一遍就是
+         「他说了一遍、汇总又说一遍」。头部那行「群协作汇总 · 收齐 1/1 · 已全部收齐」
+         对单人任务也不成立（1/1 不是一场协作），一并去掉。
+         负向对照：多人 / 部分收齐的卡**不许**跟着瘦身 —— 那些行是用户唯一的可见来源
+         （谁失败、为什么失败、收了几份）。 */
+      const soloDom = await win.evaluate(() => {
+        const els = Array.from(document.querySelectorAll("#log .msg.room-report"));
+        const last = els[els.length - 1];
+        const multi = els.filter((el) => el.querySelectorAll(".rr-sec").length >= 2);
+        return {
+          solo: last ? {
+            cls: last.className,
+            secs: last.querySelectorAll(".rr-sec").length,
+            head: Boolean(last.querySelector(".rr-head")),
+            dv: Boolean(last.querySelector(".rr-deliverable")),
+            text: (last.innerText || "").slice(0, 160),
+          } : null,
+          multiKept: multi.length,
+          multiAllHeaded: multi.every((el) => Boolean(el.querySelector(".rr-head"))),
+        };
+      });
+      soloDom.solo && soloDom.solo.secs === 0 && soloDom.solo.head === false &&
+        soloDom.solo.dv && /room-solo/.test(soloDom.solo.cls) && !/群协作汇总/.test(soloDom.solo.text)
+        ? ok("单人成功时汇报卡只留产物行（正文不抄第二遍，头部「收齐 1/1」也去掉了）")
+        : bad("solo deliverable card", JSON.stringify(soloDom.solo));
+      soloDom.multiKept >= 1 && soloDom.multiAllHeaded
+        ? ok("负向对照：多人卡照旧保留头部与逐人分区（" + soloDom.multiKept + " 张没被一起瘦身）")
+        : bad("multi cards stripped", JSON.stringify({ n: soloDom.multiKept, head: soloDom.multiAllHeaded }));
+      evidence.s11b = {
+        route: repD && repD.route, deliverable: dv || null, workers: workersD.length,
+        solo_card: soloDom.solo, multi_cards: soloDom.multiKept,
+      };
       await win.screenshot({ path: path.join(SHOT_DIR, "gp145-11b-deliverable.png") });
     }
 

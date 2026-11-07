@@ -1354,6 +1354,11 @@
   }
   .room-report .rr-deliverable-open:hover { border-color: var(--ink); }
   .room-report .rr-deliverable-meta { font-size: var(--text-xs); color: var(--muted); }
+  /* 单人成功：这张卡只剩产物行（正文已经在上面那张成员气泡里）。
+     去掉产物行自带的边框/底色与上间距，否则会变成「一张卡里再套一个小卡片」。 */
+  .room-report.room-solo .rr-deliverable {
+    margin-top: 0; padding: 0; border: 0; background: transparent;
+  }
   /* 「等你确认」卡：群里真正会打断流程的一步，视觉上要压过普通回执。 */
   .msg.room-confirm { border-left: 3px solid var(--warn-line); padding-left: 10px; }
   .room-confirm .rc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -7650,42 +7655,55 @@
       const el = document.createElement("div");
       const partial = Boolean(e.partial);
       const skipped = Boolean(e.skipped);
-      el.className = "msg assistant room-report" + (partial ? " room-partial" : "") + (skipped ? " room-skipped" : "");
+      /* 单人成功（1/1、这一位真交了东西、也有产物）：这张卡唯一的新增价值是产物。
+         正文已经长在上面那张成员气泡里了，再抄一遍就是同一件事说两遍 —— 用户看到
+         的是「他说了一遍、汇总又说一遍」。所以只留产物行，头部/任务/成员分区都不画。
+         多人、partial、失败、没有产物，全都不走这条：那些卡里每一行都是用户没法从
+         别处看到的信息（谁失败、为什么失败、收到几份）。 */
+      const secs = Array.isArray(e.sections) ? e.sections : [];
+      const soloDelivered = !skipped && !partial && secs.length === 1 &&
+        Boolean(secs[0] && secs[0].ok) &&
+        Number(e.returned) === 1 && Number(e.total) === 1 &&
+        Boolean(e.deliverable && e.deliverable.path);
+      el.className = "msg assistant room-report" + (partial ? " room-partial" : "") +
+        (skipped ? " room-skipped" : "") + (soloDelivered ? " room-solo" : "");
       const body = document.createElement("div");
       body.className = "body";
       el.appendChild(body);
-      const head = document.createElement("div");
-      head.className = "rr-head";
-      const title = document.createElement("span");
-      title.className = "rr-title";
-      title.textContent = wavegT("roomReportHead");
-      head.appendChild(title);
-      const count = document.createElement("span");
-      count.className = "rr-count";
-      count.textContent = skipped
-        ? wavegT("roomReportNone")
-        : wavegT("roomReportCount")
-          .replace("{r}", String(e.returned == null ? "?" : e.returned))
-          .replace("{t}", String(e.total == null ? "?" : e.total));
-      head.appendChild(count);
-      const state = document.createElement("span");
-      state.className = "rr-sec-text";
-      // 未收齐永远显示 partial，不写「全部完成」（诚实性合同）。
-      state.textContent = skipped
-        ? wavegT("roomReportSkipped")
-        : partial ? wavegT("roomReportPartial") : wavegT("roomReportComplete");
-      head.appendChild(state);
-      if (e.at) {
-        const tm = document.createElement("span");
-        tm.className = "rs-time";
-        tm.textContent = roomTime(e.at);
-        head.appendChild(tm);
+      if (!soloDelivered) {
+        const head = document.createElement("div");
+        head.className = "rr-head";
+        const title = document.createElement("span");
+        title.className = "rr-title";
+        title.textContent = wavegT("roomReportHead");
+        head.appendChild(title);
+        const count = document.createElement("span");
+        count.className = "rr-count";
+        count.textContent = skipped
+          ? wavegT("roomReportNone")
+          : wavegT("roomReportCount")
+            .replace("{r}", String(e.returned == null ? "?" : e.returned))
+            .replace("{t}", String(e.total == null ? "?" : e.total));
+        head.appendChild(count);
+        const state = document.createElement("span");
+        state.className = "rr-sec-text";
+        // 未收齐永远显示 partial，不写「全部完成」（诚实性合同）。
+        state.textContent = skipped
+          ? wavegT("roomReportSkipped")
+          : partial ? wavegT("roomReportPartial") : wavegT("roomReportComplete");
+        head.appendChild(state);
+        if (e.at) {
+          const tm = document.createElement("span");
+          tm.className = "rs-time";
+          tm.textContent = roomTime(e.at);
+          head.appendChild(tm);
+        }
+        body.appendChild(head);
       }
-      body.appendChild(head);
       /* 接力链：一步接一步到底走了几棒、谁交给谁、哪一棒没成。
          用户投诉的正是「看不出一堆活是怎么被干完的」——这里把它摆在明面上。 */
       const relay = Array.isArray(e.relay) ? e.relay.filter((h) => h && (h.name || h.bot_id)) : [];
-      if (relay.length) {
+      if (!soloDelivered && relay.length) {
         const chain = document.createElement("div");
         chain.className = "rr-relay";
         relay.forEach((h, i) => {
@@ -7708,19 +7726,19 @@
         body.appendChild(chain);
       }
       const failOpen = Number(e.discretion_fail_open || 0);
-      if (failOpen > 0) {
+      if (!soloDelivered && failOpen > 0) {
         const note = document.createElement("div");
         note.className = "rr-task rr-fail-open";
         note.textContent = wavegT("roomReportFailOpen").replace("{n}", String(failOpen));
         body.appendChild(note);
       }
-      if (e.task_title || e.task) {
+      if (!soloDelivered && (e.task_title || e.task)) {
         const task = document.createElement("div");
         task.className = "rr-task";
         task.textContent = wavegT("roomReportTask") + String(e.task_title || e.task);
         body.appendChild(task);
       }
-      for (const s of Array.isArray(e.sections) ? e.sections : []) {
+      for (const s of soloDelivered ? [] : secs) {
         const row = document.createElement("div");
         row.className = "rr-sec" + (s && s.ok ? "" : " bad");
         const nm = document.createElement("span");
