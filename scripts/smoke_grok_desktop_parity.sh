@@ -300,7 +300,15 @@ const mine=rs.filter(r=>((r.bot_ids||r.members||[]).includes('$smid')));
 console.log((mine[mine.length-1]||rs[rs.length-1]||{}).id||'')")
 j=$(turn_json "room $roomid :: @SmokeRenamed ping"); echo "$j" | grep -q mentioned_only && ok "@BotName → mentioned_only 路由" || bad "mention routing"
 j=$(turn_json "room $roomid :: @everyone ping"); echo "$j" | grep -qE '"responder_policy": "all"|all' >/dev/null && echo "$j" | grep -q everyone && ok "@everyone 路由输出存在" || bad "everyone"
-j=$(turn_json "room $roomid :: 无人点名"); echo "$j" | grep -q bot_discretion && ok "无 @ → bot_discretion" || bad "discretion"
+# ADR 0013 把「无 @ 时问遍每个成员、说要不要答的全部同时跑」换成 auto_route
+# （内容路由出唯一负责人、串行接力）。尺子跟着契约走，并反向钉住旧策略不许回来：
+# 只 grep auto_route 的话，将来两个字段并存也会绿。
+j=$(turn_json "room $roomid :: 无人点名")
+if echo "$j" | grep -q auto_route && ! echo "$j" | grep -q bot_discretion; then
+  ok "无 @ → auto_route（单负责人串行接力，不再全员并发）"
+else
+  bad "discretion"
+fi
 # GP-53「审批不进群」：原来靠回包里一个 escalations:"dm-only" 字面量取证，但群路径被
 # 重写进 hosts/shared/room_* 之后这个字段整条链路都不产生了（也没人消费它）。
 # 尺子不能跟着字段一起失效，也不能只会 grep 一个漂亮字符串 —— 改成量行为：
@@ -1675,22 +1683,26 @@ if timeout 900 node scripts/prove_m38_copy.js > /tmp/g38-probe.log 2>&1; then
 else
   bad "G-38 M38 复制契约（见 /tmp/g38-probe.log）"
 fi
-grep -q "attachMessageActions：Reply / React 后追加 Copy" /tmp/g38-probe.log 2>/dev/null \
-  && ok "G-38 GP-M38：Copy 按钮接入悬浮工具条，含 clipboard / execCommand 回退" \
+grep -q "attachMessageActions：↩/😊/⧉/↺ ghost 图标条" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：Copy 接入 ghost 图标条，走 makeCopyActionBtn 工厂（clipboard / execCommand 回退）" \
   || bad "G-38 copy wiring missing"
 grep -q "i18n zh-CN：copyAction" /tmp/g38-probe.log 2>/dev/null \
   && grep -q "i18n zh-TW：copyAction" /tmp/g38-probe.log 2>/dev/null \
   && grep -q "i18n en：Copy" /tmp/g38-probe.log 2>/dev/null \
   && ok "G-38 GP-M38：三语 copyAction / copyDone / copyFailed 齐备" \
   || bad "G-38 i18n coverage"
-grep -q "msg-actions：pill 容器 + backdrop-filter" /tmp/g38-probe.log 2>/dev/null \
-  && ok "G-38 GP-M38：pill 容器 + backdrop-filter blur(4px)" \
-  || bad "G-38 pill bar missing"
+grep -q "msg-actions：ghost 容器" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：操作条 ghost 化（assistant 透明容器 + grid 气泡右侧）" \
+  || bad "G-38 ghost bar missing"
+grep -q "attachRoomCopyAction：群用户消息" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 GP-M38：群消息 copy-only ghost 条（无 mid 不冒领回复/反应/重新生成）" \
+  || bad "G-38 room copy bar missing"
 grep -q "welcome .w-brand：linear-gradient" /tmp/g38-probe.log 2>/dev/null \
   && ok "G-38 GP-M38：welcome .w-brand 使用 linear-gradient + background-clip: text" \
   || bad "G-38 welcome gradient missing"
-grep -q "负向对照：抹掉 bar.appendChild(cp)" /tmp/g38-probe.log 2>/dev/null \
-  && ok "G-38 负向对照：抹掉 bar.appendChild(cp) → Copy 装配断言翻假（非恒真）" \
+grep -q "负向对照 a：抹掉 bar.appendChild(cp)" /tmp/g38-probe.log 2>/dev/null \
+  && grep -q "负向对照 b：抹掉 grid-column: 2" /tmp/g38-probe.log 2>/dev/null \
+  && ok "G-38 负向对照：抹掉 bar.appendChild(cp) / grid-column: 2 → 断言翻假（非恒真）" \
   || bad "G-38 negative control"
 
 echo "== G-39 微交互精修（M39：淡入悬浮条 / 按压反馈 / 侧栏行 hover）=="
@@ -2232,7 +2244,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     && grep -q "CN-05 有错时保存不可点" /tmp/g51-cnchan.log \
     && ok "G-51 三条红线在：带 access_token 的 URL 不再明文躺着、勾了开启缺字段当场点名、错误挡在写盘之前" \
     || bad "G-51 cn-channel anchors missing"
-  grep -q "CN-06 卡内" /tmp/g51-cnchan.log \
+  grep -q "CN-06 字段与写盘口子同页" /tmp/g51-cnchan.log \
     && grep -q "CN-08 未开启也写明" /tmp/g51-cnchan.log \
     && ok "G-51 手顺接上：填凭证的卡直接给出「去保存并试连」，未开启的渠道也如实交代" \
     || bad "G-51 next-step / state anchors missing"
@@ -3096,7 +3108,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     && ok "G-67 主路三条在：状态点如实（没放开不亮绿）、配对码生成/刷新/作废与 Host 同步、复制链接当场回显" \
     || bad "G-67 主路锚点缺失（状态点 / 配对码 / 复制链接没被断言到）"
   grep -q "MC-06 Esc 与遮罩都能关" /tmp/g67-mobctl.log \
-    && grep -q "MC-07 只列钉钉" /tmp/g67-mobctl.log \
+    && grep -q "MC-07 配对弹窗零渠道卡片" /tmp/g67-mobctl.log \
     && grep -q "MC-09 480×720" /tmp/g67-mobctl.log \
     && grep -q "MC-11 480×" /tmp/g67-mobctl.log \
     && ok "G-67 边界三条在：Esc 与遮罩都关得掉且焦点归还、渠道列只有真支持的三条且不叠弹窗、480 宽不破版且账户菜单点得到" \

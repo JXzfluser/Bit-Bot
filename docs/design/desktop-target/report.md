@@ -8586,7 +8586,7 @@ dev 包从 `Contents/Resources/app`（软链）启动，Electron 报 `app.isPack
 - 活动监视器里渲染进程仍叫 `Electron Helper (Renderer)`：改这个要重签
   Frameworks 下的五个 helper，收益小、风险大，留作已知项。
 
-### 8.93 「我之前加了自媒体相关的模板，怎么都不见了」
+### 8.92.8 「我之前加了自媒体相关的模板，怎么都不见了」
 
 用户这句话是对的，模板确实被删了 —— 删它的是**我们自己的门禁**。
 
@@ -8662,7 +8662,7 @@ return list.filter((t) => t && t.id && t.job && t.description);   // 旧
 - G-11 现在跑在 `data-gp02` 上，跑完即删；若中途强杀可能留下这个目录
   （已在 `.gitignore` 里，`rm -rf data-gp02` 即可）。
 
-### 8.94 「两个自媒体内容团队」「没开始聊就很多内容」「群不能改名」
+### 8.92.9 「两个自媒体内容团队」「没开始聊就很多内容」「群不能改名」
 
 三句话，三个不同层的问题，外加一个问句（SQLite）。逐个对账。
 
@@ -8904,7 +8904,7 @@ HTML 是启动那一刻读进内存的，文件变了已开着的窗口不会自
 `host_ffi.js` 的 `mcp_list_plugins` 与 `mcp_get_plugin`、以及 `mcp_namespace` 的
 `PLUGIN_NS`）——**只改一处会出现「列表里有、点安装说不认识」**，这是最容易漏的地方。
 
-### 门
+### 门（渠道目录）
 
 | 门 | 内容 | 结果 |
 | --- | --- | --- |
@@ -8914,7 +8914,7 @@ HTML 是启动那一刻读进内存的，文件变了已开着的窗口不会自
 | `moon test -p connectors` | `seed_demo` 加了三条，27 个用例仍全绿 | 27/27 |
 | `prove_gp135_skill_sources` / `prove_m20_ui` / `prove_ui_simplicity` / `e2e_modal_computed` | 静态结构与弹层 computed style 复跑 | 15/0、24/0、16/0、28/0 |
 
-### 残留（如实）
+### 残留（如实）· 渠道目录
 
 - X 的 6 个工具是**契约声明**，真调用要对应 MCP 服务器在跑（与本仓库既有的
   Slides / Calendar 两条同级别）。面板上的开关是真的（写 `mcp-tools-catalog.json`），
@@ -9056,7 +9056,7 @@ system 群综合（lead：情报侦察员）…
 - `prove_room_dispatch` §6：从「自决真的跑了一轮」改成「只唤醒一个成员」+**负向对照**
   「`selectResponders` 不再被调用」（少花 N 次模型调用是这次改动的收益，必须钉住）。
 
-### 残留（如实）
+### 残留（如实）· 群任务接力
 
 - 路由是**词面匹配**，不懂语义。「帮我核对一下上一条脚本里的碳排放数字」会被判成
   「脚本撰写 / 事实核查 一样像」→ 停下来问用户。这是刻意的：宁可问一句，不要猜着派错
@@ -9147,7 +9147,7 @@ padding，账面正好剩 6px 净间距。改后实测 `b=59 / t=65`，重叠 0�
 - MC-03 的红**不是本波引入**：把本波改动 `git stash` 掉在同一台机器上跑，payload 一字不差
   （`lan_ips: []`、`lan_open: false`）—— 这台机器当前没有非环回 IPv4，弹性地址开放不了。
 
-### 残留（如实）
+### 残留（如实）· 凭证两处重复
 
 - `scripts/e2e_android_roster.mjs` 的 AR-16 还在 `waitForSelector("#st-phone #pairing-gen-btn")`。
   `#st-phone` 早在删「手机」页签时就不存在，这条 e2e 在本波之前就点不到东西；本波把
@@ -9161,3 +9161,81 @@ padding，账面正好剩 6px 净间距。改后实测 `b=59 / t=65`，重叠 0�
 - 入站地址现在要展开渠道卡才看得见。它是低频只读项，收进去换来这一卡少一个分组标题；
   但如果以后有人反馈「找不到回调地址」，第一反应应该是把它提到 summary 那行，而不是
   再开一个分组。
+
+## 8.97 「按 Grok Bot 的方式来」：气泡、身份、操作条、系统行（2026-11-07）
+
+用户原话：「我本地安装了 grok bot，通过探索 grok bot 应用，按 grok bot 的方式来处理好，
+比如消息有气泡等等，做到真正的 bot」。
+
+**取证先于动手。** 本机 `/Applications/Grok Bot.app` 是 Electron（bundle id
+`com.anysphere.sand`，anysphere 的沙盒壳，CSP 连 `https://grok.com`），asar 53MB，
+`npx @electron/asar extract` 解出 5 个 CSS 后直接读到真 token：
+
+```
+--conversation-bubble-max-width: min(640px, calc(100% - 0px))
+--sand-fill-bubble-agent: #1c1c1c0f      （= rgba(28,28,28,.06)）
+--sand-fill-bubble-user:  #1c1c1c
+```
+
+配合 `docs/design/desktop-target/reference/grok-real-spec.json`（CDP 实测）与
+`replica/screens/grok-regenerate.png`（hover 现场），差距只有四件事 —— 气泡本身早就有了，
+「不像」的不是有没有气泡：
+
+| 症状 | 真机 | 我方原来 | 处置 |
+| --- | --- | --- | --- |
+| 回复铺满整列，右侧一半空气 | 气泡 min(640px,100%)，圆角 18，内边距 7/12 | `.body` `flex: 1 1 100%` → 恒 760 | 已改（§4.4 三层收敛落地） |
+| 群聊「谁 · 时间」写在气泡里 | 气泡**上方一行**、气泡外 | `body.prepend(roomSpeakerRow)` | 已改：`insertBefore(…, .body)` |
+| 操作条是白底文字药丸（回复/表情/复制/重新生成） | 气泡右侧 ghost 图标（😊 ↺ ⋯），无底无框无阴影 | 白底 pill + `backdrop-filter: blur(4px)` | 已改：ghost 图标条 |
+| 系统回执左对齐 | 居中灰色小字（「2 条消息往来：…」） | 左对齐 | 已改：meta 居中、长正文仍左对齐 |
+
+### 操作条：三个不那么显然的决定
+
+1. **assistant 消息从 flex column 改成 grid**：`fit-content(640px) max-content`，第一列气泡、
+   第二列操作条，`align-self: end` + `margin-bottom: 7px` 让图标贴着气泡最后一行。
+   为什么不是 `minmax(0, 640px)`：grid 的 maximize-tracks 阶段会把剩余空间全分给第一列，
+   短回复的气泡一样被撑到 640（实测 603.4），等于什么都没改。`fit-content` 才是
+   「内容多宽就多宽、上限 640」。
+2. **含代码块 / 表格的回复退回 `min(640px,100%)` 定宽轨道**：滚动容器的固有宽度不可靠
+   （实测被按 0 计），`fit-content` 会把气泡压到正文那一行的宽度（283px），代码被迫横滚。
+   真机那个 640 上限本来就是为这类内容准备的。
+3. **用户气泡的条放在气泡正下方、`absolute` 到 `top: 100%`**：用户气泡贴右边缘，右侧没有
+   空列；压在气泡里会直接盖住正文（实测「注意别动 lockfile。」被 😊 / ↺ 遮住，原来的白底
+   药丸也一样遮，只是白底看着像按钮、遮得更刺眼）。`absolute` 而不是进 flex 流：淡入靠
+   `opacity`，条本身一直在，进流就变成每条消息常驻多占 24px。
+
+功能一个没丢、也没冒领：四个按钮换成四个图标（↩ 😊 ⧉ ↺），文字进 `title`
+（`data-i18n-title` 走 i18n 静态扫描，切语言跟着换；按钮本体不能再挂 `data-i18n` ——
+那条扫描直接用 `textContent` 改写，图标会被冲掉）。复制反馈也是图标（✓ / ✗），
+文案进 title。**群消息只有「复制」**：群消息没有 store mid，回复/反应/重新生成
+全依赖 mid，不能虚标。
+
+### 门禁跟着翻，别替已退场的形状背书
+
+`prove_m38_copy.js` 原来断言「pill 容器 + `backdrop-filter: blur(4px)`」，但 grok-ui 下
+这条早被覆盖成透明 —— 门禁在给用户看不见的形状背书（与 MC-10 同一课）。改成检查真正
+生效的 ghost 覆盖 + grid 位置（`grid-column: 2` + `align-self: end`），并补第二条负向
+对照（抹掉 `grid-column: 2` 必须翻红）。`smoke_grok_desktop_parity.sh` 的 G-38 四条锚点
+同步换文案。
+
+### 实测（受控渲染，1040×760 浅色，`bb_spec_capture.mjs`）
+
+| 项 | 我方 | Grok |
+| --- | --- | --- |
+| 消息行宽 / 面板 | 728 / 760 | 728 / 760 |
+| assistant 气泡宽 | 640（含代码块，吃满上限） | 558.4（其探针文字更短，同为内容驱动 + 640 上限） |
+| 气泡内边距 / 圆角 | 7px 12px / 18px | 7px 12px / 18px |
+| 用户气泡底色 / 文字 | rgb(28,28,28) / #fff | 同 |
+| 操作条位置 | 气泡右缘 +8，底对齐（407.4 / 317 vs body 324） | 气泡右侧外 |
+| 群系统行 meta | 居中（±6px 内） | 居中 |
+
+### 残留（如实）
+
+- **图标是字形不是 SVG**：Grok 用单色线稿图标，我们用 `↩ 😊 ⧉ ↺`。`😊` 是彩色 emoji，
+  真机是单色线稿 —— 想要完全一致得引入 inline SVG，本轮没做。
+- **用户气泡的操作条在气泡下方**，真机在同侧（右侧）外挂；用户气泡贴右边缘，右侧没有列，
+  要么压字要么下移，选了后者。
+- **群消息没有表情反应**：反应要写 store，群消息没有 mid，接口层就没有这条路径。
+- **长回执折叠块仍左对齐**：居中只给 meta 与短句，长文本居中读起来更费劲，这点是刻意偏离。
+- **Grok 的「⋯ 更多」菜单没有对应功能**：我们第四颗图标是「复制」而不是弹出菜单。
+- `prove_ui_tokens` T-2 两条红（css hex 70 / html hex 42）是存量，本轮未新增
+  （新规则里 `#fff` 已改成 `var(--on-fill)`）；T-1 `!important` 仍是 178，未涨。

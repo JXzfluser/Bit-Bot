@@ -4081,8 +4081,15 @@
     const sendBtn = document.getElementById("send");
     const turnCancelBtn = document.getElementById("turn-cancel");
     if (turnCancelBtn) {
-      turnCancelBtn.addEventListener("click", () => {
-        if (window.bitbot && window.bitbot.cancelTurn) window.bitbot.cancelTurn();
+      turnCancelBtn.addEventListener("click", async () => {
+        if (!window.bitbot || !window.bitbot.cancelTurn) return;
+        // KP-02：停止要给回执。Host 回 {ok, had_active_turn}；根本没有在跑的
+        // 回合时如实说「没有在执行的回合」，不再让一次空按看起来像成功停下了什么。
+        let r = null;
+        try { r = await window.bitbot.cancelTurn(); } catch (_) { r = null; }
+        if (r && r.had_active_turn === false && typeof cmdToast === "function") {
+          cmdToast("没有在执行的回合", "warn");
+        }
       });
     }
 
@@ -5840,6 +5847,61 @@
         .catch(() => null);
       if (r && r.ok) renderReactions(el, r.reactions);
     }
+    // Grok 真机（replica/screens/grok-regenerate.png）：hover 操作条是气泡旁的
+    // ghost 图标（😊 ↺ ⋯），不是白底文字药丸。四个功能都保住，形状换成图标：
+    // ↩ 回复 / 😊 反应 / ⧉ 复制 / ↺ 重新生成；文字进 title（data-i18n-title
+    // 走 i18n 静态扫描，切语言时 title 跟着换）——按钮本体不能再挂 data-i18n，
+    // 那条扫描会直接把 textContent 改写成文字，图标就被冲掉了。
+    function iconActionBtn(glyph, i18nKey) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.i18nTitle = i18nKey;
+      b.title = wavegT(i18nKey);
+      b.setAttribute("aria-label", wavegT(i18nKey));
+      b.textContent = glyph;
+      return b;
+    }
+    // Wave M38 的复制逻辑抽成按钮工厂：DM 操作条和群消息 copy-only 条共用
+    // 同一段 clipboard / execCommand 回退，不养两份。
+    function makeCopyActionBtn(payload) {
+      const cp = iconActionBtn("⧉", "copyAction");
+      cp.addEventListener("click", async () => {
+        let ok = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(payload);
+            ok = true;
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = payload;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            ok = document.execCommand("copy");
+            ta.remove();
+          }
+        } catch (_) { ok = false; }
+        // 图标条的反馈也是图标：✓ 成功 / ✗ 失败，文字进 title（读屏可达）。
+        cp.textContent = ok ? "✓" : "✗";
+        cp.title = wavegT(ok ? "copyDone" : "copyFailed");
+        setTimeout(() => {
+          cp.textContent = "⧉";
+          cp.title = wavegT("copyAction");
+        }, 1200);
+      });
+      return cp;
+    }
+    // 群消息没有 store mid，「回复 / 反应 / 重新生成」全都依赖 mid，不能冒领；
+    // Grok 群聊 hover 同样给 ghost 条，这里只给单颗「复制」——形状与 DM 一致，
+    // 功能不虚标。
+    function attachRoomCopyAction(el, payload) {
+      const bar = document.createElement("div");
+      bar.className = "msg-actions";
+      bar.appendChild(makeCopyActionBtn(String(payload || "")));
+      el.appendChild(bar);
+    }
     function attachMessageActions(el, role, text) {
       // G-28: 同一个 isHostNotice 判据也管操作条。失败/配置提示不是 Bot 说的话，
       // 若还挂着「回复 / 反应 / 重新生成」，等于让用户对一条系统告警做语义操作，
@@ -5847,10 +5909,7 @@
       if (role !== "user" && isHostNotice(text)) return;
       const bar = document.createElement("div");
       bar.className = "msg-actions";
-      const rb = document.createElement("button");
-      rb.type = "button";
-      rb.dataset.i18n = "replyAction";
-      rb.textContent = wavegT("replyAction");
+      const rb = iconActionBtn("↩", "replyAction");
       rb.addEventListener("click", () => {
         setReplyTarget({
           id: el.dataset.mid,
@@ -5860,10 +5919,7 @@
       });
       bar.appendChild(rb);
       // GP-M31: react affordance next to Reply on every durable bubble.
-      const rct = document.createElement("button");
-      rct.type = "button";
-      rct.dataset.i18n = "reactAction";
-      rct.textContent = wavegT("reactAction");
+      const rct = iconActionBtn("😊", "reactAction");
       rct.addEventListener("click", () => {
         const existing = el.querySelector(".reaction-picker");
         if (existing) {
@@ -5886,39 +5942,11 @@
       });
       bar.appendChild(rct);
       // Wave M38: Grok-style Copy on hover bar (single-shot, no state).
-      const cp = document.createElement("button");
-      cp.type = "button";
-      cp.dataset.i18n = "copyAction";
-      cp.textContent = wavegT("copyAction");
-      cp.addEventListener("click", async () => {
-        const payload = String(text || "");
-        let ok = false;
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(payload);
-            ok = true;
-          } else {
-            const ta = document.createElement("textarea");
-            ta.value = payload;
-            ta.setAttribute("readonly", "");
-            ta.style.position = "fixed";
-            ta.style.opacity = "0";
-            document.body.appendChild(ta);
-            ta.select();
-            ok = document.execCommand("copy");
-            ta.remove();
-          }
-        } catch (_) { ok = false; }
-        cp.textContent = wavegT(ok ? "copyDone" : "copyFailed");
-        setTimeout(() => { cp.textContent = wavegT("copyAction"); }, 1200);
-      });
+      const cp = makeCopyActionBtn(String(text || ""));
       // Replica C3: regenerate the assistant reply (idempotent, replaces in place).
       if (role === "assistant" && el.dataset.mid) {
-        const rg = document.createElement("button");
-        rg.type = "button";
-        rg.dataset.i18n = "regenerateAction";
+        const rg = iconActionBtn("↺", "regenerateAction");
         rg.dataset.act = "regenerate";
-        rg.textContent = wavegT("regenerateAction");
         rg.addEventListener("click", function () {
           regenerateAssistantReply(el, el.dataset.mid);
         });
@@ -7495,8 +7523,11 @@
       // 不带头像，只标「系统 + 时间 + 原文」。文案由 Host 写死，这里不改写。
       const el = document.createElement("div");
       el.className = "room-system";
+      // Grok 真机：系统行是**居中**的灰色小字（「2 条消息往来：…」「10月17日
+      // 周六 15:13」）。这里 meta（谁·时间）跟着居中；正文和折叠块仍左对齐——
+      // 回执类长文本居中会伤可读性，真机的系统行全是短句，我们不然。
       el.style.cssText =
-        "display:flex;flex-direction:column;gap:2px;padding:4px 0;color:var(--muted);font-size:var(--text-sm)";
+        "display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;color:var(--muted);font-size:var(--text-sm);text-align:center";
       el.appendChild(
         roomSpeakerRow({
           name: wavegT("roomSystemSpeaker"),
@@ -7505,6 +7536,7 @@
       );
       const txt = document.createElement("div");
       txt.className = "rs-sec-text room-system-text";
+      txt.style.textAlign = "left";
       /* 群综合会把每个成员的答复拼在一行里，未配模型时同一句「收到，正在用
          MoonBit 内核处理」能出现三次，后面还跟着 Host 的执行回执。超长或有回执
          的系统行照样如实保留，但默认折叠，否则一进群就是一屏机器话。 */
@@ -7515,7 +7547,9 @@
         txt.textContent = sysText.slice(0, cut).trim() + "…";
         el.appendChild(txt);
         const full = sysSplit.receipt ? sysSplit.head + "\n" + sysSplit.receipt : sysText;
-        el.appendChild(roomFoldBlock(wavegT("roomMoreText").replace("{n}", String(full.length)), full));
+        const fold = roomFoldBlock(wavegT("roomMoreText").replace("{n}", String(full.length)), full);
+        fold.style.textAlign = "left";
+        el.appendChild(fold);
         return roomAppend(el);
       }
       txt.textContent = sysText;
@@ -7527,12 +7561,16 @@
       el.classList.add("room-user");
       el.parentNode.removeChild(el);
       roomAppend(el);
-      el.querySelector(".body").prepend(
+      /* 身份行在气泡**外面**（Grok 真机：说话人/时间单独一行，气泡里只有话）。
+         .room-user 因此退成透明的一列，气泡本体落在 .body 上（见 ui_chrome
+         parity block 3），否则把它 prepend 进 .body 就等于写进绿气泡里头。 */
+      el.insertBefore(
         roomSpeakerRow({
           name: wavegT("roomMe"),
           time: roomTime(e.at),
           policy: roomPolicyLabel(e.responder_policy),
         }),
+        el.querySelector(".body"),
       );
       // 点名点到了不在群里的人：不能让用户以为已经定向成功（Host 记 unknown_mentions）。
       if (Array.isArray(e.unknown_mentions) && e.unknown_mentions.length) {
@@ -7544,6 +7582,8 @@
         );
         el.querySelector(".body").appendChild(note);
       }
+      // Grok 群聊 hover 形状：ghost 条。群用户消息没有 mid，只给「复制」。
+      attachRoomCopyAction(el, String(e.text || ""));
       return el;
     }
     function renderRoomBotReply(e, isError) {
@@ -7556,12 +7596,14 @@
       el.parentNode.removeChild(el);
       roomAppend(el);
       const body = el.querySelector(".body");
-      body.prepend(
+      /* 说话人/时间在气泡上方一行，不塞进气泡（Grok 真机同形）。 */
+      el.insertBefore(
         roomSpeakerRow({
           name: e.name || roomSpeakerName(e.bot_id),
           time: roomTime(e.at),
           state: isError ? wavegT("roomReplyFailed") : "",
         }),
+        body,
       );
       if (isError) {
         const why = document.createElement("div");
@@ -7579,6 +7621,10 @@
         }
         roomArtifacts(body, e.artifacts);
       }
+      // Grok 群聊 hover 形状：ghost 条，只给「复制」（群消息无 mid，回复 /
+      // 反应 / 重新生成都依赖 mid）。失败卡不挂——它不是 Bot 说的话
+      // （与 attachMessageActions 的 isHostNotice 收条同一个判据思路）。
+      if (!isError) attachRoomCopyAction(el, full);
       return el;
     }
     /* 「等你确认」卡：群协作唯一会**打断流程**的一步。

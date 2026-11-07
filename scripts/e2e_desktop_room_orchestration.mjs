@@ -343,7 +343,12 @@ const DOM_COUNTS = () => ({
         count: ((last.querySelector(".rr-count") || {}).textContent || ""),
         head: ((last.querySelector(".rr-head") || {}).textContent || ""),
         bad: Array.from(last.querySelectorAll(".rr-sec.bad")).map((x) => (x.textContent || "")),
-        errCards: Array.from(document.querySelectorAll("#log .msg.room-error .body")).map((x) => (x.textContent || "")),
+        // 失败卡点名失败者：身份行在气泡**外**（.room-speaker，Grok 真机同形），
+        // 只读 .body 会读不到 Bot 名字 —— 整条消息 + 单独取身份行，两个都要有。
+        errCards: Array.from(document.querySelectorAll("#log .msg.room-error")).map((x) => (x.textContent || "")),
+        errNamed: Array.from(document.querySelectorAll("#log .msg.room-error")).map(
+          (x) => ((x.querySelector(".room-speaker .rs-name") || {}).textContent || ""),
+        ),
         replyCards: document.querySelectorAll("#log .msg.room-reply").length,
       };
     });
@@ -357,8 +362,9 @@ const DOM_COUNTS = () => ({
       ? ok("汇总卡里点名失败的那个 Bot（partial 可追责到具体成员）")
       : bad("partial section naming", JSON.stringify(card1 && card1.bad).slice(0, 300));
     card1 && card1.errCards.length >= 1 && /GP145Fail/.test(card1.errCards[0])
-      ? ok("UI 失败卡点名失败的 Bot（bot_reply_error 用户可见）")
-      : bad("UI error card", JSON.stringify(card1 && card1.errCards).slice(0, 300));
+      && card1.errNamed && /GP145Fail/.test(card1.errNamed[0] || "")
+      ? ok("UI 失败卡点名失败的 Bot（bot_reply_error 用户可见，名字在气泡外身份行）")
+      : bad("UI error card", JSON.stringify(card1 && { body: card1.errCards, named: card1.errNamed }).slice(0, 300));
     await win.screenshot({ path: path.join(SHOT_DIR, "gp145-3-room-partial.png") });
 
     /* ---------- S3: @A @C → 2/2 收齐 + 人设互不串 ---------- */

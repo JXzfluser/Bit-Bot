@@ -2145,14 +2145,15 @@ body.grok-ui .msg-actions [data-act="regenerate"] { color: var(--accent); }
    「head(28) + gap + body」时，会横向换列把 head 和 body 挤成左右两栏
    （实测 head 在 x=496、body 在 x=863，各占一半宽），头像+名就和气泡并排了。
    column 布局下换行不是我们想要的，操作条改用 order: 3 自然沉到最下方。 */
-body.grok-ui .msg.assistant { flex-wrap: nowrap; }
 body.grok-ui .msg.assistant .msg-actions {
+  /* 形状：白底药丸 → Grok 的 ghost 条。容器全透明，颜色交给按钮；
+     位置不再用 order 沉底 —— parity block 3 把 assistant 消息改成了 grid，
+     操作条放在 grid-column: 2（气泡右侧），底部与气泡下缘对齐。
+     position 必须钉死 static：基础规则是 absolute 右上悬浮，absolute 一旦
+     生效，元素脱离流，grid-column 就失效了。 */
   position: static;
-  order: 3;
-  flex: 0 0 auto;
-  /* 头像已按 Grok 移除，操作条改为与正文内边距（18px）对齐，不再预留 32px 头像位 */
-  margin-left: 0;
-  padding-left: 18px;
+  margin: 0;
+  padding: 0;
   background: transparent;
   border: 0;
   box-shadow: none;
@@ -2494,6 +2495,137 @@ body.grok-ui .msg.assistant:has(.typing) .body { flex: 0 0 auto; }
    收紧上下内边距，状态行贴住正文右对齐。 */
 body.grok-ui .msg.user { padding: 10px 16px 6px; }
 body.grok-ui .msg.user .msg-status { display: flex; justify-content: flex-end; margin-top: 2px; }
+
+/* ============================================================================
+   Grok parity block 3 — 气泡按内容收缩，身份层在气泡外
+   ============================================================================
+
+   真机（replica/screens/grok-regenerate.png）与 CDP 实测
+   （docs/design/desktop-target/alignment-delta-v1.md §4.4）说的是三层收敛：
+   面板 760 → 消息行 728（两侧各 16）→ 气泡 min(640px, 100%)。
+   我们这里前两层早就对了，第三层没做 —— assistant 的 .body 是
+   flex: 1 1 100%，于是每条回复都铺满整列，右侧一半是空气。这才是
+   「看起来不像 Grok」的主因，不是圆角也不是颜色。
+
+   卡片类不参与收缩：协作汇总 / 需要你确认 / 失败卡 / 媒体是「面板」，
+   不是「一句话的回复」，把它们压到 640 会把分组行挤断。
+
+   群聊另外两处：说话人/时间原来 prepend 进 .body（气泡里面），真源在气泡
+   上方一行；用户气泡的内边距原来 14/18，真源 7/12。 */
+
+/* assistant 消息改 grid：第一列是气泡（按内容收缩、上限 640），第二列给 hover
+   操作条 —— Grok 真机（grok-regenerate.png）的 ghost 图标条就贴在气泡右侧，
+   底部与气泡下缘对齐，不是白底药丸也不是沉在气泡下面的一行。
+   列宽用 fit-content(640px) 而不是 minmax(0, 640px)：后者在“maximize tracks”
+   阶段会把剩余空间全分给第一列，短回复的气泡也会撑到 640（实测 603.4），
+   看起来还是「铺满」；fit-content 才是「内容多宽就多宽，最多 640」。
+   身份头 / 引用条 / 表情行 / 群身份行都横跨两列（1 / -1）。
+   卡片类不参与（:not 链与上面一致）。 */
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) {
+  display: grid;
+  grid-template-columns: fit-content(640px) max-content;
+  column-gap: 8px;
+  align-items: start;
+}
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .msg-grok-head,
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .msg-reply-quote,
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .msg-reactions,
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .reaction-picker,
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .room-speaker {
+  grid-column: 1 / -1;
+}
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .body {
+  grid-column: 1;
+  max-width: min(640px, 100%);
+}
+/* 含代码块 / 表格的回复：滚动容器的固有宽度不可靠（实测被按 0 计），交给
+   fit-content 会把气泡压到「正文那一行」的宽度（实测 283px），代码只好横向
+   滚动。真机那个 640 上限本来也是为这类内容准备的 —— 这类行直接吃满上限。 */
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media):has(.bb-codeblock),
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media):has(table) {
+  grid-template-columns: min(640px, 100%) max-content;
+}
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .msg-actions {
+  grid-column: 2;
+  /* 与气泡下缘对齐：气泡内边距 7px，抬回 7px 让图标贴着最后一行字的水平线 */
+  align-self: end;
+  margin-bottom: 7px;
+}
+
+/* 群里的用户气泡：外壳退成透明的一列，气泡本体落到 .body 上，这样
+   「我 · 时间」才能排到气泡外面（.msg 里 .body 之前）。 */
+body.grok-ui .msg.room-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+}
+body.grok-ui .msg.room-user .body {
+  max-width: min(558.4px, 100%);
+  padding: 7px 12px;
+  border-radius: var(--radius-user);
+  background: var(--user-bubble);
+  color: var(--on-fill);
+  font-size: 14px;
+  line-height: 20px;
+  box-shadow:
+    0 0.5px 0 inset rgba(255, 255, 255, 0.16),
+    0 -0.5px 0 inset rgba(255, 255, 255, 0.16),
+    0 0 0 0.5px inset color-mix(in srgb, var(--ink) 6%, transparent);
+}
+/* 气泡外的身份行：气泡内不再重复说一遍「我是谁」。 */
+body.grok-ui .msg > .room-speaker {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+body.grok-ui .msg.room-user > .room-speaker { justify-content: flex-end; }
+
+/* ============================================================================
+   Grok parity block 4 — 操作条 ghost 图标化
+   ============================================================================
+
+   Grok 真机 hover 出现的是气泡旁的三颗 ghost 图标（😊 ↺ ⋯）：无容器底、
+   无边框、无阴影，hover 才浮出一块浅灰圆片。我们原来的白底 pill 容器
+   （M38）连同样式一起退场；按钮从文字换成图标（↩ 😊 ⧉ ↺），文字进 title。
+
+   assistant 的条在气泡右侧（grid 第二列）；用户气泡的条在气泡正下方 ——
+   两条位置不同不是不统一：assistant 气泡右侧有空列，用户气泡贴着右边缘，
+   右侧放不下。 */
+
+body.grok-ui .msg-actions button {
+  padding: 3px 6px;
+  font-size: 14px;
+  line-height: 16px;
+}
+body.grok-ui .msg-actions button:hover { background: var(--fill); }
+
+/* 用户气泡（DM 与群同形）的 ghost 条一律落在气泡**下方**右侧，脱离文档流：
+   * 压在气泡里会直接盖住正文（实测「注意别动 lockfile。」被 😊 / ↺ 遮住），
+     原来的白底药丸也一样遮，只是白底看着像按钮，遮字更刺眼；
+   * 落在 flex 流里会常驻占一行高度（淡入靠 opacity，条本身一直在），
+     每条消息凭空多出 24px —— absolute 到 100% 才既不出血也不推版。 */
+body.grok-ui .msg.user .msg-actions {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  padding: 0;
+}
+body.grok-ui .msg.user .msg-actions button { color: var(--muted); }
+body.grok-ui .msg.user .msg-actions button:hover {
+  color: var(--ink);
+  background: var(--fill);
+}
 
 /* ============================================================================
    Grok parity block 2 — 侧栏列表本体（会话 / Bot / 群组的行、标题、底部账户）
@@ -3652,8 +3784,10 @@ body.grok-ui .cn-hint {
 .mc-adv-notes { display: flex; flex-direction: column; gap: 6px; }
 .mc-adv-notes .mc-note { margin: 0; }
 
-/* 真话要留，但别用整段长句抢主视觉：状态补充行收敛为两行内、弱化字重。 */
-.mc-scope { font-size: var(--text-xs, 11px); line-height: 1.5; opacity: .85; }
+/* 真话要留，但别用整段长句抢主视觉：弱化靠透明度，不靠再降一档字号。
+   #mc-scope-note 同时挂 .mc-note（--text-sm）；这里若写 --text-xs 会把它压成
+   11px，等于在类型阶之外偷偷开了一档（AR-15 钉的就是这一格）。 */
+.mc-scope { font-size: var(--text-sm); line-height: 1.5; opacity: .85; }
 /* 渠道「去配置」是次要动作：主视觉留给渠道卡片与二维码。 */
 .mc-ch-go.bb-btn-primary { font-weight: 500; opacity: .92; }
 /* 已登记设备是「查看/吊销」，不是输入：留在可见区但压成紧凑块，
