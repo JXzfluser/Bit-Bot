@@ -319,6 +319,22 @@ function createSessionStore(repoRoot, opts = {}) {
       // GP-102: a secret placeholder row keeps only the Host vault handle, so a
       // reload can rebuild `[REDACTED]` without ever storing the value.
       if (m.secret_handle) row.secret_handle = String(m.secret_handle);
+      // M52b: 这一轮的产物（图片/视频/图表/ics/eml/skill/导出包）。只留四个字段，
+      // 路径必须是字符串、名字由 Host 给；渲染层据此在刷新后重建文件卡。
+      // 上限与 Host 侧收集器一致（24），这里再截一次是因为 store 不收任意输入。
+      if (Array.isArray(m.artifacts) && m.artifacts.length) {
+        const arts = [];
+        for (const a of m.artifacts.slice(0, 24)) {
+          if (!a || !a.path) continue;
+          arts.push({
+            path: String(a.path),
+            name: String(a.name || ""),
+            kind: String(a.kind || ""),
+            bytes: Number.isFinite(a.bytes) ? Number(a.bytes) : null,
+          });
+        }
+        if (arts.length) row.artifacts = arts;
+      }
       hit.messages.push(row);
     }
     const DEFAULT_TITLES = ["新对话", "对话", "New chat", "新對話", "工作"];

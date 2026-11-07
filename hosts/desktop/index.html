@@ -1623,6 +1623,8 @@
   #to-bottom:hover { color: var(--ink); border-color: var(--ink); }
   #to-bottom:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
   #to-bottom[hidden] { display: none; }
+  /* M52b：库里记着、磁盘上已经没有的产物。如实写一行灰字，不画点开是空的破卡。 */
+  .artifact-gone { color: var(--muted); font-size: var(--text-sm); }
   #composer input, #composer textarea {
     flex: 1;
     background: transparent;
@@ -9129,6 +9131,36 @@
           // GP-M31: reactions restored from the same store row.
           reactions: m.reactions || null,
         });
+        /* M52b：这一轮的产物在刷新后重建。以前它们只活在渲染层内存里 ——
+           「发图 → 重启 → 图没了」，而库里那条回复还在，看起来像被吞了。
+           先问 Host 文件还在不在：不在就如实写一行「已不在本机」，不画一张
+           点开是空的破卡。 */
+        if (Array.isArray(m.artifacts) && m.artifacts.length) {
+          for (const a of m.artifacts) {
+            const ap = String((a && a.path) || "");
+            if (!ap) continue;
+            const kind = String((a && a.kind) || "");
+            let alive = false;
+            try {
+              const pv = window.bitbot && window.bitbot.attachments && window.bitbot.attachments.preview
+                ? await window.bitbot.attachments.preview(ap)
+                : null;
+              alive = Boolean(pv && pv.ok);
+            } catch (_) { alive = false; }
+            if (!alive) {
+              const gone = document.createElement("div");
+              gone.className = "msg assistant artifact-gone";
+              gone.textContent = t("artifactGone", { n: String((a && a.name) || ap) });
+              log.appendChild(gone);
+              continue;
+            }
+            const isMedia = /^(generate_image|structured_chart|generate_video|watch_frame|screenshot|voice_reply|voice_chat)$/.test(kind);
+            try {
+              if (isMedia) await renderDeliveryMedia(ap, kind, { label: kind });
+              else await renderOpenArtifact(ap, kind);
+            } catch (_) { /* 单个产物画不出来，不该把整段历史加载打断 */ }
+          }
+        }
       }
       // G-23: keep the conversation-details rail in sync with the store.
       if (convRailId) refreshConvRail().catch(() => {});
@@ -17334,6 +17366,7 @@
         findCount: "{i}/{n}",
         toBottom: "回到底部",
         deleteAction: "删除这条消息",
+        artifactGone: "产物已不在本机：{n}",
         deleteFailed: "删除失败",
         dayToday: "今天",
         dayYesterday: "昨天",
@@ -18303,6 +18336,7 @@
         findCount: "{i}/{n}",
         toBottom: "回到最底",
         deleteAction: "刪除這則訊息",
+        artifactGone: "產物已不在本機：{n}",
         deleteFailed: "刪除失敗",
         dayToday: "今天",
         dayYesterday: "昨天",
@@ -19268,6 +19302,7 @@
         findCount: "{i}/{n}",
         toBottom: "Scroll to bottom",
         deleteAction: "Delete message",
+        artifactGone: "This artifact is no longer on this machine: {n}",
         deleteFailed: "Delete failed",
         dayToday: "Today",
         dayYesterday: "Yesterday",

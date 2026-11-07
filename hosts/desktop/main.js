@@ -142,6 +142,8 @@ try {
   } = require("../shared/host_approval_gate"));
 }
 const { createSessionStore } = require("./sessions");
+// M52b: 一轮结束把真正落盘的产物挑出来存进消息行（否则刷新就丢图片/ics/eml 卡）。
+const { collectTurnArtifacts } = require("./turn_artifacts");
 const { buildRoomContext: buildRoomContextData } = require("../shared/room_context");
 const { buildDiscretionPrompt, parseDiscretionReply } = require("../shared/room_discretion");
 const { createRoomRuntime, roomSafeText: sharedRoomSafeText } = require("../shared/room_runtime");
@@ -4081,6 +4083,22 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
         if (withheld.length && result && typeof result === "object") {
           result.debug_messages = withheld;
         }
+      }
+      /* M52b：这一轮真正落盘的产物挂到**最后一条 assistant 行**上。
+         为什么挂在消息行而不是单开一张索引：产物属于「那一轮」，而一轮在库里就是
+         那几行；挂在行上，读历史时天然按时间顺序还原，删除那条消息也一起消失
+         （这正是用户对「删掉这条回复」的预期）。 */
+      {
+        const picked = collectTurnArtifacts(result && result.host_results);
+        if (picked.artifacts.length) {
+          for (let i = toStore.length - 1; i >= 0; i--) {
+            if (toStore[i] && toStore[i].role === "assistant") {
+              toStore[i].artifacts = picked.artifacts;
+              break;
+            }
+          }
+        }
+        if (result && typeof result === "object") result.artifacts_skipped = picked.skipped;
       }
       const appended = sessions.appendMessages(sessionId, toStore);
       // GP-14: Reply needs the *store* ids, so hand them back in the same order
