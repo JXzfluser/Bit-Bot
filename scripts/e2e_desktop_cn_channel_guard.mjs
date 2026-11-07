@@ -165,12 +165,21 @@ let app = null;
     await win.waitForSelector("#composer #text", { timeout: 30000 });
     await win.waitForTimeout(600);
 
-    /* 打开「连接应用」：账户菜单 → 连接应用（用户的手顺，不直接调内部函数）。
-     * 侧栏项是 #ap-connect；#connect-apps-btn 是收进侧栏折叠区的那个，看不见。 */
+    /* 渠道凭证自 2026-11-07 起在 设置 → 凭证 → 国内通信渠道（它本来就是个配置表单，
+     * 写盘口子「保存并热加载」也在这一页 —— 字段和按钮不该分居两个面板）。
+     * 门禁照用户手顺走：账户菜单 → 设置 → 凭证 → 展开卡。 */
     await win.click("#account-avatar-btn");
-    await win.waitForSelector("#ap-connect", { state: "visible", timeout: 8000 });
-    await win.click("#ap-connect");
-    await win.waitForSelector("#connect-apps-modal", { state: "visible", timeout: 10000 });
+    await win.waitForSelector("#ap-settings", { state: "visible", timeout: 8000 });
+    await win.click("#ap-settings");
+    await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+    await win.evaluate(() => { if (typeof showSettingsTab === "function") showSettingsTab("credentials"); });
+    await win.waitForSelector("#ca-cn-box", { state: "attached", timeout: 8000 });
+    await win.evaluate(() => {
+      const b = document.getElementById("ca-cn-box");
+      if (b && !b.open) b.open = true; // 默认收起，展开才是用户看到的那一屏
+      const cn = document.getElementById("ca-cn-channels");
+      if (cn && cn.scrollIntoView) cn.scrollIntoView({ block: "center" });
+    });
     await win.waitForTimeout(400);
 
     /* ---------- CN-01 含 access_token 的 URL 不许明文摊在屏幕上 ---------- */
@@ -246,41 +255,43 @@ let app = null;
       else ok("CN-05 有错时保存不可点、改对后恢复可点（错误挡在写盘之前）");
     }
 
-    /* ---------- CN-06 下一步引导：填凭证的地方就该指出「然后做什么」 ---------- */
+    /* ---------- CN-06 字段与写盘口子必须在同一页 ----------
+     * 以前这条测的是「卡里有个『去保存并试连』按钮，能把人送过去」——
+     * 那本身就是错位的证据：填的地方和存的地方分居两个面板，才需要一块路牌。
+     * 2026-11-07 把 13 个字段搬回 设置 → 凭证 之后，路牌该消失，两颗按钮该就在下面。 */
     {
-      const goto = await win.evaluate(() => {
-        const b = document.getElementById("cn-goto-credentials");
-        const h = document.getElementById("cn-next-hint");
+      const landed = await win.evaluate(() => {
+        const tab = document.querySelector('.settings-tab-btn[data-stab="credentials"]');
+        const box = document.getElementById("ca-cn-box");
+        const save = document.getElementById("sec-save");
+        const probe = document.getElementById("sec-probe-cn");
+        const dist = (a, b) => {
+          if (!a || !b) return null;
+          const x = a.getBoundingClientRect();
+          const y = b.getBoundingClientRect();
+          return Math.round(y.top - x.bottom);
+        };
+        const r = (el) => {
+          if (!el) return null;
+          const b = el.getBoundingClientRect();
+          return { w: Math.round(b.width), h: Math.round(b.height) };
+        };
         return {
-          btn: b ? String(b.textContent || "") : null,
-          hint: h ? String(h.textContent || "") : null,
+          tabActive: tab ? tab.classList.contains("active") : false,
+          gotoBtn: Boolean(document.getElementById("cn-goto-credentials")),
+          save: r(save),
+          probe: r(probe),
+          gapToSave: dist(box, save),
         };
       });
-      if (!goto.btn) bad("CN-06 卡内没有下一步入口（#cn-goto-credentials 不存在）");
-      else if (!goto.hint || !/保存|试连/.test(goto.hint)) bad("CN-06 下一步说明没写清要做什么", JSON.stringify(goto));
-      else {
-        await win.click("#cn-goto-credentials");
-        await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
-        const landed = await win.evaluate(() => {
-          const tab = document.querySelector('.settings-tab-btn[data-stab="credentials"]');
-          const save = document.getElementById("sec-save");
-          const probe = document.getElementById("sec-probe-cn");
-          const r = (el) => {
-            if (!el) return null;
-            const b = el.getBoundingClientRect();
-            return { w: Math.round(b.width), h: Math.round(b.height) };
-          };
-          return {
-            tabActive: tab ? tab.classList.contains("active") : false,
-            save: r(save),
-            probe: r(probe),
-          };
-        });
-        if (!landed.tabActive) bad("CN-06 点了下一步却没落到「凭证」标签上", JSON.stringify(landed));
-        else if (!landed.save || !landed.probe || landed.save.h === 0 || landed.probe.h === 0)
-          bad("CN-06 落地之后看不见保存/试连这两个按钮", JSON.stringify(landed));
-        else ok("CN-06 卡内「" + goto.btn + "」直接把用户送到保存与试连那一排（同一屏三段路接上了）");
-      }
+      if (!landed.tabActive) bad("CN-06 渠道卡不在「凭证」标签里", JSON.stringify(landed));
+      else if (landed.gotoBtn) bad("CN-06 「去保存并试连」还在——字段和保存按钮仍分居两页", JSON.stringify(landed));
+      else if (!landed.save || !landed.probe || landed.save.h === 0 || landed.probe.h === 0)
+        bad("CN-06 同一页里看不见保存/试连这两个按钮", JSON.stringify(landed));
+      else ok(
+        "CN-06 字段与写盘口子同页：渠道卡与「保存并热加载 / 试连国内渠道」同屏" +
+        "（保存条常驻底部，相对卡片底边 " + landed.gapToSave + "px），卡内不再需要一块指路牌",
+      );
     }
 
     /* ---------- CN-07 新文案走 class + 令牌（别把视觉债挪个地方欠） ---------- */

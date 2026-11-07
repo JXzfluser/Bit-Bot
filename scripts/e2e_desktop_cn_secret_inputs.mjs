@@ -141,10 +141,22 @@ let app = null;
     await win.waitForSelector("#composer #text", { timeout: 30000 });
     await sleep(600);
 
+    /* 渠道凭证自 2026-11-07 起在 设置 → 凭证 → 国内通信渠道（它本来就是个配置表单，
+     * 写盘口子「保存并热加载」也在这一页 —— 字段和按钮不该分居两个面板）。
+     * 门禁照用户手顺走：账户菜单 → 设置 → 凭证 → 展开卡。 */
     await win.click("#account-avatar-btn");
-    await win.waitForSelector("#ap-connect", { state: "visible", timeout: 8000 });
-    await win.click("#ap-connect");
-    await win.waitForSelector("#connect-apps-modal", { state: "visible", timeout: 10000 });
+    await win.waitForSelector("#ap-settings", { state: "visible", timeout: 8000 });
+    await win.click("#ap-settings");
+    await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+    await win.evaluate(() => { if (typeof showSettingsTab === "function") showSettingsTab("credentials"); });
+    await win.waitForSelector("#ca-cn-box", { state: "attached", timeout: 8000 });
+    await win.evaluate(() => {
+      const b = document.getElementById("ca-cn-box");
+      if (b && !b.open) b.open = true; // 默认收起，展开才是用户看到的那一屏
+      const cn = document.getElementById("ca-cn-channels");
+      if (cn && cn.scrollIntoView) cn.scrollIntoView({ block: "center" });
+    });
+    await win.waitForTimeout(400);
     // 卡打开时会自己发一次 secrets:status（异步），状态行是它回来才写的；
     // 这里等的是「这一轮 IPC 已经落回 DOM」，不是等一个特定结论。
     await sleep(900);

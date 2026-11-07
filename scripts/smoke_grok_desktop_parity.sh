@@ -4308,7 +4308,7 @@ if [ $? -eq 0 ]; then
 else
   bad "G-109 prove_connect_apps_rework（见 /tmp/g109-ca-rework.log；$(grep '✗' /tmp/g109-ca-rework.log | head -2 | tr '\n' ' ')）"
 fi
-for g109_a in "CA-00" "CA-01" "CA-02" "CA-03" "CA-04" "CA-04b" "CA-05" "CA-06" "CA-07" "CA-08" "CA-09"; do
+for g109_a in "CA-00" "CA-01" "CA-02" "CA-03" "CA-04" "CA-04b" "CA-05" "CA-06" "CA-07" "CA-08" "CA-09" "CA-10"; do
   if grep -q "✓ $g109_a" /tmp/g109-ca-rework.log; then ok "G-109 锚点：$g109_a"; else bad "G-109 锚点没跑绿：$g109_a"; fi
 done
 echo "  · G-109 为什么长出来：用户说「把连接应用 整体重新设计下，并把冗余的功能移除。"

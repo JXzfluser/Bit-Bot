@@ -2907,7 +2907,85 @@
           <div class="gp-row" style="margin-top:8px">
             <button type="button" id="pairing-gen-btn" class="bb-btn bb-btn-sm">生成配对码</button>
           </div>
-        </div>
+            <!-- 第三组：国内通信渠道。字段 id 一个不改（引擎绑定与门禁都按 id 取），
+                 只是从「连接应用」搬回这里 —— 那张卡本来就是个配置表单。 -->
+            <div class="st-sub-title"><span>国内通信渠道</span></div>
+          <!-- 国内通信渠道：凭证，不是「应用」。搬到它真正的家里 —— 保存并热加载 /
+               试连国内渠道两颗按钮就在下面那一排，字段和写盘口子不该分居两个面板。
+               默认收起，卡头就写着三家开没开；有错会自动摊开。 -->
+          <div id="ca-cn-channels" class="ca-cn" style="display:flex;flex-direction:column">
+            <details class="ca-cn-box" id="ca-cn-box">
+              <summary class="ca-cn-sum">
+                <span class="ca-cn-title">国内通信渠道</span>
+                <span id="cn-card-state" class="ca-cn-state">钉钉 未开启 · 飞书 未开启 · 企微 未开启</span>
+                <svg class="ca-cn-chev" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5"/></svg>
+              </summary>
+              <div class="ca-cn-body">
+                <p class="ca-cn-lead">勾选即开启推送，三项互不影响。填完点下面的「保存并热加载」写入，再点「试连国内渠道」验证真的发得出去。</p>
+                <div class="ca-cn-vendor">
+                  <label class="ca-cn-switch"><input id="sec-ding-post" type="checkbox" /><span>钉钉</span></label>
+                  <label class="st-field"><span class="st-field-name">Webhook 地址<span>（机器人设置里整段复制，地址自带 access_token）</span></span>
+                    <div class="ca-cn-line">
+                      <input id="sec-ding-hook" type="password" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
+                      <button type="button" id="cn-ding-reveal" class="bb-btn bb-btn-sm">显示</button>
+                    </div>
+                    <span id="sec-ding-hook-err" class="st-field-error" hidden></span>
+                  </label>
+                  <label class="st-field"><span class="st-field-name">加签密钥<span>（机器人安全设置里 SEC 开头那串，可选）</span></span>
+                    <div class="ca-cn-line">
+                      <input id="sec-ding-secret" data-secret-key="BITBOT_DINGTALK_APP_SECRET" type="password" autocomplete="off" placeholder="SEC…" class="bb-field bb-field-grow" />
+                      <button type="button" id="cn-ding-secret-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <span id="sec-ding-secret-state" class="cn-hint">未配置</span>
+                    </div>
+                  </label>
+                </div>
+                <div class="ca-cn-vendor">
+                  <label class="ca-cn-switch"><input id="sec-feishu-post" type="checkbox" /><span>飞书</span></label>
+                  <label class="st-field"><span class="st-field-name">tenant token + chat_id</span>
+                    <div class="ca-cn-line">
+                      <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
+                      <input id="sec-feishu-chat" type="text" placeholder="chat_id" class="bb-field" style="flex:0 0 34%" />
+                    </div>
+                    <span id="sec-feishu-err" class="st-field-error" hidden></span>
+                  </label>
+                  <label class="st-field"><span class="st-field-name">Encrypt Key<span>（事件订阅「加密」用，可选）</span></span>
+                    <div class="ca-cn-line">
+                      <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow" />
+                      <button type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <span id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
+                    </div>
+                  </label>
+                  <label class="st-field"><span class="st-field-name">Verification Token<span>（事件订阅「验签」用，可选）</span></span>
+                    <div class="ca-cn-line">
+                      <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow" />
+                      <button type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <span id="sec-feishu-verify-state" class="cn-hint">未配置</span>
+                    </div>
+                  </label>
+                </div>
+                <div class="ca-cn-vendor">
+                  <label class="ca-cn-switch"><input id="sec-wecom-post" type="checkbox" /><span>企微</span></label>
+                  <label class="st-field"><span class="st-field-name">access_token + agentid + touser</span>
+                    <div class="ca-cn-line">
+                      <input id="sec-wecom-token" type="password" placeholder="access_token" class="bb-field bb-field-grow" />
+                      <input id="sec-wecom-agent" type="text" placeholder="agentid" class="bb-field" style="flex:0 0 22%" />
+                      <input id="sec-wecom-to" type="text" placeholder="touser" class="bb-field" style="flex:0 0 24%" />
+                    </div>
+                    <span id="sec-wecom-err" class="st-field-error" hidden></span>
+                  </label>
+                  <label class="st-field"><span class="st-field-name">回调 Token<span>（接收事件服务器用，可选）</span></span>
+                    <div class="ca-cn-line">
+                      <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow" />
+                      <button type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <span id="sec-wecom-callback-state" class="cn-hint">未配置</span>
+                    </div>
+                  </label>
+                </div>
+                <p id="cn-next-hint" class="cn-hint">这四栏密钥一律可选：留空不挡保存，已配过的会标「已配置 ****尾4」。</p>
+              </div>
+            </details>
+          </div>
+          </div>
         <!-- 保存条：状态就在按钮左边，点完不用滚到页尾去找「存上了没有」。
              跑验收门禁是开发动作，跟着 data-lab 收起，产品态不占这颗按钮位。 -->
         <div class="st-foot" id="sec-foot">
@@ -2958,80 +3036,6 @@
         </div>
         <div class="ca-scroll">
         <div id="ca-sections"></div>
-        <!-- 国内渠道：一张卡，默认收起；开没开就写在卡头，不展开也看得见。 -->
-        <div id="ca-cn-channels" class="ca-cn" data-cat="communication" style="display:none;flex-direction:column">
-          <details class="ca-cn-box" id="ca-cn-box">
-            <summary class="ca-cn-sum">
-              <span class="ca-cn-title">国内通信渠道</span>
-              <span id="cn-card-state" class="ca-cn-state">钉钉 未开启 · 飞书 未开启 · 企微 未开启</span>
-              <svg class="ca-cn-chev" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5"/></svg>
-            </summary>
-            <div class="ca-cn-body">
-              <p class="ca-cn-lead">勾选即开启推送，三项互不影响。写盘与「试连」在设置 → 凭证那一排。</p>
-              <div class="ca-cn-vendor">
-                <label class="ca-cn-switch"><input id="sec-ding-post" type="checkbox" /><span>钉钉</span></label>
-                <label class="st-field"><span class="st-field-name">Webhook 地址<span>（机器人设置里整段复制，地址自带 access_token）</span></span>
-                  <div class="ca-cn-line">
-                    <input id="sec-ding-hook" type="password" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
-                    <button type="button" id="cn-ding-reveal" class="bb-btn bb-btn-sm">显示</button>
-                  </div>
-                  <span id="sec-ding-hook-err" class="st-field-error" hidden></span>
-                </label>
-                <label class="st-field"><span class="st-field-name">加签密钥<span>（机器人安全设置里 SEC 开头那串，可选）</span></span>
-                  <div class="ca-cn-line">
-                    <input id="sec-ding-secret" data-secret-key="BITBOT_DINGTALK_APP_SECRET" type="password" autocomplete="off" placeholder="SEC…" class="bb-field bb-field-grow" />
-                    <button type="button" id="cn-ding-secret-reveal" class="bb-btn bb-btn-sm">显示</button>
-                    <span id="sec-ding-secret-state" class="cn-hint">未配置</span>
-                  </div>
-                </label>
-              </div>
-              <div class="ca-cn-vendor">
-                <label class="ca-cn-switch"><input id="sec-feishu-post" type="checkbox" /><span>飞书</span></label>
-                <label class="st-field"><span class="st-field-name">tenant token + chat_id</span>
-                  <div class="ca-cn-line">
-                    <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
-                    <input id="sec-feishu-chat" type="text" placeholder="chat_id" class="bb-field" style="flex:0 0 34%" />
-                  </div>
-                  <span id="sec-feishu-err" class="st-field-error" hidden></span>
-                </label>
-                <label class="st-field"><span class="st-field-name">Encrypt Key<span>（事件订阅「加密」用，可选）</span></span>
-                  <div class="ca-cn-line">
-                    <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow" />
-                    <button type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
-                    <span id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
-                  </div>
-                </label>
-                <label class="st-field"><span class="st-field-name">Verification Token<span>（事件订阅「验签」用，可选）</span></span>
-                  <div class="ca-cn-line">
-                    <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow" />
-                    <button type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
-                    <span id="sec-feishu-verify-state" class="cn-hint">未配置</span>
-                  </div>
-                </label>
-              </div>
-              <div class="ca-cn-vendor">
-                <label class="ca-cn-switch"><input id="sec-wecom-post" type="checkbox" /><span>企微</span></label>
-                <label class="st-field"><span class="st-field-name">access_token + agentid + touser</span>
-                  <div class="ca-cn-line">
-                    <input id="sec-wecom-token" type="password" placeholder="access_token" class="bb-field bb-field-grow" />
-                    <input id="sec-wecom-agent" type="text" placeholder="agentid" class="bb-field" style="flex:0 0 22%" />
-                    <input id="sec-wecom-to" type="text" placeholder="touser" class="bb-field" style="flex:0 0 24%" />
-                  </div>
-                  <span id="sec-wecom-err" class="st-field-error" hidden></span>
-                </label>
-                <label class="st-field"><span class="st-field-name">回调 Token<span>（接收事件服务器用，可选）</span></span>
-                  <div class="ca-cn-line">
-                    <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow" />
-                    <button type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
-                    <span id="sec-wecom-callback-state" class="cn-hint">未配置</span>
-                  </div>
-                </label>
-              </div>
-              <p id="cn-next-hint" class="cn-hint">这四栏密钥一律可选：留空不挡保存，已配过的会标「已配置 ****尾4」。</p>
-              <button type="button" id="cn-goto-credentials" class="bb-btn bb-btn-sm">去保存并试连</button>
-            </div>
-          </details>
-        </div>
         </div><!-- /.ca-scroll -->
         <div id="ca-meta" class="ca-meta" role="status" aria-live="polite"></div>
       </div>
@@ -3337,8 +3341,8 @@
                 <div class="bm-row-tx"><b data-i18n="bmFactCred">凭据</b><small id="bm-fact-cred" data-i18n="bmFactCredNone">还没有存过。</small></div>
               </div>
               <div class="bm-row">
-                <div class="bm-row-tx"><b data-i18n="bmFactWhere">完整字段在哪</b><small data-i18n="bmFactWhereHint">加签密钥、回调 Token 这类高级项在「连接应用 → 通信」里，和这里是同一份配置。</small></div>
-                <button type="button" id="bm-open-connect" class="bb-btn bb-btn-sm" data-i18n="bmOpenConnect">打开</button>
+                <div class="bm-row-tx"><b data-i18n="bmFactWhere">完整字段在哪</b><small data-i18n="bmFactWhereHint">加签密钥、回调 Token 这类高级项在 设置 → 凭证 → 国内通信渠道 里，和这里是同一份配置。</small></div>
+                <button type="button" id="bm-open-connect" class="bb-btn bb-btn-sm" data-i18n="bmOpenConnect">去填写</button>
               </div>
             </section>
 
@@ -4026,8 +4030,9 @@
         var b = document.getElementById("marketplace-btn");
         if (b) b.click();
       });
-      /* Round 10b: 钉钉/飞书/企微凭证已静态内置于 连接应用（#ca-cn-channels，
-         归入「通信」分类）。旧的启动迁移脚本删除——id 不变，引擎绑定仍有效。 */
+      /* Round 10b 曾把钉钉/飞书/企微凭证塞进「连接应用」的通信分类；2026-11-07
+         搬回 设置 → 凭证（#ca-cn-channels 现在是凭证页里的一个分组）。
+         字段 id 全程没改，引擎绑定与保存链路不受影响。 */
     })();
   </script>
   <script>
@@ -9034,20 +9039,6 @@
       });
     });
 
-    /* 填凭证的地方就该指出下一步：写入和试连都在凭证页那一排，一键落过去。 */
-    const cnGotoCreds = document.getElementById("cn-goto-credentials");
-    if (cnGotoCreds) {
-      cnGotoCreds.addEventListener("click", function () {
-        const n = cnValidateAndPaint(true);
-        closeConnectApps();
-        openProductCredentials(
-          n > 0
-            ? "国内渠道还有 " + n + " 处要改（已经在对应栏目标红），改完再保存"
-            : "点「保存并热加载」写入，再点「试连国内渠道」验证真的发得出去",
-        );
-      });
-    }
-
     async function saveSecretsFromForm() {
       if (!window.bitbot.secrets) return;
       /* 挡在写盘之前：带着红字保存出去，后面只会出现「为什么发不出去」这种工单。 */
@@ -12716,6 +12707,9 @@
       if (secStatus && hint) secStatus.textContent = hint;
       refreshSecretsForm().catch(() => {});
       refreshInboundUrlStrip().catch(() => {});
+      /* 渠道卡默认收起，卡头那句「钉钉 已开启 · 飞书 未开启」得当面算一遍：
+         以前是在「连接应用」里顺手刷的，卡片搬过来之后必须在这里补上。 */
+      setTimeout(() => { try { cnValidateAndPaint(true); } catch (_) {} }, 0);
     }
 
     async function refreshConfigGate() {
@@ -14224,9 +14218,10 @@
     if (bmEls.openConnect) {
       bmEls.openConnect.addEventListener("click", () => {
         bmClose();
-        openConnectApps(document.getElementById("account-avatar-btn"));
+        /* 完整字段在 设置 → 凭证 → 国内通信渠道；那里才是写盘口子（保存并热加载）。 */
+        openProductCredentials("完整字段在「国内通信渠道」：填完点「保存并热加载」写入");
         const cn = document.getElementById("ca-cn-channels");
-        if (cn && cn.scrollIntoView) cn.scrollIntoView({ block: "start" });
+        if (cn && cn.scrollIntoView) setTimeout(() => cn.scrollIntoView({ block: "center" }), 60);
       });
     }
     /* 手机那边提交成功后主进程广播过来：不用轮询，也不用手点刷新。 */
@@ -15563,10 +15558,13 @@
       const ns = plugin.mcp_namespace ? plugin.mcp_namespace + " · " : "";
       const toolCount = plugin.tool_count != null ? plugin.tool_count : (plugin.tools || []).length;
       const skillCount = plugin.skill_count != null ? plugin.skill_count : (plugin.skills || []).length;
+      /* 技能型插件（邮件 / 会议）没有工具：写「工具 0」像是坏了，
+         宁可不写这一项，让人看到的是「技能 1」。 */
       sub.textContent =
         ns +
-        wavegT("caToolCount").replace("{n}", String(toolCount)) +
-        (skillCount ? " · " + wavegT("caSkillCount").replace("{n}", String(skillCount)) : "");
+        (toolCount ? wavegT("caToolCount").replace("{n}", String(toolCount)) : "") +
+        (toolCount && skillCount ? " · " : "") +
+        (skillCount ? wavegT("caSkillCount").replace("{n}", String(skillCount)) : "");
       main.append(nameEl, sub);
       row.appendChild(main);
 
@@ -15648,7 +15646,7 @@
     const CA_CATEGORY_RULES = [
       ["password", /password|1password|lastpass|bitwarden|vault/i],
       ["productivity", /calendar|slides|notion|atlassian|todo|task|meeting/i],
-      ["communication", /mail|email|slack|dingtalk|feishu|wecom|message|chat/i],
+      ["communication", /mail|email|slack|dingtalk|feishu|wecom|message|chat|twitter|推特/i],
       ["design", /design|figma|image|photo|canvas/i],
       ["code", /code|git|repo|github|deploy|ide/i],
     ];
@@ -15710,11 +15708,9 @@
       const box = document.getElementById("ca-cats");
       if (!box) return;
       const present = new Set(caPlugins.map(caCategoryOf).filter(Boolean));
-      /* 通信渠道那张卡是写死在面板里的，只有「全部 / 通信」下才露脸；
-       * 但分类条不能跟着当前选中项缩水 —— 否则选了「效率」，「通信」chip
-       * 当场消失，用户再也点不回去。所以这里只看卡在不在，不看它此刻显不显示。 */
-      const cnEl = document.getElementById("ca-cn-channels");
-      if (cnEl) present.add("communication");
+      /* 分类条不能跟着当前选中项缩水 —— 否则选了「效率」，「通信」chip 当场消失，
+       * 用户再也点不回去。所以只看「有没有内容」，不看它此刻显不显示。
+       * 渠道凭证卡已经搬回 设置 → 凭证，这里不再借它撑分类。 */
       const want = CA_CATEGORY_ORDER.filter((c) => present.has(c));
       // 当前选中项若已经空掉（例如搜索后），回到「全部」，别让界面停在空白上。
       if (caActiveCat !== "all" && !want.includes(caActiveCat)) caActiveCat = "all";
@@ -15860,18 +15856,6 @@
       m.style.display = "flex";
       bbSheetOpened("connect-apps-modal", triggerEl);
       caMsg("");
-      /* 通信渠道那张卡只在「全部 / 通信」下露出来，且**默认收起**：它是一个
-         配置卡，不是要浏览的目录。开没开写在卡头，要用的时候点一下。 */
-      const cnCard0 = document.getElementById("ca-cn-channels");
-      if (cnCard0) {
-        cnCard0.style.display = (caActiveCat === "all" || caActiveCat === "communication") ? "flex" : "none";
-        /* 打开这张卡就把它自己的状态说实话：勾没勾、缺什么、密钥配过没有。
-         * 状态以前只靠别的页面顺手刷过一次 —— 从侧栏直接进来就会停在旧文案上，
-         * 用户看到的「未配置」其实可能早就配好了。这里自己刷一遍。 */
-        refreshSecretsForm().catch(() => {});
-        /* 未开启/缺字段的即时反馈不异步等：先按当前 DOM 画一次，status 回来再覆盖。 */
-        cnValidateAndPaint(true);
-      }
       refreshConnectApps();
       const q = document.getElementById("ca-search");
       if (q) setTimeout(() => q.focus(), 50);
@@ -15934,10 +15918,6 @@
         caCatsEl.querySelectorAll(".ca-chip").forEach((b) => {
           b.classList.toggle("active", b === btn);
         });
-        const cnCard = document.getElementById("ca-cn-channels");
-        if (cnCard) {
-          cnCard.style.display = (caActiveCat === "all" || caActiveCat === "communication") ? "flex" : "none";
-        }
         renderConnectApps();
       });
     }
@@ -16633,8 +16613,8 @@
         bmFactCredSome: "已存在本地配置（{m}），界面只显示尾号。",
         bmFactCredWechat: "微信这一侧没有可存的机器人凭据。",
         bmFactWhere: "完整字段在哪",
-        bmFactWhereHint: "加签密钥、回调 Token 这类高级项在「连接应用 → 通信」里，和这里是同一份配置。",
-        bmOpenConnect: "打开",
+        bmFactWhereHint: "加签密钥、回调 Token 这类高级项在 设置 → 凭证 → 国内通信渠道 里，和这里是同一份配置。",
+        bmOpenConnect: "去填写",
         bmUnbind: "解除关联",
         bmUnbindHint: "从这台桌面删掉这个渠道的凭据，随时可以重新扫码。",
         bmUnbindBtn: "解除关联",
@@ -17474,9 +17454,18 @@
         rTplCreate: "已按模板创建 Bot（Host 目录解析，未知模板会被拒绝）。",
         "caName.plugin-slides": "幻灯片助手",
         "caName.plugin-calendar": "日历同步",
+        "caName.plugin-x": "X（推特）",
+        "caName.plugin-mail": "邮件",
+        "caName.plugin-meeting": "会议纪要",
         "caToolDesc.make_deck": "根据大纲生成幻灯片。",
         "caToolDesc.list_templates": "列出可用幻灯片模板。",
         "caToolDesc.list_events": "列出即将到来的日历日程。",
+        "caToolDesc.get_users_posts": "读某个账号发的帖子。",
+        "caToolDesc.get_posts_by_id": "按 id 取帖子原文。",
+        "caToolDesc.get_users_bookmarks": "读自己收藏的帖子。",
+        "caToolDesc.create_users_bookmark": "收藏一条帖子。",
+        "caToolDesc.get_chat_conversations": "列 X 私信会话。",
+        "caToolDesc.send_chat_message": "发一条 X 私信。",
         lbSave: "保存",
         lbClose: "关闭",
         lbSaved: "已保存到 {p}",
@@ -17560,8 +17549,8 @@
         bmFactCredSome: "已存在本機設定（{m}），介面只顯示尾號。",
         bmFactCredWechat: "微信這一側沒有可存的機器人憑據。",
         bmFactWhere: "完整欄位在哪",
-        bmFactWhereHint: "加簽密鑰、回呼 Token 這類進階項在「連接應用 → 通訊」裡，和這裡是同一份設定。",
-        bmOpenConnect: "開啟",
+        bmFactWhereHint: "加簽密鑰、回呼 Token 這類進階項在 設定 → 憑證 → 國內通訊管道 裡，和這裡是同一份設定。",
+        bmOpenConnect: "去填寫",
         bmUnbind: "解除關聯",
         bmUnbindHint: "從這台桌面刪掉這個渠道的憑據，隨時可以重新掃碼。",
         bmUnbindBtn: "解除關聯",
@@ -18397,9 +18386,18 @@
         rTplCreate: "已依範本建立 Bot（Host 目錄解析，未知範本會被拒絕）。",
         "caName.plugin-slides": "投影片助手",
         "caName.plugin-calendar": "行事曆同步",
+        "caName.plugin-x": "X（推特）",
+        "caName.plugin-mail": "郵件",
+        "caName.plugin-meeting": "會議紀錄",
         "caToolDesc.make_deck": "依大綱產生投影片。",
         "caToolDesc.list_templates": "列出可用投影片範本。",
         "caToolDesc.list_events": "列出即將到來的行事曆行程。",
+        "caToolDesc.get_users_posts": "讀取某個帳號發的貼文。",
+        "caToolDesc.get_posts_by_id": "依 id 取貼文原文。",
+        "caToolDesc.get_users_bookmarks": "讀取自己收藏的貼文。",
+        "caToolDesc.create_users_bookmark": "收藏一則貼文。",
+        "caToolDesc.get_chat_conversations": "列出 X 私訊會話。",
+        "caToolDesc.send_chat_message": "送出一則 X 私訊。",
         lbSave: "儲存",
         lbClose: "關閉",
         lbSaved: "已儲存至 {p}",
@@ -18483,8 +18481,8 @@
         bmFactCredSome: "Stored locally ({m}); only the last digits are shown.",
         bmFactCredWechat: "There is no bot credential to store on the WeChat side.",
         bmFactWhere: "Where the full fields are",
-        bmFactWhereHint: "Advanced items such as the signing secret and callback token live under Connect apps → Communication; it is the same config.",
-        bmOpenConnect: "Open",
+        bmFactWhereHint: "Advanced items such as the signing secret and callback token live under Settings → Credentials → China channels; it is the same config.",
+        bmOpenConnect: "Fill in",
         bmUnbind: "Unlink",
         bmUnbindHint: "Removes this channel's credential from this desktop. You can scan again any time.",
         bmUnbindBtn: "Unlink",
@@ -19320,9 +19318,18 @@
         rTplCreate: "Bot created from template (resolved by the Host catalog; unknown templates are refused).",
         "caName.plugin-slides": "Slides helper",
         "caName.plugin-calendar": "Calendar sync",
+        "caName.plugin-x": "X (Twitter)",
+        "caName.plugin-mail": "Mail",
+        "caName.plugin-meeting": "Meetings",
         "caToolDesc.make_deck": "Render a deck from an outline.",
         "caToolDesc.list_templates": "List available deck templates.",
         "caToolDesc.list_events": "List upcoming calendar events.",
+        "caToolDesc.get_users_posts": "Read the posts a handle published.",
+        "caToolDesc.get_posts_by_id": "Fetch post text by id.",
+        "caToolDesc.get_users_bookmarks": "Read the posts you bookmarked.",
+        "caToolDesc.create_users_bookmark": "Bookmark a post.",
+        "caToolDesc.get_chat_conversations": "List X chat conversations.",
+        "caToolDesc.send_chat_message": "Send an X chat message.",
         lbSave: "Save",
         lbClose: "Close",
         lbSaved: "Saved to {p}",

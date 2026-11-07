@@ -88,11 +88,11 @@ WORDS = {
     ),
     "bmFactWhere": ("完整字段在哪", "完整欄位在哪", "Where the full fields are"),
     "bmFactWhereHint": (
-        "加签密钥、回调 Token 这类高级项在「连接应用 → 通信」里，和这里是同一份配置。",
+        "加签密钥、回调 Token 这类高级项在 设置 → 凭证 → 国内通信渠道 里，和这里是同一份配置。",
         "加簽密鑰、回呼 Token 這類進階項在「連接應用 → 通訊」裡，和這裡是同一份設定。",
         "Advanced items such as the signing secret and callback token live under Connect apps → Communication; it is the same config.",
     ),
-    "bmOpenConnect": ("打开", "開啟", "Open"),
+    "bmOpenConnect": ("去填写", "去填寫", "Fill in"),
     "bmUnbind": ("解除关联", "解除關聯", "Unlink"),
     "bmUnbindHint": (
         "从这台桌面删掉这个渠道的凭据，随时可以重新扫码。",

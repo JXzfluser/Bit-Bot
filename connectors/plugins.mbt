@@ -91,6 +91,62 @@ pub fn PluginRegistry::seed_demo() -> PluginRegistry {
       { name: "list_events", description: "List upcoming calendar events.", },
     ],
   })
+  // 2026-11-07：目录里原来只有两条英文样板（Slides / Calendar）。补三条本仓库
+  // 里已经有连接面的：
+  //   ① X（推特）—— 工具名逐个取自 connectors/x_twitter_mcp.mbt 的 user-X 契约，
+  //      不是我现编的；命名空间 user-X 就绪后才可调用。
+  //   ② 邮件 / ③ 会议 —— 没有外部 MCP 进程，走本机 host 效果（写 .eml 草稿、
+  //      落会议稿卡），所以 mcp_namespace 留空：装的是「怎么用」的技能，
+  //      不假装有一个服务器在跑。
+  reg.available.push({
+    id: "plugin-x",
+    display_name: "X (Twitter)",
+    skills: [
+      {
+        name: "x-posts",
+        description: "Read and post on X through the user-X namespace.",
+        skill_md:
+          "# x-posts\n\nTools: get_users_posts / get_posts_by_id / get_users_bookmarks / create_users_bookmark / get_chat_conversations / send_chat_message.\n\nReading first: fetch before writing. Posting goes out as the signed-in account, so quote the exact text before sending.\n",
+      },
+    ],
+    mcp_namespace: "user-X",
+    mcp_tools: [
+      { name: "get_users_posts", description: "List a user's posts.", },
+      { name: "get_posts_by_id", description: "Fetch posts by id.", },
+      { name: "get_users_bookmarks", description: "List the signed-in user's bookmarks.", },
+      { name: "create_users_bookmark", description: "Bookmark a post.", },
+      { name: "get_chat_conversations", description: "List X chat conversations.", },
+      { name: "send_chat_message", description: "Send an X chat message.", },
+    ],
+  })
+  reg.available.push({
+    id: "plugin-mail",
+    display_name: "Mail",
+    skills: [
+      {
+        name: "mail-draft",
+        description: "Write an email as a local .eml draft before anything is sent.",
+        skill_md:
+          "# mail-draft\n\nDraft first, send never: this machine writes a .eml into data/mail/drafts and shows it as an artifact. Say the recipient, subject and body in one block, then let the user send it from their own client.\n",
+      },
+    ],
+    mcp_namespace: "",
+    mcp_tools: [],
+  })
+  reg.available.push({
+    id: "plugin-meeting",
+    display_name: "Meetings",
+    skills: [
+      {
+        name: "meeting-notes",
+        description: "Turn a meeting transcript into a draft card with owners and next steps.",
+        skill_md:
+          "# meeting-notes\n\nOne card per meeting: decisions, owners, dates. Nothing invented — if the transcript does not say who owns it, write 未定.\n",
+      },
+    ],
+    mcp_namespace: "",
+    mcp_tools: [],
+  })
   reg
 }
 

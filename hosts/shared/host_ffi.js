@@ -23494,6 +23494,38 @@ function createHostFfi(repoRoot, opts = {}) {
           skills: ["calendar-sync"],
           tools: ["list_events"],
         },
+        /* 2026-11-07 新增三条。工具名对齐 connectors/ 里的契约，不另起名字：
+         * X 的六个来自 x_twitter_mcp.mbt 的 user-X 面；邮件与会议没有外部 MCP
+         * 进程（走本机 host 效果），故 mcp_namespace 留空 —— 装的是技能，
+         * 不假装有服务器。 */
+        "plugin-x": {
+          id: "plugin-x",
+          display_name: "X (Twitter)",
+          mcp_namespace: "user-X",
+          skills: ["x-posts"],
+          tools: [
+            "get_users_posts",
+            "get_posts_by_id",
+            "get_users_bookmarks",
+            "create_users_bookmark",
+            "get_chat_conversations",
+            "send_chat_message",
+          ],
+        },
+        "plugin-mail": {
+          id: "plugin-mail",
+          display_name: "Mail",
+          mcp_namespace: "",
+          skills: ["mail-draft"],
+          tools: [],
+        },
+        "plugin-meeting": {
+          id: "plugin-meeting",
+          display_name: "Meetings",
+          mcp_namespace: "",
+          skills: ["meeting-notes"],
+          tools: [],
+        },
       };
       const meta = PLUGIN_META[pluginId];
       if (!meta) {
@@ -23695,6 +23727,40 @@ function createHostFfi(repoRoot, opts = {}) {
               description: "List upcoming calendar events.",
             },
           ],
+        },
+        {
+          id: "plugin-x",
+          display_name: "X (Twitter)",
+          mcp_namespace: "user-X",
+          skills: ["x-posts"],
+          tools: [
+            { name: "get_users_posts", description: "List a user's posts." },
+            { name: "get_posts_by_id", description: "Fetch posts by id." },
+            {
+              name: "get_users_bookmarks",
+              description: "List the signed-in user's bookmarks.",
+            },
+            { name: "create_users_bookmark", description: "Bookmark a post." },
+            {
+              name: "get_chat_conversations",
+              description: "List X chat conversations.",
+            },
+            { name: "send_chat_message", description: "Send an X chat message." },
+          ],
+        },
+        {
+          id: "plugin-mail",
+          display_name: "Mail",
+          mcp_namespace: "",
+          skills: ["mail-draft"],
+          tools: [],
+        },
+        {
+          id: "plugin-meeting",
+          display_name: "Meetings",
+          mcp_namespace: "",
+          skills: ["meeting-notes"],
+          tools: [],
         },
       ];
       let installed = [];
@@ -23969,6 +24035,32 @@ function createHostFfi(repoRoot, opts = {}) {
           skills: ["calendar-sync"],
           tools: ["list_events"],
         },
+        "plugin-x": {
+          namespace: "user-X",
+          display_name: "X (Twitter)",
+          skills: ["x-posts"],
+          tools: [
+            "get_users_posts",
+            "get_posts_by_id",
+            "get_users_bookmarks",
+            "create_users_bookmark",
+            "get_chat_conversations",
+            "send_chat_message",
+          ],
+        },
+        // 技能型插件：没有命名空间，装完只往技能目录里加一份说明。
+        "plugin-mail": {
+          namespace: "",
+          display_name: "Mail",
+          skills: ["mail-draft"],
+          tools: [],
+        },
+        "plugin-meeting": {
+          namespace: "",
+          display_name: "Meetings",
+          skills: ["meeting-notes"],
+          tools: [],
+        },
       };
       let pluginId = pluginToken;
       let namespace = nsHint || pluginToken;
@@ -24024,15 +24116,20 @@ function createHostFfi(repoRoot, opts = {}) {
       } catch {
         /* keep defaults */
       }
-      catalog.namespaces[namespace] = {
-        namespace,
-        status: "Ready",
-        usable: true,
-        plugin_id: pluginId,
-        display_name: displayName,
-        skills,
-        at,
-      };
+      /* 技能型插件（邮件 / 会议）没有命名空间：装了只登记 plugin_id + 技能，
+       * 不要往 namespaces 里塞一个键名是空串的条目 —— 那会让「就绪命名空间」
+       * 列表里多出一个没法调用、也说不清是什么的东西。 */
+      if (namespace) {
+        catalog.namespaces[namespace] = {
+          namespace,
+          status: "Ready",
+          usable: true,
+          plugin_id: pluginId,
+          display_name: displayName,
+          skills,
+          at,
+        };
+      }
       if (pluginId && !catalog.installed_plugins.includes(pluginId)) {
         catalog.installed_plugins.push(pluginId);
       }

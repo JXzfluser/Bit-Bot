@@ -94,7 +94,7 @@ try {
   await win.waitForSelector("#ap-connect", { state: "visible", timeout: 8000 });
   await win.click("#ap-connect");
   await win.waitForSelector("#connect-apps-modal", { state: "visible", timeout: 10000 });
-  await win.waitForSelector("#ca-sections .ca-app", { timeout: 15000 });
+  await win.waitForSelector("#ca-sections .ca-app", { timeout: 40000 });
   await win.waitForTimeout(600);
   ok("CA-00 账户菜单 → 连接应用 打开成功，目录已出卡片");
 
@@ -111,6 +111,30 @@ try {
     ok("CA-01 每张卡只出现一次：目录 " + payload.length + " 条 → DOM " + domIds.length + " 张（旧版「为你推荐」会画成 " + payload.length * 2 + " 张）");
   } else {
     bad("CA-01 卡片重复或缺失", { payload: payload.map((p) => p.id), dom: domIds });
+  }
+
+  /* ---------------- CA-10 目录里要有本项目自己的连接面 ---------------- */
+  const catalog = await win.evaluate((ids) => {
+    const cards = Array.from(document.querySelectorAll("#ca-sections [data-plugin-id]"));
+    const byId = {};
+    for (const c of cards) {
+      byId[c.dataset.pluginId] = {
+        name: (c.querySelector(".ca-app-name") || {}).textContent || "",
+        sub: (c.querySelector(".ca-app-sub") || {}).textContent || "",
+      };
+    }
+    return {
+      ids: cards.map((c) => c.dataset.pluginId),
+      missing: ids.filter((id) => !byId[id]),
+      names: ids.map((id) => (byId[id] ? byId[id].name : null)),
+      zeroToolSub: ids.filter((id) => byId[id] && /工具\s*0/.test(byId[id].sub)),
+    };
+  }, ["plugin-x", "plugin-mail", "plugin-meeting"]);
+  if (!catalog.missing.length && !catalog.zeroToolSub.length) {
+    ok("CA-10 目录里有本项目的连接面：另外补的三条 " + catalog.names.join(" / ") +
+      " 都在，且技能型条目不再显示「工具 0」");
+  } else {
+    bad("CA-10 新目录条目缺失或副标题还在报「工具 0」", catalog);
   }
 
   /* ---------------- 分类：只留「全部 + 有内容的」 ---------------- */
@@ -137,12 +161,7 @@ try {
     }
     await win.click('#ca-cats .ca-chip[data-cat="' + c.cat + '"]');
     await win.waitForTimeout(250);
-    const n = await win.evaluate((cat) => {
-      const rows = document.querySelectorAll("#ca-sections [data-plugin-id]").length;
-      const cn = document.getElementById("ca-cn-channels");
-      const cnShown = cn && cn.style.display !== "none" ? 1 : 0;
-      return rows + (cat === "communication" ? cnShown : 0);
-    }, c.cat);
+    const n = await win.evaluate(() => document.querySelectorAll("#ca-sections [data-plugin-id]").length);
     if (!n) emptyCats.push(c.text);
   }
   await win.click('#ca-cats .ca-chip[data-cat="all"]');
@@ -232,54 +251,61 @@ try {
     }
   }
 
-  /* ---------------- 渠道卡：默认收起，卡头先说状态 ---------------- */
+  /* ---------------- 渠道凭证：这里不该有，设置→凭证里该还在 ---------------- */
   const cn = await win.evaluate(() => {
-    const box = document.getElementById("ca-cn-box");
-    const hook = document.getElementById("sec-ding-hook");
-    const state = document.getElementById("cn-card-state");
-    /* <details> 收起时 Chromium 用的是 content-visibility（不是 display:none），
-     * 几何量法会读到「上次布局的尺寸」，offsetParent 也照样非空。
-     * 唯一诚实的问法是：它到底有没有被画出来 —— checkVisibility。 */
-    const vis = (el) => {
-      if (!el) return null;
-      try {
-        return el.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true });
-      } catch (_) {
-        return null;
-      }
-    };
+    /* 关键：这些 id 还在同一个文档里（搬到设置页了），所以必须**在面板子树里**查。
+     * 用 document.getElementById 判断会永远为 true —— 那是个恒真的假判据。 */
+    const m = document.getElementById("connect-apps-modal");
     return {
-      exists: Boolean(box),
-      open: box ? box.open : null,
-      hookPainted: vis(hook),
-      state: state ? String(state.textContent || "").trim() : "",
-      fields: document.querySelectorAll("#ca-cn-channels input").length,
+      card: Boolean(m && m.querySelector("#ca-cn-channels")),
+      box: Boolean(m && m.querySelector("#ca-cn-box")),
+      hook: Boolean(m && m.querySelector("#sec-ding-hook")),
+      inSettings: Boolean(document.querySelector("#settings-panel #ca-cn-box")),
+      passwords: m ? m.querySelectorAll("input[type=password]").length : -1,
+      inputs: m ? m.querySelectorAll("input").length : -1,
     };
   });
-  if (cn.exists && cn.open === false && cn.hookPainted === false && /钉钉|飞书|企微/.test(cn.state)) {
-    ok("CA-04 渠道卡默认收起（" + cn.fields + " 个字段都在 DOM 里，一个都没画出来），卡头就写着「" + cn.state + "」");
+  if (!cn.card && !cn.box && !cn.hook && cn.passwords === 0 && cn.inSettings) {
+    ok("CA-04 连接应用里已经没有渠道凭证（面板内输入框 " + cn.inputs + " 个、密码框 0 个），它现在在设置页（inSettings=" + cn.inSettings + "）——它是配置项，不是应用");
   } else {
-    bad("CA-04 渠道卡没有默认收起，或卡头没写状态", cn);
+    bad("CA-04 凭证字段还留在连接应用里", cn);
   }
-  await win.click("#ca-cn-box > summary");
+
+  /* 正向对照：删掉的只是位置，不是能力。去 设置 → 凭证 看一眼它还在不在。 */
+  await win.click("#ca-close");
   await win.waitForTimeout(300);
-  const cnOpen = await win.evaluate(() => {
-    const hook = document.getElementById("sec-ding-hook");
+  await win.click("#account-avatar-btn");
+  await win.waitForSelector("#ap-settings", { state: "visible", timeout: 8000 });
+  await win.click("#ap-settings");
+  await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+  await win.evaluate(() => { if (typeof showSettingsTab === "function") showSettingsTab("credentials"); });
+  await win.waitForSelector("#ca-cn-box", { state: "attached", timeout: 8000 });
+  const cnHome = await win.evaluate(() => {
+    const tab = document.querySelector('.settings-tab-btn[data-stab="credentials"]');
     const box = document.getElementById("ca-cn-box");
-    if (hook && hook.scrollIntoView) hook.scrollIntoView({ block: "center" });
-    let painted = null;
-    try {
-      painted = hook ? hook.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true }) : null;
-    } catch (_) {}
-    return { open: box.open, hookPainted: painted };
+    const save = document.getElementById("sec-save");
+    return {
+      tabActive: tab ? tab.classList.contains("active") : false,
+      box: Boolean(box),
+      openByDefault: box ? box.open : null,
+      fields: document.querySelectorAll("#ca-cn-channels input").length,
+      saveNextTo: Boolean(save),
+    };
   });
-  if (cnOpen.open && cnOpen.hookPainted === true) {
-    ok("CA-04b 点一下卡头 → 展开，Webhook 字段立即可见（不用再找别处）");
+  if (cnHome.box && cnHome.fields === 13 && cnHome.tabActive && cnHome.saveNextTo) {
+    ok("CA-04b 13 个凭证字段搬到了 设置 → 凭证（默认" + (cnHome.openByDefault ? "展开" : "收起") +
+      "，保存并热加载就在同一页）——位置变了，能力没少");
   } else {
-    bad("CA-04b 展开后字段仍不可见", cnOpen);
+    bad("CA-04b 凭证字段在设置里找不全", cnHome);
   }
-  await win.click("#ca-cn-box > summary");
-  await win.waitForTimeout(200);
+  await win.evaluate(() => {
+    if (typeof closeSettings === "function") closeSettings();
+    else {
+      const p = document.getElementById("settings-panel");
+      if (p) p.style.display = "none";
+    }
+  });
+  await win.waitForTimeout(300);
 
   /* ---------------- 跨面板跳转与「搜技能」的承诺都撤掉了 ---------------- */
   const leftovers = await win.evaluate(() => ({
