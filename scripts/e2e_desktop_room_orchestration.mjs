@@ -75,6 +75,23 @@ const B = { name: "GP145Fail", job: "GP145JOBFAIL 长文写作", desc: "GP145DES
 const C = { name: "GP145Gamma", job: "GP145JOBGAMMA 数据核对", desc: "GP145DESCC 只做核对" };
 const ROOM_TITLE = "GP145 协作验收群";
 
+/* G-110：真机上一次**成功的群任务**要产出真文件。
+   这句话是特意挑的：中文里「市场」「场调」「调研」只出现在 A 的职责里，
+   B/C 一个都不沾，所以宿主按内容判得出唯一负责人（content_match）。
+   回执走 BITBOT_STUB_REPLY_MATCH 定向给：默认回执是把请求栈原样回显，而接力
+   提示词里本来就印着【需要确认】/【交给】的模板文字，回显出来会被当成「Bot 要
+   停下问」—— 那是 stub 的回声，不是 Bot 的行为。 */
+const TASK_DELIVER = "整理一份市场调研的竞品清单";
+const REPLY_DELIVER = [
+  "竞品清单（本周）",
+  "",
+  "1. 甲品牌：主打低价，投放集中在短视频；转化快，但复购低。",
+  "2. 乙品牌：主打专业背书，投放集中在长视频；客单高，但起量慢。",
+  "3. 丙品牌：主打联名，话题集中在社交平台；破圈快，但沉淀弱。",
+  "",
+  "一句话结论：三家都在抢「性价比 + 专业」这两个词，我们能拉开的差异是交付速度。",
+].join("\n");
+
 function startStub() {
   const proc = spawn(
     process.execPath,
@@ -91,6 +108,8 @@ function startStub() {
         BITBOT_STUB_ECHO_WIDTH: "1400",
         // 只对带 B 人设的请求返 500 → 群里必须如实降级成 partial
         BITBOT_STUB_FAIL_CONTAINS: "名字：" + B.name,
+        // 定向回执：这一句问的就是市场调研，回一份像样的成稿（含可断言的 marker）
+        BITBOT_STUB_REPLY_MATCH: JSON.stringify({ [TASK_DELIVER]: REPLY_DELIVER }),
       },
     },
   );
@@ -612,6 +631,77 @@ const DOM_COUNTS = () => ({
       await win.screenshot({ path: path.join(SHOT_DIR, "gp145-7-room-deduped.png") });
     }
 
+    /* ---------- S11b: 无 @ 的一次群任务 —— 派一个负责人、串行、产出真文件 ----------
+       和 S12 的分工：S12 问一句「没人明显该做」的话（宿主必须停下来问），这一条问
+       一句**明显该谁做**的话，四个判据一次收齐：
+         ① 只派一个人（不是全员同时开工）；
+         ② 串行：转录里这一轮只有 1 条成员回合，且带 hop=0；
+         ③ 产物是真文件（路径存在、字节数对得上、正文含回执里的 marker）；
+         ④ 产品面看得见（汇报卡上有产物行 + 「打开」按钮，群里有一行「产物：」）。 */
+    {
+      await openRoom();
+      const beforeD = reportsOf(roomId).length;
+      const confirmBeforeD = rowsOf(roomId, "confirm_request").length;
+      await sendText(TASK_DELIVER);
+      const gotD = await waitForReportCount(roomId, beforeD + 1);
+      const repD = lastReport(roomId);
+      // 这一轮的成员回合：从最后一条同文 user 行往后数（不依赖轮次序号）。
+      const txD = txOf(roomId);
+      let userAtD = -1;
+      for (let i = txD.length - 1; i >= 0; i--) {
+        if (txD[i] && txD[i].kind === "user" && txD[i].text === TASK_DELIVER) { userAtD = i; break; }
+      }
+      const roundD = userAtD >= 0 ? txD.slice(userAtD + 1) : [];
+      const workersD = roundD.filter((e) => e && (e.kind === "bot_reply" || e.kind === "bot_reply_error"));
+      const sysD = roundD.filter((e) => e && e.kind === "system" && String(e.text || "").startsWith("产物："));
+      const dv = repD && repD.deliverable;
+      const dvExists = Boolean(dv && dv.path && fs.existsSync(dv.path));
+      const dvBody = dvExists ? fs.readFileSync(dv.path, "utf8") : "";
+      gotD && repD
+        ? ok("无 @ 的一句话也走完了（" + TASK_DELIVER + "）")
+        : bad("no-@ relay run never finished", JSON.stringify({ beforeD, now: reportsOf(roomId).length, paused: rowsOf(roomId, "confirm_request").length > confirmBeforeD }));
+      repD && repD.route && repD.route.mode === "content_match" &&
+        repD.route.owner === seeded.ba.id && repD.route.owner_name === A.name
+        ? ok("宿主按内容认出了唯一负责人（content_match → " + A.name + "，margin " + repD.route.margin + "）")
+        : bad("content_match routing", JSON.stringify(repD && repD.route).slice(0, 400));
+      // ① + ②：这一轮真的只有一个成员在干活，且只有一棒。
+      workersD.length === 1 && workersD[0].bot_id === seeded.ba.id && workersD[0].hop === 0 &&
+        Array.isArray(repD && repD.relay) && repD.relay.length === 1 && repD.total === 1
+        ? ok("这一轮只唤醒了一个成员、只跑了一棒（不是三个 Bot 同时开工）")
+        : bad("exactly one worker", JSON.stringify(workersD.map((w) => ({ b: w.bot_id, h: w.hop }))).slice(0, 300));
+      // ③：产物不是「我做到了」这句话，是磁盘上的一份真文件。
+      dv && dvExists && dv.bytes > 0 && fs.statSync(dv.path).size === dv.bytes && /\.md$/.test(String(dv.name))
+        ? ok("产物是真文件：" + dv.name + "（" + dv.bytes + " 字节，磁盘大小一致）")
+        : bad("deliverable file", JSON.stringify({ dv, dvExists }).slice(0, 400));
+      dvBody.includes("竞品清单（本周）") && dvBody.includes("交付速度") &&
+        dvBody.includes("群：" + ROOM_TITLE) && dvBody.includes("接力：" + A.name)
+        ? ok("产物正文就是这一棒交的成稿（含「竞品清单（本周）」「交付速度」与群/接力来源）")
+        : bad("deliverable body", dvBody.slice(0, 400));
+      // 产物只在汇报卡上露一次：转录里不再补一条同义的系统行。用户看见的是卡上
+      // 那一行（文件名 + 大小 + 「打开」），不是一段「我产出了什么」的自述。
+      sysD.length === 0 && Boolean(dv)
+        ? ok("产物不在群里重复说一遍（汇报卡上那一行是唯一出口）")
+        : bad("duplicate deliverable notice", JSON.stringify(sysD.map((s) => s.text)).slice(0, 300));
+      // ④：产品面 —— 汇报卡上有产物行，按钮点了走宿主打开（这里只断言它真的在）。
+      const dvDom = await win.evaluate(() => {
+        const els = Array.from(document.querySelectorAll("#log .msg.room-report"));
+        const last = els[els.length - 1];
+        if (!last) return null;
+        const btn = last.querySelector(".rr-deliverable-open");
+        return {
+          hasRow: Boolean(last.querySelector(".rr-deliverable")),
+          label: ((last.querySelector(".rr-deliverable-label") || {}).textContent || "").trim(),
+          name: ((last.querySelector(".rr-deliverable-name") || {}).textContent || "").trim(),
+          btn: btn ? (btn.textContent || "").trim() : "",
+        };
+      });
+      dvDom && dvDom.hasRow && /\.md$/.test(dvDom.name) && dvDom.btn.length > 0
+        ? ok("汇报卡上有产物行（" + dvDom.label + "：" + dvDom.name + " ·「" + dvDom.btn + "」）")
+        : bad("deliverable row in DOM", JSON.stringify(dvDom));
+      evidence.s11b = { route: repD && repD.route, deliverable: dv || null, workers: workersD.length };
+      await win.screenshot({ path: path.join(SHOT_DIR, "gp145-11b-deliverable.png") });
+    }
+
     /* ---------- S12: 点名不在群里的人 —— 不假装定向成功 ---------- */
     {
       const ghostTask = "@GhostNotInRoom 请说明你的职责";
@@ -847,6 +937,15 @@ const DOM_COUNTS = () => ({
     } catch { /* ignore */ }
     fs.rmSync(STUB_RECORD, { force: true });
     // 验收跑完恢复运行期文件，不把测试数据留在工作树里
+    // 产物目录也是本轮写出来的：不清掉就会把 GP145 的成稿留在工作树里（rooms.json
+    // 还回去了，磁盘上却多一份没人认领的文件）。
+    try {
+      const rid = evidence && evidence.room_id ? String(evidence.room_id) : "";
+      if (rid) {
+        const key = rid.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "room";
+        fs.rmSync(path.join(REPO, "data/desktop/room-deliverables", key), { recursive: true, force: true });
+      }
+    } catch { /* ignore */ }
     if (roomsBefore) fs.writeFileSync(ROOMS, roomsBefore); else fs.rmSync(ROOMS, { force: true });
     if (sessionsBefore) fs.writeFileSync(SESSIONS, sessionsBefore); else if (fs.existsSync(SESSIONS)) fs.rmSync(SESSIONS, { force: true });
     if (botsBefore) fs.writeFileSync(path.join(REPO, "data/desktop/bots.json"), botsBefore);

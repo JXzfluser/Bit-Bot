@@ -469,6 +469,11 @@ function composeDeliverable(input) {
   const opts = input || {};
   const task = String(opts.task || "").trim();
   const relay = Array.isArray(opts.relay) ? opts.relay : [];
+  // mode:
+  //   relay（默认）—— 串行接力，**最后一棒**是权威交付内容，前面几棒作过程留痕；
+  //   parallel      —— 用户显式 @ 了多个人（各写各的），没有「最后一棒」这回事，
+  //                    所有成功成果并列成交付内容，谁写了什么都留着。
+  const parallel = String(opts.mode || "relay") === "parallel";
   const title = clip(task || "群任务产物", 80);
   const done = relay.filter((r) => r && r.ok && String(r.text || "").trim());
   const lines = [];
@@ -477,25 +482,35 @@ function composeDeliverable(input) {
   const meta = [];
   if (opts.roomTitle) meta.push("群：" + String(opts.roomTitle));
   if (opts.at) meta.push("时间：" + String(opts.at));
-  if (relay.length) meta.push("接力：" + relay.map((r) => String(r.name || r.bot_id || "")).join(" → "));
+  if (relay.length) {
+    meta.push((parallel ? "成员：" : "接力：") + relay.map((r) => String(r.name || r.bot_id || "")).join(parallel ? "、" : " → "));
+  }
   if (meta.length) {
     lines.push("> " + meta.join("｜"));
     lines.push("");
   }
   if (done.length) {
-    const last = done[done.length - 1];
     lines.push("## 交付内容");
     lines.push("");
-    lines.push(String(last.text || "").trim());
-    lines.push("");
-    if (done.length > 1) {
-      lines.push("## 过程");
+    if (parallel) {
+      for (const r of done) {
+        lines.push("### " + String(r.name || r.bot_id || ""));
+        lines.push("");
+        lines.push(String(r.text || "").trim());
+        lines.push("");
+      }
+    } else {
+      lines.push(String(done[done.length - 1].text || "").trim());
       lines.push("");
-      for (let i = 0; i < done.length - 1; i++) {
-        lines.push("### 第 " + (i + 1) + " 棒 · " + String(done[i].name || done[i].bot_id || ""));
+      if (done.length > 1) {
+        lines.push("## 过程");
         lines.push("");
-        lines.push(String(done[i].text || "").trim());
-        lines.push("");
+        for (let i = 0; i < done.length - 1; i++) {
+          lines.push("### 第 " + (i + 1) + " 棒 · " + String(done[i].name || done[i].bot_id || ""));
+          lines.push("");
+          lines.push(String(done[i].text || "").trim());
+          lines.push("");
+        }
       }
     }
   } else {

@@ -2128,6 +2128,26 @@ function createProductSurface(repoRoot, opts = {}) {
     }
   }
 
+  /* 产物正文太短就不落文件：一句「好的」不配占一个 .md。
+     这是「没有产物」而不是「产物失败」—— 群里的汇总卡照旧给答复。 */
+  const MIN_DELIVERABLE_CHARS = 20;
+  function deliverableFromTurns(input) {
+    const o = input || {};
+    const turns = Array.isArray(o.turns) ? o.turns : [];
+    const usable = turns.filter((t) => t && t.ok && String(t.text || "").trim());
+    if (!usable.length) return { ok: false, error: "no_content" };
+    const chars = usable.reduce((n, t) => n + String(t.text || "").trim().length, 0);
+    if (chars < MIN_DELIVERABLE_CHARS) return { ok: false, error: "too_short", chars };
+    try {
+      const markdown = roomOrchestrator.composeDeliverable({
+        task: o.task, relay: turns, roomTitle: o.roomTitle, at: o.at, mode: o.mode || "relay",
+      });
+      return writeRoomDeliverable({ room: o.room, task: o.task, taskSig: o.taskSig, markdown });
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
   /* 上一轮有没有「停下来等用户回答」的那一问。
      转录是唯一的状态源：用户这句已经落盘了，所以先跳过本轮这条 user 行，再看上一行。 */
   function pendingConfirmOf(room, messageId) {
@@ -2502,17 +2522,10 @@ function createProductSurface(repoRoot, opts = {}) {
       }
 
       // ---- 产物：把接力链合成一份真文件落盘 ----
-      let deliverable = null;
-      try {
-        const md = roomOrchestrator.composeDeliverable({
-          task, relay: chain, roomTitle: room.title, at,
-        });
-        deliverable = okChain.length
-          ? writeRoomDeliverable({ room, task, taskSig, markdown: md })
-          : { ok: false, error: "no_content" };
-      } catch (e) {
-        deliverable = { ok: false, error: String((e && e.message) || e) };
-      }
+      const deliverable = deliverableFromTurns({
+        room, task, taskSig, at, roomTitle: room.title,
+        turns: chain, mode: "relay",
+      });
 
       const duplication = roomOrchestrator.duplicateWorkRate(
         chain.map((c) => ({ bot_id: c.bot_id, name: c.name, ok: c.ok, text: c.text })),
@@ -2526,7 +2539,7 @@ function createProductSurface(repoRoot, opts = {}) {
         responders: chain.map((c) => c.bot_id),
         total: chain.length,
         returned: okChain.length,
-        partial: okChain.length < chain.length || !(deliverable && deliverable.ok),
+        partial: okChain.length < chain.length,
         sections: chain.map((c) => {
           const sum = clipRoomText(c.ok ? c.text : "(" + (c.error || "no reply") + ")", ROOM_SUMMARY_MAX);
           return {
@@ -2541,7 +2554,12 @@ function createProductSurface(repoRoot, opts = {}) {
         deliverable: deliverable && deliverable.ok
           ? { name: deliverable.name, path: deliverable.path, bytes: deliverable.bytes }
           : undefined,
-        deliverable_error: deliverable && !deliverable.ok ? deliverable.error : undefined,
+        // 只有「真写失败」才报错：内容太短/没人交东西不是错误，如实不产文件即可。
+        deliverable_error: deliverable && !deliverable.ok &&
+          deliverable.error !== "too_short" && deliverable.error !== "no_content"
+          ? deliverable.error
+          : undefined,
+        deliverable_skipped: deliverable && !deliverable.ok ? deliverable.error : undefined,
         budget: budget.snapshot(),
         duplication,
         at,
@@ -2549,17 +2567,20 @@ function createProductSurface(repoRoot, opts = {}) {
       appendRoomTranscript(room.id, final_report);
 
       const notice = [];
-      if (deliverable && deliverable.ok) {
-        notice.push("产物：" + deliverable.name + "（" + deliverable.path + "）");
-      } else {
-        notice.push("这一轮没有产出可用产物：" + String((deliverable && deliverable.error) || "unknown"));
+      /* 产物不在这里再说一遍：汇报卡上已经有那一行（文件名 + 大小 + 「打开」），
+         同一件事说两遍只会把群消息流撑长。系统行只承载**卡里没有的信息** ——
+         为什么没产出、预算是怎么停的。 */
+      if (deliverable && !deliverable.ok && final_report.deliverable_error) {
+        notice.push("产物没能落盘：" + final_report.deliverable_error);
       }
       if (budget.snapshot().exceeded) {
         notice.push("团队预算用尽（" + (budget.snapshot().reason || "exhausted") + "），接力的后续棒次已停止。");
       }
-      appendRoomTranscript(room.id, {
-        kind: "system", room_id: room.id, speaker: "system", text: notice.join("\n"), at,
-      });
+      if (notice.length) {
+        appendRoomTranscript(room.id, {
+          kind: "system", room_id: room.id, speaker: "system", text: notice.join("\n"), at,
+        });
+      }
       return {
         ok: true, mode: "host_orchestrate_room",
         returned: final_report.returned, total: final_report.total,
@@ -2949,6 +2970,14 @@ function createProductSurface(repoRoot, opts = {}) {
         sections.map(s => ({ bot_id: s.bot_id, name: s.name, ok: s.ok, text: s.text })),
         { threshold: Number(deps.duplicateThreshold || roomOrchestrator.DUPLICATE_THRESHOLD) },
       );
+      /* 显式 @ / 全员 这条路径同样要有「能拿走的产物」：用户点了名让两个人各自写，
+         最后只给他一张各说各话的汇总卡，等于还是要他自己去复制粘贴。
+         并行路径没有「最后一棒」，所以按名字并列所有成功成果（mode: parallel）。 */
+      const deliverable = deliverableFromTurns({
+        room, task, taskSig, at, roomTitle: room.title,
+        turns: sections.map(s => ({ bot_id: s.bot_id, name: s.name, ok: s.ok, text: s.text })),
+        mode: "parallel",
+      });
       const final_report = {
         kind: "final_report", room_id: room.id, responder_policy: responderPolicy,
         task: clipRoomText(task, ROOM_TASK_MAX).text,
@@ -2965,6 +2994,14 @@ function createProductSurface(repoRoot, opts = {}) {
           };
         }),
         artifacts: sections.flatMap(s => s.artifacts || []),
+        deliverable: deliverable && deliverable.ok
+          ? { name: deliverable.name, path: deliverable.path, bytes: deliverable.bytes }
+          : undefined,
+        deliverable_error: deliverable && !deliverable.ok &&
+          deliverable.error !== "too_short" && deliverable.error !== "no_content"
+          ? deliverable.error
+          : undefined,
+        deliverable_skipped: deliverable && !deliverable.ok ? deliverable.error : undefined,
         discretion,
         // UI 文案「n 个成员的选择失败，已按应答处理」——n 只数**真被带进本轮**的那些。
         discretion_fail_open: failOpenIncluded.length || undefined,
@@ -2991,7 +3028,11 @@ function createProductSurface(repoRoot, opts = {}) {
       };
       appendRoomTranscript(room.id, final_report);
       // 系统行：综合答案与降级说明要**看得见**（渲染层不认新字段，用系统行承载）。
+      // 产物不在这里重复：汇报卡上已有「产物」那一行（文件名 + 大小 + 「打开」）。
       const notice = [];
+      if (deliverable && !deliverable.ok && final_report.deliverable_error) {
+        notice.push("产物没能落盘：" + final_report.deliverable_error);
+      }
       if (synthesis && synthesis.ok && synthesis.summary) {
         notice.push("群综合（lead：" + (synthesis.lead_name || synthesis.lead_bot_id) + "）：" + synthesis.summary);
       } else if (synthesis && !synthesis.ok && !synthesis.skipped) {

@@ -155,16 +155,20 @@ const kinds = (t) => t.map((e) => e && e.kind);
     const d = fr && fr.deliverable;
     const exists = d && d.path && fs.existsSync(d.path);
     const body = exists ? fs.readFileSync(d.path, "utf8") : "";
-    (exists && d.bytes > 0 && /\.md$/.test(d.name))
-      ? ok("C 产物是真文件：" + (d && d.name) + "（" + (d && d.bytes) + " 字节）")
+    (exists && d.bytes > 0 && /\.md$/.test(d.name) && String(d.name).length > 3)
+      ? ok("C 产物是真文件，且 deliverable 三件齐全（名字/路径/字节）：" + (d && d.name) + "（" + (d && d.bytes) + " 字节）")
       : bad("C deliverable file", JSON.stringify(d));
     (body.includes("## 交付内容") && body.includes("园区光伏的对比数字"))
       ? ok("C 产物正文含最后一棒的成果，不是一句「我做到了」")
       : bad("C deliverable body", body.slice(0, 200));
-    const sys = txOf(surface).filter((e) => e.kind === "system" && /产物：/.test(String(e.text || "")));
-    (sys.length === 1)
-      ? ok("C 群里有一行系统说明指出产物路径（可点开，不是黑箱）")
-      : bad("C deliverable notice", JSON.stringify(sys.map((s) => s.text)));
+    /* 产物只在汇报卡上露一次（渲染层直接读 final_report.deliverable 画那一行）。
+       转录里再补一条同义系统行就是同一件事说两遍，会把群消息流撑长；空白的系统行
+       更是纯噪声。这里反向钉住：不许有。 */
+    const sysAll = txOf(surface).filter((e) => e.kind === "system");
+    const dup = sysAll.filter((e) => /产物/.test(String(e.text || "")));
+    (sysAll.every((e) => String(e.text || "").trim()) && dup.length === 0)
+      ? ok("C 产物不在群里重复说一遍（卡上那一行是唯一出口），也没有空白的系统行")
+      : bad("C duplicate deliverable notice", JSON.stringify(sysAll.map((s) => s.text)));
   }
 
   /* ---------- D. 遇不明就停：confirm_request → 用户答复 → 回到同一个 Bot ---------- */
@@ -240,6 +244,28 @@ const kinds = (t) => t.map((e) => e && e.kind);
     (q && Array.isArray(q.candidates) && q.candidates.length === 4)
       ? ok("E 问题里带候选名单（用户回一个名字就能继续，不用猜我们认不认）")
       : bad("E candidates", JSON.stringify(q && q.candidates));
+
+    // 用户回一个名字 → 这一轮真的开工，且派的就是被点名的那位
+    const calls = [];
+    const resumed = await dispatchRoomTurn({
+      surface,
+      roomId: "room-relay",
+      text: "事实核查",
+      deps: {
+        runResponderTurn: async (botId) => {
+          calls.push(botId);
+          return { ok: true, text: "核完了：这个数字出自园区 2024 年报第 12 页。" };
+        },
+      },
+    });
+    (resumed && resumed.ok && calls.length === 1 && calls[0] === "b3" &&
+      resumed.final_report && resumed.final_report.route.owner === "b3")
+      ? ok("E 用户回「事实核查」→ 不再追问，直接派给事实核查（route.owner=b3）")
+      : bad("E resume by name", JSON.stringify({ calls, route: resumed && resumed.final_report && resumed.final_report.route }));
+    const answeredRoute = txOf(surface).find((e) => e.kind === "confirm_request" && e.stage === "route");
+    (answeredRoute && answeredRoute.answered_at && answeredRoute.answer === "事实核查")
+      ? ok("E 那张「该谁做」的卡被标已答复（同一问不会再问第二遍）")
+      : bad("E route confirm answered", JSON.stringify(answeredRoute && { at: answeredRoute.answered_at, a: answeredRoute.answer }));
   }
 
   /* ---------- F. 旧路径没被破坏：显式点名仍是点名 ---------- */
@@ -255,6 +281,45 @@ const kinds = (t) => t.map((e) => e && e.kind);
     (r && r.ok && ran.length === 2 && ran.includes("b1") && ran.includes("b2"))
       ? ok("F 用户显式 @ 两个人 → 仍按点名执行 2 位（用户点名的就是用户的决定）")
       : bad("F explicit mentions", JSON.stringify(ran));
+  }
+
+  /* ---------- I. 显式点名这条路径也要有产物（并列，不是「最后一棒」） ---------- */
+  {
+    const { surface } = mkSurface();
+    await dispatchRoomTurn({
+      surface,
+      roomId: "room-relay",
+      text: "@选题策划 @脚本撰写 各自给一版方案",
+      deps: {
+        runResponderTurn: async (botId) =>
+          botId === "b1"
+            ? { ok: true, text: "选题方案：园区光伏对比，三条理由，面向园区管理者。" }
+            : { ok: true, text: "脚本方案：开场 3 秒抛数字，第 8 秒给结论，全程口播。" },
+      },
+    });
+    const fr = txOf(surface).find((e) => e.kind === "final_report");
+    const d = fr && fr.deliverable;
+    const body = d && d.path && fs.existsSync(d.path) ? fs.readFileSync(d.path, "utf8") : "";
+    (d && d.bytes > 0 && body.includes("选题方案") && body.includes("脚本方案"))
+      ? ok("I @两个人 → 也产出一份文件，两人的成果**并列**在交付内容里（谁写的都留着）")
+      : bad("I parallel deliverable", JSON.stringify({ d, head: body.slice(0, 160) }));
+  }
+
+  /* ---------- J. 一句话的短答复不产文件（不制造垃圾 .md） ---------- */
+  {
+    const { surface } = mkSurface();
+    await dispatchRoomTurn({
+      surface,
+      roomId: "room-relay",
+      text: "标题和话题标签再想想",
+      deps: { runResponderTurn: async () => ({ ok: true, text: "好。" }) },
+    });
+    const fr = txOf(surface).find((e) => e.kind === "final_report");
+    (fr && fr.deliverable === undefined && fr.deliverable_skipped === "too_short" && fr.partial === false)
+      ? ok("J 答复只有一句「好。」→ 不落 .md（deliverable_skipped=too_short），但这一轮不算 partial")
+      : bad("J too short", JSON.stringify(fr && {
+          d: fr.deliverable, skip: fr.deliverable_skipped, partial: fr.partial,
+        }));
   }
 
   /* ---------- G. 一个人不跑第二棒（防踢皮球） ---------- */

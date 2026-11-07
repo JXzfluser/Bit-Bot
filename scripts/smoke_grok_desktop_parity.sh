@@ -4331,7 +4331,7 @@ if [ $? -eq 0 ]; then
 else
   bad "G-110 prove_room_relay（见 /tmp/g110-relay.log；$(grep '✗' /tmp/g110-relay.log | head -2 | tr '\n' ' ')）"
 fi
-for g110_a in "A" "B" "C" "D" "E" "F" "G" "H"; do
+for g110_a in "A" "B" "C" "D" "E" "F" "G" "H" "I" "J"; do
   if grep -q "✓ $g110_a " /tmp/g110-relay.log; then ok "G-110 锚点：$g110_a"; else bad "G-110 锚点没跑绿：$g110_a"; fi
 done
 echo "  · G-110 为什么长出来：用户原话「为什么一堆活就全部 bot 开始工作？而不是针对对话"
@@ -4342,12 +4342,16 @@ echo "    说「要」的成员按 concurrency=selected.length **同时**开跑�
 echo "    实测那条 4 人群转录里，每轮都是 4 个 bot 同时回、其中一个还 token 预算耗尽。"
 echo "  · G-110 判据：A 一句普通任务 → runResponderTurn 恰好 1 次且是内容最匹配的那位；"
 echo "    B 第一棒写【交给】X 才有人接着跑，且第二棒 prompt 里带着第一棒的成果；C 产物是"
-echo "    data/desktop/room-deliverables 下真文件、正文含最后一棒内容、群里给可点路径；"
+echo "    data/desktop/room-deliverables 下真文件、正文含最后一棒内容，且**只在汇报卡上露"
+echo "    一次**（不再补一条同义系统行把消息流撑长，也不写空白系统行）；"
 echo "    D 成员写【需要确认】→ 不写 final_report、不产出文件、群里落 confirm_request，"
-echo "    用户答一句后回到**同一个** Bot 并带上答复；E 看不出该谁做 → 一个 Bot 都不跑先问；"
-echo "    F 显式 @ 两人仍按点名跑（用户点名就是用户的决定）；G A→B→A 踢皮球被拦；"
-echo "    H 负向对照：把 auto_route 关掉换回旧的全员并发，同一句话立刻唤醒 4 个成员 —— "
-echo "    A 的判据确实会红，证明它不是恒真。"
+echo "    用户答一句后回到**同一个** Bot 并带上答复；E 看不出该谁做 → 一个 Bot 都不跑先问，"
+echo "    用户回一句名字后直接派给他；F 显式 @ 两人仍按点名跑（用户点名就是用户的决定）；"
+echo "    G A→B→A 踢皮球被拦；H 负向对照：把 auto_route 关掉换回旧的全员并发，同一句话"
+echo "    立刻唤醒 4 个成员 —— A 的判据确实会红，证明它不是恒真；"
+echo "    I 显式 @ 两人也产出文件，两人成果**并列**（不是「最后一棒」覆盖前一位）；"
+echo "    J 一句「好。」这种短答复不落 .md（deliverable_skipped=too_short），也不因此"
+echo "    把这一轮算成 partial。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 

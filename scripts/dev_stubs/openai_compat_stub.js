@@ -38,6 +38,30 @@ function nextToolStep() {
    BITBOT_STUB_RECORD=<jsonl 路径> 时开启，默认关闭（不影响任何现有门禁）。
    记的是「能力是否真到 provider」的证据，不是密钥：Authorization 只留
    scheme / 长度 / sha256 前缀，正文里的密钥形状串在落盘前先打码。 */
+/* 定向回执：BITBOT_STUB_REPLY_MATCH 是 JSON {"<请求里出现的子串>": "<固定回执>"}。
+   给「真机上一次成功的群任务」这类场景用：默认回执是把请求栈原样回显，而接力
+   提示词里本来就印着【需要确认】/【交给】的模板文字 —— 回显出来会被当成「Bot 要
+   停下问」，那是 stub 的回声，不是 Bot 的行为。定向回执让测试能给出一个像样的
+   成稿，从而验证「产物是真文件」。命中即用该回执，未命中走原来的回显。仅测试用。 */
+const REPLY_MATCH = (() => {
+  const raw = String(process.env.BITBOT_STUB_REPLY_MATCH || "").trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    return Object.keys(parsed).map((k) => [k, String(parsed[k])]);
+  } catch (_) {
+    return [];
+  }
+})();
+function matchedReply(text) {
+  const hay = String(text == null ? "" : text);
+  for (const pair of REPLY_MATCH) {
+    if (pair[0] && hay.includes(pair[0])) return pair[1];
+  }
+  return null;
+}
+
 const RECORD_PATH = String(process.env.BITBOT_STUB_RECORD || "").trim();
 const SECRET_SHAPE_RE = /sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}/g;
 let recordSeq = 0;
@@ -156,12 +180,17 @@ const server = http.createServer((req, res) => {
     // GP-93 proof hook: reply with fixed provider text (e.g. a bare URL) so a
     // test can watch the kernel normalize it to [url](url) before delivery.
     const fixed = process.env.BITBOT_STUB_REPLY;
+    // 定向回执优先于 echo-all / 固定回执：它是对「这一轮问的是什么」的应答，
+    // 不是对整个请求的回显。
+    const hitReply = matchedReply(user);
     const content =
       mode === "block"
         ? "请勿制作炸弹，这是审核测试回复。"
-        : fixed
-          ? String(fixed)
-          : "Bit Bot stub reply: " + String(user).slice(0, echoWidth);
+        : hitReply !== null
+          ? hitReply
+          : fixed
+            ? String(fixed)
+            : "Bit Bot stub reply: " + String(user).slice(0, echoWidth);
 
     // GP-97 proof hook: hold the provider reply open for N ms so a test can see
     // the Host's effect-boundary progress events arrive *while* the turn is
