@@ -2057,6 +2057,36 @@ function createProductSurface(repoRoot, opts = {}) {
   // idempotency (one final_report per task), per-responder timeout.
   const _orchInflight = new Set();
 
+  /* KP-02：用户按「停止」要能真的停下群回合。引擎内部的超时取消用的是
+   * createCancelScope，但那些 scope 只挂在各自的 withTimeout 上，外面的停止按钮
+   * 够不着。这里把每个在跑的 scope 登记进一张表，停止时统一 cancel；回合真正
+   *  settle 之后（runner promise 的 finally）把自己摘掉，表里剩下的就是在跑的。
+   * cancel 自身也摘 —— 超时路径取消后不必等 runner 收尾才不再算「在跑」。 */
+  const _activeRoomScopes = new Set();
+  function roomCancelScope() {
+    const s = roomOrchestrator.createCancelScope();
+    _activeRoomScopes.add(s);
+    const cancel = s.cancel.bind(s);
+    s.cancel = (why) => {
+      const r = cancel(why);
+      _activeRoomScopes.delete(s);
+      return r;
+    };
+    return s;
+  }
+  function forgetRoomScope(s) {
+    _activeRoomScopes.delete(s);
+  }
+  /** 停止当前所有在跑的群回合，返回真取消了几条（0 = 根本没有在跑的）。 */
+  function cancelActiveRoomTurns(reason) {
+    let n = 0;
+    for (const s of [..._activeRoomScopes]) {
+      if (s.cancel(reason || "user_stop")) n++;
+    }
+    _activeRoomScopes.clear();
+    return n;
+  }
+
   // GP-146 持久层有界合同：房间转录是共享面，任何一行都不能无界增长——完整正文
   // 已经由那条 bot_reply 行承载，final_report 的分区/任务只留摘要，失败原因截断。
   // 上限可由环境收紧（默认与渲染合同一致，渲染层不再自己裁长度）。
@@ -2410,7 +2440,7 @@ function createProductSurface(repoRoot, opts = {}) {
           });
           break;
         }
-        const scope = roomOrchestrator.createCancelScope();
+        const scope = roomCancelScope();
         const ctx = {
           room: room.id, bot_id: current.id, name: current.name,
           job: current.job, description: current.description,
@@ -2430,7 +2460,7 @@ function createProductSurface(repoRoot, opts = {}) {
         let res;
         try {
           const out = await withTimeout(
-            runResponderTurn(current.id, prompt, ctx),
+            runResponderTurn(current.id, prompt, ctx).finally(() => forgetRoomScope(scope)),
             ctx.timeoutMs,
             () => scope.cancel("timeout"),
           );
@@ -2759,7 +2789,7 @@ function createProductSurface(repoRoot, opts = {}) {
       const results = new Array(selected.length);
       let cursor = 0;
       const runMember = async (r) => {
-        const scope = roomOrchestrator.createCancelScope();
+        const scope = roomCancelScope();
         const subs = assignments.get(r.id) || [];
         const subtask = subs.length ? subs[0] : null;
         // 回读路径：板子在**每次调用前**现读一次 —— 先跑完的成员，进度会出现在
@@ -2802,7 +2832,7 @@ function createProductSurface(repoRoot, opts = {}) {
         budget.spend({ turns: 1, tokens: promptTokens });
         try {
           const out = await withTimeout(
-            runResponderTurn(r.id, prompt, ctx),
+            runResponderTurn(r.id, prompt, ctx).finally(() => forgetRoomScope(scope)),
             ctx.timeoutMs,
             () => scope.cancel("timeout"),
           );
@@ -2912,7 +2942,7 @@ function createProductSurface(repoRoot, opts = {}) {
             gaps,
             boardText,
           });
-          const scope = roomOrchestrator.createCancelScope();
+          const scope = roomCancelScope();
           const synthTimeout = Math.max(1, Math.min(timeoutMs, budget.remainingMs() || timeoutMs));
           const ctx = {
             room: room.id, bot_id: lead.id, name: lead.name, job: lead.job, description: lead.description,
@@ -2932,7 +2962,7 @@ function createProductSurface(repoRoot, opts = {}) {
             budget.spend({ turns: 1, tokens: promptTokens });
             try {
               const out = await withTimeout(
-                synthRunner(lead.id, prompt, ctx),
+                synthRunner(lead.id, prompt, ctx).finally(() => forgetRoomScope(scope)),
                 synthTimeout,
                 () => scope.cancel("timeout"),
               );
@@ -3170,7 +3200,7 @@ function createProductSurface(repoRoot, opts = {}) {
     const timeoutMs = Number(
       (runner && runner.timeoutMs) || process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || 120000,
     );
-    const scope = roomOrchestrator.createCancelScope();
+    const scope = roomCancelScope();
     const boardText = roomBoard.snapshot(prep.room).text;
     const prompt = roomOrchestrator.buildResponderPrompt({
       task: prep.task,
@@ -3194,7 +3224,7 @@ function createProductSurface(repoRoot, opts = {}) {
     let error = "";
     try {
       out = await withCancelTimeout(
-        handoffRunner.runResponderTurn(prep.to_bot, prompt, ctx),
+        handoffRunner.runResponderTurn(prep.to_bot, prompt, ctx).finally(() => forgetRoomScope(scope)),
         timeoutMs,
         () => scope.cancel("timeout"),
       );
@@ -4088,6 +4118,12 @@ function createProductSurface(repoRoot, opts = {}) {
     roomCreate,
     roomTurn,
     orchestrateRoom,
+    // KP-02：停止按钮要能真停到群回合。这个句柄必须挂在返回值上 —— 只在
+    // createProductSurface 内部定义、不导出，main.js 的 `surface.cancelActiveRoomTurns`
+    // 就永远是 undefined，回执里的 had_active_turn 恒为 false（「按了停止，界面说
+    // 没有在执行的回合」，而实际有一条正跑着）。
+    cancelActiveRoomTurns,
+    activeRoomTurnCount: () => _activeRoomScopes.size,
     handoffTask,
     handoffTaskAsync,
     retryPendingHandoffs,

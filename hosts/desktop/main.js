@@ -689,6 +689,19 @@ if (process.env.BITBOT_CONTENT_MODERATION === undefined) {
 
 const runner = createTurnRunner(REPO_ROOT, { dataRoot: DATA_ROOT, moonBin: MOON_BIN, kernelBin: KERNEL_BIN });
 let releaseActiveTurnCancel = null;
+/* KP-02：让界面知道「现在到底有没有回合在跑」。
+ *
+ * 这是「停止」按钮能不能被按到的前置：按钮在 DOM 里从一开始就有（`#turn-cancel`），
+ * 但**没有任何人把它取消隐藏**，于是它永远藏着 —— 用户根本没有停止这个动作可点。
+ * 用计数而不是布尔：私聊回合与群回合可以同时跑，谁先结束都不该把另一个的停止按钮收掉。
+ * 只在 0↔N 的**跃变**时广播，渲染层负责镜像，不要让它自己去猜。 */
+let activeTurnCount = 0;
+function setTurnActivity(delta) {
+  const before = activeTurnCount > 0;
+  activeTurnCount = Math.max(0, activeTurnCount + delta);
+  const after = activeTurnCount > 0;
+  if (before !== after) broadcast("bitbot:turn-busy", { busy: after, count: activeTurnCount });
+}
 const approvalGate = createApprovalGate();
 let liveLoopApproval = null;
 const sessions = createSessionStore(REPO_ROOT, { dataRoot: DATA_ROOT });
@@ -2797,6 +2810,8 @@ ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
   const roomId = String((payload && payload.room_id) || "").trim();
   const text = String((payload && payload.text) || "").trim();
   if (!roomId || !text) return { ok: false, error: "room_and_text_required" };
+  // KP-02：群回合也是回合 —— 从接下这句活到扇出收齐，「停止」必须能按。
+  setTurnActivity(1);
   try {
     // 1) 真实路由 + 落 transcript + 扇出,一条路径(shared/room_dispatch)。
     //    桌面和 CLI/移动端走**同一个函数** —— Q-6 的教训就是「扇出只在桌面做」
@@ -2856,6 +2871,9 @@ ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
     return res;
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err), room_id: roomId };
+  } finally {
+    // 抛错也要还回去，否则界面会一直停在「正在跑」——那是比不显示更糟的谎。
+    setTurnActivity(-1);
   }
 });
 
@@ -3911,6 +3929,9 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   // GP-98: the turn returns its real progress trail so the renderer (and tests)
   // can distinguish "ran and failed" from "never ran".
   const progressRows = [];
+  // 计数与 finally 里的 -1 必须严格配对：中途抛错时若只有 -1 没有 +1，
+  // 会把另一个还在跑的回合的停止按钮一起收掉（并发时表现为「按钮闪一下消失」）。
+  let busyMarked = false;
   try {
     broadcast("bitbot:llm-stream", {
       phase: "start",
@@ -3927,6 +3948,9 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       };
     });
     releaseActiveTurnCancel = releaseCancel;
+    // KP-02：同上 —— 回合在跑就要有地方按停止。配对在下面的 finally。
+    setTurnActivity(1);
+    busyMarked = true;
     const hostTurnId = "desktop-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
     // A1-2：回合开始 → 落 turn_started（回合流事件，由手机端 SSE 直接消费）。
     try {
@@ -4147,6 +4171,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
   } finally {
     finishLiveLoopApproval("deny");
     releaseActiveTurnCancel = null;
+    if (busyMarked) setTurnActivity(-1);
     if (envPatch) {
       for (const [k, v] of Object.entries(prev)) {
         if (v === undefined) delete process.env[k];

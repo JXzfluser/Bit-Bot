@@ -129,6 +129,15 @@ const server = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
+    /* 慢回执开关：给「回合进行中」这类**时间维度**的验收用（停止按钮显不显示、
+       滚动跟随、进度行是否实时）。默认 0 = 与以前完全一致，不影响任何现有门禁。 */
+    const delayMs = Number(process.env.BITBOT_STUB_DELAY_MS || 0);
+    if (delayMs > 0) {
+      setTimeout(respond, delayMs);
+      return;
+    }
+    respond();
+    function respond() {
     const auth = String(req.headers.authorization || "");
     // 先记账再判定：401 / 500 这些「真到过 provider」的痕同样是旅程证据。
     recordRequest(req, body, auth);
@@ -295,6 +304,7 @@ const server = http.createServer((req, res) => {
         usage: { prompt_tokens: 11, completion_tokens: 7 },
       }),
     );
+    }
   });
 });
 

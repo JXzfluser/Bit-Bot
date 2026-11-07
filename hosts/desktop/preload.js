@@ -258,6 +258,19 @@ contextBridge.exposeInMainWorld("bitbot", {
     ipcRenderer.on("bitbot:llm-stream", handler);
     return () => ipcRenderer.removeListener("bitbot:llm-stream", handler);
   },
+  // KP-02：回合开始/结束的忙闲信号。停止按钮显不显示由它决定 —— 不让渲染层
+  // 自己从流式片段里猜（群里根本不走 llm-stream，猜出来的必然是错的）。
+  onTurnBusy: (cb) => {
+    const handler = (_e, payload) => {
+      try {
+        cb(payload);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    ipcRenderer.on("bitbot:turn-busy", handler);
+    return () => ipcRenderer.removeListener("bitbot:turn-busy", handler);
+  },
   onSessionsChanged: (cb) => {
     const handler = (_e, list) => {
       try {

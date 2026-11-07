@@ -4256,6 +4256,17 @@
     const input = document.getElementById("text");
     const sendBtn = document.getElementById("send");
     const turnCancelBtn = document.getElementById("turn-cancel");
+    /* KP-02：「停止」不是一直摆着的按钮 —— 空闲时藏起来，真有回合在跑才顶掉
+       麦克风的位置（CSS 的 `:has(#turn-cancel:not([hidden]))` 已写好）。
+       显隐由 Host 的会话忙闲信号决定，**不从流式片段猜**：群回合根本不走
+       llm-stream，靠 #log 上有没有 streaming 气泡来判断，在群里永远是「没有回合」。 */
+    function setTurnBusy(busy) {
+      document.body.classList.toggle("turn-busy", !!busy);
+      if (turnCancelBtn) turnCancelBtn.hidden = !busy;
+    }
+    if (window.bitbot && typeof window.bitbot.onTurnBusy === "function") {
+      window.bitbot.onTurnBusy(function (p) { setTurnBusy(!!(p && p.busy)); });
+    }
     if (turnCancelBtn) {
       turnCancelBtn.addEventListener("click", async () => {
         if (!window.bitbot || !window.bitbot.cancelTurn) return;
@@ -4263,8 +4274,9 @@
         // 回合时如实说「没有在执行的回合」，不再让一次空按看起来像成功停下了什么。
         let r = null;
         try { r = await window.bitbot.cancelTurn(); } catch (_) { r = null; }
-        if (r && r.had_active_turn === false && typeof cmdToast === "function") {
-          cmdToast("没有在执行的回合", "warn");
+        if (r && r.had_active_turn === false) {
+          setTurnBusy(false);
+          if (typeof cmdToast === "function") cmdToast("没有在执行的回合", "warn");
         }
       });
     }
