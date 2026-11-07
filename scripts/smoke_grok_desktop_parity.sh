@@ -466,37 +466,56 @@ if(!main.includes('BITBOT_SAVE_ARTIFACT_DIR')){console.error('no headless save o
 rm -rf /tmp/gp91-save agent-tools/skills/gp91-smoke
 
 echo "== G-11 Bot 模板目录（GP-02 · 规格 §2.2 建议模板一键创建）=="
-# 本地目录：删除后由 Host 首次读取自动种入，全程无网络
-rm -f data/desktop/bot-templates.json
-j=$(turn_json "list bot templates")
+# 本地目录：删除后由 Host 首次读取自动种入，全程无网络。
+#
+# 这一段原来直接 `rm -f data/desktop/bot-templates.json` —— 删的是**用户自己
+# 会编辑的那份库**。每跑一次全量 smoke 就把用户加的模板清空一次，再种回六条
+# 内置的，用户看到的就是「我之前加的模板怎么都不见了」。同一段末尾还有一条
+# 删 Bot 的清理（name 在 Chiefy/Scouty/Sage/Ghost 里就删），而 Sage 正好是
+# talent-scout 的默认名 —— 用户真有个叫 Sage 的 Bot 也会被顺手删掉。
+#
+# 现在整段改在临时数据根 <repo>/data-gp02 上跑：dirname 仍是仓库，内核 cwd
+# 不变（`moon run` 照样找得到 cmd/main），但模板库 / bots.json 都是副本。
+# 收尾用 sha256 证明真实库一个字节都没动。
+TPL_STORE="data/desktop/bot-templates.json"
+BOTS_STORE="data/desktop/bots.json"
+TPL_SHA_BEFORE=$(shasum -a 256 "$TPL_STORE" 2>/dev/null | awk '{print $1}')
+BOTS_SHA_BEFORE=$(shasum -a 256 "$BOTS_STORE" 2>/dev/null | awk '{print $1}')
+GP02_DATA="$PWD/data-gp02"
+rm -rf "$GP02_DATA"
+gp02_turn() { BITBOT_DATA_ROOT="$GP02_DATA" turn_json "$1"; }
+j=$(gp02_turn "list bot templates")
 echo "$j" | field intent | grep -q list_bot_templates && echo "$j" | field hostKinds | grep -q bot_templates_list:ok && node -e "
 const fs=require('fs');
-const t=JSON.parse(fs.readFileSync('data/desktop/bot-templates.json','utf8')).templates;
+const t=JSON.parse(fs.readFileSync('data-gp02/desktop/bot-templates.json','utf8')).templates;
 const ids=t.map(x=>x.id);
 const need=['sales-outbound','talent-scout','paid-media','expense-manager','bug-reproduction','chief-of-staff'];
 process.exit(need.every(x=>ids.includes(x)) ? 0:1)" && ok "GP-02 list → 本地目录种入且含官方六模板" || bad "GP-02 seed catalog"
-j=$(turn_json "create bot from template chief-of-staff name=Chiefy")
+j=$(gp02_turn "create bot from template chief-of-staff name=Chiefy")
 echo "$j" | field intent | grep -q create_bot_from_template && echo "$j" | field hostKinds | grep -q bot_create_from_template:ok && node -e "
-const b=require('./data/desktop/bots.json').bots.find(x=>x.name==='Chiefy');
-const t=require('./data/desktop/bot-templates.json').templates.find(x=>x.id==='chief-of-staff');
+const b=require('./data-gp02/desktop/bots.json').bots.find(x=>x.name==='Chiefy');
+const t=require('./data-gp02/desktop/bot-templates.json').templates.find(x=>x.id==='chief-of-staff');
 process.exit(b && b.job===t.job && b.description===t.description ? 0:1)" && ok "GP-02 一键创建：job/description 与模板逐字一致" || bad "GP-02 create from template"
-j=$(turn_json "create bot from template no-such-template name=Ghost")
-echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='bot_create_from_template');const p=JSON.parse(h.stdout||'{}');process.exit(p.refused===true&&/unknown template/.test(p.error||'')&&p.pretend_created===false?0:1)})" && ! grep -q '"Ghost"' data/desktop/bots.json && ok "GP-02 未知模板诚实拒绝（不凭空造 Bot）" || bad "GP-02 refusal"
+j=$(gp02_turn "create bot from template no-such-template name=Ghost")
+echo "$j" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d.trim().split('\n').filter(l=>l.startsWith('{')).pop());const h=(j.host_results||[]).find(x=>x.kind==='bot_create_from_template');const p=JSON.parse(h.stdout||'{}');process.exit(p.refused===true&&/unknown template/.test(p.error||'')&&p.pretend_created===false?0:1)})" && ! grep -q '"Ghost"' data-gp02/desktop/bots.json && ok "GP-02 未知模板诚实拒绝（不凭空造 Bot）" || bad "GP-02 refusal"
 # 模板短语不得落回普通 create bot 匹配器
-j=$(turn_json "create bot from template talent-scout")
+j=$(gp02_turn "create bot from template talent-scout")
 echo "$j" | field intent | grep -q "^create_bot_from_template$" && ok "GP-02 短语优先于 create bot（意图不被吞）" || bad "GP-02 intent precedence"
 # 模板 Bot 持久化进 bots.json（Chiefy 来自上一步真实创建）
 node -e "
-const b=require('./data/desktop/bots.json').bots;
-const t=require('./data/desktop/bot-templates.json').templates.find(x=>x.id==='chief-of-staff');
+const b=require('./data-gp02/desktop/bots.json').bots;
+const t=require('./data-gp02/desktop/bot-templates.json').templates.find(x=>x.id==='chief-of-staff');
 const hit=b.find(x=>x.name==='Chiefy');
 process.exit(hit && hit.job===t.job && hit.created_at ? 0:1)" && ok "GP-02 模板 Bot 已持久化进 bots.json（job 对齐模板单一源，不写死英文）" || bad "GP-02 persisted"
-# 清理本段创建的模板 Bot，保持双跑幂等
-node -e "
-const fs=require('fs');const p='./data/desktop/bots.json';
-const d=JSON.parse(fs.readFileSync(p,'utf8'));
-d.bots=d.bots.filter(x=>!['Chiefy','Scouty','Sage','Ghost'].includes(x.name));
-fs.writeFileSync(p,JSON.stringify(d,null,2))"
+# 用户库零改动：临时根里怎么删怎么建，真实那份 sha256 必须一模一样
+TPL_SHA_AFTER=$(shasum -a 256 "$TPL_STORE" 2>/dev/null | awk '{print $1}')
+BOTS_SHA_AFTER=$(shasum -a 256 "$BOTS_STORE" 2>/dev/null | awk '{print $1}')
+if [ "$TPL_SHA_BEFORE" = "$TPL_SHA_AFTER" ] && [ "$BOTS_SHA_BEFORE" = "$BOTS_SHA_AFTER" ]; then
+  ok "GP-02 门禁不碰用户库：bot-templates.json / bots.json 的 sha256 前后一致"
+else
+  bad "GP-02 门禁改动了用户库（模板或 Bot 被删/被种）—— 这就是「我加的模板不见了」的来路"
+fi
+rm -rf "$GP02_DATA"
 
 echo "== G-12 隐藏不暂停 Routines · 真实触发断言（GP-06 · 规格 §2.2）=="
 # 规格验收信号：隐藏操作不暂停 Bot 或 Routines —— 行为级（真的触发），不只是行存活。
@@ -4219,6 +4238,28 @@ echo "    正圆 + 统一色调」之后要盯的是**代价**：统一色调靠
 echo "  · G-105 判据：AC-03 按 WCAG 公式逐色算白字对比度（15px/600 不算 large text，门槛 4.5:1），"
 echo "    实测最低 4.53:1；AC-04 拿**未 toned 的采样原色**跑同一个判定，最低只有 2.03:1 ——"
 echo "    这条反向对照证明 AC-03 的绿是 tone() 挣来的，不是本来就绿。"
+
+echo "== G-106 模板库：用户加的不许被门禁或过滤器吞掉 =="
+node scripts/prove_template_store.js >/tmp/g106-template-store.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-106 $(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g106-template-store.log)"
+else
+  bad "G-106 prove_template_store（见 /tmp/g106-template-store.log；$(grep '✗' /tmp/g106-template-store.log | head -2 | tr '\n' ' ')）"
+fi
+for g106_a in "TS-01" "TS-01b" "TS-02" "TS-02b" "TS-03" "TS-03b" "TS-03c" "TS-04" "TS-04b"; do
+  if grep -q "✓ $g106_a" /tmp/g106-template-store.log; then ok "G-106 锚点：$g106_a"; else bad "G-106 锚点没跑绿：$g106_a"; fi
+done
+echo "  · G-106 为什么长出来：用户问「我之前加了自媒体相关的模板呢？怎么都不见了」。查下去"
+echo "    是两件事叠在一起：① G-11 里那句 \`rm -f data/desktop/bot-templates.json\` 删的是"
+echo "    **用户自己会编辑的库**，全量 smoke 每跑一次就清空一次、再种回六条内置的；"
+echo "    同一段末尾还按名字从真实 bots.json 删 Bot，而 Sage 正是 talent-scout 的默认名。"
+echo "    ② loadBotTemplates 的过滤要求 \`id && job && description\`，团队模板（kind:team，"
+echo "    带 roles+rules、通常没有 job）文件里明明写着却被读掉 —— 「库对、看不见」最难查。"
+echo "  · G-106 判据：TS-01 扫 G-11 块（剥注释后）不许 rm 真库、必须带临时根与 sha256 收尾；"
+echo "    TS-03 真跑一次 Host（BITBOT_DATA_ROOT 指向 <repo>/.tpl-probe-*，dirname 仍是仓库，"
+echo "    内核 cwd 不变）验自定义两条原样读出；TS-03b 拿同一份文件喂旧 filter，团队那条必须"
+echo "    消失；TS-03c 证明自检全程没改真实库的 sha256；TS-04 团队模板角色数与 00-profile"
+echo "    里真实岗位文件数对齐（不写死数字）。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 

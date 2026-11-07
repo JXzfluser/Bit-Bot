@@ -8581,3 +8581,79 @@ dev 包从 `Contents/Resources/app`（软链）启动，Electron 报 `app.isPack
   dev 包也带上编译好的内核（`kernel/bin/desktop_turn`），那是打包话题。
 - 活动监视器里渲染进程仍叫 `Electron Helper (Renderer)`：改这个要重签
   Frameworks 下的五个 helper，收益小、风险大，留作已知项。
+
+### 8.93 「我之前加了自媒体相关的模板，怎么都不见了」
+
+用户这句话是对的，模板确实被删了 —— 删它的是**我们自己的门禁**。
+
+#### 查下去是两件事叠在一起
+
+**① 门禁删用户库。** `scripts/smoke_grok_desktop_parity.sh` 的 G-11 块第一行是：
+
+```sh
+rm -f data/desktop/bot-templates.json      # ← 删的是用户自己会编辑的那份库
+```
+
+删完再由 Host「首读种入」六条内置模板。于是每跑一次全量 smoke，用户手写的模板
+就清零一次，种回那六条 —— 而 smoke 是「跑门禁」，不是「重置产品」。
+同一块末尾还有一条按名字删 Bot 的清理：
+
+```js
+d.bots = d.bots.filter(x => !['Chiefy','Scouty','Sage','Ghost'].includes(x.name));
+```
+
+`Sage` 正好是 `talent-scout` 的默认名。用户真有个叫 Sage 的 Bot，会被顺手删掉。
+
+**② 读者把团队模板丢掉。** `hosts/shared/host_ffi.js` 的 `loadBotTemplates()`：
+
+```js
+return list.filter((t) => t && t.id && t.job && t.description);   // 旧
+```
+
+团队模板（`kind:"team"`）带的是 `roles` + `rules`，**通常没有 `job`** —— 文件里
+明明写着，读出来却没有。这种「库对、看不见」比删库更难查，因为文件看着好好的。
+
+**③ 为什么之前只能用真库开刀。** `DATA_ROOT` 只能由 `opts` 传，CLI Host 永远落在
+`<repo>/data`，所以「验首读种入」除了删真文件没有第二条路。于是有了 ①。
+
+#### 修法
+
+| 位置 | 改动 |
+| --- | --- |
+| `hosts/shared/host_ffi.js` | 新增 `$BITBOT_DATA_ROOT`（仅门禁用）：数据根可指向 `<repo>/data-gp02` 这类**仓库直接子目录**。必须是子目录 —— 内核 cwd = `dirname(DATA_ROOT)`，指到 `/tmp` 就 `moon exited 255 / failed to resolve path cmd/desktop_turn`（实测过） |
+| 同上 | `loadBotTemplates` 只要求 `id`；有 `roles` 的按团队模板放行；一条都没留下才回落 seed（旧语义「不静默清空」保留） |
+| `scripts/smoke_grok_desktop_parity.sh` G-11 | 整段改到 `data-gp02` 上跑；末尾用 `sha256` 证明真实库与 `bots.json` 一个字节没动；删掉按名字删 Bot 的清理 |
+| `scripts/prove_template_store.js`（新） | TS-01/01b/02/02b/03/03b/03c/04/04b 共 9 项 |
+| `scripts/prove_template_market_render.mjs`（新） | 真开窗口，TM-00…TM-04 共 5 项 |
+
+#### 你的模板：按真实团队重建了一份
+
+原来的字节已经找不回来了（`data/**/*.json` 不入仓、没有快照、回合日志里也没有写入记录）。
+所以没有猜 —— 从你**真实那份团队**反推：
+
+* 角色与 Prompt：`data/workspace/自媒体内容团队/00-profile/` 里五个岗位文件全文
+  （情报侦察员 → 选题策划师 → 内容主笔 → 事实编辑 → 数据复盘师）
+* 协作规则：同目录 `COLLAB-RULES.md` 全文
+* 归类：`category: "自媒体"`，`kind: "team"`，所以卡片按钮是「一键成队」
+
+结果：模板市场从 6 张变 7 张，多出一个「自媒体」分类。如果你当时加的是**别的几条**
+（比如单个 bot 的「小红书文案」「短视频脚本」），把名字告我，我按同样的形状补回去。
+
+#### 验证
+
+| 场景 | 结果 |
+| --- | --- |
+| `list bot templates` | 7 条，含 `media-content-team`（5 个 roles） |
+| 模板市场（真开窗口点开） | 7 张卡片，「自媒体」分类在，团队卡片按钮「一键成队」，其余六张仍是「创建」 |
+| G-11 单块复跑 | 6/6 绿，且末尾 sha256 前后一致 |
+| `prove_template_store` | 9/0 |
+| `prove_m24_window` / `prove_bot_manager` | 29/0、25/0 |
+
+#### 残留（如实）
+
+- 你原来那几条模板的**原文找不回来了**。现在这份是重建版，角色 Prompt 与协作规则
+  逐字来自你自己团队的 `00-profile/`，但标题/描述是我写的。
+- 模板库存了一份 `bot-templates.json.bak`（改成重建版之前的那 6 条种子），
+  已进 `.gitignore`。
+- G-11 现在跑在 `data-gp02` 上，跑完即删；若中途强杀可能留下这个目录
+  （已在 `.gitignore` 里，`rm -rf data-gp02` 即可）。

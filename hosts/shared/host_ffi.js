@@ -127,8 +127,20 @@ function createHostFfi(repoRoot, opts = {}) {
   /* User data lives outside the code tree. In a packaged app the code tree
      is a read-only bundle that gets replaced on upgrade, so sessions /
      rooms / memory / routines must land in the OS user-data dir. Dev keeps
-     the historical <repo>/data layout. */
-  const DATA_ROOT = opts.dataRoot ? path.resolve(opts.dataRoot) : path.join(REPO_ROOT, "data");
+     the historical <repo>/data layout.
+
+     $BITBOT_DATA_ROOT is an explicit last resort for GATES ONLY: a check must
+     be able to delete/seed a store without deleting the user's. Point it at a
+     sibling of the repo (e.g. <repo>/data-gp02) so KERNEL_CWD — dirname of
+     this — stays the checkout and `moon run` still resolves. There used to be
+     no override at all, so scripts/smoke_grok_desktop_parity.sh G-11 did
+     `rm -f data/desktop/bot-templates.json` on the REAL store: every full
+     smoke run wiped whatever templates the user had added. */
+  const DATA_ROOT = opts.dataRoot
+    ? path.resolve(opts.dataRoot)
+    : process.env.BITBOT_DATA_ROOT
+      ? path.resolve(process.env.BITBOT_DATA_ROOT)
+      : path.join(REPO_ROOT, "data");
   /* Packaged apps ship the compiled kernel instead of a MoonBit toolchain.
      Same argv tail + same BITBOT_FFI line protocol as `moon run`. */
   const KERNEL_BIN = opts.kernelBin || process.env.BITBOT_KERNEL_BIN || null;
@@ -18785,7 +18797,16 @@ function createHostFfi(repoRoot, opts = {}) {
       const raw = JSON.parse(fs.readFileSync(p, "utf8"));
       const list = Array.isArray(raw) ? raw : raw.templates;
       if (!Array.isArray(list) || !list.length) return BOT_TEMPLATE_SEED.slice();
-      return list.filter((t) => t && t.id && t.job && t.description);
+      /* A template only has to carry an `id`. The old filter demanded
+         `job && description`, which quietly erased every TEAM template —
+         those carry `roles` + `rules` and often no `job` at all — from a file
+         the user had just edited. "我加的模板怎么都不见了" starts exactly here:
+         the store was right, the reader dropped it. */
+      const kept = list.filter(
+        (t) => t && t.id && (Array.isArray(t.roles) ? t.roles.length > 0 : Boolean(t.job && t.description)),
+      );
+      // 一条都没落下 = 文件坏了，回落到 seed（保持旧语义：不静默清空）。
+      return kept.length ? kept : BOT_TEMPLATE_SEED.slice();
     } catch (_) {
       return BOT_TEMPLATE_SEED.slice();
     }
