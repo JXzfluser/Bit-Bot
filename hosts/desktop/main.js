@@ -4917,10 +4917,13 @@ function channelStatusList() {
     out.push({
       id: it.id,
       name: it.name,
+      name_i18n: it.name_i18n || "",
       short: it.short,
+      short_i18n: it.short_i18n || "",
       bindable: it.bindable,
       note: it.note,
       reason: it.reason,
+      reason_i18n: it.reason_i18n || "",
       path: it.path,
       field_count: it.field_count,
       bound: it.bindable ? mains.length > 0 && present.length === mains.length : false,

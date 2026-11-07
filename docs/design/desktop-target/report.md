@@ -8279,6 +8279,45 @@ bash 把多字节 UTF-8 的首字节吃进了变量名。改成 `${UD}` 即好�
    `upsertDesktopEnvLocal`（已被 secrets 门覆盖），风险在这一跳之外。
 2. **需要局域网可达**。手机要能访问 `http://<lan-ip>:18765/bind`，所以第一次
    点「生成二维码」会如实拦一次并给出「开启局域网并生成」—— 不偷偷改用户偏好。
-   走公网 relay 时这条链接还不能用（relay 只转发 /v1/*）。
+   **公网 relay 这条路的结论（8.90.5 已查透）**：relay 是纯 TCP 字节管道
+   （手机 App 发 `CONNECT` 后字节直通 cn_inbound），浏览器根本说不了它的协议，
+   所以「扫码跨网」不是放行一个路径的事——要么 relay 加 HTTP 前门，要么手机
+   App 里做绑定表单，是一个独立跨端切片（见 8.90.5）。
 3. **微信仍不可扫码**（无官方接口），只能经企业微信接入。
 4. 真机「扫码 → 手机上填 → 桌面变已关联」的整条人肉验收未做，见清单 §3.5。
+5. 手机 `/bind` 页本身仍是中文单语（fields 的 label/hint 来自 channel_bind.js），
+   桌面侧三语已钉死（8.90.6）；手机页多语是独立小切片。
+
+### 8.90.5 公网 relay 下扫码为什么不能「顺手放行」（2026-11-07 查透）
+
+把 relay 三段代码读完后的结论，纠正 8.90.4 第一版的说法（「relay 只转发
+/v1/*」不准确）：**relay 根本不看 HTTP 路径**。`relay_server.js` 是控制面
+（AUTH/REGISTER/CONNECT）+ 数据面（ATTACH 后双向 pipe 字节）的纯 TCP 桥，
+手机 App（`TunnelHttp.kt`）在隧道 socket 上自己写 HTTP 请求行——**它想发
+`/bind` 也能通**，桌面侧什么都不用改。卡住的是两件别的事：
+
+- **浏览器进不来**：二维码是给手机相机/浏览器扫的，浏览器说不了
+  `bitbot-relay` 的 CONNECT 协议；
+- **中转地址拿不到 HTTPS**：就算 relay 加一个 HTTP 前门把 `/bind/<boxId>`
+  代理进盒子，凭据（webhook secret 等）会以明文过公网 relay，比局域网
+  http 的威胁面大得多，得先有 TLS 才能谈。
+
+所以跨网绑定的正解是**手机 App 内做绑定表单**（App 已有隧道客户端，
+直接 POST `/v1/bind/claim` 即可，凭据走 App 的既有通道），桌面扫码卡在
+relay-only 时给如实提示。列为独立切片，不塞进本轮。
+
+### 8.90.6 切语言验收抓到的真问题：渠道名硬编码中文（2026-11-07 修）
+
+「切语言肉眼验收」没有停留在拍照：新写 `scripts/shot_bot_manager_i18n.mjs`
+真起 Electron 走 `settings.set → 重启 → boot 应用` 的真实切换路径，三种语言
+各截一张 + 五条断言（标题/四条渠道名/图标字/无裸 key/微信原因）。
+
+第一轮就抓到：**标题会切、渠道名不会**——`channelStatusList()` 重新映射
+字段时把 `name_i18n/short_i18n/reason_i18n` 丢了，渲染层退回硬编码中文。
+修三处：channel_bind.js 四渠道补词条键并透出、`channelStatusList()` 透传、
+渲染层 `bmName()/bmShort()` 走词条。修后 3 语言 × 5 断言全绿
+（en 下 DingTalk / Feishu (Lark) / WeCom / WeChat、图标字 D/F/W/WX）。
+
+门从 23 项扩到 **25 项**：BM-08 词条清单 +9 键；新增 BM-23（渠道名走词条，
+判据看「表里有键 + channelsForUi 透传 + 渲染层不直接吃 c.name/c.short」）
+与 BM-23b（把列表名退回硬编码 c.name，判据立刻转红——负向对照非恒真）。

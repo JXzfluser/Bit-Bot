@@ -13751,6 +13751,15 @@
       );
     }
 
+    /* 渠道名/图标字走词条（Copy contract v1 §1）：channel_bind.js 里的
+     * name/short 是 zh-CN 兜底，en 与 zh-TW 必须跟着切。 */
+    function bmName(c) {
+      return c && c.name_i18n ? wavegT(c.name_i18n) : (c && c.name) || "";
+    }
+    function bmShort(c) {
+      return c && c.short_i18n ? wavegT(c.short_i18n) : (c && c.short) || "";
+    }
+
     function bmPaintList() {
       if (!bmEls.list) return;
       const keep = bmEls.list.querySelector(".bm-list-title");
@@ -13764,11 +13773,11 @@
         const ic = document.createElement("span");
         ic.className = "bm-item-ic bm-ic-" + c.id;
         ic.setAttribute("aria-hidden", "true");
-        ic.textContent = c.short || "";
+        ic.textContent = bmShort(c);
         const tx = document.createElement("span");
         tx.className = "bm-item-tx";
         const nm = document.createElement("b");
-        nm.textContent = c.name;
+        nm.textContent = bmName(c);
         const meta = document.createElement("small");
         meta.textContent = c.bindable === false
           ? wavegT("bmNotBindable")
@@ -13794,9 +13803,9 @@
       if (!c) return;
       if (bmEls.avatar) {
         bmEls.avatar.className = "bm-avatar bm-ic-" + c.id;
-        bmEls.avatar.textContent = c.short || "";
+        bmEls.avatar.textContent = bmShort(c);
       }
-      if (bmEls.name) bmEls.name.textContent = c.name;
+      if (bmEls.name) bmEls.name.textContent = bmName(c);
       const bindable = c.bindable !== false;
       if (bmEls.state) {
         bmEls.state.textContent = !bindable
@@ -13824,10 +13833,10 @@
       }
 
       /* 不可绑定的渠道（微信）：不给二维码，如实说原因 + 给可达的那条路。 */
-      if (bmEls.bindNote) bmEls.bindNote.textContent = bindable ? wavegT("bmBindNote") : (c.reason || "");
+      if (bmEls.bindNote) bmEls.bindNote.textContent = bindable ? wavegT("bmBindNote") : (c.reason_i18n ? wavegT(c.reason_i18n) : (c.reason || ""));
       if (bmEls.bindHint) {
         bmEls.bindHint.textContent = bindable
-          ? t("bmBindHintCh", { ch: c.name })
+          ? t("bmBindHintCh", { ch: bmName(c) })
           : wavegT("bmNoQrHint");
       }
       const showQr = bindable;
@@ -16424,6 +16433,15 @@
     let wavegLang = "zh-CN";
     const WAVEG_I18N = {
       "zh-CN": {
+        bmChDingtalk: "钉钉",
+        bmChFeishu: "飞书",
+        bmChWecom: "企业微信",
+        bmChWechat: "微信",
+        bmShortDingtalk: "钉",
+        bmShortFeishu: "飞",
+        bmShortWecom: "企",
+        bmShortWechat: "微",
+        bmWechatReason: "个人微信没有官方机器人接口，扫码关联在微信这一侧做不到。要用微信当入口，只能通过企业微信的自建应用接进来（企微可以对话微信用户）。",
         bmTitle: "机器人管理",
         bmSubtitle: "把聊天工具接成机器人。扫一下码，凭据在手机上填，桌面不用粘任何字段。",
         bmListTitle: "机器人",
@@ -17340,6 +17358,15 @@
         chatCreatedHint: "新会话已创建 · 输入消息开始",
       },
       "zh-TW": {
+        bmChDingtalk: "釘釘",
+        bmChFeishu: "飛書",
+        bmChWecom: "企業微信",
+        bmChWechat: "微信",
+        bmShortDingtalk: "釘",
+        bmShortFeishu: "飛",
+        bmShortWecom: "企",
+        bmShortWechat: "微",
+        bmWechatReason: "個人微信沒有官方機器人介面，掃碼關聯在微信這一側做不到。要用微信當入口，只能透過企業微信的自建應用接進來（企微可以對話微信用戶）。",
         bmTitle: "機器人管理",
         bmSubtitle: "把聊天工具接成機器人。掃一下碼，憑據在手機上填，桌面不用貼任何欄位。",
         bmListTitle: "機器人",
@@ -18256,6 +18283,15 @@
         chatCreatedHint: "新工作已建立 · 輸入訊息開始",
       },
       en: {
+        bmChDingtalk: "DingTalk",
+        bmChFeishu: "Feishu (Lark)",
+        bmChWecom: "WeCom",
+        bmChWechat: "WeChat",
+        bmShortDingtalk: "D",
+        bmShortFeishu: "F",
+        bmShortWecom: "W",
+        bmShortWechat: "WX",
+        bmWechatReason: "Personal WeChat has no official bot API, so QR linking is not possible on the WeChat side. To use WeChat as an entry point, connect it through a WeCom self-built app (WeCom can reach WeChat users).",
         bmTitle: "Bots",
         bmSubtitle: "Turn a chat app into a bot. Scan once, fill the credential on your phone — nothing to paste here.",
         bmListTitle: "Bots",

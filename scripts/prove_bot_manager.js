@@ -167,6 +167,8 @@ async function main() {
     const keys = [
       "bmTitle", "bmBindTitle", "bmNotBound", "bmBound", "bmQrEmpty", "bmBegin",
       "bmWaiting", "bmExpired", "bmBoundDone", "bmUnbind", "bmOpenWecom", "mcManagerHint",
+      "bmChDingtalk", "bmChFeishu", "bmChWecom", "bmChWechat",
+      "bmShortDingtalk", "bmShortFeishu", "bmShortWecom", "bmShortWechat", "bmWechatReason",
     ];
     const missing = keys.filter((k) => (html.match(new RegExp("\\b" + k + ":", "g")) || []).length !== 3);
     if (missing.length) bad("BM-08", "词条不是「三语各一次」", { missing });
@@ -385,6 +387,43 @@ async function main() {
     const brokeBody = onBoundBody.replace(/broadcast\("bitbot:channel-bound"/, "noop(");
     if (/broadcast\("bitbot:channel-bound"/.test(brokeBody)) bad("BM-20b", "负向对照失效：摘掉广播后仍判为有");
     else ok("BM-20b", "负向对照：摘掉 onBound 里那次广播，判据立刻转红（判据不是恒真）");
+  }
+
+  {
+    /* 渠道名是可见文案：钉钉/飞书/企业微信/微信 + 图标字 + 微信原因，
+       原先从 channel_bind.js 硬编码中文直接渲染，切 en / zh-TW 不跟变
+       （切语言验收抓到的真问题）。判据看两条腿：
+       ① 表里有 name_i18n / short_i18n / reason_i18n 且 channelsForUi 透出；
+       ② 渲染层走 bmName() / bmShort()，不再直接吃 c.name / c.short。 */
+    const cbSrc = fs.readFileSync(path.join(ROOT, "hosts", "shared", "channel_bind.js"), "utf8");
+    const bmNameFn = /function bmName\(c\)/.test(html) && /c\.name_i18n \? wavegT\(c\.name_i18n\)/.test(html);
+    const bmShortFn = /function bmShort\(c\)/.test(html) && /c\.short_i18n \? wavegT\(c\.short_i18n\)/.test(html);
+    const rawNameGone = !/nm\.textContent = c\.name;/.test(html) && !/bmEls\.name\.textContent = c\.name;/.test(html);
+    const rawShortGone = !/avatar\.textContent = c\.short \|\| ""/.test(html);
+    const reasonI18n = /reason_i18n \? wavegT\(c\.reason_i18n\)/.test(html);
+    const cbOk = (() => {
+      const ids = ["dingtalk", "feishu", "wecom", "wechat"];
+      for (const id of ids) {
+        const i = cbSrc.indexOf(id + ": {");
+        if (i < 0) return false;
+        const body = cbSrc.slice(i, i + 900);
+        if (!/name_i18n: "bmCh/.test(body) || !/short_i18n: "bmShort/.test(body)) return false;
+      }
+      /* channelsForUi 必须把词条键透传给渲染层，否则 UI 拿不到。 */
+      const ui = cbSrc.slice(cbSrc.indexOf("function channelsForUi"), cbSrc.indexOf("function createChannelBindManager"));
+      return /name_i18n: c\.name_i18n/.test(ui) && /short_i18n: c\.short_i18n/.test(ui) && /reason_i18n: c\.reason_i18n/.test(ui);
+    })();
+    const pass23 = bmNameFn && bmShortFn && rawNameGone && rawShortGone && reasonI18n && cbOk;
+    if (!pass23) bad("BM-23", "渠道名/图标字没有走词条（切语言会漏出中文或裸 key）", {
+      bmNameFn, bmShortFn, rawNameGone, rawShortGone, reasonI18n, cbOk,
+    });
+    else ok("BM-23", "渠道名/图标字/微信原因走词条渲染：切 en / zh-TW 跟着变（zh-CN 有兜底）");
+
+    /* 负向对照：把渲染层退回硬编码 c.name，判据必须转红。 */
+    const broken = html.replace(/nm\.textContent = bmName\(c\);/, "nm.textContent = c.name;");
+    const broke23 = /nm\.textContent = c\.name;/.test(broken);
+    if (!broke23) bad("BM-23b", "负向对照失效：退回硬编码后判据仍绿");
+    else ok("BM-23b", "负向对照：把列表名退回硬编码 c.name，判据立刻转红");
   }
 
   console.log("prove_bot_manager: PASS=" + PASS + " FAIL=" + FAIL);

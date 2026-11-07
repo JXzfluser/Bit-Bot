@@ -116,6 +116,24 @@ WORDS = {
     ),
 }
 
+# 第二轮（切语言验收抓到的）：渠道名/图标字/微信原因原先是从 channel_bind.js
+# 硬编码中文直接渲染的，切到 en / zh-TW 不会跟着变 —— 违反 Copy contract v1 §1。
+WORDS_ROUND2 = {
+    "bmChDingtalk": ("钉钉", "釘釘", "DingTalk"),
+    "bmChFeishu": ("飞书", "飛書", "Feishu (Lark)"),
+    "bmChWecom": ("企业微信", "企業微信", "WeCom"),
+    "bmChWechat": ("微信", "微信", "WeChat"),
+    "bmShortDingtalk": ("钉", "釘", "D"),
+    "bmShortFeishu": ("飞", "飛", "F"),
+    "bmShortWecom": ("企", "企", "W"),
+    "bmShortWechat": ("微", "微", "WX"),
+    "bmWechatReason": (
+        "个人微信没有官方机器人接口，扫码关联在微信这一侧做不到。要用微信当入口，只能通过企业微信的自建应用接进来（企微可以对话微信用户）。",
+        "個人微信沒有官方機器人介面，掃碼關聯在微信這一側做不到。要用微信當入口，只能透過企業微信的自建應用接進來（企微可以對話微信用戶）。",
+        "Personal WeChat has no official bot API, so QR linking is not possible on the WeChat side. To use WeChat as an entry point, connect it through a WeCom self-built app (WeCom can reach WeChat users).",
+    ),
+}
+
 # 语义变了就顺手改的旧词条（标题/副标题现在指向中转，不再指向机器人管理）
 REPLACE = {
     "mc2Subtitle": (
@@ -135,25 +153,34 @@ BLOCKS = [
 def main():
     src = io.open(HTML, encoding="utf-8").read()
 
-    if "bmTitle:" in src:
+    round2 = "bmChDingtalk:" in src
+
+    if "bmTitle:" in src and round2:
         print("已写过，跳过（幂等）")
         return 0
 
-    for anchor, idx in BLOCKS:
-        pos = src.find(anchor)
-        if pos < 0:
-            print("找不到语言块: " + anchor)
-            return 1
-        if src.count(anchor) != 1:
-            print("语言块声明不唯一，拒绝插入: " + anchor + " count=" + str(src.count(anchor)))
-            return 1
-        lines = []
-        for k, vals in WORDS.items():
-            v = vals[idx].replace('"', '\\"')
-            lines.append('        %s: "%s",' % (k, v))
-        block = "\n" + "\n".join(lines)
-        insert_at = pos + len(anchor)
-        src = src[:insert_at] + block + src[insert_at:]
+    pending = []
+    if "bmTitle:" not in src:
+        pending.append(("bmTitle", WORDS))
+    if not round2:
+        pending.append(("bmChDingtalk", WORDS_ROUND2))
+
+    for marker, words in pending:
+        for anchor, idx in BLOCKS:
+            pos = src.find(anchor)
+            if pos < 0:
+                print("找不到语言块: " + anchor)
+                return 1
+            if src.count(anchor) != 1:
+                print("语言块声明不唯一，拒绝插入: " + anchor + " count=" + str(src.count(anchor)))
+                return 1
+            lines = []
+            for k, vals in words.items():
+                v = vals[idx].replace('"', '\\"')
+                lines.append('        %s: "%s",' % (k, v))
+            block = "\n" + "\n".join(lines)
+            insert_at = pos + len(anchor)
+            src = src[:insert_at] + block + src[insert_at:]
 
     # 旧词条改语义
     for k, vals in REPLACE.items():
@@ -175,9 +202,11 @@ def main():
 
             src = pat.sub(_sub, src)
 
-    # 自检：每个键恰好 3 次
+    # 自检：每个键恰好 3 次（两轮一起查）
+    all_words = dict(WORDS)
+    all_words.update(WORDS_ROUND2)
     bad = []
-    for k in WORDS:
+    for k in all_words:
         n = len(re.findall(r"\b%s:" % re.escape(k), src))
         if n != 3:
             bad.append((k, n))
@@ -186,7 +215,10 @@ def main():
         return 1
 
     io.open(HTML, "w", encoding="utf-8").write(src)
-    print("已写入 %d 个新词条 × 3 语言；%d 个旧词条改了语义" % (len(WORDS), len(REPLACE)))
+    print(
+        "已写入 %d 个新词条 × 3 语言（本轮实际插入 %d 个）；%d 个旧词条改了语义"
+        % (len(all_words), sum(len(w) for _, w in pending), len(REPLACE))
+    )
     return 0
 
 

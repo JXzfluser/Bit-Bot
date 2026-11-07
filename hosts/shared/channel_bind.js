@@ -26,7 +26,11 @@ const crypto = require("crypto");
 const CHANNELS = {
   dingtalk: {
     name: "钉钉",
+    /* 渠道名是可见文案，必须走词条（Copy contract v1 §1）：
+     * 硬编码中文在 en / zh-TW 下不会跟着切。 */
+    name_i18n: "bmChDingtalk",
     short: "钉",
+    short_i18n: "bmShortDingtalk",
     note: "在钉钉群里加一个自定义机器人，把它的 Webhook 粘过来。",
     fields: [
       {
@@ -52,7 +56,9 @@ const CHANNELS = {
   },
   feishu: {
     name: "飞书",
+    name_i18n: "bmChFeishu",
     short: "飞",
+    short_i18n: "bmShortFeishu",
     note: "飞书群机器人或自建应用的 tenant token，连同要发到哪个会话。",
     fields: [
       {
@@ -93,7 +99,9 @@ const CHANNELS = {
   },
   wecom: {
     name: "企业微信",
+    name_i18n: "bmChWecom",
     short: "企",
+    short_i18n: "bmShortWecom",
     note: "自建应用的 access_token + agentid + touser；群机器人只有 Webhook 的走钉钉式配法不适用这里。",
     fields: [
       {
@@ -140,6 +148,8 @@ const CHANNELS = {
     short: "微",
     bindable: false,
     name_i18n: "bmChWechat",
+    short_i18n: "bmShortWechat",
+    reason_i18n: "bmWechatReason",
     reason:
       "个人微信没有官方机器人接口，扫码关联在微信这一侧做不到。" +
       "要用微信当入口，只能通过企业微信的自建应用接进来（企微可以对话微信用户）。",
@@ -155,10 +165,13 @@ function channelsForUi() {
     return {
       id,
       name: c.name,
-      short: c.short,
+      name_i18n: c.name_i18n || "",
+      short: c.short || "",
+      short_i18n: c.short_i18n || "",
       bindable: c.bindable !== false,
       note: c.note || "",
       reason: c.reason || "",
+      reason_i18n: c.reason_i18n || "",
       path: c.path || "",
       field_count: (c.fields || []).length,
     };
