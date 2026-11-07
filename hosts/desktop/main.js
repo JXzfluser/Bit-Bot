@@ -1701,6 +1701,67 @@ ipcMain.handle("bitbot:bots:detail", async (_e, botId) => {
   }
 });
 
+/**
+ * M53d — 「从 Grok 搬过来」：读本机 Grok Bot 的客户端持久化，按用户勾选建 Bot/群/会话。
+ *
+ * 两个 handler 的分工刻意不对称：
+ *   - scan 返回**精简清单**（不含消息正文）：1466 条正文过 IPC 没有意义，
+ *     界面只需要"几条、从哪天到哪天、能不能建"。
+ *   - apply 只收**id 列表**，不接受渲染层传上来的计划内容；Host 重新算一遍计划再写。
+ *     这样渲染层既不能篡改要写什么，也不用把几 MB 文本搬来搬去。
+ *
+ * 复用 main.js 里那一个 surface / sessions 实例：另造一个 store 会各自 load/save
+ * 同一个 sessions.json，交替写就会丢更新。
+ */
+let grokImportMod = undefined;
+function grokImporter() {
+  if (grokImportMod !== undefined) return grokImportMod;
+  try {
+    grokImportMod = require("./grok_import");
+  } catch (_e) {
+    grokImportMod = null;
+  }
+  return grokImportMod;
+}
+
+ipcMain.handle("bitbot:grok:scan", async () => {
+  const gi = grokImporter();
+  if (!gi) return { ok: false, error: "grok_import_missing" };
+  try {
+    return gi.scan({ dataRoot: DATA_ROOT });
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+ipcMain.handle("bitbot:grok:apply", async (_e, selection) => {
+  const gi = grokImporter();
+  if (!gi) return { ok: false, error: "grok_import_missing" };
+  try {
+    const store = gi.readStore(gi.DEFAULT_SOURCE);
+    if (store.error) return { ok: false, error: "source_not_found" };
+    const plan = gi.planMigration(store, {});
+    if (plan.error) return { ok: false, error: plan.error };
+    const r = gi.applyPlan(plan, {
+      dataRoot: DATA_ROOT,
+      surface,
+      sessions,
+      selection: selection || null,
+      backup: gi.backupData,
+    });
+    // 建完之后三个目录都变了；一个都不广播的话，界面要等重启才看见。
+    if (r && r.wrote) {
+      broadcast("bitbot:bots-changed", surface.listViews());
+      broadcast("bitbot:sessions-changed", sessions.list());
+      const st = surface.roomsStoreStatus();
+      broadcast("bitbot:rooms-changed", st.ok ? { ok: true, rooms: st.rooms } : { ok: false, error: st.error });
+    }
+    return r;
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
 /** G-22 / §4.6: per-Bot notification toggle (merges into settings.notify). */
 ipcMain.handle("bitbot:bots:notify", async (_e, payload) => {
   try {

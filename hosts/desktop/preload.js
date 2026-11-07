@@ -271,6 +271,12 @@ contextBridge.exposeInMainWorld("bitbot", {
     ipcRenderer.on("bitbot:turn-busy", handler);
     return () => ipcRenderer.removeListener("bitbot:turn-busy", handler);
   },
+  // M53d — 「从 Grok 搬过来」：scan 只读（返回精简清单，不含消息正文），
+  // apply 只收 id 列表（{bots,rooms,sessions}），计划由 Host 重新算。
+  grok: {
+    scan: () => ipcRenderer.invoke("bitbot:grok:scan"),
+    apply: (selection) => ipcRenderer.invoke("bitbot:grok:apply", selection || null),
+  },
   onSessionsChanged: (cb) => {
     const handler = (_e, list) => {
       try {

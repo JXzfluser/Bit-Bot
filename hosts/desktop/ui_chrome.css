@@ -3942,3 +3942,110 @@ body.grok-ui .cn-hint {
 .bm-qr-wrap[hidden] { display: none; }
 .bm-bind-status[hidden] { display: none; }
 .bm-actions .bb-btn[hidden] { display: none; }
+
+/* ---- M53d 「从 Grok 搬过来」 ------------------------------------------------
+   三段清单（Bot / 群 / 会话）各自一个卡片。已迁移和不可建的条目保留在原位
+   但不可勾 —— 直接把它们藏掉最省事，代价是用户会以为"我 Grok 里就这些"。
+   hover / 表头底色都用 color-mix(--ink N%)，深浅色模式自动跟着走。 */
+/* sheet 本身不滚：滚的是中间那段清单。否则底部「重新读取 / 开始迁移」
+   会被滚出可视区 —— 第一版就是这样，按钮在，但用户看不见。 */
+.gi-sheet {
+  width: min(760px, 94vw); display: flex; flex-direction: column;
+  max-height: min(86vh, 820px); overflow: hidden;
+}
+.gi-sheet .bb-sheet-head { flex: 0 0 auto; }
+.gi-heading { display: flex; gap: 10px; align-items: flex-start; }
+.gi-heading-ic {
+  width: 30px; height: 30px; border-radius: 9px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.gi-heading-tx { min-width: 0; }
+.gi-heading-tx .bb-sheet-note { margin-top: 2px; }
+
+.gi-loading { margin-top: 12px; color: var(--muted); font-size: var(--text-sm); }
+.gi-error {
+  margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--line); color: var(--ink);
+  font-size: var(--text-sm); line-height: 1.55;
+}
+
+.gi-stats {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px;
+  color: var(--muted); font-size: var(--text-sm);
+}
+.gi-stats b { color: var(--ink); font-weight: 600; }
+/* 第二行（选项卡片/跳过）是注解，比统计行再低一级 */
+.gi-stats-extra { font-size: var(--text-xs); }
+
+#gi-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+#gi-stats { flex: 0 0 auto; }
+.gi-groups {
+  display: flex; flex-direction: column; gap: 10px; margin-top: 12px;
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+}
+.gi-list { min-height: 0; }
+/* flex 列里的卡片默认会被压缩（flex-shrink:1）—— 高度不够时每段只剩表头，
+   条目被压成 0 高，看起来像"群里什么都没有"。必须钉住不缩。 */
+.gi-group {
+  border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden;
+  flex: 0 0 auto;
+}
+.gi-group-head {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  background: color-mix(in oklab, var(--ink) 4%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+.gi-group-title { font-weight: 600; font-size: var(--text-sm); }
+.gi-group-count { color: var(--muted); font-size: var(--text-xs); }
+.gi-selectall { margin-left: auto; }
+
+/* 每段自己限高并内部滚动：三段要同时可见。让它们连成一个长列表的话，
+   21 个 Bot 会把「群」和「对话」顶出视口 —— 打开的人会以为只有 Bot 可搬。
+   底部 14px 渐隐：被切一半的行读起来像"界面坏了"，渐隐读起来像"下面还有"。
+   滚到底时由 JS 加 .is-end 去掉渐隐，免得最后一行永远是淡的。 */
+.gi-list { min-height: 0; max-height: 100px; overflow: auto; }
+.gi-list:not(.is-end) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+}
+.gi-list.is-end, .gi-list.is-short {
+  -webkit-mask-image: none; mask-image: none;
+}
+.gi-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; cursor: pointer; }
+.gi-item + .gi-item { border-top: 1px solid var(--line); }
+.gi-item:hover { background: color-mix(in oklab, var(--ink) 3%, transparent); }
+.gi-item input[type="checkbox"] { margin: 2px 0 0; flex: 0 0 auto; }
+.gi-item-tx { min-width: 0; flex: 1 1 auto; }
+/* 单行省略：行高统一才能算出"一屏放几行"。有的群名是用户把一整句 prompt
+   当名字（真事），两行标题会把下一行挤掉，看起来像列表被裁了。全文进 title。 */
+.gi-item-name {
+  font-size: var(--text-sm); color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gi-item-meta { color: var(--muted); font-size: var(--text-xs); line-height: 1.45; margin-top: 1px; }
+.gi-item.is-locked, .gi-item.is-blocked { cursor: default; opacity: 0.7; }
+.gi-item.is-locked:hover, .gi-item.is-blocked:hover { background: transparent; }
+
+.gi-badge {
+  flex: 0 0 auto; font-size: 11px; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+}
+.gi-badge.is-done { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+.gi-badge.is-blocked { border-style: dashed; }
+
+.gi-actions {
+  display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--line); flex: 0 0 auto;
+}
+.gi-actions-note { flex: 1 1 auto; min-width: 96px; color: var(--muted); font-size: var(--text-sm); }
+
+.gi-result {
+  margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--line); font-size: var(--text-sm); line-height: 1.6;
+  flex: 0 0 auto; max-height: 26vh; overflow: auto;
+}
+.gi-result ul { margin: 6px 0 0; padding-left: 18px; }
+.gi-result li { margin-top: 2px; }
+.gi-result .gi-fail { color: var(--danger); }
+.gi-result .gi-sub { color: var(--muted); }

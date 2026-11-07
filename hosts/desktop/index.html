@@ -2817,6 +2817,14 @@
         </div>
         <div id="gp-privacy-note"></div>
         <div id="waveg-settings-status" style="margin-top:8px"></div>
+
+        <!-- M53d：把本机 Grok Bot 里的 Bot / 群 / 对话搬进来。入口放常规页，
+             因为它改的是「我的数据」，不是某个渠道或凭证。 -->
+        <div class="gp-label" data-i18n="giGroupData">数据</div>
+        <div class="gp-row" style="align-items:center">
+          <button type="button" class="bb-btn bb-btn-sm" id="gi-open" data-i18n="giOpen">从 Grok 搬过来…</button>
+          <span class="st-note" style="margin:0" data-i18n="giOpenHint">读本机已安装的 Grok Bot，把 Bot、群和对话搬进来。不联网、不登录。</span>
+        </div>
       </div>
       <div id="st-computer" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="tabComputer">电脑与权限</div>
@@ -3534,6 +3542,43 @@
               </div>
             </section>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- M53d — 「从 Grok 搬过来」。三段清单各自可勾：
+         已迁移的默认不勾并标出来（不重复建）；不能建的群灰显并写清原因
+         —— 只把它变灰不说为什么，等于让人猜。 -->
+    <div id="grok-import-modal" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="gi-title" style="display:none">
+      <div class="bb-sheet bb-sheet-lg gi-sheet">
+        <div class="bb-sheet-head">
+          <div class="gi-heading">
+            <span class="gi-heading-ic" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v7M5.2 6.4L8 9.2l2.8-2.8"/><path d="M2.8 11v1.6a1.4 1.4 0 0 0 1.4 1.4h7.6a1.4 1.4 0 0 0 1.4-1.4V11"/></svg></span>
+            <div class="gi-heading-tx">
+              <div class="bb-sheet-title" id="gi-title" data-i18n="giTitle">从 Grok 搬过来</div>
+              <div class="bb-sheet-note" id="gi-sub" data-i18n="giSub">读本机已安装的 Grok Bot，把 Bot、群和对话搬进来。不联网、不登录，数据不出这台机器。</div>
+            </div>
+          </div>
+          <button type="button" id="gi-close" class="bb-btn bb-close" aria-label="关闭" data-i18n="settingsClose">×</button>
+        </div>
+
+        <div id="gi-loading" class="gi-loading" hidden data-i18n="giLoading">正在读本机 Grok Bot 的数据…</div>
+        <div id="gi-error" class="gi-error" hidden></div>
+
+        <div id="gi-body" hidden>
+          <div class="gi-stats" id="gi-stats"></div>
+          <!-- 三段（Bot / 群 / 会话）由 JS 渲染：勾选态、已迁移、不可建原因
+               都在一处算，不在 HTML 里再抄一份会过期的副本。 -->
+          <div class="gi-groups" id="gi-groups"></div>
+        </div>
+
+        <!-- 回执在按钮上方：先看结果，再决定要不要再点一次 -->
+        <div id="gi-result" class="gi-result" hidden></div>
+
+        <div class="gi-actions">
+          <div class="gi-actions-note" id="gi-actions-note"></div>
+          <button type="button" class="bb-btn bb-btn-sm" id="gi-rescan" data-i18n="giRescan">重新读取</button>
+          <button type="button" class="bb-btn bb-btn-sm bb-btn-primary" id="gi-apply" data-i18n="giApply">开始迁移</button>
         </div>
       </div>
     </div>
@@ -16392,6 +16437,413 @@
       }
       renderConnectApps();
     }
+    /* ---- M53d: 「从 Grok 搬过来」 -----------------------------------------
+       两段式：scan 只读（返回精简清单，不含消息正文），apply 只传 id 列表。
+       为什么不让渲染层把计划内容带回来：1466 条正文没必要过 IPC，也不该让
+       渲染层决定"要写什么"——Host 收到 id 自己重算一遍计划再写。
+       已迁移 / 建不成的条目留在原位但不可勾：藏掉最省事，代价是用户以为
+       "我 Grok 里就这些"。 */
+    const giEls = {
+      modal: document.getElementById("grok-import-modal"),
+      loading: document.getElementById("gi-loading"),
+      error: document.getElementById("gi-error"),
+      body: document.getElementById("gi-body"),
+      stats: document.getElementById("gi-stats"),
+      groups: document.getElementById("gi-groups"),
+      note: document.getElementById("gi-actions-note"),
+      rescan: document.getElementById("gi-rescan"),
+      apply: document.getElementById("gi-apply"),
+      result: document.getElementById("gi-result"),
+      close: document.getElementById("gi-close"),
+      open: document.getElementById("gi-open"),
+    };
+
+    let giData = null;
+    let giBusy = false;
+    const giPicked = { bots: new Set(), rooms: new Set(), sessions: new Set() };
+    const giSelectAllBtns = { bots: null, rooms: null, sessions: null };
+
+    function giShowErr(msg) {
+      if (!giEls.error) return;
+      giEls.error.hidden = !msg;
+      giEls.error.textContent = msg || "";
+    }
+
+    function giNote(msg) {
+      if (giEls.note) giEls.note.textContent = msg || "";
+    }
+
+    function giClose() {
+      if (!giEls.modal) return;
+      giEls.modal.style.display = "none";
+      bbSheetClosed("grok-import-modal");
+    }
+
+    function openGrokImport(triggerEl) {
+      if (!giEls.modal) return;
+      giEls.modal.style.display = "flex";
+      bbSheetOpened("grok-import-modal", triggerEl || giEls.open || document.activeElement);
+      giShowErr("");
+      if (giEls.result) { giEls.result.hidden = true; giEls.result.textContent = ""; }
+      giScan().catch(() => {});
+    }
+
+    /** 能不能勾：已迁移的不勾（重复建没意义）；建不成的群不勾（建了也是错）。 */
+    function giPickable(kind, row) {
+      if (row.already) return false;
+      if (kind === "rooms" && !row.buildable) return false;
+      return true;
+    }
+
+    function giRowMeta(kind, row) {
+      if (kind === "bots") return row.job || "";
+      if (kind === "rooms") {
+        const base = t("giMembers", { n: row.members });
+        if (row.buildable) return base;
+        return base + " · " + (row.block_reason === "members_unmapped"
+          ? t("giBlockedUnmapped")
+          : t("giBlockedTooFew"));
+      }
+      // 会话：条数 + 起止日期（只有日期，不摆时间 —— 这里要说的是"多早的对话"）
+      const range = row.first_at
+        ? (row.first_at.slice(0, 10) === (row.last_at || "").slice(0, 10)
+          ? row.first_at.slice(0, 10)
+          : row.first_at.slice(0, 10) + " → " + (row.last_at || "").slice(0, 10))
+        : "";
+      return t("giMsgs", { n: row.count }) + (range ? " · " + range : "");
+    }
+
+    function giBuildItem(kind, row, name) {
+      const wrap = document.createElement("label");
+      const pick = giPickable(kind, row);
+      wrap.className = "gi-item" + (!pick ? (row.already ? " is-locked" : " is-blocked") : "");
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.disabled = !pick;
+      cb.checked = pick && giPicked[kind].has(row.grok_id);
+      cb.addEventListener("change", () => {
+        if (cb.checked) giPicked[kind].add(row.grok_id);
+        else giPicked[kind].delete(row.grok_id);
+        giUpdateNote();
+        giSyncSelectAll(kind);
+      });
+
+      const tx = document.createElement("div");
+      tx.className = "gi-item-tx";
+      const nm = document.createElement("div");
+      nm.className = "gi-item-name";
+      nm.textContent = name;                       // 名字里可能有 < >，走 textContent
+      nm.title = name;                             // 单行省略后，悬停能看全
+      tx.appendChild(nm);
+      const meta = giRowMeta(kind, row);
+      if (meta) {
+        const m = document.createElement("div");
+        m.className = "gi-item-meta";
+        m.textContent = meta;
+        tx.appendChild(m);
+      }
+
+      wrap.appendChild(cb);
+      wrap.appendChild(tx);
+
+      if (row.already) {
+        const b = document.createElement("span");
+        b.className = "gi-badge is-done";
+        b.textContent = t("giMigrated");
+        wrap.appendChild(b);
+      } else if (kind === "rooms" && !row.buildable) {
+        const b = document.createElement("span");
+        b.className = "gi-badge is-blocked";
+        b.textContent = t("giCantBuild");
+        wrap.appendChild(b);
+      }
+      return wrap;
+    }
+
+    function giBuildGroup(kind, title, rows) {
+      const box = document.createElement("section");
+      box.className = "gi-group";
+
+      const head = document.createElement("div");
+      head.className = "gi-group-head";
+      const tt = document.createElement("span");
+      tt.className = "gi-group-title";
+      tt.textContent = title;
+      const cnt = document.createElement("span");
+      cnt.className = "gi-group-count";
+      const pickable = rows.filter((r) => giPickable(kind, r)).length;
+      // "0/21" 这种写法要让人猜哪个是可选、哪个是总数 —— 直接写出来
+      cnt.textContent = t("giGroupCount", { a: pickable, n: rows.length });
+      const all = document.createElement("button");
+      all.type = "button";
+      all.className = "bb-btn bb-btn-sm gi-selectall";
+      all.dataset.giKind = kind;
+      all.textContent = t("giSelectAll");
+      all.disabled = pickable === 0;
+      all.addEventListener("click", () => {
+        const now = rows.filter((r) => giPickable(kind, r));
+        const everything = now.length > 0 && now.every((r) => giPicked[kind].has(r.grok_id));
+        giPicked[kind].clear();
+        if (!everything) for (const r of now) giPicked[kind].add(r.grok_id);
+        giRenderGroups();                          // 重画勾选态（单一真源是 giPicked）
+        giUpdateNote();
+      });
+      giSelectAllBtns[kind] = { btn: all, rows };
+
+      head.appendChild(tt);
+      head.appendChild(cnt);
+      head.appendChild(all);
+      box.appendChild(head);
+
+      const list = document.createElement("div");
+      list.className = "gi-list";
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "gi-item is-locked";
+        const tx = document.createElement("div");
+        tx.className = "gi-item-tx";
+        const nm = document.createElement("div");
+        nm.className = "gi-item-name";
+        nm.textContent = t("giNone");
+        tx.appendChild(nm);
+        empty.appendChild(tx);
+        list.appendChild(empty);
+      } else {
+        // 群这一段的可见高度只够两行，而"建不成"的那条最需要被看见（它会影响
+        // 用户对"是不是全搬过来了"的判断），所以把不能建的排到前面。
+        const ordered = kind === "rooms"
+          ? rows.slice().sort((a, b) => Number(a.buildable ? 1 : 0) - Number(b.buildable ? 1 : 0))
+          : rows;
+        for (const row of ordered) {
+          const name = kind === "rooms" ? row.title : (kind === "bots" ? row.name : row.title);
+          list.appendChild(giBuildItem(kind, row, name));
+        }
+      }
+      box.appendChild(list);
+      // 渐隐只在"下面真的还有内容"时出现：内容本来就装得下、或已经滚到底，
+      // 淡边只会让人以为还有东西没看到。
+      const syncFade = () => {
+        const fits = list.scrollHeight <= list.clientHeight + 2;
+        list.classList.toggle("is-short", fits);
+        list.classList.toggle("is-end", list.scrollTop + list.clientHeight >= list.scrollHeight - 2);
+      };
+      list.addEventListener("scroll", syncFade, { passive: true });
+      requestAnimationFrame(syncFade);
+      return box;
+    }
+
+    function giRenderGroups() {
+      if (!giEls.groups || !giData) return;
+      giEls.groups.textContent = "";
+      giEls.groups.appendChild(giBuildGroup("bots", t("giBots"), giData.bots || []));
+      giEls.groups.appendChild(giBuildGroup("rooms", t("giRooms"), giData.rooms || []));
+      giEls.groups.appendChild(giBuildGroup("sessions", t("giSessions"), giData.sessions || []));
+    }
+
+    function giSyncSelectAll(kind) {
+      const rec = giSelectAllBtns[kind];
+      if (!rec) return;
+      const now = rec.rows.filter((r) => giPickable(kind, r));
+      const everything = now.length > 0 && now.every((r) => giPicked[kind].has(r.grok_id));
+      rec.btn.textContent = everything ? t("giSelectNone") : t("giSelectAll");
+    }
+
+    /** 当前还有多少条可选（用来区分"你还没勾"和"已经没有可勾的了"）。 */
+    function giPickableTotal() {
+      if (!giData) return 0;
+      let n = 0;
+      for (const kind of ["bots", "rooms", "sessions"]) {
+        for (const r of giData[kind] || []) if (giPickable(kind, r)) n += 1;
+      }
+      return n;
+    }
+
+    function giUpdateNote() {
+      const n = giPicked.bots.size + giPicked.rooms.size + giPicked.sessions.size;
+      // 没什么可勾的时候，让「开始迁移」真的点不动 —— 留个能点但一点就出错的按钮
+      // 是在把"没有可选内容"演成"操作失败"。
+      const left = giPickableTotal();
+      // 没勾任何东西时按钮就该是灰的：一个能点但一点就说"先勾选"的按钮，
+      // 让人以为是自己操作失败。底部那行已经在说要先勾了。
+      if (giEls.apply && !giBusy) giEls.apply.disabled = n === 0;
+      if (n) {
+        giNote(t("giPickedNote", { b: giPicked.bots.size, r: giPicked.rooms.size, s: giPicked.sessions.size }));
+        return;
+      }
+      // 全部搬完之后还写"勾选要迁过来的内容"就像在催一件做不到的事
+      giNote(left === 0 ? t("giAllDone") : t("giPickOne"));
+    }
+
+    function giRenderStats(d) {
+      if (!giEls.stats) return;
+      const st = d.stats || {};
+      // 上一轮插的那行"选项卡片/跳过"要先摘掉，否则每扫一次就多一行
+      const prev = giEls.stats.parentNode && giEls.stats.parentNode.querySelector(".gi-stats-extra");
+      if (prev) prev.remove();
+      const parts = [
+        t("giStatRows", { n: st.roster_rows || 0 }),
+        t("giStatBots", { n: st.bots || 0 }),
+        t("giStatRooms", { n: st.rooms || 0 }),
+        t("giStatThreads", { n: st.sessions || 0 }),
+        t("giStatMsgs", { n: st.messages || 0 }),
+      ];
+      giEls.stats.textContent = "";
+      // 整行普通字重：五个数字全加粗反而没有重点，看着像糊成一团。
+      giEls.stats.textContent = parts.join(" · ");
+      // 选项卡片/跳过这两句只在确实发生时出现：没有就不写，不摆一个 0
+      const extra = [];
+      if (st.widget_converted) extra.push(t("giWidgetConverted", { n: st.widget_converted }));
+      if (st.skipped) extra.push(t("giSkipped", { n: st.skipped }));
+      if (extra.length) {
+        const line = document.createElement("div");
+        line.className = "gi-stats gi-stats-extra";
+        line.textContent = extra.join(" · ");
+        giEls.stats.parentNode.insertBefore(line, giEls.groups);
+      }
+    }
+
+    async function giScan() {
+      if (!giEls.modal) return;
+      if (!window.bitbot || !window.bitbot.grok) {
+        giShowErr(t("giNoHost"));
+        return;
+      }
+      giShowErr("");
+      if (giEls.loading) giEls.loading.hidden = false;
+      if (giEls.body) giEls.body.hidden = true;
+      giNote("");
+      try {
+        const d = await window.bitbot.grok.scan();
+        if (!d || !d.ok) {
+          if (giEls.loading) giEls.loading.hidden = true;
+          giShowErr(d && d.error === "source_not_found"
+            ? t("giNoSource")
+            : t("giScanFailed") + "：" + ((d && d.error) || "unknown"));
+          return;
+        }
+        giData = d;
+        // 重新扫出来的清单以"未迁移"为准：把已迁移的从勾选集里剔掉，避免勾了又被拒
+        const keep = (kind, rows) => {
+          const ok = new Set(rows.filter((r) => giPickable(kind, r)).map((r) => r.grok_id));
+          for (const id of [...giPicked[kind]]) if (!ok.has(id)) giPicked[kind].delete(id);
+        };
+        keep("bots", d.bots || []);
+        keep("rooms", d.rooms || []);
+        keep("sessions", d.sessions || []);
+        giRenderStats(d);
+        giRenderGroups();
+        giUpdateNote();
+        if (giEls.body) giEls.body.hidden = false;
+      } catch (e) {
+        giShowErr(t("giScanFailed") + "：" + String((e && e.message) || e));
+      } finally {
+        if (giEls.loading) giEls.loading.hidden = true;
+      }
+    }
+
+    function giRenderResult(r, blockedRooms) {
+      if (!giEls.result) return;
+      const box = document.createElement("div");
+      const head = document.createElement("div");
+      head.textContent = t("giBuilt", {
+        b: (r.bots || []).length, r: (r.rooms || []).length, s: (r.sessions || []).length,
+      });
+      box.appendChild(head);
+
+      const sub = [];
+      if (Array.isArray(r.auto_bots) && r.auto_bots.length) sub.push(t("giAutoBots", { n: r.auto_bots.length }));
+      if (r.reused) sub.push(t("giReused", { n: r.reused }));
+      if (!r.wrote) sub.push(t("giNothingWritten"));
+      if (r.backup && r.backup.dir) sub.push(t("giBackupAt") + " " + r.backup.dir);
+      if (sub.length) {
+        const s = document.createElement("div");
+        s.className = "gi-sub";
+        s.textContent = sub.join(" · ");
+        box.appendChild(s);
+      }
+
+      // 勾不了的群不会进 selection，于是也不会出现在 failed 里。但"没建成"这件事
+      // 不该只活在清单的灰字里 —— 关掉对话框就再也看不见了，所以回执里点名。
+      if (Array.isArray(blockedRooms) && blockedRooms.length) {
+        const names = blockedRooms
+          .map((x) => (String(x.title || "").length > 28 ? String(x.title).slice(0, 28) + "…" : String(x.title || "")))
+          .join("、");
+        const b = document.createElement("div");
+        b.className = "gi-sub";
+        b.textContent = t("giBlockedRoomNote", { n: blockedRooms.length }) + "：" + names;
+        box.appendChild(b);
+      }
+
+      if (Array.isArray(r.failed) && r.failed.length) {
+        const fh = document.createElement("div");
+        fh.className = "gi-fail";
+        fh.textContent = t("giFailedHead", { n: r.failed.length });
+        box.appendChild(fh);
+        const ul = document.createElement("ul");
+        for (const f of r.failed) {
+          const li = document.createElement("li");
+          li.className = "gi-fail";
+          const why = f.error === "members_too_few"
+            ? t("giFailTooFew")
+            : (f.error === "members_unmapped" ? t("giFailUnmapped") : f.error);
+          li.textContent = (f.title || f.grok_id || "") + " — " + why;
+          ul.appendChild(li);
+        }
+        box.appendChild(ul);
+      }
+
+      giEls.result.textContent = "";
+      giEls.result.appendChild(box);
+      giEls.result.hidden = false;
+    }
+
+    async function giApply() {
+      if (giBusy) return;
+      const sel = {
+        bots: [...giPicked.bots],
+        rooms: [...giPicked.rooms],
+        sessions: [...giPicked.sessions],
+      };
+      if (!sel.bots.length && !sel.rooms.length && !sel.sessions.length) {
+        giNote(t("giPickOne"));
+        return;
+      }
+      if (!window.bitbot || !window.bitbot.grok) {
+        giShowErr(t("giNoHost"));
+        return;
+      }
+      giBusy = true;
+      if (giEls.apply) giEls.apply.disabled = true;
+      giShowErr("");
+      giNote(t("giWriting"));
+      // 建不成的群不会被提交（也进不了 failed），先把它们记下来给回执用
+      const blockedRooms = ((giData && giData.rooms) || []).filter((x) => !x.already && !x.buildable);
+      try {
+        const r = await window.bitbot.grok.apply(sel);
+        if (!r || !r.ok) {
+          giShowErr(t("giApplyFailed") + "：" + ((r && r.error) || "unknown"));
+          return;
+        }
+        giPicked.bots.clear();
+        giPicked.rooms.clear();
+        giPicked.sessions.clear();
+        giRenderResult(r, blockedRooms);
+        // 写完再扫一遍：已迁移的条目会变灰并带「已迁移」，不用关掉重开
+        await giScan();
+      } catch (e) {
+        giShowErr(t("giApplyFailed") + "：" + String((e && e.message) || e));
+      } finally {
+        giBusy = false;
+        giUpdateNote();   // 顺手把「开始迁移」的可点状态按当前可见内容重算
+      }
+    }
+
+    if (giEls.close) giEls.close.addEventListener("click", giClose);
+    if (giEls.rescan) giEls.rescan.addEventListener("click", () => { giScan().catch(() => {}); });
+    if (giEls.apply) giEls.apply.addEventListener("click", () => { giApply().catch(() => {}); });
+    if (giEls.open) giEls.open.addEventListener("click", () => openGrokImport(giEls.open));
+
     // ---- Sheet manager: unified open/close stack, Esc + mask close, focus
     // return to the trigger. Used by the pinned sidebar-bottom entries and the
     // header model entry so behavior is identical everywhere. ----
@@ -16402,6 +16854,7 @@
       "settings-panel": () => closeSettingsPanel(),
       "mobile-control-modal": () => closeMobileControl(),
       "bot-manager-modal": () => bmClose(),
+      "grok-import-modal": () => giClose(),
     };
     window.__bbSheetStack = window.__bbSheetStack || [];
     function bbSheetOpened(id, triggerEl) {
@@ -16486,6 +16939,7 @@
     bbBindSheetMask("settings-panel");
     bbBindSheetMask("mobile-control-modal");
     bbBindSheetMask("bot-manager-modal");
+    bbBindSheetMask("grok-import-modal");
     const caSearchEl = document.getElementById("ca-search");
     if (caSearchEl) {
       let caSearchTimer = null;
@@ -17351,6 +17805,51 @@
         roomStartFailedHint: "这次群协作没有启动，成员没有收到任务。",
         sessSearchPh: "搜索会话",
         sbSearchPh: "搜索 Bot / 群组",
+        giTitle: "从 Grok 搬过来",
+        giSub: "读本机已安装的 Grok Bot，把 Bot、群和对话搬进来。不联网、不登录，数据不出这台机器。",
+        giLoading: "正在读本机 Grok Bot 的数据…",
+        giRescan: "重新读取",
+        giApply: "开始迁移",
+        giGroupData: "数据",
+        giOpen: "从 Grok 搬过来…",
+        giOpenHint: "读本机已安装的 Grok Bot，把 Bot、群和对话搬进来。不联网、不登录。",
+        giBots: "Bot",
+        giRooms: "群",
+        giSessions: "对话",
+        giSelectAll: "全选",
+        giGroupCount: "可选 {a} / 共 {n}",
+        giAllDone: "这台机器上能搬的已经全部搬过来了。再点「重新读取」可看最新状态。",
+        giSelectNone: "取消全选",
+        giNone: "没有可迁的",
+        giMigrated: "已迁移",
+        giCantBuild: "建不成",
+        giBlockedTooFew: "只有 1 名成员，建群至少 2 人",
+        giBlockedUnmapped: "有成员在 Grok 的名单里叫不出名字",
+        giMembers: "{n} 人",
+        giMsgs: "{n} 条消息",
+        giPickedNote: "已选 Bot {b} · 群 {r} · 对话 {s}",
+        giPickOne: "勾选要迁过来的内容",
+        giWriting: "正在写入…",
+        giStatRows: "读到 {n} 个条目",
+        giStatBots: "Bot {n}",
+        giStatRooms: "群 {n}",
+        giStatThreads: "对话 {n}",
+        giStatMsgs: "{n} 条消息",
+        giWidgetConverted: "{n} 条选项卡片已转成文字",
+        giSkipped: "跳过 {n} 条（附件/事件这类没有可读文本的）",
+        giBuilt: "建好 Bot {b} · 群 {r} · 对话 {s}",
+        giBlockedRoomNote: "另有 {n} 个群建不成（成员不足 2 人），没有提交",
+        giAutoBots: "自动带上了 {n} 个群成员",
+        giReused: "已存在跳过 {n}",
+        giNothingWritten: "没有新内容，未改盘",
+        giBackupAt: "备份在",
+        giFailedHead: "{n} 项没建成",
+        giFailTooFew: "Grok 那边这个群本来就只有 1 人，本机建群至少 2 人",
+        giFailUnmapped: "有成员的 id 在 Grok 的名单里叫不出名字",
+        giNoHost: "当前版本没有提供迁移通道（可能是开发态少了文件）",
+        giNoSource: "没找到本机的 Grok Bot 数据。先确认装过 Grok Bot，并至少登录打开过一次。",
+        giScanFailed: "读取失败",
+        giApplyFailed: "迁移失败",
         sbSearchEmpty: "没有匹配的 Bot 或群组",
         sessToday: "今天",
         sessYesterday: "昨天",
@@ -18328,6 +18827,51 @@
         roomStartFailedHint: "這次群協作沒有啟動，成員沒有收到任務。",
         sessSearchPh: "搜尋會話",
         sbSearchPh: "搜尋 Bot / 群組",
+        giTitle: "從 Grok 搬過來",
+        giSub: "讀本機已安裝的 Grok Bot，把 Bot、群組和對話搬進來。不連網、不登入，資料不離開這台機器。",
+        giLoading: "正在讀本機 Grok Bot 的資料…",
+        giRescan: "重新讀取",
+        giApply: "開始搬移",
+        giGroupData: "資料",
+        giOpen: "從 Grok 搬過來…",
+        giOpenHint: "讀本機已安裝的 Grok Bot，把 Bot、群組和對話搬進來。不連網、不登入。",
+        giBots: "Bot",
+        giRooms: "群組",
+        giSessions: "對話",
+        giSelectAll: "全選",
+        giGroupCount: "可選 {a} / 共 {n}",
+        giAllDone: "這台機器上能搬的已經全部搬過來了。再點「重新讀取」可看最新狀態。",
+        giSelectNone: "取消全選",
+        giNone: "沒有可搬的",
+        giMigrated: "已搬移",
+        giCantBuild: "建不成",
+        giBlockedTooFew: "只有 1 名成員，建群組至少 2 人",
+        giBlockedUnmapped: "有成員在 Grok 的名單裡叫不出名字",
+        giMembers: "{n} 人",
+        giMsgs: "{n} 條訊息",
+        giPickedNote: "已選 Bot {b} · 群組 {r} · 對話 {s}",
+        giPickOne: "勾選要搬過來的內容",
+        giWriting: "正在寫入…",
+        giStatRows: "讀到 {n} 個條目",
+        giStatBots: "Bot {n}",
+        giStatRooms: "群組 {n}",
+        giStatThreads: "對話 {n}",
+        giStatMsgs: "{n} 條訊息",
+        giWidgetConverted: "{n} 條選項卡片已轉成文字",
+        giSkipped: "跳過 {n} 條（附件／事件這類沒有可讀文字的）",
+        giBuilt: "建好 Bot {b} · 群組 {r} · 對話 {s}",
+        giBlockedRoomNote: "另有 {n} 個群組建不成（成員不足 2 人），沒有提交",
+        giAutoBots: "自動帶上了 {n} 個群組成員",
+        giReused: "已存在跳過 {n}",
+        giNothingWritten: "沒有新內容，未改動磁碟",
+        giBackupAt: "備份在",
+        giFailedHead: "{n} 項沒建成",
+        giFailTooFew: "Grok 那邊這個群組本來就只有 1 人，本機建群組至少 2 人",
+        giFailUnmapped: "有成員的 id 在 Grok 的名單裡叫不出名字",
+        giNoHost: "目前版本沒有提供搬移通道（可能是開發態少了檔案）",
+        giNoSource: "沒找到本機的 Grok Bot 資料。先確認裝過 Grok Bot，並至少登入開啟過一次。",
+        giScanFailed: "讀取失敗",
+        giApplyFailed: "搬移失敗",
         sbSearchEmpty: "沒有符合的 Bot 或群組",
         sessToday: "今天",
         sessYesterday: "昨天",
@@ -19301,6 +19845,51 @@
         roomStartFailedHint: "This group run never started — no member received the task.",
         sessSearchPh: "Search chats",
         sbSearchPh: "Search Bots / groups",
+        giTitle: "Import from Grok",
+        giSub: "Reads the Grok Bot already installed on this machine and brings its Bots, groups and conversations over. No network, no sign-in — nothing leaves this machine.",
+        giLoading: "Reading local Grok Bot data…",
+        giRescan: "Re-read",
+        giApply: "Import selected",
+        giGroupData: "Data",
+        giOpen: "Import from Grok…",
+        giOpenHint: "Reads the Grok Bot installed on this machine and brings its Bots, groups and conversations over. No network, no sign-in.",
+        giBots: "Bots",
+        giRooms: "Groups",
+        giSessions: "Conversations",
+        giSelectAll: "Select all",
+        giGroupCount: "{a} of {n} selectable",
+        giAllDone: "Everything importable on this machine has been imported. Click Re-read to refresh.",
+        giSelectNone: "Clear",
+        giNone: "Nothing to import",
+        giMigrated: "Imported",
+        giCantBuild: "Can't build",
+        giBlockedTooFew: "Only 1 member — a group needs at least 2",
+        giBlockedUnmapped: "A member id has no matching name in Grok's roster",
+        giMembers: "{n} members",
+        giMsgs: "{n} messages",
+        giPickedNote: "Selected Bot {b} · group {r} · conversation {s}",
+        giPickOne: "Pick what to bring over",
+        giWriting: "Writing…",
+        giStatRows: "{n} entries found",
+        giStatBots: "Bot {n}",
+        giStatRooms: "groups {n}",
+        giStatThreads: "conversations {n}",
+        giStatMsgs: "{n} messages",
+        giWidgetConverted: "{n} option cards turned into text",
+        giSkipped: "{n} skipped (attachments, events — nothing readable)",
+        giBuilt: "Created Bot {b} · group {r} · conversation {s}",
+        giBlockedRoomNote: "{n} group(s) could not be built (fewer than 2 members) — not submitted",
+        giAutoBots: "pulled in {n} group members automatically",
+        giReused: "{n} already existed",
+        giNothingWritten: "nothing new — disk untouched",
+        giBackupAt: "Backup at",
+        giFailedHead: "{n} could not be created",
+        giFailTooFew: "that group has only 1 member in Grok; a local group needs at least 2",
+        giFailUnmapped: "a member id has no matching name in Grok's roster",
+        giNoHost: "This build has no import channel (a file may be missing in dev mode)",
+        giNoSource: "No local Grok Bot data found. Install Grok Bot and open it (signed in) at least once.",
+        giScanFailed: "Read failed",
+        giApplyFailed: "Import failed",
         sbSearchEmpty: "No matching Bot or group",
         sessToday: "Today",
         sessYesterday: "Yesterday",

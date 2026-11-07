@@ -38,8 +38,13 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 const skip = (m, why) => { skipped++; console.log("  ⊘ " + m + "（跳过：" + why + "，不算通过）"); };
 
 const REPO = path.join(__dirname, "..");
-const SRC_PATH = path.join(REPO, "scripts/import_grok_bot.js");
+// 盯的是**真正跑在 Host 里的那份实现**：打包只带 hosts/desktop，scripts/ 里那份只是 CLI 壳。
+// 门禁若盯壳，就会出现"门禁绿、app 里坏"。
+const SRC_PATH = path.join(REPO, "hosts/desktop/grok_import.js");
 const SRC = fs.readFileSync(SRC_PATH, "utf8");
+// 预演那条判据必须跑**有 CLI 的那个壳**：直接 exec grok_import.js 的话它没有入口，
+// 起来就退出、什么也没干 —— 于是"跑前跑后 sha 不变"恒真，门禁自己变成假绿。
+const CLI_PATH = path.join(REPO, "scripts/import_grok_bot.js");
 
 /** 在隔离上下文里加载（可传改坏的源码），CLI 分支不会跑：假 module 没有 main。 */
 function load(src) {
@@ -48,7 +53,7 @@ function load(src) {
     module: mod,
     exports: mod.exports,
     require,
-    __dirname: path.join(REPO, "scripts"),
+    __dirname: path.join(REPO, "hosts/desktop"),
     __filename: SRC_PATH,
     process,
     console,
@@ -326,7 +331,12 @@ const FAKE = (() => {
     skip("T6 真库预演不写盘", "本机没有 Grok Bot 数据目录");
   } else {
     try {
-      execFileSync(process.execPath, [SRC_PATH, "--json"], { cwd: REPO, stdio: "pipe", timeout: 120000 });
+      const out = execFileSync(process.execPath, [CLI_PATH, "--json"], { cwd: REPO, stdio: "pipe", timeout: 120000 });
+      // 壳真的读到了东西才算跑过：输出为空说明它没执行（上一版就是这样假绿的）
+      const parsed = JSON.parse(String(out || "{}"));
+      if (!parsed || !parsed.plan || !parsed.plan.stats) {
+        bad("T6 预演没有真的产出计划（壳没被跑到）", String(out || "").slice(0, 200));
+      }
       const after = sha();
       if (before === after) ok("T6 --json 预演跑完 data/desktop 三个文件 sha 不变");
       else bad("T6 预演动了盘", before + " → " + after);
