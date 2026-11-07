@@ -8657,3 +8657,93 @@ return list.filter((t) => t && t.id && t.job && t.description);   // 旧
   已进 `.gitignore`。
 - G-11 现在跑在 `data-gp02` 上，跑完即删；若中途强杀可能留下这个目录
   （已在 `.gitignore` 里，`rm -rf data-gp02` 即可）。
+
+### 8.94 「两个自媒体内容团队」「没开始聊就很多内容」「群不能改名」
+
+三句话，三个不同层的问题，外加一个问句（SQLite）。逐个对账。
+
+#### ① 「明明都没有开始聊对话框就很多内容」—— 不是 SQLite
+
+先把问句答掉：**本仓没有 SQLite**。全仓检索 `better-sqlite3` / `sqlite` 零命中，
+`hosts/desktop/package.json` 的 dependencies 只有 `electron-updater`；所有用户数据
+都是 `data/desktop/*.json`（`sessions.json` / `rooms.json` / `bots.json` …）。
+所以「内容很多」跟数据库无关，是**渲染层没清场**，四个来源叠在同一屏：
+
+| 来源 | 症状 | 修法 |
+| --- | --- | --- |
+| `openRoomChat` 只 `clearWelcome()`，群 thread 是**追加**到 `#log` 末尾 | 刚点开群，上半屏还挂着上一条私聊的回复，下面才是「群聊记录（最近 N 条）」 | 新增 `clearLogForRoom()`：进群整块替换 `#log`（私聊本来就是整块替换，群聊现在对齐） |
+| 内核把执行回执当正文写进 `bot_reply.text` | `Host FFI results applied (MoonBit kernel / ADR 0002):` + 完整 JSON + 绝对路径，一条 3.2–3.7KB，一轮两个成员各贴一遍 | **展示层折叠**：气泡正文只留人话，回执进 `<details class="rr-fold">`；`rooms.json` 里的原文一个字不动（可审计） |
+| 群综合长系统行 | 每个成员的「收到，正在用 MoonBit 内核处理」拼成一行，后面再跟 Host 回执 | 首行 + 折叠全文（>600 字或含回执才折） |
+| 私聊的**流式占位气泡** `streamEl` | 在群里时 `#log` 装的是群 thread，这个气泡一塞就落在 thread 外——看起来就是「我还没开始聊，Bit Bot 已经回了一条空的」 | `canPaintStream = !composerRoom`：群里不往 `#log` 画，流式数据照收；`phase:"end"` 时若从没画过就丢弃引用，免得下一轮私聊命中 `if (!streamEl)` 而永远画不出来 |
+
+第 4 条是写这条自检时抓出来的：先按「进群后 `#log` 只剩一个 `.room-thread`」判，
+结果抓到一个多出来的 `msg assistant`（空正文、发言人 Bit Bot）。给 `#log.appendChild`
+挂钩子打栈，落到 `index.html:20568` 的 `log.appendChild(streamEl)` —— 启动阶段的
+provider 分片在用户点进群之后才到，气泡就落在群聊面上。
+
+#### ② 「这两个自媒体内容团队 切换对话都一样呢」—— 是数据里真有两个群
+
+不是界面串了，是 `rooms.json` 里**真的有两个同名群**（一个 22 行、一个 1 行），
+侧栏又只显示名字，所以看起来像「切了没反应」。来路：`roomCreate` 的去重条件里
+带了一个时间窗：
+
+```js
+const fresh = Date.now() - Date.parse(r.updated_at || r.created_at) < ROOM_DUP_WINDOW_MS; // 10 分钟
+```
+
+隔一天再点一次「一键成队」，同群名同成员也算「新群」。改成无条件幂等：
+
+```js
+// 幂等：**同群名 + 同成员集合 = 同一个群**，无条件复用。
+const existing = (rooms.rooms || []).find(r =>
+  String(r.title || "") === finalTitle &&
+  (r.members || []).slice().sort().join(",") === setKey);
+```
+
+命中时回 `existing:true` + `reused_reason:"same_title_and_members"`（界面能说清
+「我复用了已有的群」而不是「建了个新的」）。
+
+#### ③ 「群不能修改名称？」—— 以前确实没入口
+
+名字只在建群那一刻由 brief / 模板定死，之后界面上找不到任何地方能改。
+
+第一版我做成「群资料抽屉里加『改名』按钮 + 内联表单 + 保存/取消」，被用户当场
+否掉：**「改名要设计这么复杂？？ 不是在左侧，双击之类来交付不是会更合理？？」**
+—— 他对。改名就是改那一行的字。最终形态：
+
+- 侧栏群行的 `.name` 上 `dblclick` → 原地把那一行换成 `<input class="sess-name-input">`
+- `Enter` 或失焦保存，`Esc` 放弃；空名 / 超 40 字由 Host 拒，界面只把拒绝码翻人话
+- 成功后侧栏、输入卡表头、顶栏胶囊、群资料标题四处一起跟；重名**允许**但要说出来
+
+Host 侧新增 `roomRename(input)`（`ROOM_TITLE_MAX = 40`）：`title_empty` /
+`title_too_long` / `room_not_found` / `rooms_store_unreadable`；成功落一条
+`kind:"system"`「群名称已改为「新」（原「旧」）。」—— 改名是事实，要能审计。
+
+顺带：双击一行会**先单击进群**再进编辑态。这是原生列表的手感（单击打开、双击标签
+改名），不是 bug —— 但它被当成判据钉住了（RU-08），免得以后有人随手改掉。
+
+#### 门
+
+| 门 | 内容 | 结果 |
+| --- | --- | --- |
+| `prove_room_rename.js`（G-107） | Host 层真跑：落盘/留痕、空名与 41 字拒写、重名回报、同群名同成员复用、成员不同必须新建、真库 sha256 不变 | 8/0 |
+| `prove_room_ux_render.mjs`（G-108） | 真起 Electron：双击 `.name` → 输入框（值/聚焦/全选）、回车三处同步、Esc 不落盘、进群 `#log` 只剩一个 `.room-thread`、回执折叠（正文 48 字 / details 1697 字）、`pageerror` 为 0、真库 sha256 不变 | 11/0 |
+| `prove_gp143_orchestration` | 去重语义变了，复跑确认没打红 | 40/0 |
+| `prove_app_identity` / `prove_bot_manager` | `resolveDataRoot` 动了，复跑 | 35/0、25/0 |
+
+G-108 要真开窗口，就必须能换数据根 —— `hosts/desktop/paths.js` 的
+`resolveDataRoot` 现在也认 `$BITBOT_DATA_ROOT`（`host_ffi` 早就认）。之前只有一半
+认，比完全不认更糟：Host 写探针数据、宿主读真库，等于「搬了一半」。值必须是仓库的
+**直接子目录**（内核 cwd = `dirname(DATA_ROOT)`）。
+
+#### 残留（如实）
+
+- 那两条内核回执**还在 `rooms.json` 里**，只是默认折叠。要真删得上 Host 侧改
+  `turn_json.mbt` 的拼装逻辑，那是另一件事（会动回合产物的语义）。
+- 启动时 `#banner` 仍会把 `Bit Bot runtime boot / registered modules: 17 /
+  capability matrix: CM=234` 顶在聊天区上方约 2.4 秒（`setTimeout(..., 2400)` 后
+  `.collapsed`）。它自己会收，但开机那几秒确实还是机器话。要不要延长/收进开发者面板，
+  等你定。
+- 真库里现在有三个群：`abc`（2 人 4 行）、`自媒体内容团队`（5 人 22 行，你原来那个）、
+  `自媒体内容团队（空）`（5 人 2 行）。**最后这个是我实测改名时改的**（原名也叫
+  「自媒体内容团队」，就是你截图里分不清的那个空壳）。要删或要改回，一句话的事。

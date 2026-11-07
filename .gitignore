@@ -107,6 +107,8 @@ docs/design/desktop-target/reference/modal-computed.json
 # 必须是仓库的直接子目录（内核 cwd = dirname(DATA_ROOT)），跑完即删，绝不入仓
 /data-gp02/
 /.tpl-probe-*/
+/.rename-probe-*/
+/.room-ux-probe-*/
 
 # 用户模板库的一次性备份（改库前留的手尾）
 /data/desktop/bot-templates.json.bak

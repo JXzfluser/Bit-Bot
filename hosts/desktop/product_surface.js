@@ -1757,6 +1757,70 @@ function createProductSurface(repoRoot, opts = {}) {
   }
 
   /**
+   * 群改名。以前没有这个入口：群名只在建房那一刻由 brief/模板定下来，之后
+   * 用户在界面上找不到任何地方能改 —— 建错一次（或建队自动取的名字不合适）
+   * 就永久留在侧栏，而且同名群多了以后根本分不清（「两个自媒体内容团队」）。
+   *
+   * 边界：
+   *   · 空名 / 全空白 → title_empty，不写盘；
+   *   · 超过 40 字 → title_too_long（侧栏一行放不下，也不该让名字变成一段话）；
+   *   · 群不存在 → room_not_found；
+   *   · 与其他群同名 → **允许**，但把重名的 room id 一起返回，界面负责提示
+   *     「已存在同名群」——不靠替用户改名来掩盖冲突；
+   *   · 改成功落一条 kind:"system" 转录（与成员增删同一条纪律：群里的变化
+   *     群里看得见，不在数组里背后改）。
+   */
+  const ROOM_TITLE_MAX = 40;
+  function roomRename(input) {
+    const opts = input || {};
+    const roomKey = String(opts.room || opts.room_id || "").trim();
+    const rawTitle = String(opts.title == null ? "" : opts.title);
+    if (!roomKey) return { ok: false, error: "room_required" };
+    const title = rawTitle.trim().replace(/\s+/g, " ");
+    if (!title) return { ok: false, error: "title_empty" };
+    if (title.length > ROOM_TITLE_MAX) {
+      return { ok: false, error: "title_too_long", max: ROOM_TITLE_MAX, length: title.length };
+    }
+    let rooms;
+    try { rooms = requireWritableRooms(); }
+    catch (err) { return { ok: false, error: String((err && err.code) || "rooms_store_unreadable") }; }
+    const list = rooms.rooms || [];
+    const hit = list.find(r => r && (r.id === roomKey || r.title === roomKey));
+    if (!hit) return { ok: false, error: "room_not_found", room: roomKey };
+    const previous = String(hit.title || "");
+    const duplicates = list
+      .filter(r => r && r.id !== hit.id && String(r.title || "") === title)
+      .map(r => r.id);
+    if (previous === title) {
+      return {
+        ok: true, mode: "host_room_rename", room: hit.id, title, previous,
+        unchanged: true, duplicates,
+      };
+    }
+    hit.title = title;
+    const at = nowIso();
+    if (!Array.isArray(hit.transcript)) hit.transcript = [];
+    hit.transcript.push({
+      kind: "system",
+      room_id: hit.id,
+      speaker: "system",
+      text: `群名称已改为「${title}」（原「${previous}」）。`,
+      at,
+    });
+    if (hit.transcript.length > 200) hit.transcript = hit.transcript.slice(-200);
+    saveRooms(rooms);
+    return {
+      ok: true,
+      mode: "host_room_rename",
+      room: hit.id,
+      title,
+      previous,
+      duplicates,
+      at,
+    };
+  }
+
+  /**
    * GP-148 §1-J2：自然语言建房的 Host 落点。三条硬要求：
    *  1) 名字认不出来就点名返回 names_not_found，绝不建「少一个人的残群」，
    *     也绝不返回 ok:true 假装成功；
@@ -1765,7 +1829,6 @@ function createProductSurface(repoRoot, opts = {}) {
    *     成员名单），用户在同一次回合里就能看见「群真的建出来了」，侧栏也有成员数。
    * 既有返回形状 {ok,mode,pretend_saved,room} 不变，只新增可选字段。
    */
-  const ROOM_DUP_WINDOW_MS = Number(process.env.BITBOT_ROOM_DUP_WINDOW_MS || 10 * 60 * 1000);
   function roomCreate(bots_csv, title) {
     const data = loadBots();
     const botsList = data.bots;
@@ -1832,20 +1895,21 @@ function createProductSurface(repoRoot, opts = {}) {
 
     const rooms = requireWritableRooms();
 
-    // 幂等：同成员同群名在短窗内重复 → 直接把既有群还给调用方，不新建。
-    const dupMs = Number.isFinite(ROOM_DUP_WINDOW_MS) && ROOM_DUP_WINDOW_MS > 0
-      ? ROOM_DUP_WINDOW_MS : 10 * 60 * 1000;
+    // 幂等：**同群名 + 同成员集合 = 同一个群**，无条件复用。
+    // 旧版只在这个组合的 10 分钟窗口内去重（ROOM_DUP_WINDOW_MS），于是隔一天
+    // 再点一次「一键成队」就又多一个同名群：侧栏两个「自媒体内容团队」，
+    // 点开内容一个 22 行一个 1 行 —— 用户根本分不清哪个是哪个。
+    // 真想要一个新群，改名再建即可（改名入口见 roomRename）。
     const existing = (rooms.rooms || []).find(r => {
       if (!r || String(r.title || "") !== finalTitle) return false;
-      if ((r.members || []).slice().sort().join(",") !== setKey) return false;
-      const at = Date.parse(String(r.created_at || ""));
-      return Number.isNaN(at) ? false : Date.now() - at <= dupMs;
+      return (r.members || []).slice().sort().join(",") === setKey;
     });
     if (existing) {
       return {
         ok: true,
         mode: "host_group_chat",
         existing: true,
+        reused_reason: "same_title_and_members",
         pretend_saved: false,
         room: existing
       };
@@ -3623,6 +3687,7 @@ function createProductSurface(repoRoot, opts = {}) {
     roomLibraryList,
     roomLibraryAdd,
     roomMembersUpdate,
+    roomRename,
 
     // Account (GP-74) — local profile semantics only
     accountStatus,

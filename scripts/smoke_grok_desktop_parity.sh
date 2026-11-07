@@ -4261,6 +4261,46 @@ echo "    内核 cwd 不变）验自定义两条原样读出；TS-03b 拿同一�
 echo "    消失；TS-03c 证明自检全程没改真实库的 sha256；TS-04 团队模板角色数与 00-profile"
 echo "    里真实岗位文件数对齐（不写死数字）。"
 
+echo "== G-107 群名改得动，且同名同成员不许再建第二个 =="
+node scripts/prove_room_rename.js >/tmp/g107-room-rename.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-107 $(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g107-room-rename.log)"
+else
+  bad "G-107 prove_room_rename（见 /tmp/g107-room-rename.log；$(grep '✗' /tmp/g107-room-rename.log | head -2 | tr '\n' ' ')）"
+fi
+for g107_a in "RR-01" "RR-02" "RR-03" "RR-04" "RR-05" "RR-06" "RR-06b" "RR-07"; do
+  if grep -q "✓ $g107_a" /tmp/g107-room-rename.log; then ok "G-107 锚点：$g107_a"; else bad "G-107 锚点没跑绿：$g107_a"; fi
+done
+echo "  · G-107 为什么长出来：用户问「群不能修改名称？」，又问「这两个自媒体内容团队"
+echo "    切换对话都一样呢？」。后者不是界面故障，是**数据**故障：roomCreate 的去重"
+echo "    只认「同群名 + 同成员 + 10 分钟内」（ROOM_DUP_WINDOW_MS），隔一天再点一次"
+echo "    「一键成队」就又多一个同名群，而名字在建房那一刻定死、之后没有任何入口能改。"
+echo "  · G-107 判据：RR-01 改名必须落盘并留一条 kind:system 行（可审计）；RR-02/RR-03"
+echo "    空名与 41 字必须拒且一个字节都不写；RR-05 重名**允许**但 duplicates 必须点出"
+echo "    重名群 id（不替用户改）；RR-06 同群名同成员再建 → existing:true 且群总数不变；"
+echo "    RR-06b 反向对照：成员不同必须真新建（去重不许过度）。"
+
+echo "== G-108 群聊面：双击就地改名 + 进群不许挂着上一条私聊 =="
+node scripts/prove_room_ux_render.mjs >/tmp/g108-room-ux.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-108 prove_room_ux_render（真窗口：$(grep -c '✓ RU-' /tmp/g108-room-ux.log) 项全绿）"
+else
+  bad "G-108 prove_room_ux_render（见 /tmp/g108-room-ux.log；$(grep '✗' /tmp/g108-room-ux.log | head -2 | tr '\n' ' ')）"
+fi
+for g108_a in "RU-00" "RU-01" "RU-02" "RU-03" "RU-04" "RU-05" "RU-06" "RU-07" "RU-08" "RU-09" "RU-10"; do
+  if grep -q "✓ $g108_a" /tmp/g108-room-ux.log; then ok "G-108 锚点：$g108_a"; else bad "G-108 锚点没跑绿：$g108_a"; fi
+done
+echo "  · G-108 为什么长出来：G-107 只证明 Host 把名字写进了 rooms.json —— 而用户"
+echo "    说的是屏幕（「群不能修改名称？」）。Host 全绿、界面上没入口，他照样改不了。"
+echo "    同一屏还有第二件事：「明明都没有开始聊，对话框就很多内容」—— 进群时"
+echo "    openRoomChat 只 clearWelcome()、群 thread 是**追加**到 #log 末尾，上一条私聊"
+echo "    整段留在上半屏；再加内核的 Host FFI 回执（3KB JSON）直接进气泡。"
+echo "  · G-108 判据：真起 Electron、真双击 .name、真按回车，落盘/侧栏/表头三处对齐；"
+echo "    Esc 一个字都不存（负向对照）；进群后 #log 只剩一个 .room-thread 且"
+echo "    outside===0；气泡正文 <200 字而 details 里保留 >900 字的原文（rooms.json 的"
+echo "    原文照旧超长 —— 折叠是展示层，不删数据）。dataRoot 走 BITBOT_DATA_ROOT 指到"
+echo "    <repo>/.room-ux-probe-*，真库 sha256 前后必须一致。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

@@ -94,10 +94,23 @@ function resolveRepoRoot(opts = {}) {
  *
  * Packaged  -> <userData>/data   (survives upgrades, writable, OS-managed)
  * Dev       -> <repo>/data       (unchanged from the historical layout)
+ * Gate      -> $BITBOT_DATA_ROOT (see below)
+ *
+ * `$BITBOT_DATA_ROOT` is the escape hatch the gates need: proving a
+ * user-data behaviour by launching the real window used to mean launching it
+ * against **the user's own** `data/` (that is how G-11 once wiped their
+ * template library). `hosts/shared/host_ffi.js` has honoured this variable for
+ * a while; the desktop host not honouring it was worse than not having it at
+ * all — host_ffi would write the probe data and this file would still read the
+ * real one, i.e. half a move. The value must be a **direct child of the
+ * checkout**, because the kernel cwd is `dirname(DATA_ROOT)`: point it at
+ * /tmp and `moon run` cannot find `moon.mod`.
  */
 function resolveDataRoot(opts = {}) {
+  const env = opts.env || process.env;
   const repoRoot = opts.repoRoot || null;
   const userDataDir = opts.userDataDir || null;
+  if (env.BITBOT_DATA_ROOT) return path.resolve(env.BITBOT_DATA_ROOT);
   if (opts.packaged && userDataDir) return path.join(userDataDir, "data");
   if (repoRoot) return path.join(repoRoot, "data");
   if (userDataDir) return path.join(userDataDir, "data");

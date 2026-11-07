@@ -252,6 +252,13 @@
   body[data-room-form="open"] .ri-form { display: flex; }
   .ri-form textarea { min-height: 64px; resize: vertical; font-family: inherit; }
   .ri-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+  /* 侧栏群名就地改名：双击名字，那一行变成输入框，Enter/失焦保存，Esc 放弃。
+     不再开抽屉、不再有第二个表单 —— 改名就是改这一行的字。 */
+  .sess-row .sess-name-input {
+    width: 100%; min-width: 0; font: inherit; font-size: var(--text-sm);
+    color: var(--ink); background: var(--fill); border: 1px solid var(--accent);
+    border-radius: var(--radius-sm, 6px); padding: 1px 6px; outline: none;
+  }
   /* 群资料分段 tab（照团队详情抽屉设计稿：灰轨 + 白色 active 胶囊，radius 999）。
      轨道色不引入新字面量——--user-bubble 本就是同款灰值，与稿子的灰轨同值。 */
   .ri-tabs { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 999px; margin: 0 0 var(--space-4); }
@@ -1323,6 +1330,23 @@
     border-radius: var(--radius-pill); padding: 2px 8px; color: var(--muted);
   }
   .room-report .rr-arts-label { font-size: var(--text-xs); color: var(--muted); margin-top: 8px; }
+  /* 执行回执折叠（未配模型时内核会把 Host 干了什么原样贴回来）：
+     首屏只留人话，回执默认收起 —— 一进群不再是一屏 JSON 和绝对路径。 */
+  .rr-fold { margin-top: 8px; }
+  .rr-fold > .rr-fold-sum {
+    cursor: pointer; color: var(--muted); font-size: var(--text-xs);
+    list-style: none; display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 8px;
+  }
+  .rr-fold > .rr-fold-sum::-webkit-details-marker { display: none; }
+  .rr-fold > .rr-fold-sum::before { content: "▸"; font-size: 10px; }
+  .rr-fold[open] > .rr-fold-sum::before { content: "▾"; }
+  .rr-fold > .rr-fold-body {
+    margin: 6px 0 0; padding: 8px 10px; max-height: 240px; overflow: auto;
+    background: var(--code-bg, #111); color: var(--ink, #eee);
+    border-radius: var(--radius-sm, 6px);
+    font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  }
   /* GP-103/104/105: §8.4 untrusted data marker — shown above the bubble body so
      external text can never read as the Bot speaking in its own voice. */
   .untrusted-badge {
@@ -7062,6 +7086,88 @@
       setSidebarSearchOpen(!document.body.classList.contains("sb-search-open"));
     }
 
+    /* ---- 侧栏就地改名 ----
+       双击群名 → 那一行变成输入框，Enter（或点别处）保存，Esc 放弃。
+       改名就是改这一行的字：不另开抽屉、不弹对话框、不多一次点击。
+       名字的校验（空 / 超长 40 字 / 重名）全在 Host，这里只把拒绝码翻成人话；
+       重名不拦，但要说出来，否则用户会以为没改成功。 */
+    function renameFailCopy(res) {
+      const code = String((res && res.error) || "");
+      if (code.indexOf("title_empty") >= 0) return wavegT("riRenameEmpty");
+      if (code.indexOf("title_too_long") >= 0) return wavegT("riRenameTooLong");
+      if (code.indexOf("room_not_found") >= 0) return wavegT("riNoRoom");
+      if (code.indexOf("rooms_store_unreadable") >= 0) return wavegT("riMemberErrStore");
+      return devModeOn() ? wavegT("riRenameFail") + " · " + code : wavegT("riRenameFail");
+    }
+    async function applyRoomRename(rm, title) {
+      const api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.rename;
+      if (typeof api !== "function") return { ok: false, error: "rename_unsupported" };
+      let res = null;
+      try {
+        res = await api({ room: rm.id, title });
+      } catch (err) {
+        res = { ok: false, error: String((err && err.message) || err) };
+      }
+      if (!res || !res.ok) return res || { ok: false, error: "rename_failed" };
+      // 正在这个群里：banner 与顶栏胶囊是「现在在跟谁说话」，改名要立刻跟上。
+      if (composerRoom && composerRoom.id === rm.id) {
+        composerRoom.title = res.title || title;
+        const bt = document.getElementById("room-banner-title");
+        if (bt) bt.textContent = composerRoom.title;
+        const pillName = document.querySelector("#bot-pill .bot-pill-name");
+        if (pillName) pillName.textContent = composerRoom.title;
+        renderRoomTranscript(rm.id).catch(() => {}); // 改名会落一条 system 行
+      }
+      const railTitle = document.getElementById("ri-title");
+      if (railTitle && roomRailId === rm.id) railTitle.textContent = res.title || title;
+      await refreshSidebarRooms().catch(() => {});
+      if (Array.isArray(res.duplicates) && res.duplicates.length) {
+        cmdToast(wavegT("riRenameDup").replace("{n}", String(res.duplicates.length)), "warn");
+      }
+      return res;
+    }
+    function beginRoomRename(rowEl, rm) {
+      const nameEl = rowEl.querySelector(".name");
+      if (!nameEl || rowEl.querySelector(".sess-name-input")) return;
+      const input = document.createElement("input");
+      input.className = "sess-name-input";
+      input.type = "text";
+      input.maxLength = 40;
+      input.value = rm.title || rm.id || "";
+      input.setAttribute("aria-label", wavegT("roomRenameHint"));
+      nameEl.replaceWith(input);
+      input.focus();
+      input.select();
+      let done = false;
+      const restore = () => {
+        if (done) return;
+        done = true;
+        if (input.parentNode) input.replaceWith(nameEl);
+      };
+      const save = async () => {
+        if (done) return;
+        const next = String(input.value || "").replace(/\s+/g, " ").trim();
+        if (!next || next === String(rm.title || "")) { restore(); return; }
+        done = true;
+        const res = await applyRoomRename(rm, next);
+        // 成功时 refreshSidebarRooms() 已经重建整行；失败要把原来的字放回去。
+        if (!res || !res.ok) {
+          done = false;
+          restore();
+          cmdToast(renameFailCopy(res), "warn");
+        }
+      };
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); save(); }
+        else if (ev.key === "Escape") { ev.preventDefault(); restore(); }
+      });
+      input.addEventListener("blur", () => { save(); });
+      // 行本身有点击进群与双击改名：输入框里的事件不能冒出去。
+      for (const evName of ["click", "dblclick", "mousedown"]) {
+        input.addEventListener(evName, (ev) => ev.stopPropagation());
+      }
+    }
+
     /* GP-116 (§2.1): the sidebar group list. Grok's left column shows Bots and
        Groups side by side, so this renders from the Host's rooms.json through
        `rooms.list()` — the renderer never keeps its own copy of room state. */
@@ -7121,7 +7227,14 @@
         el.querySelector(".name").textContent = rm.title || rm.id;
         const n = (rm.members || []).length;
         el.querySelector(".meta").textContent = n + " " + wavegT("roomMembers");
-        el.title = (rm.members || []).join(", ");
+        // 悬浮提示：成员用名字（查不到才退回 id）+ 改名手势说明。
+        el.title = (rm.members || []).map((id) => roomBotNames[id] || id).join(", ") +
+          " · " + wavegT("roomRenameHint");
+        el.querySelector(".name").addEventListener("dblclick", (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          beginRoomRename(el, rm);
+        });
         el.addEventListener("click", () => {
           // M29 (§2.4): a group row opens the real group chat — the composer
           // is aimed at the room (kernel RoomTurn: @Name 定向 / @everyone 全体 /
@@ -7319,6 +7432,34 @@
     function roomClipNote() {
       return wavegT("roomTextClipped");
     }
+    /* ---- 群聊里的「执行回执」折叠 ----
+       未配置模型时，内核会把本回合 Host 到底做了什么原样贴回来：
+       「Host FFI results applied (MoonBit kernel / ADR 0002)」+ 完整 JSON +
+       绝对路径。一轮里两个成员各贴一遍，就是两堵 3KB 的墙 —— 用户的原话是
+       「明明都没有开始聊，对话框就很多内容」。
+       这里只做**展示折叠**：首屏留人话，回执收进 details。内核照旧诚实输出，
+       rooms.json 里也照旧存原文（可审计），渲染层不删任何数据。 */
+    const ROOM_RECEIPT_MARK = "Host FFI results applied";
+    const ROOM_SYSTEM_FOLD_AT = 600;
+    function roomSplitReceipt(text) {
+      const full = String(text || "");
+      const at = full.indexOf(ROOM_RECEIPT_MARK);
+      if (at < 0) return { head: full, receipt: "" };
+      return { head: full.slice(0, at).trim(), receipt: full.slice(at).trim() };
+    }
+    function roomFoldBlock(summaryText, rawText) {
+      const det = document.createElement("details");
+      det.className = "rr-fold";
+      const sm = document.createElement("summary");
+      sm.className = "rr-fold-sum";
+      sm.textContent = summaryText;
+      det.appendChild(sm);
+      const pre = document.createElement("pre");
+      pre.className = "rr-fold-body";
+      pre.textContent = rawText;
+      det.appendChild(pre);
+      return det;
+    }
     function roomThreadEl() {
       if (roomThread && document.contains(roomThread)) return roomThread;
       const box = document.createElement("div");
@@ -7350,7 +7491,20 @@
       );
       const txt = document.createElement("div");
       txt.className = "rs-sec-text room-system-text";
-      txt.textContent = String(e.text || "");
+      /* 群综合会把每个成员的答复拼在一行里，未配模型时同一句「收到，正在用
+         MoonBit 内核处理」能出现三次，后面还跟着 Host 的执行回执。超长或有回执
+         的系统行照样如实保留，但默认折叠，否则一进群就是一屏机器话。 */
+      const sysSplit = roomSplitReceipt(String(e.text || ""));
+      const sysText = sysSplit.head || sysSplit.receipt;
+      if (sysSplit.receipt || sysText.length > ROOM_SYSTEM_FOLD_AT) {
+        const cut = sysText.indexOf("\n") > 0 ? sysText.indexOf("\n") : Math.min(sysText.length, 160);
+        txt.textContent = sysText.slice(0, cut).trim() + "…";
+        el.appendChild(txt);
+        const full = sysSplit.receipt ? sysSplit.head + "\n" + sysSplit.receipt : sysText;
+        el.appendChild(roomFoldBlock(wavegT("roomMoreText").replace("{n}", String(full.length)), full));
+        return roomAppend(el);
+      }
+      txt.textContent = sysText;
       el.appendChild(txt);
       return roomAppend(el);
     }
@@ -7379,7 +7533,9 @@
       return el;
     }
     function renderRoomBotReply(e, isError) {
-      const bodyText = isError ? "" : String(e.text || "");
+      const full = isError ? "" : String(e.text || "");
+      const split = roomSplitReceipt(full);
+      const bodyText = split.head;
       const el = addMsg("assistant", bodyText, { actions: false });
       el.classList.add(isError ? "room-error" : "room-reply");
       el.style.setProperty("--bot-avatar", avatarColorFor(e.bot_id || e.speaker || ""));
@@ -7399,6 +7555,8 @@
         why.textContent = roomFailReason(e.error || "");
         body.appendChild(why);
       } else {
+        // 人话（head）已经画进气泡；执行回执收进折叠块，首屏不再是一堵墙。
+        if (split.receipt) body.appendChild(roomFoldBlock(wavegT("roomReceipt"), split.receipt));
         if (e.text_truncated) {
           const clip = document.createElement("div");
           clip.className = "rr-sec-text";
@@ -7468,11 +7626,17 @@
         const txt = document.createElement("span");
         txt.className = "rr-sec-text";
         const rawSum = String((s && s.summary) || "");
+        // 分区摘要里同样会带上执行回执（Host FFI results applied + JSON）。
+        // 和 bot 气泡一个尺子：人话留一行，回执折起来，否则汇总卡又是一堵墙。
+        const secSplit = roomSplitReceipt(rawSum);
         txt.textContent = (s && s.ok)
-          ? rawSum + (s.summary_truncated ? roomClipNote() : "")
+          ? secSplit.head + (s.summary_truncated ? roomClipNote() : "")
           : roomFailReason(roomStripParen(rawSum)) + (s.summary_truncated ? roomClipNote() : "");
         row.appendChild(txt);
         body.appendChild(row);
+        if (s && s.ok && secSplit.receipt) {
+          body.appendChild(roomFoldBlock(wavegT("roomReceipt"), secSplit.receipt));
+        }
       }
       roomArtifacts(body, e.artifacts);
       return roomAppend(el);
@@ -7556,6 +7720,24 @@
         return null;
       }
     }
+    /* 进群之前必须把上一条会话的痕迹清干净。
+       以前 openRoomChat 只 clearWelcome()，然后把群 thread **追加**到 #log 末尾，
+       于是刚点开一个群，屏幕上半截还挂着刚才 Bot 私聊的回复、下面才是
+       「群聊记录（最近 1 条）」—— 用户看到的就是「明明没开始聊，对话框就很多
+       内容」。私聊是整块替换 #log，群聊也必须整块替换。 */
+    function clearLogForRoom() {
+      clearRoomWorking();
+      log.innerHTML = "";
+      roomThread = null;
+      streamEl = null;
+      const tpEl = document.getElementById("turn-progress");
+      if (tpEl) {
+        tpEl.style.display = "none";
+        tpEl.dataset.state = "idle";
+      }
+      const liveEl = document.getElementById("agent-step-live");
+      if (liveEl && liveEl.parentNode) liveEl.parentNode.removeChild(liveEl);
+    }
     async function openRoomChat(rm) {
       if (!rm || !rm.id) return;
       composerRoom = { id: rm.id, title: rm.title || rm.id };
@@ -7564,6 +7746,7 @@
       const input2 = document.getElementById("composer") ? document.querySelector("#composer #text") : null;
       if (input2) input2.placeholder = wavegT("roomComposerPh");
       clearWelcome();
+      clearLogForRoom();
       // 真实、持久的群 transcript（rooms.json）——空群如实说「还没有消息」，不造历史。
       await loadRoomBotNames();
       await renderRoomTranscript(rm.id);
@@ -16578,6 +16761,7 @@
         roomEmpty: "还没有群组。",
         roomListReadFail: "群组列表暂时读不到（存储不可读）—— 这不是没有群，恢复后列表仍在。",
         roomMembers: "位成员",
+        roomRenameHint: "双击改名（Enter 保存，Esc 取消）",
         roomExit: "退出群聊",
         roomInfo: "群资料",
         roomRouteHint: "@Name 定向 · @everyone 全体 · 无 @ 由 Bot 自行决定",
@@ -16602,6 +16786,8 @@
         roomFailBusy: "同样的任务正在执行中，本次没有重复发起。",
         roomTurnTimeout: "群协作这一轮超过时限没有收尾，成员可能还在路上。请重发一次或缩短任务。",
         roomTextClipped: "（内容较长，这里只保留开头，完整正文见上方该成员的回复）",
+        roomReceipt: "执行回执（点击展开）",
+        roomMoreText: "展开全文（{n} 字）",
         roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（本轮由各 Bot 自行决定是否应答）。",
         roomReportDeduped: "这件事已经汇报过了：同一任务不会重复执行成员回合。",
         roomTranscriptReadFail: "群聊记录暂时读不到（存储不可读）—— 这不代表群里没有消息，恢复后历史仍在。",
@@ -17030,6 +17216,10 @@
         riNoRoom: "先打开一个群聊再管理定时任务。",
         riMembersUnknown: "成员名单读不到",
         riAddMember: "＋ 添加成员",
+        riRenameEmpty: "群名称不能为空",
+        riRenameTooLong: "群名称最多 40 字",
+        riRenameFail: "改名没有成功，请重试",
+        riRenameDup: "已保存。注意：还有 {n} 个同名群，侧栏里可能分不清。",
         riMemberFull: "群已满 {n} 人",
         riMemberRemove: "移除成员",
         riMemberAddEmpty: "Bot 库里没有可加入的 Bot。",
@@ -17513,6 +17703,7 @@
         roomEmpty: "還沒有群組。",
         roomListReadFail: "群組清單暫時讀不到（儲存不可讀）—— 這不是沒有群，恢復後清單仍在。",
         roomMembers: "位成員",
+        roomRenameHint: "雙擊改名（Enter 儲存，Esc 取消）",
         roomExit: "退出群聊",
         roomInfo: "群資料",
         roomRouteHint: "@Name 定向 · @everyone 全體 · 無 @ 由 Bot 自行決定",
@@ -17537,6 +17728,8 @@
         roomFailBusy: "同樣的任務正在執行中，本次沒有重複發起。",
         roomTurnTimeout: "群協作這一輪超過時限沒有收尾，成員可能還在路上。請重發一次或縮短任務。",
         roomTextClipped: "（內容較長，這裡只保留開頭，完整正文見上方該成員的回覆）",
+        roomReceipt: "執行回執（點擊展開）",
+        roomMoreText: "展開全文（{n} 字）",
         roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（本輪由各 Bot 自行決定是否應答）。",
         roomReportDeduped: "這件事已經匯報過了：同一任務不會重複執行成員回合。",
         roomTranscriptReadFail: "群聊記錄暫時讀不到（儲存不可讀）—— 這不代表群裡沒有訊息，恢復後歷史仍在。",
@@ -17961,6 +18154,10 @@
         riNoRoom: "先打開一個群聊再管理定時任務。",
         riMembersUnknown: "成員名單讀不到",
         riAddMember: "＋ 新增成員",
+        riRenameEmpty: "群名稱不能為空",
+        riRenameTooLong: "群名稱最多 40 字",
+        riRenameFail: "改名沒有成功，請重試",
+        riRenameDup: "已儲存。注意：還有 {n} 個同名群，側欄裡可能分不清。",
         riMemberFull: "群已滿 {n} 人",
         riMemberRemove: "移除成員",
         riMemberAddEmpty: "Bot 庫裡沒有可加入的 Bot。",
@@ -18444,6 +18641,7 @@
         roomEmpty: "No groups yet.",
         roomListReadFail: "Group list is unreadable right now (store unavailable) — these groups are not gone; the list returns when it recovers.",
         roomMembers: "members",
+        roomRenameHint: "double-click to rename (Enter saves, Esc cancels)",
         roomExit: "Leave group",
         roomInfo: "Group info",
         roomRouteHint: "@Name directed · @everyone all · no @ = bots decide",
@@ -18468,6 +18666,8 @@
         roomFailBusy: "The same task is already running, so it was not started twice.",
         roomTurnTimeout: "This group round did not finish within the time limit; members may still be working. Send it again or shorten the task.",
         roomTextClipped: " (long content truncated here; the member's reply above keeps the full text)",
+        roomReceipt: "Execution receipt (click to expand)",
+        roomMoreText: "Show full text ({n} chars)",
         roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (each bot decides whether to reply this round).",
         roomReportDeduped: "Already reported: the same task does not run member turns twice.",
         roomTranscriptReadFail: "Room history is unreadable right now (store unavailable) — that does not mean the room is empty; the messages come back when it recovers.",
@@ -18892,6 +19092,10 @@
         riNoRoom: "Open a group chat first to manage its scheduled tasks.",
         riMembersUnknown: "Member list could not be read",
         riAddMember: "+ Add member",
+        riRenameEmpty: "Group name cannot be empty",
+        riRenameTooLong: "Group name can be at most 40 characters",
+        riRenameFail: "Rename failed, please try again",
+        riRenameDup: "Saved. Note: {n} other group(s) share this name, which may be confusing in the sidebar.",
         riMemberFull: "Group is full ({n})",
         riMemberRemove: "Remove member",
         riMemberAddEmpty: "No bots left to add.",
@@ -20344,6 +20548,12 @@
             // 设置面板发起的操作不该在对话里流出打字效果（见 runUserTurn 的
             // settingsAction）：流式片段一律丢弃，状态只在设置面板回报。
             if (muteLlmStream) return;
+            /* 私聊的打字气泡只属于私聊面。在群里时（composerRoom 有值）#log 装的是
+               群 thread，这个占位气泡一塞就落在 thread 外面 —— 用户看到的就是
+               「明明没开始聊，对话框里就有一个 Bit Bot 的空回复」。流式数据照旧
+               收（phase:"end" 还要用它收尾），只是不往群聊的 #log 上画；
+               回到私聊时 openSession 会从 session store 整份重画，不会丢。 */
+            const canPaintStream = !composerRoom;
             if (chunk.phase === "start" || chunk.phase === "provider") {
               if (!streamEl) {
                 streamEl = document.createElement("div");
@@ -20361,7 +20571,7 @@
                 typing.className = "typing";
                 for (let ti = 0; ti < 3; ti++) typing.appendChild(document.createElement("i"));
                 sb.appendChild(typing);
-                log.appendChild(streamEl);
+                if (canPaintStream) log.appendChild(streamEl);
               }
               return;
             }
@@ -20373,7 +20583,7 @@
                 streamEl.innerHTML = '<div class="role">assistant</div><div class="body"></div>';
                 // G-28: Grok-style avatar + sender name above the reply.
                 streamEl.insertBefore(botSpeakerHead(dmBotInfo()), streamEl.querySelector(".body"));
-                log.appendChild(streamEl);
+                if (canPaintStream) log.appendChild(streamEl);
               }
               const sbody = streamEl.querySelector(".body");
               sbody.textContent =
@@ -20385,11 +20595,16 @@
               if (streamEl) {
                 streamEl.dataset.streaming = "0";
                 if (chunk.partial) applyLinkBodyTo(streamEl.querySelector(".body"), chunk.partial);
+                /* 这一轮是在群里「隐身」收完的（从没画进 #log）：把它丢掉，
+                   否则下一轮私聊会命中 `if (!streamEl)` 而不新建占位气泡，
+                   回复就永远画不出来了。 */
+                if (!document.contains(streamEl)) streamEl = null;
               }
               return;
             }
             if (chunk.phase === "error") {
-              addMsg("assistant", "LLM: " + (chunk.error || "failed"));
+              // 同理：私聊的失败回执也不往群聊面里塞。
+              if (canPaintStream) addMsg("assistant", "LLM: " + (chunk.error || "failed"));
             }
           });
         }

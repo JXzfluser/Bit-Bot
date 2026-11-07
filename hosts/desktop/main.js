@@ -2490,6 +2490,19 @@ ipcMain.handle("bitbot:rooms:members:update", async (_e, payload) => {
   }
 });
 
+/* 群改名（此前没有入口：名字只在建群那一刻定，之后改不了）。
+   校验与落盘都在 Host（空名 / 超长 / 群不存在 / 重名各有一套返回），
+   这里只做转发；写成功后广播 rooms-changed，侧栏与群 banner 一起换名。 */
+ipcMain.handle("bitbot:rooms:rename", async (_e, payload) => {
+  try {
+    const res = surface.roomRename(payload || {});
+    if (res && res.ok) broadcastRoomsChanged();
+    return res;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+});
+
 /* GP-143/144/145/146 — 群 Bot 协作真回合（Host 产品路径）。
  *
  * engine（product_surface.orchestrateRoom）owns 路由/护栏/聚合与 transcript schema;

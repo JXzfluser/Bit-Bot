@@ -121,6 +121,10 @@ contextBridge.exposeInMainWorld("bitbot", {
     members: {
       update: (payload) => ipcRenderer.invoke("bitbot:rooms:members:update", payload || {}),
     },
+    // 群改名。名字以前只在建群那一刻定得下来，之后界面上没有任何入口能改，
+    // 建错一次就永久留在侧栏（同名群多了还分不清）。校验与落盘都在 Host：
+    // 空名 / 超长 / 群不存在各有拒绝码，重名允许但把重名群 id 带回来。
+    rename: (payload) => ipcRenderer.invoke("bitbot:rooms:rename", payload || {}),
     // 群资料库：读 / 加条目。写侧只碰 rooms.json 的 room.library，
     // 并且只收 repo 内的路径 —— 渲染层不自己开文件、不自己改库。
     library: {
