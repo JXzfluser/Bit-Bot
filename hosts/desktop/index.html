@@ -7620,6 +7620,9 @@
     const ROOM_RENDER_CAP = 60;
     let roomThread = null;
     const roomWorking = new Map();
+    // KP-01: one progress reducer per (room, bot), fed by the Host's pushed
+    // rows. Keyed exactly like roomWorking so a frame lands on the right card.
+    const roomProgress = new Map();
     let roomBotNames = {};
     // G-28: bot id → { name, avatar } cache, used by the DM reply head
     // (avatar + sender name). Populated in refreshBots alongside roomBotNames.
@@ -8104,6 +8107,7 @@
         if (el && el.parentNode) el.parentNode.removeChild(el);
       });
       roomWorking.clear();
+      roomProgress.clear();
     }
     function renderRoomWorking(ev) {
       const roomId = String((ev && ev.room_id) || "");
@@ -8114,18 +8118,49 @@
         el.className = "msg assistant room-working";
         el.style.setProperty("--bot-avatar", avatarColorFor(r.id));
         el.dataset.roomBot = roomId + "|" + r.id;
+        el.dataset.roomBotName = r.name || roomSpeakerName(r.id);
         const body = document.createElement("div");
         body.className = "body";
         const dot = document.createElement("span");
         dot.className = "rw-dot";
         body.appendChild(dot);
         const txt = document.createElement("span");
-        txt.textContent = (r.name || roomSpeakerName(r.id)) + " · " + wavegT("roomWorking");
+        txt.className = "rw-text";
+        txt.textContent = el.dataset.roomBotName + " · " + wavegT("roomWorking");
         body.appendChild(txt);
         el.appendChild(body);
         roomAppend(el);
         roomWorking.set(roomId + "|" + r.id, el);
       }
+    }
+    /* KP-01: the Host pushes one row per effect (start/done/host_continuing) for
+       each responder. Feed it through the SAME reducer + label table the
+       single-turn row uses (window.__bitbotProgress / progressLabel) so the step
+       beside the Bot's name is the category the Host actually executed — never a
+       scripted animation, never a second copy of the protocol. */
+    function applyRoomProgress(ev) {
+      if (!ev || typeof ev !== "object") return;
+      const roomId = String(ev.room_id || "");
+      const botId = String(ev.bot_id || "");
+      if (!roomId || !botId) return;
+      if (!composerRoom || composerRoom.id !== roomId) return;
+      const proto = window.__bitbotProgress;
+      if (!proto || !proto.createProgressState) return;
+      const key = roomId + "|" + botId;
+      let store = roomProgress.get(key);
+      if (!store) {
+        store = proto.createProgressState();
+        roomProgress.set(key, store);
+      }
+      store.apply(ev);
+      const el = roomWorking.get(key);
+      if (!el) return;
+      const txt = el.querySelector(".rw-text");
+      if (!txt) return;
+      const st = store.state;
+      const name = el.dataset.roomBotName || roomSpeakerName(botId);
+      const step = st.total > 0 && st.active ? " (" + st.index + "/" + st.total + ")" : "";
+      txt.textContent = name + " · " + progressLabel(st) + step;
     }
     async function renderRoomTranscript(roomId) {
       clearRoomWorking();
@@ -8980,6 +9015,9 @@
     if (window.bitbot && window.bitbot.rooms) {
       if (window.bitbot.rooms.onRoomOrchestrating) {
         window.bitbot.rooms.onRoomOrchestrating((ev) => renderRoomWorking(ev));
+      }
+      if (window.bitbot.rooms.onRoomTurnProgress) {
+        window.bitbot.rooms.onRoomTurnProgress((ev) => applyRoomProgress(ev));
       }
       if (window.bitbot.rooms.onRoomUpdated) {
         window.bitbot.rooms.onRoomUpdated((ev) => {

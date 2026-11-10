@@ -4490,6 +4490,71 @@ echo "    （runner 的 ctx.cancelPromise 被 resolve）、C3 转录落 cancelle
 echo "    非写死，注入假回执 C2/C3 必须翻红；真渲染钉按钮空闲藏→忙显形顶掉麦克风→点完收起→空按"
 echo "    如实说「没有在执行的回合」。三层各管一段，缺一条都可能是假绿。"
 
+echo "== G-115 群进度死线要接活：@Bot 干活时名字旁立刻出现当前步（KP-01）=="
+# 对标 Grok 的「实时显示 Bot 工作进度」。翻代码发现一条死线：main.js 的 roomRuntime.onProgress
+# 一直在广播 bitbot:room-turn-progress，preload 却没有对应通道、渲染侧没有 handler —— 群里
+# @ 一个 Bot 干活，名字旁永远只有静态「工作中…」，整段沉默到回复落地。两层一起钉：
+# 静态接线（线接上了、用的是共享协议不是第二份副本）→ 真渲染（帧真推到渲染进程、名字旁真出现
+# 当前步），外加注入对照（摘掉 Host 广播那行 → 渲染进程一条帧都收不到，P4 必须翻红）。
+# ① 静态接线门 prove_room_progress_wiring（W1..W5 + 四条源码负向对照 N1..N4）
+if timeout 120 node scripts/prove_room_progress_wiring.js > /tmp/g115-static.log 2>&1; then
+  ok "G-115 静态接线 prove_room_progress_wiring（$(grep 'prove_room_progress_wiring: PASS=' /tmp/g115-static.log)）"
+else
+  bad "G-115 静态接线（见 /tmp/g115-static.log；$(grep 'prove_room_progress_wiring: PASS=' /tmp/g115-static.log)）"
+fi
+for g115_w in "W1 " "W2 " "W3 " "W4 " "W5 " "N1 " "N2 " "N3 " "N4 "; do
+  if grep -q "✓ $g115_w" /tmp/g115-static.log; then ok "G-115 静态锚点：$g115_w"; else bad "G-115 静态锚点没跑绿：$g115_w"; fi
+done
+# ② 真渲染门 + ③ 注入对照：静态证明不了「帧真的推到了渲染进程、名字旁真的出现当前步」。
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g115_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g115_xvfb=(xvfb-run -a)
+  fi
+  if timeout 300 ${g115_xvfb[@]+"${g115_xvfb[@]}"} node scripts/e2e_desktop_room_progress.mjs > /tmp/g115-e2e.log 2>&1; then
+    ok "G-115 真渲染 e2e_desktop_room_progress（$(grep 'e2e_desktop_room_progress: PASS=' /tmp/g115-e2e.log)）"
+  else
+    bad "G-115 真渲染（见 /tmp/g115-e2e.log；$(grep 'e2e_desktop_room_progress: PASS=' /tmp/g115-e2e.log)）"
+  fi
+  for g115_p in "P2 preload 暴露" "P4 群里 @A 干活" "P5 每帧都带" "P6 Bot 名字旁出现当前步" "P7 帧序列含 start"; do
+    if grep -q "✓ $g115_p" /tmp/g115-e2e.log; then ok "G-115 渲染锚点：$g115_p"; else bad "G-115 渲染锚点没跑绿：$g115_p"; fi
+  done
+  # ③ 注入对照：把 Host 广播源行摘掉（复刻修之前的死线），同一把尺子必须翻红，且红的正是 P4
+  #    —— 否则它量的是漂亮字符串不是真进度。副本是 main.js 的同目录兄弟（__dirname 不变，
+  #    require/index.html 照常解析），跑完即删。
+  g115_mut="hosts/desktop/main-nobroadcast-g115.js"
+  node -e '
+    const fs = require("fs");
+    const line = "  onProgress: (row) => broadcast(\"bitbot:room-turn-progress\", row),\n";
+    const t = fs.readFileSync("hosts/desktop/main.js", "utf8");
+    if (!t.includes(line)) { console.error("G-115 注入对照找不到广播源行"); process.exit(2); }
+    fs.writeFileSync(process.argv[1], t.replace(line, ""));
+  ' "$g115_mut"
+  if [ -f "$g115_mut" ]; then
+    BITBOT_ROOM_PROGRESS_MAIN="$PWD/$g115_mut" timeout 300 ${g115_xvfb[@]+"${g115_xvfb[@]}"} node scripts/e2e_desktop_room_progress.mjs > /tmp/g115-neg.log 2>&1
+    g115_neg_exit=$?
+    rm -f "$g115_mut"
+    if [ "$g115_neg_exit" -eq 0 ]; then
+      bad "G-115 注入对照没红：摘掉广播照样过门，说明这条门是假门"
+    elif grep -q "✗ P4" /tmp/g115-neg.log; then
+      ok "G-115 注入对照真红：摘掉 Host 广播 → 收不到帧，红的正是 P4（$(grep 'e2e_desktop_room_progress: PASS=' /tmp/g115-neg.log)）"
+    else
+      bad "G-115 注入对照跑红了，但红的不是 P4（见 /tmp/g115-neg.log）"
+    fi
+  else
+    bad "G-115 注入对照副本没造出来（找不到广播源行？）"
+  fi
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-115 真渲染门未跑（SKIP ≠ PASS；静态门已在上面跑过）"
+fi
+echo "  · G-115 为什么长出来：对标 Grok「实时显示 Bot 工作进度 / 长时间任务有中间更新」。Host 早就"
+echo "    在广播群进度，渲染层却订阅不到 —— 进度是 UI 猜的（静态「工作中…」），不是 Host 推的。"
+echo "    接活后群里 @Bot 说一句活，名字旁立刻出现协议标签的当前步（kernel-mechanism-parity §4 KP-01）。"
+echo "  · G-115 判据：静态 W1..W5 钉接线（preload 通道 / handler 用共享协议落到 .rw-text / 订阅 /"
+echo "    working 卡留落点 / Host 广播源行），N1..N4 四条源码负向对照；真渲染 P2 通道订阅得到、"
+echo "    P4 收到 ≥1 帧、P5 每帧按 bot/群分、P6 名字旁出现当前步、P7 序列含 start；注入对照摘掉"
+echo "    Host 广播那行 → P4 必须翻红。静态 + 真渲染各管一段，缺一条都可能是假绿。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

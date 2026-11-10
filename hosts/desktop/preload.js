@@ -162,6 +162,22 @@ contextBridge.exposeInMainWorld("bitbot", {
       ipcRenderer.on("bitbot:room-updated", handler);
       return () => ipcRenderer.removeListener("bitbot:room-updated", handler);
     },
+    // KP-01: the Host already broadcasts a per-effect progress row for every
+    // room responder turn (main.js roomRuntime.onProgress). Without this channel
+    // the renderer could only guess "工作中…" and stay silent until the reply
+    // landed. The row carries { phase, kind, category, label_key, index, total,
+    // bot_id, room_id, … } — the same protocol the single-turn reducer consumes.
+    onRoomTurnProgress: (cb) => {
+      const handler = (_e, ev) => {
+        try {
+          cb(ev);
+        } catch (_) {
+          /* ignore */
+        }
+      };
+      ipcRenderer.on("bitbot:room-turn-progress", handler);
+      return () => ipcRenderer.removeListener("bitbot:room-turn-progress", handler);
+    },
     // GP-146: the directory itself (not just one room's transcript) changed —
     // e.g. a room dropped below 2 members. Payload carries ok:false when the
     // store is unreadable, so the renderer can say so instead of "no groups".

@@ -9716,3 +9716,61 @@ widget 分支短路 → "选项卡片转成文字"翻假；群成员去掉 `!is_
 - 没有回滚按钮（有自动备份，要回退得手工拷回三个文件）。
 - 段内滚动在小屏上仍是"要点一下才看到全部"；没有做"展开全部"。
 - 详见 `docs/grok-bot-migration.md`。
+
+## 8.105 群进度死线接活：@Bot 干活时名字旁立刻出现当前步（KP-01，2026-11-10）
+
+对标 Grok 的「实时显示 Bot 工作进度 / 长时间任务有中间更新」（kernel-mechanism-parity §4 第一批
+KP-01，排在 KP-02 之后）。翻代码发现的不是一处缺功能，是**一条已经存在却没人接的死线**：
+
+- `main.js:2855` 的 `roomRuntime.onProgress` 一直在 `broadcast("bitbot:room-turn-progress", row)`；
+- `preload.js` 里**没有对应通道**，`index.html` 里**没有 handler** —— 全仓对这条通道零订阅。
+
+后果：群里 @ 一个 Bot 说一句活，名字旁边永远只有一句静态「工作中…」，整段沉默到回复落地。
+进度是 UI **猜**的（一张不动的卡），不是 Host **推**的。单会话回合早就有进度行（`onTurnProgress`
+→ `createProgressState`），群回合却落在协议之外。
+
+### 接法：不造第二份协议
+
+渲染侧新增 `applyRoomProgress(ev)`，喂的是**同一个** `window.__bitbotProgress.createProgressState()`
+reducer、用的是**同一张** `progressLabel(st)` 标签表（单回合进度行 :5626 那份）。Host 推来的 row
+形状（`phase/kind/category/label_key/index/total` + `bot_id/room_id`，见 `room_runtime.js:150`）
+正好就是 reducer 吃的那份 —— 所以群里显示的 category 一定是 Host 真执行的那个，不会是动画编的。
+
+- `preload.js` 加 `rooms.onRoomTurnProgress`，绑 `bitbot:room-turn-progress`（含解绑），与
+  `onRoomOrchestrating` 同形。
+- 每个 `(room, bot)` 一个 reducer（`roomProgress` Map，键与 `roomWorking` 一致），帧落到哪张卡不会串。
+- `renderRoomWorking` 给文本 span 打 `.rw-text` 标记、存 `dataset.roomBotName`，进度帧才有落点；
+  收到帧就把 `名字 · 工作中…` 改写成 `名字 · 协议标签 (index/total)`。
+- `clearRoomWorking` 顺手清 `roomProgress`，回合收线 / 重绘不残留上一轮的步。
+
+### 可感面
+
+命令：`node scripts/e2e_desktop_room_progress.mjs`，打印收到的帧序列：
+
+```
+start | llm_chat | model_reply | progModel | bot=bot-73c951
+done  | llm_chat | model_reply | progModel | bot=bot-73c951
+```
+
+屏幕上：群里 @KP01Alpha 说一句活，名字旁立刻从「工作中…」变成「**KP01Alpha · 模型正在回复**」
+（桩故意慢 3s，当前步在回合收线前看得见）。以前是整段沉默到回复落地。
+
+### 判据（G-115，三层一起钉）
+
+- 静态 `prove_room_progress_wiring.js` **9/0**：W1 preload 通道（含解绑）/ W2 handler 用共享协议落到
+  `.rw-text`（不是第二份副本）/ W3 订阅 / W4 working 卡留落点 / W5 Host 广播源行；N1..N4 四条源码
+  负向对照（改绑别的通道 / 删订阅 / 摘 Host 广播 / 把标签写死「工作中」）对应断言必须翻假。
+- 真渲染 `e2e_desktop_room_progress.mjs` **7/0**：真 Electron + 真内核 + 本地桩，P2 通道订阅得到、
+  P4 收到 ≥1 帧、P5 每帧带 bot_id/room_id 且匹配被点名的 Bot、P6 名字旁出现当前步、P7 序列含 start。
+  独立 user-data-dir，数据根用仓库 data/（空临时根会让内核崩），rooms/sessions/bots 跑前快照跑后还原。
+- **注入对照**：把 `main.js:2855` 那行广播摘掉（同目录兄弟副本，`__dirname` 不变），同一把尺子
+  **3/4 翻红，红的正是 P4**（`frames=0`）；P1/P2/P3 照过 —— 证明红的是死线本身，不是 collateral。
+- G-115 挂进矩阵 focused harness **17/0**（静态 9 锚 + 真渲染 5 锚 + 注入对照 + 两条合计），
+  `HAVE_ELECTRON_UI=1` 真跑；缺 electron 时诚实 SKIP（SKIP ≠ PASS，静态门照跑）。
+
+### 残留
+
+- 群进度目前只显示 category 级标签（「模型正在回复 / 正在生成文件」）+ index/total，没有把具体
+  command（「正在读 X 文件」）摊到名字旁 —— 与单回合进度行同口径，先保证「推来的、不串 Bot」。
+- 多 responder 同时干活时各自一张卡各自推进，已按 bot 分键；但综合回合（synthesis）的进度还没单独
+  上卡（它走的是另一条 turn，本批只接成员回合的死线）。
