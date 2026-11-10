@@ -2214,6 +2214,17 @@ else
   ok "G-50 负向对照真红：截断版被抓住（$(tail -1 /tmp/g50-neg.log)）"
 fi
 rm -f /tmp/g50-negative-report.md
+# RH-02 负向对照（scoped 查重仍有牙）：把某个父节下的「### 门禁」就地复制成两份，
+# 同一父节内重复必须翻红 —— 证明「跨节通用子节标题允许重复」不是「一律放行」的豁免洞。
+node -e 'const fs=require("fs");const L=fs.readFileSync("docs/design/desktop-target/report.md","utf8").split("\n");const i=L.findIndex(l=>l.trim()==="### 门禁");if(i<0){console.error("no 门禁 heading");process.exit(2);}fs.writeFileSync("/tmp/g50-rh02-dup.md",[...L.slice(0,i+1),L[i],...L.slice(i+1)].join("\n"));'
+if timeout 120 node scripts/prove_report_history_intact.mjs /tmp/g50-rh02-dup.md > /tmp/g50-rh02-neg.log 2>&1; then
+  bad "G-50 RH-02 负向对照没红：同一父节下复制「门禁」照样过门，scoped 查重成了豁免洞"
+else
+  grep -q "✗ RH-02" /tmp/g50-rh02-neg.log \
+    && ok "G-50 RH-02 负向对照真红：同一父节内复制子节被抓住（跨节合法、同节重复翻红）" \
+    || bad "G-50 RH-02 负向对照跑红了，但红的不是 RH-02（见 /tmp/g50-rh02-neg.log）"
+fi
+rm -f /tmp/g50-rh02-dup.md
 grep -q "RH-06" /tmp/g50-report.log \
   && grep -q "RH-01" /tmp/g50-neg.log \
   && ok "G-50 锚点在：RH-06 专门盯「HEAD 里已提交的标题在当前文件消失」，这正是 227e4ed 事故的形状" \
@@ -4416,6 +4427,68 @@ echo "    #ca-cn-box）。负向对照三条：把入站地址搬出渠道卡、
 echo "    在折叠卡里再抄一遍标题 —— 每一条都必须在同一把尺子上翻红。"
 echo "  · 同一件事在真机上另有一条：e2e_desktop_mobile_control MC-10 反转（往 #secrets-panel"
 echo "    里 appendChild 一颗「生成配对码」，判据必须当场翻红再删掉翻绿）。"
+
+echo "== G-114 「停止」要给回执，群回合必须真能取消（KP-02）=="
+# 三层一起钉：静态接线（线接上了）→ 行为（取消真流到执行层、转录落 cancelled）→ 真渲染
+# （按钮真的出现/点得动/收得回）。报告 §8.101 早写了前两条门（9/0、7/0），却一直没人把它们
+# 挂进矩阵 —— CI 从不跑就是假绿。这里补齐，并补上 §8.101 残留里「群取消后 transcript 那行
+# cancelled 没断言」的缺口（行为门 C3）。
+# ① 静态接线门 prove_m53b_turn_cancel（T1..T5 + 四条源码负向对照 T6a..d）
+if timeout 120 node scripts/prove_m53b_turn_cancel.js > /tmp/g114-static.log 2>&1; then
+  ok "G-114 静态接线 prove_m53b_turn_cancel（$(grep 'prove_m53b_turn_cancel: PASS=' /tmp/g114-static.log)）"
+else
+  bad "G-114 静态接线（见 /tmp/g114-static.log；$(grep 'prove_m53b_turn_cancel: PASS=' /tmp/g114-static.log)）"
+fi
+for g114_t in "T1 " "T2 " "T3 " "T4 " "T5 " "T6a " "T6b " "T6c " "T6d "; do
+  if grep -q "✓ $g114_t" /tmp/g114-static.log; then ok "G-114 静态锚点：$g114_t"; else bad "G-114 静态锚点没跑绿：$g114_t"; fi
+done
+# ② 行为门 prove_turn_cancel_receipt：真走 dispatchRoomTurn → orchestrateRoom → roomCancelScope。
+if timeout 120 node scripts/prove_turn_cancel_receipt.js > /tmp/g114-cancel.log 2>&1; then
+  ok "G-114 行为 prove_turn_cancel_receipt（$(grep 'prove_turn_cancel_receipt: PASS=' /tmp/g114-cancel.log)）"
+else
+  bad "G-114 行为（见 /tmp/g114-cancel.log；$(grep 'prove_turn_cancel_receipt: PASS=' /tmp/g114-cancel.log)）"
+fi
+# 逐锚独立核（不靠子门自报的合计数）：C1..C5 每条都真跑绿才算数。
+for g114_a in "C1 " "C2 " "C3 " "C4 " "C5 "; do
+  if grep -q "✓ $g114_a" /tmp/g114-cancel.log; then ok "G-114 行为锚点：$g114_a"; else bad "G-114 行为锚点没跑绿：$g114_a"; fi
+done
+# 行为门负向对照：把 Host 取消回执换成恒回 0 的假件（复刻修之前「按了停止、群回合却没人碰
+# 取消句柄」），同一把尺子必须翻红，且红的正是 C2/C3 —— 否则它量的是漂亮字符串不是真取消。
+if timeout 120 node scripts/prove_turn_cancel_receipt.js --inject-fake-receipt > /tmp/g114-neg.log 2>&1; then
+  bad "G-114 负向对照没红：假回执照样过门，说明这条门是假门"
+else
+  grep -q "✗ C2" /tmp/g114-neg.log && grep -q "✗ C3" /tmp/g114-neg.log \
+    && ok "G-114 负向对照真红：假回执被抓住，红的正是 C2/C3（$(grep 'prove_turn_cancel_receipt: PASS=' /tmp/g114-neg.log)）" \
+    || bad "G-114 负向对照跑红了，但红的不是 C2/C3（见 /tmp/g114-neg.log）"
+fi
+# ③ 真渲染门 e2e_desktop_turn_cancel：静态/行为都证明不了「按钮真的在界面上出现、点下去真的
+#    收得回」—— 这条用真 Electron + 慢 8s 的桩，空闲藏 → 回合起来显形顶掉麦克风 → 点完成就
+#    收起 → 空闲再点如实回 had_active_turn:false。独立 user-data-dir，会话文件跑前快照跑后还原。
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g114_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g114_xvfb=(xvfb-run -a)
+  fi
+  if timeout 300 ${g114_xvfb[@]+"${g114_xvfb[@]}"} node scripts/e2e_desktop_turn_cancel.mjs > /tmp/g114-e2e.log 2>&1; then
+    ok "G-114 真渲染 e2e_desktop_turn_cancel（$(grep 'e2e_desktop_turn_cancel: PASS=' /tmp/g114-e2e.log)）"
+  else
+    bad "G-114 真渲染（见 /tmp/g114-e2e.log；$(grep 'e2e_desktop_turn_cancel: PASS=' /tmp/g114-e2e.log)）"
+  fi
+  for g114_e in "停止按钮显形且有真实尺寸" "顶掉了麦克风的位置" "按下停止后回合结算" "没有在执行的回合"; do
+    if grep -q "$g114_e" /tmp/g114-e2e.log; then ok "G-114 渲染锚点：$g114_e"; else bad "G-114 渲染锚点没跑绿：$g114_e"; fi
+  done
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-114 真渲染门未跑（SKIP ≠ PASS；静态+行为门已在上面跑过）"
+fi
+echo "  · G-114 为什么长出来：对标 Grok 的 InterruptGrokBotAgentRun 回 had_active_run —— 按「停止」"
+echo "    得知道到底停没停到东西。翻代码才发现更基本：#turn-cancel 从加上那天起就带 hidden，全仓"
+echo "    没人取消隐藏它，「停止」这个动作在界面上根本不存在；群回合的取消句柄外层停止按钮也够不着"
+echo "    （kernel-mechanism-parity §4 KP-02 / 报告 §8.101）。"
+echo "  · G-114 判据：静态 T1..T5 钉接线（preload 两口 / 忙闲计数配对 / 导出唯一 / 回执算出来 /"
+echo "    显隐由信号驱动），T6a..d 四条源码负向对照；行为 C1 闲→0、C2 忙→≥1 且取消信号真到执行层"
+echo "    （runner 的 ctx.cancelPromise 被 resolve）、C3 转录落 cancelled 那行、C4 收尾自摘、C5 回执"
+echo "    非写死，注入假回执 C2/C3 必须翻红；真渲染钉按钮空闲藏→忙显形顶掉麦克风→点完收起→空按"
+echo "    如实说「没有在执行的回合」。三层各管一段，缺一条都可能是假绿。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 

@@ -9445,9 +9445,12 @@ CSS 那边偏偏把它的位置都排好了（`body.grok-ui #composer .row:has(#
 | 脚本 | 结果 | 覆盖 |
 | --- | --- | --- |
 | `prove_m53b_turn_cancel.js` | **9/0** | 四条正向 + 四条负向对照（注释掉导出 / 显隐写死 false / 回执写死 true / 删掉 finally 的 −1） |
+| `prove_turn_cancel_receipt.js` | **6/0** | 真走产品路径 dispatchRoomTurn → orchestrateRoom → roomCancelScope，挂一个直到取消信号才收尾的假 runner：C1 闲→0、C2 忙→≥1 且取消信号真到 runner 的 `ctx.cancelPromise`、C3 转录落 `cancelled` 那行、C4 收尾自摘、C5 回执非写死；注入假回执（`cancelActiveRoomTurns` 恒回 0）C2/C3 当场翻红 **3/3** |
 | `e2e_desktop_turn_cancel.mjs` | **7/0** | 真 Electron + 慢 8s 的桩：空闲藏且无盒子 → 回合起来后显形 46×28、麦克风被顶掉 → 点完回合结算、按钮自己收起 → 空闲再点如实回 `had_active_turn:false` 并说「没有在执行的回合」 |
 
-回归：room 63/0、bottom/archive 10/0、artifacts 9/0、m38 11/0、m39 11/0、m33 8/0。
+三条门都已挂进矩阵 **G-114**（静态 9 锚 + 行为 5 锚 + 注入对照 + 真渲染 4 锚，合计 **22/0**，逐锚独立核、子门合计数 grep 自己的汇总行而非 `tail`）。此前本节写了前两条门（9/0、7/0）却没挂进矩阵 —— CI 从不跑就是假绿，2026-11-10 补齐；行为门同时补上了下面「残留」里 transcript 那行的缺口。
+
+回归：room 63/0、bottom/archive 10/0、artifacts 9/0、m38 11/0、m39 11/0、m33 8/0；room relay 26/0（四处取消 scope 改登记 + `.finally` 自摘后无回归）。
 
 ### 三次踩坑（都记在脚本里）
 
@@ -9461,8 +9464,10 @@ CSS 那边偏偏把它的位置都排好了（`body.grok-ui #composer .row:has(#
 
 ### 残留（如实）
 
-- **群里取消后 transcript 里那一行没在 e2e 里断言**：要种 3 个 Bot + 一个群，本轮没做。
-  静态链路已确认 scope 在扇出前登记、取消会走写 `cancelled: true` 的分支。
+- **群里取消后 transcript 里那一行**（2026-11-10 已补）：原残留说「没在 e2e 里断言，只靠静态
+  链路推断 scope 在扇出前登记、取消会走写 `cancelled: true` 的分支」。现由 `prove_turn_cancel_receipt.js`
+  C3 走产品路径补上 —— 种一个单 Bot 群、挂一个直到取消信号才收尾的假 runner，断言取消后转录真落下
+  `bot_reply_error`（error 含 cancelled）那行；注入假回执时 C3 当场翻红，证明量的是真取消不是静态推断。
 - **`e2e_grok_desktop_boot` 在本机是红的**：改完 28/11，把本轮改动 stash 掉跑基线 26/13
   —— 它本来就红（GP-14 起超时，之后每个块都撞 `browser has been closed`）。不是这次带坏的，
   但也没修。

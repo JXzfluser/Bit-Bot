@@ -108,13 +108,24 @@ const survived = (h, cur) => cur.has(h) || (RENAMED.has(h) && cur.has(RENAMED.ge
   else ok("RH-01 " + REQUIRED.length + " 个已交付波次标题全在（8.15.7 / 8.16.* / 8.17.* / 8.18.*）");
 }
 
-/* RH-02：同一段标题不能出现两次（编辑工具重复插入是本仓库的高频事故） */
+/* RH-02：同一段标题不能出现两次（编辑工具重复插入是本仓库的高频事故）。
+ * 编号标题（## 8.x / ### 8.x.y）全局唯一 —— 撞号本身就是事故。无编号的通用子节
+ * 标题（### 门禁 / ### 残留（如实） / ### 三处改动 …）每个父节各用一次是合法的：
+ * §8.101 有「门禁」、§8.102 也有「门禁」不是复制事故（2026-11-10 核实：8 个残留 /
+ * 7 个门禁分别落在 8 个 / 7 个不同编号父节下）。所以这类标题只在**同一个编号父节内**
+ * 查重 —— 真把一段复制两份时，子节标题会在同一父节下重复、编号标题会全局撞号，照样翻红。 */
 {
+  const numbered = (h) => /^#{2,3} 8\.\d/.test(h);
   const seen = new Map();
-  for (const h of hs) seen.set(h, (seen.get(h) || 0) + 1);
-  const dup = [...seen].filter(([, n]) => n > 1).map(([h, n]) => h + "×" + n);
-  if (dup.length) bad("RH-02 标题不得重复（典型症状是整段被复制两份）", dup.join(" / "));
-  else ok("RH-02 无重复标题（" + hs.length + " 个标题各一次）");
+  let parent = "(root)";
+  for (const h of hs) {
+    if (numbered(h)) parent = h;
+    const key = numbered(h) ? h : parent + "||" + h;
+    seen.set(key, (seen.get(key) || 0) + 1);
+  }
+  const dup = [...seen].filter(([, n]) => n > 1).map(([k, n]) => k.split("||").pop() + "×" + n);
+  if (dup.length) bad("RH-02 标题不得重复（编号标题全局唯一；通用子节标题同一父节内唯一）", dup.join(" / "));
+  else ok("RH-02 无重复标题（" + hs.length + " 个标题：编号全局唯一 / 通用子节按编号父节 scoped）");
 }
 
 /* RH-03：编号必须单调递增，否则说明段落被插错位或前后颠倒了 */
