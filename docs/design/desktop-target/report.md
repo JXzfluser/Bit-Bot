@@ -9883,3 +9883,36 @@ KP-03，排在 KP-01/KP-02 之后）。翻代码发现失败根本没有码：
   本条先把四端点时间戳立起来，跨进程链路 id 留作后续，docs/events.md §5.6 已标注。
 - 首字延迟只对**流式**回合有样本；非流式（工具循环等）`first_token_at_ms` 保持 0、该段显示「—」，
   如实区分「没流式」与「流式但很快」。
+
+## 8.108 读切换 = KP-05：UI 改读 fold(events)，删掉 sessions.json 列表还在（2026-11-11）
+
+第二批第一格。kernel-mechanism-parity §4 KP-05 的原话是「UI 改读 `fold(events)`，
+`BITBOT_EVENT_READ_FROM_LOG=1` 才生效、默认仍走 JSON；完成定义『关闭双写后 smoke 全绿』，
+外加可感面『删掉 `data/desktop/sessions.json` 后重启，会话列表还在（今天必然空）』」。
+
+**先取证，结论是这格的地基早已铺好**（T1-04 读切换在早前批次就落地了）：
+- 开关：`hosts/shared/event_read_model.js` 的 `eventReadEnabled` 读 `BITBOT_EVENT_READ=1`
+  （parity 文档写作 `BITBOT_EVENT_READ_FROM_LOG`，是同一开关的不同叫法；未改名，以免打断
+  已接线的读路径与既有门）。`BITBOT_EVENT_ONLY=1` 隐含开读。
+- 三张面**都**已改读 fold：`sessions.js` 的 `load()`、`product_surface.js` 的
+  `loadRooms()`（`source:"events"`）与 `pendingApprovals()` 在开关开着时优先 `readSurfaces()`；
+  库不存在 / 读失败 / fold 有 anomaly → 诚实降级回 JSON 并打一行说明，绝不静默、绝不造假空态。
+- 既有门 `prove_event_read_model.mjs` RM-01..08 已证：默认关行为不变、no_db 不建库、
+  READ=1 三张面与 JSON 逐字段相等、读世界继续写不漂移、缓存语义、坏库/anomaly 回退、老运行时不炸。
+  矩阵挂在 **G-65**。
+
+**本条补上的是 KP-05 那句可感面本身**——旧门只证明了「读得到」，没证明「JSON 文件没了也读得到」。
+新增 **RM-09**：双写写两轮 → 切 `BITBOT_EVENT_ONLY=1`（关双写、事件成唯一真源）→
+**删掉 `sessions.json`** → 重启 `list()` 那几条会话从 `fold(events)` 原样重建，且读路径**没有**
+偷偷把 JSON 再写出来。**RM-09-neg 反向对照**：同一个事件库、同样没有 JSON，但把事件读关掉 →
+列表是**空的**。这条负控一开始真红了（`cleanupFlags` 没摘 `BITBOT_EVENT_ONLY`，读仍走 fold），
+逼我把「还在只可能是事件折叠给的」这个前提坐实——不是残留、不是缓存、不是别处的 JSON。
+
+`prove_event_read_model.mjs` 现 **10/0**（RM-01..08 + RM-09 + RM-09-neg）；G-65 加了 RM-09/09-neg 锚点。
+默认（两个开关都不开）仍走 JSON，行为与改造前逐字段一致——「换读不换写、默认关」这条边界没动。
+
+### 残留
+- KP-05 完成定义里的『关闭双写后 smoke 全绿』由 EVENT_ONLY 全链路门 `prove_event_only.mjs`（EO-01..07）
+  承接，G-65 的 RM-09 钉的是其中「删快照仍可读」这一可感切面；两者同挂矩阵。
+- `traceparent` 跨进程链路 id（见 §8.107 残留）与 T1-05「停写 JSON」仍是后续：读切换已就绪，
+  真正拿事件当唯一写者要先过 approvalDecide 整文件重写与首播种那道门。

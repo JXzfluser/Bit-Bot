@@ -3036,7 +3036,7 @@ else
   tail -25 /tmp/g64-turn-smoke.log 2>/dev/null | sed 's/^/    | /' || true
 fi
 
-echo "== G-65 读切换（T1-04 · BITBOT_EVENT_READ=1 时产品读事件日志，读不到诚实降级）=="
+echo "== G-65 读切换（T1-04 · BITBOT_EVENT_READ=1 时产品读事件日志，读不到诚实降级；含 KP-05 可感面 RM-09）=="
 # AC-T1-4 的原话是「产品读路径改读事件」：T1-03 只证明 fold(events) == JSON，
 # 这一门证明的是「产品读的时候读的就是 fold 结果」，且读模型坏了会说话、
 # 会回退 JSON，绝不把半折叠状态或空态当真。
@@ -3059,6 +3059,10 @@ if node -e "require('node:sqlite')" 2>/dev/null; then
     && grep -q '^ok RM-08' /tmp/g65-readmodel.log \
     && ok "G-65 缓存与老运行时都在：lastSeq 失效 + 深拷贝不污染；没有 node:sqlite 时 READ=1 也不炸" \
     || bad "G-65 RM-05 / RM-08 锚点缺失（缓存语义或老运行时启动没被断言）"
+  grep -q '^ok RM-09' /tmp/g65-readmodel.log \
+    && grep -q '^ok RM-09-neg' /tmp/g65-readmodel.log \
+    && ok "G-65 KP-05 可感面：删 sessions.json + 关双写 → 列表从 fold(events) 重建；反向对照关掉事件读就空（还在只可能是事件折叠给的）" \
+    || bad "G-65 RM-09 锚点缺失（「删 JSON 列表还在」或其反向对照没被断言）"
   echo "  · G-65 边界（诚实）：写侧照旧走 JSON+双写镜像，本门只换「读」；"
   echo "    T1-05 停写 JSON 之后，approvalDecide 的整文件重写与「首播种」路径才是下一道门。"
 else

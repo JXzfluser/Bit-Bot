@@ -1,4 +1,4 @@
-/* prove_event_read_model.mjs — T1-04 读切换门禁（RM-01..RM-08）
+/* prove_event_read_model.mjs — T1-04 读切换门禁（RM-01..RM-09）
  *
  * 需求原文（docs/next-target-requirements.md T1-04）：
  *   产品读路径改读事件日志（sessions/rooms/approvals），读模型不可用时诚实降级回 JSON。
@@ -27,6 +27,9 @@
  *   RM-08 老运行时起得来：没有 node:sqlite 时（同 DW-10 的伪装手法），
  *          READ=1 的 require 链照样不炸——读模型模块顶层不碰 event_log，
  *          懒加载防御和 T1-03 是同一条命。
+ *   RM-09 关双写后「删 JSON 列表还在」（= parity 文档 KP-05 可感面）：EVENT_ONLY 下
+ *          删掉 sessions.json，重启读到的是从 fold(events) 重建的会话；反向对照——
+ *          同一个库、同样没有 JSON，但关掉事件读 → 读到空，证明「还在」只可能是事件折叠给的。
  *
  * 全部跑在临时 dataRoot 上，绝不碰仓库里的 data/。
  */
@@ -406,6 +409,60 @@ console.log("__RM8__" + JSON.stringify({ threw, snap, evCached, tries: sqliteTri
   else if (!out.snap) bad("RM-08", "老运行时里 JSON 快照没落盘");
   else ok("RM-08", `没有 node:sqlite + READ=1：sessions/product_surface 照常工作、JSON 照常落盘、event_log 未被加载（探测 ${out.tries} 次）`);
   fs.rmSync(dir, { recursive: true, force: true });
+}
+
+/* ===== RM-09：KP-05 可感面「删掉 sessions.json 重启，会话列表还在」 =====
+ * 关闭双写（切到 BITBOT_EVENT_ONLY=1，事件是唯一真源）后，把磁盘上的 JSON 快照删掉，
+ * 产品读到的会话列表必须**照样在**——因为它是从 fold(events) 重建的，不是从那个文件读的。
+ * 反向对照（同一个库 + 同样删了 JSON，但把事件读关掉）必须读到**空**：证明「列表还在」
+ * 是事件折叠在起作用，不是缓存残留、也不是偷偷读到了别的地方的 JSON。 */
+{
+  cleanupFlags();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-killjson-"));
+  // 先在双写世界写两轮：JSON 与事件库都留下痕迹。
+  process.env.BITBOT_EVENT_DUAL_WRITE = "1";
+  eventMirror.closeAllMirrors();
+  const ssW = makeSessions(root);
+  ssW.list();
+  ssW.create("删档幸存甲").session.id;
+  const sidB = ssW.create("删档幸存乙").session.id;
+  ssW.appendMessages(sidB, [{ role: "user", text: "重启后也要在" }]);
+  eventMirror.closeAllMirrors();
+  const expectedTitles = ["删档幸存甲", "删档幸存乙"];
+
+  // 关闭双写、切事件唯一真源；删掉 JSON 快照——这就是可感面那一步。
+  delete process.env.BITBOT_EVENT_DUAL_WRITE;
+  process.env.BITBOT_EVENT_ONLY = "1";
+  eventReadModel.closeAll();
+  eventMirror.closeAllMirrors();
+  fs.rmSync(path.join(root, SESSIONS_FILE), { force: true });
+
+  const ssAfter = makeSessions(root);
+  const listed = ssAfter.list();
+  const titles = (listed.sessions || []).map((s) => s.title);
+  const survived = expectedTitles.every((t) => titles.includes(t));
+  const stillNoJsonFile = !fs.existsSync(path.join(root, SESSIONS_FILE));
+  if (!survived) bad("RM-09", `删 sessions.json + EVENT_ONLY 后列表没重建出来：读到 ${JSON.stringify(titles)}`);
+  else if (!stillNoJsonFile) bad("RM-09", "EVENT_ONLY 读列表时把 sessions.json 又写了出来（读路径不该落 JSON）");
+  else ok("RM-09", `删掉 sessions.json + 关双写(EVENT_ONLY)：重启后列表里那 ${titles.length} 条会话从 fold(events) 原样重建，JSON 文件仍未被读路径重建`);
+
+  // 反向对照：同一个事件库、sessions.json 依旧不存在，但把事件读关掉 → 必须读空。
+  // cleanupFlags 只关 READ/DUAL_WRITE；EVENT_ONLY 这条也得显式摘掉，否则读仍走 fold。
+  delete process.env.BITBOT_EVENT_ONLY;
+  cleanupFlags();
+  eventReadModel.closeAll();
+  eventMirror.closeAllMirrors();
+  const ssBlind = makeSessions(root);
+  const { result: blindList } = captureStderr(() => ssBlind.list());
+  const blindTitles = (blindList.sessions || []).map((s) => s.title);
+  const lost = !expectedTitles.some((t) => blindTitles.includes(t));
+  if (!lost) bad("RM-09-neg", `关掉事件读后竟然还读到了会话（说明 fold 不是唯一来源）：${JSON.stringify(blindTitles)}`);
+  else ok("RM-09-neg", `反向对照：同一个库、同样删了 JSON，但关掉事件读 → 列表是空的——「还在」确实只可能是 fold(events) 给的`);
+
+  eventReadModel.closeAll();
+  eventMirror.closeAllMirrors();
+  fs.rmSync(root, { recursive: true, force: true });
+  cleanupFlags();
 }
 
 /* 收尾：主干开关恢复成默认关 */
