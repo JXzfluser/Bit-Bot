@@ -4664,8 +4664,48 @@ echo "    L5 落盘往返+反查、L6 0 样本判红（0 条不许绿）；N1/N2
 echo "    P4 coverageOk≥3 且每条量到首字、P5 首字逐条 ≥ 已知下限 300/600/900 且互不相同、P6 按 turn_id 反查"
 echo "    自洽、P7 回车→发送量到（渲染层真接了 enter_epoch_ms）。两层各管一段：公式 vs 真接到 Host。"
 
-echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
+echo "== G-118 事件要能按游标续订：?since=<seq> 任意点接上、不重不丢、curl|jq 的 seq 严格递增（KP-06 / T1-09）=="
+# 对标需求 §4 KP-06 的可证方式有两条：手机上切后台两分钟再回来不重不丢，以及终端
+# curl 一条命令把 seq 序列打出来。G-73/G-75 钉的是「路由在、鉴权同构、不带游标不倒灌」，
+# 这一门钉的是**游标本身**：任意 seq 续订完整、有序（完成定义原句），且手机面（SSE）、
+# 桌面面（进程内 readAfter）、终端面（一次性 JSON）三个读面同源。
+if node -e "require('node:sqlite')" 2>/dev/null; then
+  if timeout 300 node scripts/prove_cursor_subscribe.mjs > /tmp/g118-cursor.log 2>&1; then
+    ok "G-118 游标续订门 prove_cursor_subscribe（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g118-cursor.log)）"
+  else
+    bad "G-118 游标续订门（见 /tmp/g118-cursor.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g118-cursor.log || tail -2 /tmp/g118-cursor.log | tr '\n' ' ')）"
+  fi
+  for g118_t in "CS-01 " "CS-02 " "CS-03 " "CS-04 " "CS-05 " "CS-06 " "CS-07 " "CS-08 " "CS-10 " "N1 " "N2 " "N3 "; do
+    if grep -q "^ok $g118_t" /tmp/g118-cursor.log; then ok "G-118 锚点：$g118_t"; else bad "G-118 锚点没跑绿：$g118_t"; fi
+  done
+  if grep -q "^ok CS-09 " /tmp/g118-cursor.log; then
+    ok "G-118 终端可证：真 curl|jq 那条命令跑绿（events[].seq 严格递增，且与 Node 侧读到的逐条相同）"
+  elif grep -q "^skip CS-09 " /tmp/g118-cursor.log; then
+    echo "  · skip CS-09：本机缺 curl 或 jq，终端那一面没敲（SKIP ≠ PASS；游标语义仍由 CS-01..08 在 Node 侧断言）"
+  else
+    bad "G-118 CS-09 既没跑绿也没诚实 skip"
+  fi
+  grep -q "^ok CS-08b " /tmp/g118-cursor.log \
+    && ok "G-118 老客户端没被这次改动碰坏：不带游标的 SSE 仍从队尾起推实况（RP-09 口径）、旧名 from_seq 与 since 逐字节同义" \
+    || bad "G-118 缺 CS-08b（不带游标的实况语义或新旧名同义没被断言）"
+else
+  echo "  · skip：本机 node 没有 node:sqlite，G-118 未跑（SKIP ≠ PASS）"
+fi
+echo "  · G-118 为什么长出来：T1-09 的完成定义是「任意 seq 续订事件完整、有序」，但这一句"
+echo "    此前只在日志层测过（EL-06，3 条事件）；HTTP 层测的是路由在不在、鉴权同不同构。"
+echo "    手机切后台再回来靠的就是「从我上次那条之后接着给」，那一层没人钉过。"
+echo "  · G-118 判据：CS-01 一次性 JSON 面 count/next_seq/has_more 自洽；CS-02 since 与旧名 from_seq"
+echo "    逐字节相同；CS-03/04 七个游标（含队尾、末尾+7）逐个对过桌面面里 >c 的全集，不多不少不重；"
+echo "    CS-05 断线-产新-重连只补新的、合起来等于全量；CS-06 SSE=JSON=进程内 readAfter 三面同源"
+echo "    且字段集合一字相同；CS-07 limit=2 靠 next_seq 走完全程；CS-08 坏游标 400 cursor_invalid"
+echo "    （不当 0 = 全量重放）；CS-09 真 curl|jq 严格递增；CS-10 没库诚实 503。"
+echo "  · G-118 负向对照：N1 摘掉 since 解析 / N2 把续读游标写死成 0 / N3 把 has_more 写死 false ——"
+echo "    分别让 CS-04、CS-03、CS-07 翻红（改的是服务端源码副本，不是本门的期望值）。"
+echo "  · 已知偏差（诚实）：需求原文的「kernel_server.js 行协议加一条 subscribe」没落地 —— 内核是单回合"
+echo "    RPC、不持有跨回合状态，事件写者是 Host；再加一条流正好制造 §6 要消灭的双写者。"
+echo "    游标落在日志的读面上（docs/events.md §5.7）。手机侧仍用旧名 from_seq，本次不动它（旧客户端仍能连）。"
 
+echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

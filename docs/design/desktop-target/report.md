@@ -9916,3 +9916,59 @@ KP-03，排在 KP-01/KP-02 之后）。翻代码发现失败根本没有码：
   承接，G-65 的 RM-09 钉的是其中「删快照仍可读」这一可感切面；两者同挂矩阵。
 - `traceparent` 跨进程链路 id（见 §8.107 残留）与 T1-05「停写 JSON」仍是后续：读切换已就绪，
   真正拿事件当唯一写者要先过 approvalDecide 整文件重写与首播种那道门。
+
+## 8.109 事件要能按游标续订 = KP-06：任意 seq 接得上、不重不丢，curl 一条命令可证（2026-11-11）
+
+第二批第二格。kernel-mechanism-parity §4 KP-06（= T1-09）的原话是
+「`kernel_server.js` 的行协议加一条 `subscribe`，`cn_inbound_server.js` 加 `GET /v1/events?since=<seq>`；
+手机与桌面共用。可感面：手机上把 App 切后台 2 分钟再回来，消息不重不丢、顺序与桌面一致；
+终端可证：`curl -H "Authorization: Bearer $TOKEN" "…/v1/events?since=0" | jq '.events[].seq'` 严格递增」，
+完成定义（`docs/next-target-requirements.md:265`）是**「任意 seq 续订事件完整、有序」**。
+
+**先取证，两条已有与四处真缺**。已有：`GET /v1/events` SSE 路由在（G-73 钉路由与鉴权同构、
+G-75 钉不带游标不倒灌），游标续订也**不是零证明**——`prove_cn_events_sse` EV-6 证过
+`Last-Event-ID` 之后的帧不重复，`e2e_remote_progress_stream` RP-05 在真 Electron 上半程拔线重连，
+证过「首帧正好接上、合并 == 整轮、重复 0 缺失 0」；手机 `EventStreamClient` 重连带 `from_seq` +
+`Last-Event-ID`、本地按 seq 去重（JVM 侧 15 条测试在）。真缺的是把那句完成定义**扫全**的东西：
+① 续订只证过**一个点**（那一轮的中途），且 EV-6 只证「不重」没证「不丢」——「任意 seq」从没逐游标对过账；
+② **那条 curl 命令根本跑不出来**：SSE 是长连接，`curl | jq` 拿到的是一串 `data:` 行，jq 读不出对象；
+③ 需求点名的名字 `since` 不存在（只有旧名 `from_seq`）；④ 坏游标静默当 0，也没有分页口径。
+
+**做了什么**
+- `?since=<seq>` 落地为游标的**对外名字**，旧名 `?from_seq=` 继续同义有效（手机一字不改仍能连，
+  「保持旧客户端可用」这条硬约束没破）；两者同时给出以 `since` 为准。**坏游标不再静默当 0**：
+  `since=abc` / `since=-1` / `since=1.5` → 400 `cursor_invalid`。当成 0 = 全量重放，正是 RP-09
+  那条红描述过的「续订变倒灌」，只是换个入口复发。
+- 新增**一次性 JSON 格子**（`?format=json`、或 `Accept: application/json`、或 curl 默认的 `Accept: */*`）：
+  读一次就关，回 `{cursor,next_seq,has_more,count,last_seq,events[]}`，`next_seq` 填回 `?since=` 就能接着翻页。
+  它和 SSE 共用 `readAfter`、同一个 `seq > 游标` 口径、同一个 `session_id` 过滤，
+  帧的字段集合由同一份 `toPublicEvent` 产出（原来两处各写一份，现在只有一份）。
+- 默认面一字未动：不带游标的 SSE 仍从**队尾**起推实况；一次性读不带游标 = 从头读（它没有「实况」可跟）。
+
+**验收门 `scripts/prove_cursor_subscribe.mjs`（矩阵 G-118，Node 侧，CI 也跑）**
+CS-01 一次性格子 count/next_seq/has_more 自洽 · CS-02 `since` 与 `from_seq` **逐字节相同** ·
+CS-03/04 **七个游标**（0、每条中间、队尾、队尾+7）逐个对过桌面面里 `>c` 的全集：不丢、不重、有序 ·
+CS-05 断线-产新-重连（后台两分钟那条的终端可证版）只补新的，合起来等于全量 ·
+CS-06 **三面同源**：手机 SSE = `format=json` = `Accept:*/*` = 桌面进程内 `readAfter`，且字段集合一字相同 ·
+CS-07 `limit=2` 靠 `next_seq` 走完全程 · CS-08 坏游标 400 / 不带游标不倒灌 / 一次性读从头 ·
+CS-09 **真 `curl|jq` 跑通**，序列严格递增且与 Node 侧读到的逐条相同（缺 curl 或 jq 时诚实 `skip`，不计 PASS）·
+CS-10 没有可读事件库仍回 503 `event_log_unavailable`。
+**反向对照**：N1 摘掉 `since` 解析 → CS-04 判红；N2 把续读的 `fromSeq` 写死成 0 → CS-03 判红；
+N3 把 `has_more` 写死成 false → CS-07 只走到 3/16 条判红。三条改的都是**服务端源码副本**（内存里实例化，不落临时文件），
+不是本门的期望值。首跑 23/0；`/v1/events` 的三条既有门回归：**G-73 8/0、G-75 真 Electron 9/0、EL 10/0**，
+`prove_w3_device_trust` 37/0（游标路由与设备鉴权同构那条没被碰坏）。
+
+### 与需求原文的一处偏差（诚实）
+「`kernel_server.js` 的行协议加一条 `subscribe`」**没落地**。取证结论：T1-07 的常驻内核是
+**单回合请求/响应**协议（`id ␟ argv…` 进、`id ␟ 回合JSON` 出），回合内进度走 stderr 的
+`BITBOT_LOOP` 行、effect 走 `BITBOT_FFI` 行，内核既不持有跨回合状态也不写事件库；事件的写者是
+Host（`event_mirror`，未来收敛到 §6 的 actor）。给内核加一条 `subscribe` 等于凭空造第二条事件流、
+第二个写者——那正是 T1-06/§6 要消灭的东西。游标因此落在**日志的读面**上（三面向见 `docs/events.md` §5.7），
+完成定义「任意 seq 续订事件完整、有序」由 G-118 直接钉住。
+
+### 残留
+- 「App 切后台 2 分钟再回来」在**真机**上仍未跑过：这条依赖一台连着的手机（本批把服务端与
+  手机侧各自的游标契约钉死，物理那一步在设备清单里）。
+- 手机游标存在内存（`AtomicLong lastSeq`）里：进程被系统杀掉后 `lastSeq` 归零，重连等于新订阅
+  （拿到队尾实况，历史要显式 `?since=`）。「把 applied_seq 持久化 + 冷启动回放补齐」是
+  KP-08 Client Core（缓存 + reducer）的活，不是这一格。

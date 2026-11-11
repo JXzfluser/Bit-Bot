@@ -63,7 +63,7 @@ CREATE INDEX effects_session ON effects (session_id, turn_id);
 | 不复用 | `AUTOINCREMENT` 保证删行后 seq 不回收，客户端缓存的光标永远有效 |
 | 不可变 | 事件一经追加不得 UPDATE / DELETE；修正只能靠追加新事件（`*_decided`、`turn_ended`） |
 | 稠密性 | 只保证「同一 session 内 seq 递增且无缺口」——单写者（§6）是这条的前提 |
-| 续订 | `subscribe(session_id, from_seq)` = `WHERE session_id=? AND seq > from_seq ORDER BY seq` |
+| 续订 | `subscribe(session_id, since)` = `WHERE sessionId=? AND seq > since ORDER BY seq`；HTTP 面的名字见 §5.7 |
 
 客户端保存两份游标即可：`applied_seq`（已折叠进 UI 的最大 seq）与
 `seen_seq`（已收到的最大 seq，含在途的 `delta`）。重连时从 `applied_seq` 续订，
@@ -293,6 +293,44 @@ token 增量既大又无长期价值（评审 §8-5「不持久化 token 增量�
 
 > 尚未接线的一段：`traceparent`（把 `turn_id` 从 Host 一路带到内核、替换
 > `desktop-<Date.now()>-<rand>` 断链 id）仍是后续项；本轮先把四端点时间戳与三段延迟立起来。
+
+### 5.7 游标续订 API（KP-06 / T1-09：`subscribe(from_seq)` 的服务端形状）
+
+同一条日志有三个读面，**游标口径只有一个**：`seq > 游标`，不含游标本身。
+
+| 面 | 怎么打开 | 用途 |
+|---|---|---|
+| 桌面进程内 | `log.readAfter({ sessionId, fromSeq })` | UI/读模型折叠（§7 读切换） |
+| 手机 SSE | `GET /v1/events`（`Accept: text/event-stream`） | 实况进度；`Last-Event-ID` 或 `?since=` 续订 |
+| 一次性 JSON | `GET /v1/events?format=json`，或 `Accept: application/json`，或 curl 默认的 `Accept: */*` | 终端对账、回放、门禁；读一次就关 |
+
+| 参数 / 字段 | 含义 |
+|---|---|
+| `?since=<seq>` | 游标（**本条 API 的对外名字**）。严格 `>`，不含自身 |
+| `?from_seq=<seq>` | 同一个东西的旧名：Android `EventStreamClient` 与既有门在用，一字不改仍有效。两者同时给出以 `since` 为准 |
+| 都不带 | SSE：**从当前队尾起推实况**（要历史请显式带游标，见 RP-09）；一次性 JSON：从头读（一次性格子没有「实况」可跟） |
+| `?session_id=` | 可选过滤，只给这一个会话（跨会话不泄漏）；按会话读时仍是全局 seq，会话内稠密 |
+| `?limit=` | 一次性 JSON 的页大小，默认 5000，上限 20000 |
+| `next_seq` / `has_more` | 下一次把它填回 `?since=` 就接着读；`has_more` 由多取一条探出来，不是猜的 |
+| 坏游标 | `since=abc` / `since=-1` / `since=1.5` → **400 `cursor_invalid`**。以前会静默当成 0 = 全量重放，那正是「续订变倒灌」的老病，只是换个入口复发 |
+
+**为什么加一次性格子**：对标需求（`kernel-mechanism-parity.md` §4 KP-06）写的可证方式是
+`curl … "/v1/events?since=0" | jq '.events[].seq'`。SSE 是长连接，curl 拿到的一串 `data:`
+行 jq 读不出对象——那条命令要真能敲，就得有「读一次就关」的格子。它和流共用 `readAfter`
+与同一个游标口径，所以「任意 seq 完整、有序」在两个面里是同一件事（CS-06 逐条比过）。
+
+**与内核行协议的关系（诚实偏差）**：需求原文还写了「`kernel_server.js` 的行协议加一条
+`subscribe`」。落地上没有加：内核（T1-07 常驻池）是**单回合请求/响应**协议，回合内的进度走
+stderr 的 `BITBOT_LOOP` 行、effect 走 `BITBOT_FFI` 行，它不持有跨回合的状态，也不写事件库；
+事件的写者是 Host（`event_mirror` / 未来的 actor，§6）。给内核加一条 `subscribe` 等于凭空造
+第二条事件流，两个写者正好是 §6 要消灭的东西。游标这件事落在**日志的读面**上（本表三个面），
+完成定义「任意 seq 续订事件完整、有序」由此满足。
+
+**验收门**：`scripts/prove_cursor_subscribe.mjs`（矩阵 **G-118**）——CS-01 一次性格子、
+CS-02 新旧名同义（逐字节相同）、CS-03/04 七个游标逐个对「不丢 + 不重 + 有序」、
+CS-05 断线-产新-重连（后台两分钟那条的终端可证版）、CS-06 三面同源、CS-07 分页走到全量、
+CS-08 坏游标 400 / 不带游标不倒灌、CS-09 真 `curl|jq` 序列严格递增、CS-10 没库诚实 503；
+反向对照 N1（摘掉 `since` 解析）/ N2（游标写死 0）/ N3（`has_more` 写死 false）各自让对应那条翻红。
 
 ## 6. 单写者（T1-FR2）
 

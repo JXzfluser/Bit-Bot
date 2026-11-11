@@ -1561,26 +1561,52 @@ function createCnInboundServer(opts = {}) {
         }
         // 游标三档，缺一档就有人在手机上连上一轮都看不见：
         //   1) Last-Event-ID —— 断线重连，从那条之后接着推；
-        //   2) ?from_seq= —— 显式要历史（门禁、回放、对账用的就是这一档）；
+        //   2) ?since= / ?from_seq= —— 显式要历史（门禁、回放、对账用的就是这一档）；
         //   3) 两个都不带 —— **从当前队尾开始，只推订阅之后的新事件**。
         // 第 3 档以前是 from_seq=0（全量重放），那是个真 bug：手机每个回合都是
         // 「先订阅、再发回合」，重放会先把**上一回合**的 turn_started/progress/
         // turn_ended 倒灌进来 —— 客户端按契约在 turn_ended 时关流，于是第二轮起
         // 用户看到的是上一轮的进度，而这一轮的帧一条都收不到。
         // 这也是 SSE 的常规语义：不带游标 = 订阅实况，要历史请显式带游标。
+        // KP-06 / T1-09：`since` 是这条游标 API 对外的名字（docs/events.md §5.7），
+        // `from_seq` 是它定名前就在用的旧名（Android `EventStreamClient`、既有门）。
+        // 两个都认、语义完全相同（严格 `> 游标`，不含游标本身）；同时给出时以 `since`
+        // 为准 —— 新名赢，旧名继续伺候老客户端，不搞「二选一直接 400」。
+        // 非法游标不再静默当成 0：那等于把「续订」变成「全量重放」，手机会收到上一轮
+        // 的所有帧并按 turn_ended 关流 —— 正是 RP-09 那条红描述过的病，只是换了入口。
         const lastEventId = String(req.headers["last-event-id"] || "").trim();
+        const sinceParam = urlObj.searchParams.get("since");
         const fromSeqParam = urlObj.searchParams.get("from_seq");
-        let fromSeq = Number(fromSeqParam || 0);
-        let cursorGiven = fromSeqParam !== null && fromSeqParam !== "";
+        const cursorParam =
+          sinceParam !== null && sinceParam !== "" ? sinceParam : fromSeqParam;
+        let fromSeq = 0;
+        let cursorGiven = false;
+        if (cursorParam !== null && cursorParam !== "") {
+          if (!/^\d+$/.test(String(cursorParam).trim())) {
+            json(res, 400, {
+              ok: false,
+              error: "cursor_invalid",
+              note: "游标要写非负整数（?since=<seq> 或旧名 ?from_seq=<seq>），要实况就别带游标。",
+              got: String(cursorParam).slice(0, 40),
+            });
+            return;
+          }
+          fromSeq = Number(String(cursorParam).trim());
+          cursorGiven = true;
+        }
         if (/^[0-9]+$/.test(lastEventId)) {
           fromSeq = Number(lastEventId);
           cursorGiven = true;
         }
         if (!Number.isFinite(fromSeq) || fromSeq < 0) fromSeq = 0;
+        // 「没给游标」在两个面上意思不同：实况流从队尾起推（第 3 档），
+        // 一次性读没有「实况」可跟，只能从头读 —— 记下来让 JSON 面区分。
+        let tailDefaulted = false;
         if (!cursorGiven) {
           // 队尾：log.lastSeq() 是 MAX(seq)，没有事件时是 0（首次使用不受影响）。
           fromSeq = typeof log.lastSeq === "function" ? Number(log.lastSeq()) : 0;
           if (!Number.isFinite(fromSeq) || fromSeq < 0) fromSeq = 0;
+          tailDefaulted = true;
         }
         // A1-3 附带：可选 session 过滤。库里 readAfter 早就支持 sessionId，这里只是把
         // 它接出来 —— 不传时**行为与之前一字不变**（全量），传了才只推这一个 session。
@@ -1588,6 +1614,83 @@ function createCnInboundServer(opts = {}) {
         // 手机订自己的回合却看到别人的对话行，那是跨会话泄漏，不是「便利」。
         // 注意这只解决「看得见谁」，没解决「谁有权订」—— 后者是账号=设备（W3/A2-3）的活。
         const onlySession = String(urlObj.searchParams.get("session_id") || "").trim();
+
+        /* 一帧对外长什么样，只在这里定一次：SSE 的 data 和一次性 JSON 的 events[]
+           必须是同一份形状，否则「手机与桌面共用一条流」只是一句口号。 */
+        const toPublicEvent = (ev) => {
+          const seq = Number(ev.seq);
+          let payload = ev.payload;
+          if (typeof payload === "string") {
+            try { payload = JSON.parse(payload); } catch (_) { /* 保留原串 */ }
+          }
+          return {
+            seq,
+            sessionId: ev.sessionId,
+            turnId: ev.turnId,
+            kind: ev.kind,
+            payload,
+            actor: ev.actor,
+            ts: ev.ts,
+          };
+        };
+
+        // ===== KP-06 可感面：读一次就关的 JSON 面 ==============================
+        // 对标需求（kernel-mechanism-parity.md §4 KP-06）写的是
+        //   curl -H "Authorization: Bearer $TOKEN" "…/v1/events?since=0" | jq '.events[].seq'
+        // 而 SSE 是长连接，curl 拿到的一串 `data:` 行 jq 根本读不出对象 —— 那条命令
+        // 要能跑，就得给同一套游标语义加一个**一次性格子**。它和流共用 readAfter、
+        // 同一个游标口径（严格 `> 游标`）、同一个 session 过滤，所以「任意 seq 续订
+        // 完整、有序」这件事在两个面里是同一件事，不是两份实现。
+        // 打开方式三种，SSE 的老客户端一条都不受影响：
+        //   ?format=json —— 显式，脚本与门禁用它，写起来不必懂 HTTP；
+        //   Accept: application/json —— 显式，给标准 HTTP 客户端；
+        //   Accept: */* —— curl 的默认值。这条专门为了让对标需求 §4 KP-06 那条终端命令
+        //     原样跑通（`curl -H "Authorization: Bearer $TOKEN" "…/v1/events?since=0" | jq '.events[].seq'`）。
+        //   要实况的客户端必须自己说清楚：Android 两条路径（直连 :220 / 中转 :297）都显式带
+        //   `Accept: text/event-stream`，所以它永远拿不到 JSON 面；浏览器 EventSource 同理。
+        const acceptHdr = String(req.headers.accept || "");
+        const formatParam = String(urlObj.searchParams.get("format") || "").trim().toLowerCase();
+        const wantsStream = acceptHdr.includes("text/event-stream");
+        const wantsJson =
+          !wantsStream &&
+          (formatParam === "json" ||
+            acceptHdr.includes("application/json") ||
+            acceptHdr.trim() === "*/*");
+        if (wantsJson) {
+          const rawLimit = Number(urlObj.searchParams.get("limit") || 5000);
+          const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 5000, 20000));
+          const from = tailDefaulted ? 0 : fromSeq;
+          let page;
+          try {
+            // 多取一条只为判断 has_more，不把它发给调用方
+            page = log.readAfter({
+              fromSeq: from,
+              limit: limit + 1,
+              ...(onlySession ? { sessionId: onlySession } : {}),
+            });
+          } catch (e) {
+            json(res, 503, {
+              ok: false,
+              error: "event_log_unavailable",
+              note: "事件库读不动：" + String((e && e.message) || e),
+            });
+            return;
+          }
+          const hasMore = page.length > limit;
+          const events = (hasMore ? page.slice(0, limit) : page).map(toPublicEvent);
+          json(res, 200, {
+            ok: true,
+            cursor: from,
+            // 下一次把 next_seq 原样填进 ?since= 就能接着读，不重不丢
+            next_seq: events.length ? events[events.length - 1].seq : from,
+            has_more: hasMore,
+            count: events.length,
+            last_seq: typeof log.lastSeq === "function" ? Number(log.lastSeq()) : null,
+            ...(onlySession ? { session_id: onlySession } : {}),
+            events,
+          });
+          return;
+        }
 
         res.writeHead(200, {
           "Content-Type": "text/event-stream; charset=utf-8",
@@ -1600,27 +1703,11 @@ function createCnInboundServer(opts = {}) {
         let lastSent = fromSeq;
         const sendEv = (ev) => {
           if (closed) return;
-          const seq = Number(ev.seq);
-          let payload = ev.payload;
-          if (typeof payload === "string") {
-            try { payload = JSON.parse(payload); } catch (_) { /* 保留原串 */ }
-          }
-          res.write("id: " + seq + "\n");
+          const pub = toPublicEvent(ev);
+          res.write("id: " + pub.seq + "\n");
           if (ev.kind) res.write("event: " + ev.kind + "\n");
-          res.write(
-            "data: " +
-              JSON.stringify({
-                seq,
-                sessionId: ev.sessionId,
-                turnId: ev.turnId,
-                kind: ev.kind,
-                payload,
-                actor: ev.actor,
-                ts: ev.ts,
-              }) +
-              "\n\n",
-          );
-          if (seq > lastSent) lastSent = seq;
+          res.write("data: " + JSON.stringify(pub) + "\n\n");
+          if (pub.seq > lastSent) lastSent = pub.seq;
         };
         const snapshot = () => {
           try {
@@ -1664,7 +1751,7 @@ function createCnInboundServer(opts = {}) {
           "POST /feishu/event",
           "GET|POST /wecom/callback",
           "POST /v1/turn",
-          "GET /v1/events（SSE 事件流，需设备凭证）",
+          "GET /v1/events（事件流：SSE，或 ?format=json 读一次；游标 ?since=<seq>，旧名 ?from_seq=<seq>，需设备凭证）",
           "GET /v1/pair/discover",
           "POST /v1/pair/redeem",
           "GET /health",
