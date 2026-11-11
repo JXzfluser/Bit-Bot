@@ -149,6 +149,9 @@ const { buildDiscretionPrompt, parseDiscretionReply } = require("../shared/room_
 const { createRoomRuntime, roomSafeText: sharedRoomSafeText } = require("../shared/room_runtime");
 const { dispatchRoomTurn } = require("../shared/room_dispatch");
 const { resolveMachineId } = require("../shared/machine_identity");
+// KP-04 回合计时：唯一 schema/派生来自 hosts/shared/turn_latency.js；这里只负责
+// 「何时取时间戳」，公式绝不在此重算（与 measure 脚本、验收门同一份模块）。
+const turnLatency = require("../shared/turn_latency");
 const { codeStamp: mainCodeStamp, reloadDecision } = require("./reload_policy");
 
 // ⌘R 只重载界面，主进程模块的 require 缓存不会动 —— 用户会看到「界面变了、行为没变」。
@@ -415,6 +418,36 @@ const REPO_ROOT = SRC_ROOT || (DATA_ROOT ? path.dirname(DATA_ROOT) : null);
 // DATA_ROOT 在极端装坏时可能是 null（resolveDataRoot 会返空）；模块加载期不能
 // path.resolve(null) 把主进程崩掉（那会把「内核未找到」的优雅提示一起打死）。
 const turnMirror = DATA_ROOT ? turnEvents.getMirror(DATA_ROOT) : null;
+
+/* KP-04：桌面私聊回合的计时槽。桌面 composer 同一时刻只跑一条私聊回合
+   （busyMarked 计数），所以一个槽足够；取时间戳的时机集中在这里，公式在
+   turn_latency.js 里唯一实现。群聊/例行不走这条取数路径（没有渲染层的
+   enter_epoch_ms），保持不记录——绝不拿别的回合的时间凑数。 */
+let activeTurnLatency = null;
+
+// 首个真流式 token 到 Host 时打一次；之后不再覆盖。
+function markTurnFirstTokenIfStreaming(chunk) {
+  if (!activeTurnLatency || activeTurnLatency.first_token_at_ms > 0) return;
+  const hasContent =
+    chunk &&
+    (chunk.phase === "delta" || chunk.phase === "partial") &&
+    String(chunk.text || chunk.partial || "").length > 0;
+  if (hasContent) activeTurnLatency.first_token_at_ms = Date.now();
+}
+
+// 回合收尾（无论成功/失败/取消）落一行 jsonl，然后清空槽——时间线到此为止。
+function flushTurnLatency() {
+  const slot = activeTurnLatency;
+  activeTurnLatency = null;
+  if (!slot || !DATA_ROOT) return null;
+  slot.accepted_at_ms = Date.now();
+  try {
+    return turnLatency.appendRecord(DATA_ROOT, slot);
+  } catch (_) {
+    /* 计时落盘绝不影响回合本身 */
+    return null;
+  }
+}
 
 if (!SRC_ROOT && !KERNEL_BIN) {
   // Honest failure: neither a checkout to run `moon` from nor a bundled
@@ -1025,6 +1058,8 @@ function broadcast(channel, payload) {
 }
 
 ffi.setLlmStreamHandler((chunk) => {
+  // KP-04：首个流式 token 到 Host 的时刻——只有私聊回合在跑时才记，公式不在这。
+  markTurnFirstTokenIfStreaming(chunk);
   broadcast("bitbot:llm-stream", chunk);
   // GP-130 (§7.1): every real successful model call lands in the weekly
   // usage store — requests always, tokens only when the provider reported
@@ -4013,6 +4048,16 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     setTurnActivity(1);
     busyMarked = true;
     const hostTurnId = "desktop-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
+    // KP-04：开始构造这一回合 → 起计时槽。enter_epoch_ms 由渲染层按回车的瞬间传来；
+    // 首字与落库的时间戳分别在 setLlmStreamHandler 与下面的 finally 里补。
+    activeTurnLatency = {
+      turn_id: hostTurnId,
+      session_id: sessionId,
+      bot_id: String((opts && opts.botId) || "").trim(),
+      enter_epoch_ms: Number(opts && opts.enter_epoch_ms) || 0,
+      composed_at_ms: Date.now(),
+      first_token_at_ms: 0,
+    };
     // A1-2：回合开始 → 落 turn_started（回合流事件，由手机端 SSE 直接消费）。
     try {
       turnEvents.emitTurnStarted(turnMirror, {
@@ -4230,6 +4275,8 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
     } catch (_) { /* 回合事件绝不影响回合本身 */ }
     return result;
   } finally {
+    // KP-04：无论成功/失败/取消，这一回合的时间线到此为止 → 落 accepted_at_ms 并写一行。
+    flushTurnLatency();
     finishLiveLoopApproval("deny");
     releaseActiveTurnCancel = null;
     if (busyMarked) setTurnActivity(-1);

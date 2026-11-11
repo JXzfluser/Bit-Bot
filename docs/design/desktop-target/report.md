@@ -9843,3 +9843,43 @@ KP-03，排在 KP-01/KP-02 之后）。翻代码发现失败根本没有码：
   它们只在群聊面出现，而群聊面本就按 GP-147 只给人话；等 KP-05+ 状态底座给每个码定产品文案再细化。
 - 手机端读同一份表：Android 侧目前把 `error_code` 原样带在契约里、渲染留待移动页跟进；本批先保证
   「Host/UI/手机是同一份表」这个前提（`normalizeFailure` 是纯函数，可移植）。
+
+## 8.107 发送加计时字段，把延迟从「待测」变成有基线（KP-04，2026-11-11）
+
+对标 Grok：回合「快不快」此前完全测不了——`enter_epoch_ms`/`composed_at_ms`/
+`first_token_at_ms`/`accepted_at_ms` 全 0 命中，唯一每回合时间藏在 `data/traces/<turn_id>.json`
+的一个 `at`（kernel-mechanism-parity §4 KP-04）。本条把四端点时间戳与三段延迟立起来。
+
+### 做法
+
+- **唯一模块** `hosts/shared/turn_latency.js`：字段序、三段差公式（`回车→发送`/`发送→首字`/
+  `首字→落库`）、`serialize/readRecords/findByTurnId`、`measure/coverageOk` 全在一处。纯派生与
+  IO 分开：`spans/validateOrder/format` 是纯函数（门直接喂 fixture），`appendRecord/readRecords`
+  才碰文件系统。端点缺失或乱序 → 该段 `null`（**没测到，不是 0**），界面显示「—」。
+- **Host 接线** `hosts/desktop/main.js`：`bitbot:turn` 起计时槽（`composed_at_ms=Date.now()`，
+  `enter_epoch_ms` 取自渲染层）；`setLlmStreamHandler` 在**首个真流式 delta** 打一次
+  `first_token_at_ms`；回合 `finally`（成功/失败/取消都算收线）落 `accepted_at_ms` 并
+  `appendRecord` 写 `data/latency/<UTC今天>.jsonl`。桌面私聊 composer 同一时刻只跑一条，单槽够用；
+  群聊/例行没有渲染层回车时刻，**不记**——绝不拿别的回合时间凑数。
+- **渲染层** `hosts/desktop/index.html`：发送时 `turnOpts.enter_epoch_ms = Date.now()` 随回合传到 Host。
+- **可感面** `scripts/measure_turn_latency.mjs`：打印每条回合那一行与 p50/p95，`--turn <id>` 反查；
+  0 样本时明说「0 条」并非零退出。
+
+### 验收
+
+- 静态 `prove_turn_latency.mjs` **11/0**：L1 唯一 schema（Host 用 `appendRecord`、measure 用
+  `readRecords`、本门同吃一份 `turn_latency.js`）、L2 三段=500/1500/1000、L2b 可感面逐字、
+  L3 缺端点=null、L4 乱序被拒、L5 落盘往返+反查、L6 覆盖面「0 条不许绿」；N1/N2/N3 源码负向对照
+  （N2 特意在**不设 minSamples** 下也判红，证明那条硬规则不是靠参数凑的）。
+- 真机 `e2e_desktop_turn_latency.mjs` **7/0**：真 Electron + 流式 stub，连发 3 条各带
+  `[[lat:300/600/900]]`，实测「发送→首字」`323 / 614 / 924 ms` —— 逐条 ≥ 已知下限、三条互不相同、
+  按 `turn_id` 反查得到、`回车→发送` 量到（渲染层真接了 `enter_epoch_ms`）。独立 user-data-dir，
+  本轮 `data/latency` 行与夹具 Bot 跑完即还原。stub 新增 `BITBOT_STUB_LATENCY_FROM_TEXT`（默认关）。
+- G-117 挂进矩阵：静态 1+10 锚 ＋ 真渲染 1+5 锚，`HAVE_ELECTRON_UI=1` 真跑；缺 electron 诚实 SKIP。
+
+### 残留
+
+- `traceparent`（`turn_id` 从 Host 一路带到内核、替换 `desktop-<Date.now()>-<rand>` 断链 id）未接：
+  本条先把四端点时间戳立起来，跨进程链路 id 留作后续，docs/events.md §5.6 已标注。
+- 首字延迟只对**流式**回合有样本；非流式（工具循环等）`first_token_at_ms` 保持 0、该段显示「—」，
+  如实区分「没流式」与「流式但很快」。

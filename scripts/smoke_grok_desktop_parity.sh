@@ -4618,6 +4618,48 @@ echo "    一律 unknown 且不抛）、T5 label 齐、T6 接线闭环；N1/N2/N
 echo "    --last-failure 打同一码 + 垃圾串落 unknown（证码非写死）。真渲染 P2 key_configured=false、"
 echo "    P4 屏上出现带 provider_unconfigured 的失败、P5 文案三要素齐、P6 裸自由文本不再泄漏。三层各管一段。"
 
+echo "== G-117 发送要有计时：回车→发出 / 发出→首字 / 首字→落库 有非零样本且能按 turn_id 反查（KP-04）=="
+# 对标 Grok：把 §7 的「待测」变成有基线。此前 sent_at_ms/enter_epoch_ms/first_token_at_ms
+# 全 0 命中，唯一每回合时间是 data/traces/<turn_id>.json 的一个 at。本门钉两层：
+# ① 静态门 prove_turn_latency（唯一 schema 接线 + 三段派生 + 没测到≠0 + 乱序被拒 +
+#    落盘往返 + 覆盖面「0 条不许绿」，加 N1/N2/N3 源码负向对照）
+# ② 真渲染 e2e_desktop_turn_latency（真 Electron 连发 3 条流式，首字延迟对着已知下限
+#    300/600/900 逐条核对、三条互不相同、从日志按 turn_id 反查、enter→发送 量到）
+if timeout 120 node scripts/prove_turn_latency.mjs > /tmp/g117-static.log 2>&1; then
+  ok "G-117 静态计时门 prove_turn_latency（$(grep 'prove_turn_latency: PASS=' /tmp/g117-static.log)）"
+else
+  bad "G-117 静态计时门（见 /tmp/g117-static.log；$(grep 'prove_turn_latency: PASS=' /tmp/g117-static.log)）"
+fi
+for g117_t in "L1 " "L2 " "L2b " "L3 " "L4 " "L5 " "L6 " "N1 " "N2 " "N3 "; do
+  if grep -q "✓ $g117_t" /tmp/g117-static.log; then ok "G-117 静态锚点：$g117_t"; else bad "G-117 静态锚点没跑绿：$g117_t"; fi
+done
+# ② 真计时 e2e：只有真跑过带流式回执的回合才算有基线——静态门证明公式，不证明「真接到 Host」。
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g117_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g117_xvfb=(xvfb-run -a)
+  fi
+  if timeout 360 ${g117_xvfb[@]+"${g117_xvfb[@]}"} node scripts/e2e_desktop_turn_latency.mjs > /tmp/g117-e2e.log 2>&1; then
+    ok "G-117 真计时 e2e_desktop_turn_latency（$(grep 'e2e_desktop_turn_latency: PASS=' /tmp/g117-e2e.log)）"
+  else
+    bad "G-117 真计时（见 /tmp/g117-e2e.log；$(grep 'e2e_desktop_turn_latency: PASS=' /tmp/g117-e2e.log)）"
+  fi
+  for g117_p in "P3 连发" "P4 覆盖面" "P5 「发送→首字」逐条" "P6 从日志按 turn_id" "P7 「回车→发送」"; do
+    if grep -q "✓ $g117_p" /tmp/g117-e2e.log; then ok "G-117 渲染锚点：$g117_p"; else bad "G-117 渲染锚点没跑绿：$g117_p"; fi
+  done
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-117 真计时门未跑（SKIP ≠ PASS；静态门已在上面跑过）"
+fi
+echo "  · G-117 为什么长出来：对标 Grok 要有延迟基线。此前请求不带 enter/composed 时间戳，"
+echo "    结果不带 first_token/accepted，turn_id 用 desktop-<Date.now()>-<rand> 断链（§4 KP-04）。"
+echo "    现在渲染层按回车带 enter_epoch_ms，Host 起计时槽、首个流式 delta 打 first_token、"
+echo "    finally 落 accepted_at_ms 写 data/latency/<今天>.jsonl；measure_turn_latency.mjs 打印三段。"
+echo "  · G-117 判据：静态 L1 唯一 schema（Host 用 appendRecord、measure 用 readRecords、本门同吃一份"
+echo "    turn_latency.js）、L2 三段=500/1500/1000、L2b 可感面逐字、L3 缺端点=null 不是 0、L4 乱序被拒、"
+echo "    L5 落盘往返+反查、L6 0 样本判红（0 条不许绿）；N1/N2/N3 源码负向对照。真计时 e2e P3 连发 3 条落库、"
+echo "    P4 coverageOk≥3 且每条量到首字、P5 首字逐条 ≥ 已知下限 300/600/900 且互不相同、P6 按 turn_id 反查"
+echo "    自洽、P7 回车→发送量到（渲染层真接了 enter_epoch_ms）。两层各管一段：公式 vs 真接到 Host。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

@@ -262,6 +262,38 @@ token 增量既大又无长期价值（评审 §8-5「不持久化 token 增量�
 `scripts/e2e_desktop_failure_code.mjs`（`BITBOT_MOBILE_HOST=1` 走真实「本机不持有 key」分支）；
 三层一起挂矩阵 **G-116**。
 
+### 5.6 回合计时（KP-04：把延迟从「待测」变成有基线）
+
+桌面私聊每条回合在收尾时往 `data/latency/<YYYY-MM-DD>.jsonl`（UTC 分片）追加**一行**，
+字段与派生公式的唯一真源是 `hosts/shared/turn_latency.js`（Host 写、`measure` 读、验收门
+算覆盖面，三处同一份，绝不各算各的）：
+
+| 字段 | 含义 | 谁打的时间戳 |
+| --- | --- | --- |
+| `turn_id` | 与转录/trace 同一 id（可反查） | Host（`bitbot:turn` 起槽） |
+| `session_id` / `bot_id` | 归属 | Host |
+| `enter_epoch_ms` | 渲染层**按下回车**的墙上时钟 | renderer（`turnOpts.enter_epoch_ms`） |
+| `composed_at_ms` | Host **开始构造**这一回合（发出前） | Host |
+| `first_token_at_ms` | 首个**真流式 delta** 到 Host 的时刻；没流式则 0 | Host（`setLlmStreamHandler`） |
+| `accepted_at_ms` | 回合收尾（成功/失败/取消）落库时刻 | Host（`finally`） |
+
+三段延迟：`回车→发送 = composed−enter`、`发送→首字 = first−composed`、
+`首字→落库 = accepted−first`。任一端点缺失或乱序 → 该段是 **`null`（没测到）**，界面显示
+「—」，**绝不显示 0**；乱序记录会被 `validateOrder` 判不自洽。
+
+**可感面**：`node scripts/measure_turn_latency.mjs` 打印每条回合那一行
+（`… · 回车→发送 X ms · 发送→首字 Y ms · 首字→落库 Z ms`）与 p50/p95；
+`--turn <id>` 从日志反查单条。**只有真跑过带流式回执的回合才有样本**，一条都没有时脚本
+明说「0 条」并以非零码退出——覆盖面自证，「0 条也算绿」被禁。
+
+**验收门**：`scripts/prove_turn_latency.mjs`（唯一 schema 接线 L1 + 三段派生 L2/L2b +
+没测到≠0 L3 + 乱序被拒 L4 + 落盘往返 L5 + 覆盖面 L6，源码负向对照 N1/N2/N3）；真机连发由
+`scripts/e2e_desktop_turn_latency.mjs`（真 Electron + 流式 stub，首字延迟对着已知下限
+300/600/900ms 逐条核对、三条互不相同、按 `turn_id` 反查）；两层一起挂矩阵 **G-117**。
+
+> 尚未接线的一段：`traceparent`（把 `turn_id` 从 Host 一路带到内核、替换
+> `desktop-<Date.now()>-<rand>` 断链 id）仍是后续项；本轮先把四端点时间戳与三段延迟立起来。
+
 ## 6. 单写者（T1-FR2）
 
 每个 `session_id` 同一时刻只有一个 actor 能追加。actor 身份 = `machine_id`（由

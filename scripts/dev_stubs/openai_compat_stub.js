@@ -206,7 +206,14 @@ const server = http.createServer((req, res) => {
     // still running (a fast provider would resolve before any paint).
     // Synchronous on purpose: blocking the stub's event loop keeps the HTTP
     // response header unsent, so the client really does wait.
-    const latency = Number(process.env.BITBOT_STUB_LATENCY_MS || 0);
+    let latency = Number(process.env.BITBOT_STUB_LATENCY_MS || 0);
+    /* KP-04 e2e 用：测试可在正文里放 [[lat:NNN]]，让**这一条**请求精确延迟 NNN ms，
+       从而连发三条得到各不相同、且能对着已知下限核对的首字延迟。仅在显式开关下生效，
+       默认关，不影响任何现有门禁。 */
+    if (process.env.BITBOT_STUB_LATENCY_FROM_TEXT === "1") {
+      const lm = /\[\[lat:(\d+)\]\]/.exec(user);
+      if (lm) latency = Number(lm[1]) || 0;
+    }
     if (latency > 0) {
       try {
         require("child_process").execFileSync("sleep", [String(latency / 1000)], {

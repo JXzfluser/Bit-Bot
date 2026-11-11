@@ -10876,6 +10876,8 @@
           botId: activeBotId || undefined,
           // Replica C4: composer web-search toggle rides this turn.
           webSearch: !!composerWebSearch,
+          // KP-04：这一回合「发出」的墙上时钟，交给 Host 起计时槽（回车→发出 一段的左端点）。
+          enter_epoch_ms: Date.now(),
         });
         const r = await window.bitbot.turn(text, turnOpts);
         muteLlmStream = false;
