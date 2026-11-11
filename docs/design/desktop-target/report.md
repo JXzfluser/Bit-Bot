@@ -9972,3 +9972,231 @@ Host（`event_mirror`，未来收敛到 §6 的 actor）。给内核加一条 `s
 - 手机游标存在内存（`AtomicLong lastSeq`）里：进程被系统杀掉后 `lastSeq` 归零，重连等于新订阅
   （拿到队尾实况，历史要显式 `?since=`）。「把 applied_seq 持久化 + 冷启动回放补齐」是
   KP-08 Client Core（缓存 + reducer）的活，不是这一格。
+
+## 8.110 侧栏广播从整份快照改成 diff = KP-07：一条长回复流式写入时侧栏不整列闪动、滚动不跳（2026-11-12）
+
+第二批第三格。对标需求（`docs/grok-desktop-parity/kernel-mechanism-parity.md:144-146`）的原话是
+「`sessions-changed` 不再 `sessions.list()` 全量重发（`main.js:1111,1197,1214,1222,1227`），
+改发 `{surface, entity_id, changed_fields}`；渲染侧按 P3 的 reducer 应用。可感面：一条长回复
+流式写入时，侧栏**不再整列闪动**、滚动位置不跳」。
+
+**取证先给两个数**：一次真回合里，会话面广播 **5417B ×2 条**（整份 40 行的表），渲染端
+`box.innerHTML=""` 之后重建，侧栏被摘掉 **230 行 / 新建 230 行**（Bot 列 + 会话弹层合计，
+MutationObserver 记的数）。这就是「整列闪动」的物理形状：不是样式问题，是节点被拆了。
+
+**改了广播只算修好一半**——这一格最贵的一条认识。把 11 个会话点、4 个 Bot 点收到
+`broadcastSurface()` 之后跑门，KD-01a 依然红：**diff 开着**、`removed=135`、
+「原 15 行，身份对上 0 行」。抓栈之后原因很清楚：拆列的第二来源不在广播上，而在
+`paintBots` / `paintSessionList` 里那句 `innerHTML = ""`，而这两个函数被一堆**非广播**路径调着
+（`refreshSessions` 整份重读、点开会话弹层、Bot 信息面板、切会话、以及 diff 自己的结构兜底）。
+只改第一条长回复发什么，不改「重画」怎么画，用户看到的还是同一闪。
+
+**做了什么**
+- **主进程**（`hosts/desktop/main.js:1099` + 新纯函数模块 `hosts/desktop/broadcast_diff.js`）：
+  每个窗口一份基线（`surfacePeers` 按 `webContents.id` 存），每次广播只对「这个窗口的上一份」
+  求 diff；三种形状 `noop`/`diff`/`full` 都带单调 `rev`；`changed_fields` 放**新值**不放增量，
+  所以应用幂等；形状不认、没有基线、改动超过 `max(2, 40% 总数)` 一律退回整份并标
+  `reason=churn_over_limit`。总闸 `BITBOT_BROADCAST_DIFF=0` 处处 `forceFull`，响应体与改动前
+  一字不动（旧客户端仍可连）。
+- **渲染端的 rev 锚点**：`rev<=锚点` 忽略（回声）、`rev==锚点+1` 就地应用、跳号或没锚点就
+  `bitbot:surface:read` 自愈（KD-06 就是这条：reload 后改名照样上屏）。结构性改动用**本地缓存**
+  重画，不回读磁盘（KD-09a：换组全程 `surface.read` 调用 0 次）。
+- **画法收口**（本次补的第二半，也是「不再闪」真正落在地上的地方）：新增
+  `reconcileChildren(box, desired)`（[index.html:7138](file:///Users/zfl/Downloads/bitbot/hosts/desktop/index.html#L7138)）
+  ——只删除不在目标里的孩子、只把站错位置的节点 `insertBefore` 到位；`paintSessionList`
+  （7155）与 `paintBots`（15327）改成按键复用（行按 `data-session-id` / `data-agent-id`，
+  组头按组名，空态一个节点反复用），内容一律走唯一的那一份画法 `patchSessRowDom`（7249）/
+  `patchBotRowDom`（15657）/ `paintAvatar`（15633）；折叠头像条 `#bot-strip` 的 chip 同样按 id 复用。
+  两处配套细节：头像重画条件写成**签名**（`img:<url>` 或 `glyph:<id>:<name>`），因为
+  `fillAvatarGlyph` 是往节点里追加字形的，重复画会把同一颗头像叠出两层；复用节点后 handler
+  不再闭包引用创建时的数据，一律读 `el.__bot` / `el.__sess`——闭包里那份是上一轮的对象，
+  点下去会切到一个已经不存在的会话。`patchBotRowText` 与 `refreshBotLineForSession` 里
+  那份「每个字段一个 if」的并行逻辑删掉了，diff 就地更新直接调 `patchBotRowDom`：
+  两份画法迟早给出两种侧栏，这正是 GP-112 那一类「看起来对但接错人」的成因。
+  附带收益：搜索过滤的 `hidden`、`just-moved` 的闪动动画、行的 hover 在重画后不再丢。
+
+**验收门 G-119 两层**：`scripts/prove_broadcast_diff.js`（纯计算，`PASS=32 FAIL=0`，
+BD-01..25 钉白名单/churn 阈值/桶与组/`moved_bucket`/noop/坏形状退回整份，BD-90..92 自证
+「规则 12 条 / 判据 28 条」，N1..N4 改的是模块**源码副本**）+ `scripts/e2e_desktop_sidebar_diff.mjs`
+（真 Electron 三趟，`PASS=24 FAIL=0`，23 条真 app 判据）。关键数字：一次回合收到的会话 diff
+**301B** vs 关闸那趟实测整份 **5417B**（18.0×）；开 diff 的回合里 Bot 列
+`removed=0 created=0`、身份 **15/15**、弹层 **40/40**、`surface.read` **0 次**、
+`scrollTop` 全程 **180**（视口 420、内容 1033 才谈得上「跳」）；reload 自愈、连建 3 个会话后
+界面 **43 行 == 真值 43 行**、换组后组头与行数都对且零回读。
+
+**负向对照分两层，一条都不能少**：广播层是 KD-08a/b——`BITBOT_BROADCAST_DIFF=0` 重跑同一回合，
+会话与 Bot 广播各收到 2/1 条、其中 **diff 0 条**（必须回到整份才说明闸真在管这一层）；
+渲染层是 KD-10c——在页内把 `paintBots` 换回 KP-07 之前的形状（清空 + 逐行新建），同一条摘行判据
+立刻变成 `removed=15 created=15`、身份 **0/15**。为什么不用 scrollTop 做负对照：老路径是同步的
+「清空 + 立刻重建」，空布局那一帧不会交给合成器，实测两趟 `scrollTop` 都待在 180，拿滚动当
+负对照只会得到一条**空断言**（上一版门就是这么骗过去的：KD-08b 挂在「diff 关掉它仍然成立」）。
+非广播路径由 KD-10a/b 正面钉：`refreshBots()` 一趟 `removed=0` 身份 **15/15**、
+`refreshSessions()` 一趟 `removed=0` 身份 **43/43**。
+回归：`e2e_desktop_bot_group_menu` 13/0（挪组弹框与 `just-moved` 动画在复用节点后照样成立）；
+`e2e_grok_desktop_spec` 33/2，两条红（§4.2 row preview、§4.4 消息列 558.4→62）用 HEAD 版
+`index.html` 单独跑过一遍复核：**同样 33/2、逐字节同一份快照**，是既有红，不来自这一格。
+
+### 与需求原文的一处偏差（诚实）
+「渲染侧按 **P3 的 reducer** 应用」没有按字面落地：P3 的 reducer 属于 KP-08 的
+`client_core/`（手机与桌面共用那份缓存 + reducer），本次把它落在了渲染端的本地缓存 +
+`rev` 锚点上（`botViewCache` / `sessRowsCache` + `applyBotsDiff` / `applySessionsDiff`）。
+形状与契约已经按 reducer 的口径设计（幂等 `changed_fields`、单调 rev、跳号自愈），
+KP-08 时把这块搬进 core，渲染端只留 DOM 适配；`reconcileChildren` / `patch*RowDom` 留在渲染层不进去。
+
+### 残留
+- `rooms-changed`（群列表面）仍走整份快照，`#room-list` 与设置页各表仍是老画法——同一个病，
+  但群聊页签在门禁里是个位数行，收益排在这两个面后面。
+- 换日期桶 / 换组 / 换桶走「本地缓存 + keyed 重画」：节点保住了，搬运仍是整列级别的
+  （`diff.order` 只让 `reorderBotRows` 做最小搬运，桶变化不做）。
+- Bot 改名后侧栏次要行的旧摘要要等该 Bot 下一次有动静才换新：DM 会话标题（`"<名> · DM"`）
+  不随 Bot 改名，`dmTouched` 只跟 `title/preview/message_count` 变化——这是数据关联口径的问题，
+  不是广播形状的问题，归到 KP-08 的读模型一起收。
+
+
+## 8.111 dev 态第一条消息替用户付了 60 秒内核编译 = boot 门 GP-14 的真根因（2026-11-12）
+
+KP-07 收尾时被 boot 门（G-16 `scripts/e2e_grok_desktop_boot.mjs`）挡住的那一条，这次是从工具链层面
+钉死的，不是再猜一轮。三轮数字先摆出来：**run4 PASS=122 FAIL=1**（只红 GP-14）→ 我给尺子加了
+「编译前置」后 **run5/run6 都是 PASS=120 FAIL=3**（GP-14 照红，还把 boot2 的「聊天链路 /
+账户 store」两条从绿拖成红）—— 前置本身在制造红，这条认识很值钱，见下面第 3 点。
+
+**1. 证据四层，读数互相咬合。** 渲染端事件 tap（`window.bitbot.onLlmStream/onTurnProgress/
+onAgentLoop/onTurnBusy`，纯 addListener，不改任何回合行为）、provider 桩的请求流水
+（`BITBOT_STUB_RECORD`）、按 `ppid == app.process().pid` 挑出的本 app 内核进程树、以及
+`sample <pid> 2` 的叶子栈。run6 的 diag 行：`stub_reqs=2`、超时后补打的对照回合
+`control=ok`、会话里两条行都带持久 id（`gp14_ids=["有id:user","有id:assistant"]`），可渲染端
+`stream=1[start]`、`progress=0`、`busy` 停在 `count:1` 不落 —— 也就是**回合在服务侧真跑完了**，
+45s 窗全花在「槽位起不来」上。进程树给出时间差：warm 起来的 moon 已存在 64s，它的
+`desktop_turn.exe` 才 5s；`sample` 抓到的不是内核代码而是 `clang`（`Parent Process: moon`），
+846/847 个采样停在 `__wait4_nocancel`。编译器坐在中间，产品一行代码没跑。
+
+**2. 工具链事实（这条是本次新发现，值得单独记账）。** moon 对**同一个包 + 同一个 target**，把
+`moon run` 和 `moon build` 记成**两份各自的新鲜状态**，交替使用就各付一次全量重编。本机
+2026-11-12 四连测（`MOONBIT_NEW_NATIVE=0`、同一 cwd）：
+
+- `moon build cmd/desktop_turn --target native`（已热）→ **92ms**，`no work to do`
+- `moon run cmd/desktop_turn --target native -- --serve` → **60531ms**
+- 紧接着再 `moon build` → **62050ms**，`ran 3 tasks, now up to date`
+- 再 `moon run` 一次 → **107ms**
+
+所以「用 `moon build` 给常驻槽位预热」是**反效果**：不但没热到 run 那一侧，还把 run 那一侧
+弄脏 —— 这正是 run5/run6 的三条红：前置 1s 报「成功」，app 里 warm 槽位照旧编 60s，GP-14 输，
+连 boot2 那条 30s 窗的「sign in E2E」回合也被同一笔编译吃掉（`账户 store` 读到 `{}` 是它的
+下游症状，不是账号写坏了）。
+
+**3. 尺子的修法：前置必须和产品付同一笔钱。** `prebuildKernelTarget()` 现在跑的是与槽位
+**一字不差的 argv**（`moon run cmd/desktop_turn --target native -- --serve`，stdin 立刻 EOF），
+env 也换成产品自己的 `moonProcessEnv()`（它强制 `MOONBIT_NEW_NATIVE=0` —— 产品 FFI 是 C stub，
+LLVM native 后端不链接它；上一版裸跑 moon 编的是另一条流水线的工件）。两个调用点：开跑前、
+GP-14 启动前，各打一行如实数字 `· 尺子前置 <点位>：内核槽位同款 argv（moon run --serve） …（N s，
+计时窗外）`。**没有动 GP-14 的断言、窗口、消息内容** —— 改的是计时窗外跑什么命令，
+这也是本轮拒绝「用改被测行为换绿」的具体样子：run5/6 变差本身就是前置注入成本的证明。
+
+**4. 产品的修法：开应用就把槽位起来。** `hosts/desktop/main.js` 的 `app.whenReady()` 里调
+`runner.warmKernel()` → `hosts/shared/kernel_server.js` 的 `warm()`：池里一个活槽都没有时才
+`makeSlot()`，把 dev 态那笔 ~60s 编译从「用户第一条消息」挪到与 UI 启动重叠；请求路径
+（`acquire`/`request`）一行没改，槽位照样被复用，`spawns` 口径不变。打包态
+（`BITBOT_KERNEL_BIN`）和不常驻态（`BITBOT_KERNEL_RESIDENT=0`，`kernelServer` 为 null）都是
+空操作。可观测性：stdout 打 `[desktop] kernel_warm_pid=<pid|none>`，起不来不许挡住启动。
+诚实边界：**这只是把成本挪位置，不是让成本消失**——dev 态第一次启动仍要编译，真正不吃这笔的是
+打包态跑预制内核二进制。
+
+**5. 门禁自证与影响面。** `warm()` 走的是和请求路径同一个 `resolveEnv()`、同一个
+`kernelPrefix()`，所以预热出来的槽位与「第一条消息才建」的槽位在 env/argv 上没有第二种形状；
+`scripts/prove_kernel_resident.mjs` 的 KR-02 断言 `stats.spawns===1` 是直接 `createTurnRunner`
+起的、不经过 main.js 的 whenReady，因此不受预热影响 —— 复跑实测（本机 2026-11-12，六门顺序跑完）：
+`prove_kernel_resident` **pass=12 fail=0**（KR-02 常驻 3 回合仍是池侧进程创建 1、KR-03 反向对照
+仍是 6 次 spawn、KR-09 stop() 后 pgrep 全盘残留 0、KR-11 CLI 宿主 49ms 自己退出），
+`e2e_desktop_quit` **8/0**、`prove_gate_proc_count` **4/0**、`e2e_desktop_turn_latency` **7/0**、
+`prove_broadcast_diff` **32/0**、`e2e_desktop_sidebar_diff` **24/0**。
+
+**6. 结果与继续排掉的可能性。** 修完后 **run7 `e2e_grok_desktop_boot: PASS=132 FAIL=0`**
+（run4 122/1 → run5/6 120/3 → 132/0），三条红一次清零，且 GP-14 的断言、45s 窗、消息内容
+都没动过。为了不把「编译器」当万能解释，run7 之后又在计时窗外逐个排掉三个候选投毒源，
+每个都是同一条 `moon run cmd/desktop_turn --target native -- --serve` 的复测时间：
+boot 横幅 `moon run cmd/main` 之后 **75ms**、`--` 后面换一组参数之后 **73ms**、
+`moon check cmd/desktop_turn` 之后 **76ms**、本门自己那步不带 `--target` 的
+`moon run cmd/desktop_turn -- ping` 之后 **75ms** —— 全都不污染 run 那侧的状态。
+唯一能把 run 侧弄脏的仍然是 `moon build`（62050ms / `ran 3 tasks`）。
+诚实残留：run7 两行前置仍各打 ~60s（`65.8s`、`59.5s`），但第二行**没有任何 moon 状态行**，
+也就是那 60s 不是编译，而是这层前置起的 `--serve` 进程自己的收尾路径；它已在计时窗外，
+不影响本轮结论，具体是哪一段要留到下一次单独量。
+
+## 8.112 矩阵 run8 的 7 条红逐项归因：3 条是尺子自己的洞（已修，附双跑证据），4 条是产品侧开放账（2026-11-12）
+
+run8 总量 `smoke_grok_desktop_parity: PASS=837 FAIL=7`。这 7 条红里，KP-06/KP-07 与内核暖机
+自己的门全绿（KR 12/0、quit 8/0、proc_count 4/0、latency 7/0、G-119 纯计算 32/0、
+sidebar_diff 24/0、`e2e_grok_desktop_boot: PASS=132 FAIL=0`），红的全是别的门。
+按证据分成两类，一条都不含糊：**门的锚点飘了**（3 处，本轮修掉）与**产品侧真缺**（4 处，登记不粉饰）。
+
+### 1) G-29 两条红：一条是我这次重构弄飘的锚点，一条是门早就写死的旧文案
+
+产品语义没变：会话行点击仍委托 `activateSessionById`（`index.html:7234`），退群仍在那条共用路径里
+（`index.html:22064`），点开 Bot 也仍然先 `exitRoomChat()`（`index.html:15712`）。
+红在尺子的框法：`prove_m29_roomchat` 用「注释文字到调用之间 ≤400 字符」的正则窗口去框这条语义，
+而 KP-07 把行渲染收成 `sessionRowEl(s)`、handler 从闭包里的 `s` 改读 `el.__sess`
+（复用节点时闭包还指着上一份数据，点下去会切到一个已经不存在的会话）——
+调用写法一换，窗口就框不住，于是**行为没变、断言翻红**。
+
+修法不是把窗口放大到 800 字符（那只是把下一次假红的日期往后推）：判据改成**按括号配平切函数体**，
+认两种等价形状——体内直接退群，或体内委托 `activateSessionById` 且那个函数体自己退群；
+再补一条负向对照：摘掉共用路径里那句退群，判据必须翻假。
+HEAD 与工作树两边都判真、摘掉退群两边都判假，说明它不是照着我改后的形状量身定做。
+
+第二条红 `G-29 GP-51 routing missing` 与本次改动无关，是门与矩阵脱节：矩阵在 probe 日志里
+grep 字面量「无 @ → bot_discretion」，而 `prove_m29_roomchat` 早在 KP-02 那次就把这条断言
+改名为「无 @ → auto_route（单负责人）」并加了「无 @ 时不再落 bot_discretion」的负向对照
+——把 HEAD 版脚本取出来 grep，旧字面量命中 **0** 处，也就是**这一条在 HEAD 上就已经是红的**，
+只是矩阵没重跑到过。改成新文案与负向对照行**两条都要命中**，避免退化成「文件里恰好有这几个字」。
+
+重跑：`prove_m29_roomchat: PASS=43 FAIL=0`（红时 41/1，多的那条就是新负向对照）。
+
+### 2) G-40 负向对照恒真：焦点环那条「抹掉它就会翻假」的证明抹错了对象
+
+尺子抹的是**文件里第一处** `:focus-visible` 块，但现在文件里有两条：
+`#to-bottom:focus-visible`（`var(--accent-ink)`）排在前面，断言 1 真正命中的全局焦点环
+（`var(--accent)`）在后头。于是抹掉的是没被断言的那条，断言照旧为真 ——
+**负向对照失效，而不是无障碍契约失效**。同文件第 2 节对 `prefers-reduced-motion` 早就写过同一个坑的
+结论（「按内容特征 + 括号配平定位，不能取第一个出现的位置」），那节修了、这节没修。
+
+修法与第 2 节同构：断言判据只写一次（`RING` 常量），负向对照用现成的 `atRulesWith` 按内容特征
+定位「RING 真正命中的那块」再抹，并要求替换后文本确实变短（否则判红，防「抹了个空气」）。
+双跑证据：HEAD 与工作树都是 `blocks=2`、命中块在偏移 `87032`、抹后 `RING=false`。
+重跑：`prove_m40_a11y: PASS=8 FAIL=0`（原 7/1）。
+
+### 3) 产品侧 4 条红：本轮只登记，证据原样抄
+
+- **G-46 `C-11`（2 条）**：`create routine id=gate-r1 cron=@daily prompt=gate smoke` 之后，
+  气泡里拿到的是协议原文 `routine_schedule: gate-r1|@daily|gate smoke`、
+  `[host] ADR 0002 continue applied (MoonBit absorbed Host results)`、
+  `rt:schedule:gate-r1/snap/long_lived_cron_residual`；而渲染层的改写规则认的是内核原话
+  「已建定时任务 …（排程 …）」（`index.html:5204` → 文案键 `rRoutineCreated` 在 `index.html:18875`）。
+  `git diff HEAD -- hosts/desktop/index.html` 在这一带 0 行改动，所以不是这次碰坏的：
+  要么这条回合的回执形态变了（协议原文直接成了用户可见文本，这本身就该修），
+  要么 stub 给这句话的方式变了。它和 KP-08 要补的「乐观消息必须被回执 `echo_entry_id` 对上」是同族问题。
+- **G-53 用户旅程（2 条）**：`[18:52:19] 成员列表问答 {"answeredMembers":false,"allNames":false,"txt":""}`
+  —— 那条旅程的气泡是空的，即这一回合没有产出文本；
+  `[18:52:45] zh-TW 残留英文 — General,Computer,Usage,Updates` —— 繁中界面漏出四个英文段名，
+  来源是 `index.html:4387` 那张以英文为键的分节表和 `index.html:4958` 的
+  `(tabName || (key || "General"))` 兜底。
+- **G-64 旧 `smoke_desktop_turn`**：`tick routines` 那次回合里 `due_count: 3, fired_count: 3`，
+  三条 id 都是 `r--daily`、prompt 是 `smoke routine for `（后缀为空），draft 直接落在仓库
+  `data/routines/drafts/`；同一条 ack「收到，正在用 MoonBit 内核处理。」在 messages 里出现两次。
+  前者是 dev 数据根被历轮门写脏：`data/routines` 现有 **5383** 个条目、`drafts` **2882** 个，
+  `*.json` 被 `.gitignore` 挡住没进仓，但门读的就是这个目录（这条洞在「门禁会写进用户看得见的数据」
+  账上已有名）。后者是要单独查的重复上屏。
+
+清账动作里**删 `data/` 残留**会动到用户看得见的数据，按红线要先点头，本轮只登记不动手；
+C-11 的回执形态与 zh-TW 四个段名可以直接修，已进任务表。
+
+### 4) 边界与口径
+
+本轮提交 = KP-07（§8.110）+ boot 尺子与内核暖机（§8.111）+ 上面 1)、2) 的三处尺子修复。
+**全量矩阵的总量要下一次重跑才作数**，这里只报单门自证的数：`43/0`、`8/0`、
+以及 G-29 那五条 grep 字面量逐条命中。归因里最关键的一条证据是
+「`无 @ → bot_discretion` 在 HEAD 版脚本里命中 0 处」——它证明这两条红早于本次改动，
+不是我用改动换了绿。
+
+G-50 报告历史门重跑：`prove_report_history_intact: PASS=8 FAIL=0`
+（443 个标题无重复、349 个带编号小节严格递增、194 段代码围栏成对闭合、报告 10202 行、
+HEAD 版本一节没少 —— 本节是纯增量）。

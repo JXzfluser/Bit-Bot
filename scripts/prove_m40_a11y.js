@@ -34,7 +34,10 @@ if (/:focus\s*\{\s*outline:\s*none\s*;?\s*\}/.test(html)) {
 } else {
   bad("focus reset", "no :focus outline:none");
 }
-if (/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--accent\)[^}]*outline-offset:\s*2px/.test(html)) {
+/* 焦点环判据只写一次：断言用它的原文，负向对照用同一份去证「抹掉它就会翻假」。
+   两边分开写迟早漂移 —— 上一次红就是判据认 --accent、对照抹的是 --accent-ink 那条。 */
+const RING = /:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--accent\)[^}]*outline-offset:\s*2px/;
+if (RING.test(html)) {
   ok(":focus-visible 焦点环：2px solid accent + offset 2px（仅键盘可见）");
 } else {
   bad("focus-visible ring", "not defined");
@@ -105,10 +108,25 @@ if (mainActionsIdx > 0 && rmIdx > mainActionsIdx) {
 }
 
 /* ---------- 6) 负向对照 ---------- */
-const broken = html.replace(/:focus-visible\s*\{[\s\S]*?\n  \}/, "/* stripped */");
-const survived = /:focus-visible\s*\{[^}]*outline:\s*2px solid/.test(broken);
-if (!survived) ok("负向对照：抹掉 :focus-visible 规则 → 焦点环断言翻假（非恒真）");
-else bad("negative control", "focus-visible survived strip");
+/* 原来抹「文件里第一处 :focus-visible 块」，但页面里现在有多条：
+   `#to-bottom:focus-visible`（用 --accent-ink）排在前面，全局那条焦点环
+   （用 --accent）在后头 —— 于是抹掉的是没被断言的那条，断言照旧为真，
+   负向对照当场失效（和上面第 2 节踩过的同一个坑：取第一处 ≠ 取断言命中的那处）。
+   改成按内容特征定位「断言 1 真正命中的那块」，并先证明它确实被抹掉了：
+   替换后文本没变短就判红，免得哪天又变成「抹了个空气」。 */
+const fvBlocks = atRulesWith(html, ":focus-visible {");
+const fvRing = fvBlocks.find(
+  (b) => /outline:\s*2px solid var\(--accent\)[^}]*outline-offset:\s*2px/.test(b.text),
+);
+if (!fvRing) {
+  bad("negative control", "定位不到断言 1 命中的 :focus-visible 块（焦点环写法又飘了）");
+} else {
+  const broken =
+    html.slice(0, fvRing.idx) + "/* stripped */" + html.slice(fvRing.idx + fvRing.text.length);
+  if (broken.length >= html.length) bad("negative control", "strip 没有真的删掉那段规则");
+  else if (RING.test(broken)) bad("negative control", "focus-visible survived strip");
+  else ok("负向对照：抹掉断言命中的那条 :focus-visible 焦点环 → 断言翻假（非恒真）");
+}
 
 console.log("\nprove_m40_a11y: PASS=" + pass + " FAIL=" + fail);
 process.exit(fail === 0 ? 0 : 1);

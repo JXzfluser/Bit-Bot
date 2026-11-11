@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld("bitbot", {
     ipcRenderer.invoke("bitbot:openArtifact", artifactPath),
   saveArtifact: (artifactPath) =>
     ipcRenderer.invoke("bitbot:saveArtifact", artifactPath),
+  // KP-07 · 「整份重画」专用的取数入口：回包带 rev，并把这个窗口的基线换成
+  // 它画上去的这一份。普通读（sessions.list / bots.list）口径一字不变。
+  surface: {
+    read: (name) => ipcRenderer.invoke("bitbot:surface:read", name),
+  },
   sessions: {
     list: () => ipcRenderer.invoke("bitbot:sessions:list"),
     get: (id) => ipcRenderer.invoke("bitbot:sessions:get", id),

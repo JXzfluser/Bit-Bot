@@ -332,6 +332,71 @@ CS-05 断线-产新-重连（后台两分钟那条的终端可证版）、CS-06 
 CS-08 坏游标 400 / 不带游标不倒灌、CS-09 真 `curl|jq` 序列严格递增、CS-10 没库诚实 503；
 反向对照 N1（摘掉 `since` 解析）/ N2（游标写死 0）/ N3（`has_more` 写死 false）各自让对应那条翻红。
 
+### 5.8 侧栏广播的形状（KP-07：整份快照 → diff）
+
+事件日志管「跨进程怎么续」，桌面侧栏管「同一个进程内怎么画」。KP-07 动的是后者：
+`bitbot:sessions-changed` / `bitbot:bots-changed` 不再每次把 `sessions.list()` /
+`surface.listViews()` 整份重发，改发「哪一行、哪几个字段变了」。
+
+| 面 | 通道 | 可比字段（白名单） | 标量 |
+|---|---|---|---|
+| `sessions` | `bitbot:sessions-changed` | `title` `preview` `updated_at` `message_count` | `active_id` |
+| `bots` | `bitbot:bots-changed` | `name` `updated_at` `pinned` `group` `description` `job` `tags` `avatar_data_url` | `primary_id` |
+
+白名单外的字段一律不参与比对、也不会进 diff —— 宁可少比，不可漏比。 bots 的隐藏区
+（`hidden_bots`）与主区是同一批行的另一个桶，「隐藏 / 取消隐藏」在 diff 里就是一次
+`changed_fields` + `moved_bucket`，不是拆行。
+
+一条广播只有三种形状，都自带 `surface` 与单调 `rev`：
+
+| 形状 | 何时 | 内容 |
+|---|---|---|
+| `noop` | 与上一份逐字段相同 | 什么都不发 |
+| `diff` | 改动是局部的（行数 ≤ `max(2, 40% 总数)`） | `{mode:"diff", surface, rev, changed:[{entity_id, bucket, changed_fields, moved_bucket?}], added, removed, scalars, order, count}` |
+| `full` | 形状不认识 / 这个窗口没有基线 / 改动超过阈值 | 原来那整份快照，只多挂 `mode` / `surface` / `rev` 三个自述字段 |
+
+`changed_fields` 里放的是**新值不是增量**，所以应用是幂等的：同一份 diff 应用两次，
+屏幕不会变两次样。
+
+渲染端拿 `rev` 当锚点，三条规则：
+
+| 收到 | 动作 |
+|---|---|
+| `rev == 锚点 + 1` | 就地改那几行的文本/顺序（节点身份不动，`insertBefore` 做最小搬运） |
+| `rev <= 锚点` | 回声或重发，直接忽略（早先的读请求可能晚到） |
+| `rev` 跳号 / 没有锚点 | 说明漏收或窗口是新的 → 自己调 `bitbot:surface:read` 取整份重画 |
+
+结构性改动（`added` / `removed` / 换组 / 换桶 / 标量变了 / 队首顺序对不上）走**本地缓存重画**：
+把 diff 合进手里那份快照再整列重绘，不回读磁盘。基线是按 `webContents.id` 逐窗口存的，
+主进程给每个窗口各算各的 diff，读请求也只刷新发起它的那个窗口 —— 多窗口不会互相把
+对方的基线推前。
+
+**广播改完只算修好一半**。「侧栏整列闪动」有两个来源：一个是每次都发整份，另一个是
+`paintBots` / `paintSessionList` 里的 `innerHTML = ""` + 逐行新建。后者还被一堆**非广播**
+路径调着（`refreshSessions`、打开会话弹层、Bot 信息面板、切会话、diff 的结构兜底），
+只改广播的话第一条长回复照样闪。所以「整份重画」也改成按键复用：
+`reconcileChildren(box, desired)` 只删除不在目标里的孩子、只把站错位置的节点
+`insertBefore` 到位；行的内容走唯一的那一份画法（`patchBotRowDom` / `patchSessRowDom`），
+头像按签名（`img:<url>` 或 `glyph:<id>:<name>`）判断要不要重画 —— `fillAvatarGlyph`
+是往节点里追加字形的，重复画会把同一颗头像叠出两层。复用节点带来一个必须防的坑：
+handler 不能再闭包引用创建时的数据对象，一律读 `el.__bot` / `el.__sess`（闭包里那份是
+上一轮的对象，点下去会切到一个已经不存在的会话）。折叠头像条 `#bot-strip` 的 chip
+同样按 id 复用。附带好处：搜索过滤的 `hidden` 状态、`just-moved` 的闪动动画、行的 hover
+在重画后都不会再丢。
+
+`BITBOT_BROADCAST_DIFF=0` 是总闸：主进程处处 `forceFull`，响应体与改动前一字不动，
+渲染端见 `mode:"full"` 走老路径。门（G-119 的 KD-08）就拿这把闸做真 app 负向对照。
+
+**没覆盖到的（诚实残账）**：`rooms-changed` 仍是整份快照；群聊页签的行数在门禁里是
+个位数，收益不足以先做，但它和 KP-07 之前那两个面是同一个病。
+
+**验收门**：`scripts/prove_broadcast_diff.js`（纯计算，含源码负向对照）+
+`scripts/e2e_desktop_sidebar_diff.mjs`（真 Electron，KD-01 节点身份、KD-02 滚动不跳、
+KD-04 广播形状、KD-05 实测比价、KD-06 漏收自愈、KD-07 不吞行、KD-09 换组零回读、
+KD-10 非广播重画路径同样不拆列）——矩阵 **G-119**。负向对照分两层：KD-08 关总闸重跑
+同一回合（广播必须回到整份），KD-10c 在页内把 `paintBots` 换回老画法「清空 + 逐行新建」
+（摘行判据必须立刻翻红）。
+
 ## 6. 单写者（T1-FR2）
 
 每个 `session_id` 同一时刻只有一个 actor 能追加。actor 身份 = `machine_id`（由

@@ -1057,6 +1057,111 @@ function broadcast(channel, payload) {
   }
 }
 
+/* KP-07（广播从整份快照改成 diff）
+   ------------------------------------------------------------------
+   需求原话：「sessions-changed 不再 sessions.list() 全量重发，改发
+   {surface, entity_id, changed_fields}；一条长回复流式写入时，侧栏不再
+   整列闪动、滚动位置不跳。」
+
+   以前每落一条消息就 `sessions.list()` + `listViews()` 整份重发：几十行
+   连同一批头像 data URL 一起过 IPC，渲染端再 `innerHTML=""` 全量重画 ——
+   侧栏闪一下、滚动条被拉回顶部。现在这里只发「哪一行、哪几个字段变了」。
+
+   基线按**窗口**记（surfacePeers），不是全局一份：
+   - 渲染端每次「整份重画」都走 `bitbot:surface:read` 取数，拿到的就是它自己
+     画上去的那一份，只有那个窗口的基线该跟着走，别的窗口不能被骗；
+   - 每个窗口自己一条 rev 流，读一次不会反向触发广播（否则 list → 广播 →
+     onBotsChanged → list 就是死循环）；
+   - diff 带的是**新值**而不是增量，所以重复应用幂等 —— 渲染端重载或跳号后
+     取整份自愈，不会把屏幕越修越旧。
+   三条自保都由 broadcast_diff.js 判定：不认形状/没基线/改动过大 → 发整份；
+   每次带单调 rev；一条没变就不发。
+   BITBOT_BROADCAST_DIFF=0 强制走整份（负向对照门用它证明断言有牙，
+   并且响应体/广播体一字不动，老客户端回归门照旧）。 */
+const broadcastDiff = require("./broadcast_diff");
+const BROADCAST_DIFF_OFF = String(process.env.BITBOT_BROADCAST_DIFF || "") === "0";
+const surfacePeers = new Map(); // webContents.id → { sessions: {base,rev}, bots: {base,rev} }
+
+function peerSurfaceState(winId, surfaceName) {
+  let peer = surfacePeers.get(winId);
+  if (!peer) {
+    peer = {};
+    surfacePeers.set(winId, peer);
+  }
+  let st = peer[surfaceName];
+  if (!st) {
+    st = { base: null, rev: 0 };
+    peer[surfaceName] = st;
+  }
+  return st;
+}
+
+function broadcastSurface(surfaceName, payload) {
+  const channel = broadcastDiff.channelFor(surfaceName);
+  if (!channel) return { sent: 0, mode: "unregistered", channel: null };
+  const liveIds = new Set();
+  let sent = 0;
+  let lastMode = "noop";
+  for (const win of BrowserWindow.getAllWindows()) {
+    let wc = null;
+    try {
+      wc = win && !win.isDestroyed() ? win.webContents : null;
+    } catch (_) {
+      wc = null;
+    }
+    if (!wc) continue;
+    liveIds.add(wc.id);
+    const st = peerSurfaceState(wc.id, surfaceName);
+    const res = broadcastDiff.diffSurface(surfaceName, st.base, payload, {
+      rev: st.rev + 1,
+      forceFull: BROADCAST_DIFF_OFF,
+    });
+    if (res.mode === "noop") continue;
+    st.rev += 1;
+    st.base = payload;
+    try {
+      wc.send(channel, res.payload);
+      sent++;
+      lastMode = res.mode;
+    } catch (_) {
+      /* 单个窗口发不出去不影响别的窗口 */
+    }
+  }
+  // 关掉窗口不留残基线（每个窗口两份快照，攒着就是内存泄漏）。
+  for (const id of Array.from(surfacePeers.keys())) {
+    if (!liveIds.has(id)) surfacePeers.delete(id);
+  }
+  return { sent, mode: sent ? lastMode : "noop", channel };
+}
+
+/**
+ * KP-07 · 渲染端「整份重画」时的取数入口：回包带上 rev，并把这个窗口的基线
+ * 换成它即将画上去的这一份 —— 之后的 diff 才接得上、跳号才判得出。
+ *
+ * 只有这一条路口会动基线。别的读法（工具栏、菜单、门禁脚本、侧栏查 DM 标题
+ * 用的 sessions.list()）一律不认 rev、也不推基线：否则一个只为查标题的读
+ * 就把基线往前推了，中间真正发生过的改动永远上不了屏。
+ */
+function surfaceReadForPeer(surfaceName, wc) {
+  const channel = broadcastDiff.channelFor(surfaceName);
+  if (!channel) return { ok: false, error: "unknown_surface" };
+  let payload = null;
+  try {
+    payload = surfaceName === "sessions" ? sessions.list() : surface.listViews();
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+  if (BROADCAST_DIFF_OFF || !wc) return { ok: true, surface: surfaceName, rev: null, payload };
+  const st = peerSurfaceState(wc.id, surfaceName);
+  st.base = payload;
+  return {
+    ok: true,
+    surface: surfaceName,
+    rev: st.rev,
+    payload: Object.assign({}, payload, { mode: "full", surface: surfaceName, rev: st.rev }),
+  };
+}
+
 ffi.setLlmStreamHandler((chunk) => {
   // KP-04：首个流式 token 到 Host 的时刻——只有私聊回合在跑时才记，公式不在这。
   markTurnFirstTokenIfStreaming(chunk);
@@ -1488,7 +1593,7 @@ function createTray() {
       label: "新对话",
       click: () => {
         sessions.create("新对话");
-        broadcast("bitbot:sessions-changed", sessions.list());
+        broadcastSurface("sessions", sessions.list());
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show();
           mainWindow.focus();
@@ -1571,10 +1676,14 @@ ipcMain.handle("bitbot:links:open", async (_e, payload) => {
 ipcMain.handle("bitbot:links:auditPath", async () => ({ ok: true, path: links.auditPath }));
 
 ipcMain.handle("bitbot:sessions:list", async () => sessions.list());
+
+// KP-07 · 整份重画时走这里：带 rev、并把该窗口的基线换成它画上去的这一份。
+ipcMain.handle("bitbot:surface:read", async (_e, name) =>
+  surfaceReadForPeer(String(name || "").trim(), _e && _e.sender));
 ipcMain.handle("bitbot:sessions:get", async (_e, id) => sessions.get(id));
 ipcMain.handle("bitbot:sessions:create", async (_e, title) => {
   const r = sessions.create(title);
-  broadcast("bitbot:sessions-changed", sessions.list());
+  broadcastSurface("sessions", sessions.list());
   return r;
 });
 ipcMain.handle("bitbot:sessions:append", async (_e, id, messages) => {
@@ -1591,7 +1700,7 @@ ipcMain.handle("bitbot:sessions:append", async (_e, id, messages) => {
         ...(m.reply_to ? { reply_to: String(m.reply_to) } : {}),
       }));
     const res = sessions.appendMessages(String(id || ""), safe);
-    broadcast("bitbot:sessions-changed", sessions.list());
+    broadcastSurface("sessions", sessions.list());
     return res;
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };
@@ -1599,17 +1708,17 @@ ipcMain.handle("bitbot:sessions:append", async (_e, id, messages) => {
 });
 ipcMain.handle("bitbot:sessions:setActive", async (_e, id) => {
   const r = sessions.setActive(id);
-  broadcast("bitbot:sessions-changed", sessions.list());
+  broadcastSurface("sessions", sessions.list());
   return r;
 });
 ipcMain.handle("bitbot:sessions:rename", async (_e, id, title) => {
   const r = sessions.rename ? sessions.rename(id, title) : { ok: false, error: "rename unsupported" };
-  broadcast("bitbot:sessions-changed", sessions.list());
+  broadcastSurface("sessions", sessions.list());
   return r;
 });
 ipcMain.handle("bitbot:sessions:delete", async (_e, id) => {
   const r = sessions.remove ? sessions.remove(id) : { ok: false, error: "delete unsupported" };
-  broadcast("bitbot:sessions-changed", sessions.list());
+  broadcastSurface("sessions", sessions.list());
   return r;
 });
 // GP-M31 (§5.1 消息反应): toggle a reaction on a stored message. No
@@ -1687,7 +1796,7 @@ ipcMain.handle("bitbot:bots:setGroup", async (_e, payload) => {
   const p = payload || {};
   try {
     const r = surface.botsSetGroup({ bot_id: p.bot_id, group: p.group });
-    if (r && r.ok) broadcast("bitbot:bots-changed", surface.listViews());
+    if (r && r.ok) broadcastSurface("bots", surface.listViews());
     return r;
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err), mode: "host_bot_group" };
@@ -1786,8 +1895,8 @@ ipcMain.handle("bitbot:grok:apply", async (_e, selection) => {
     });
     // 建完之后三个目录都变了；一个都不广播的话，界面要等重启才看见。
     if (r && r.wrote) {
-      broadcast("bitbot:bots-changed", surface.listViews());
-      broadcast("bitbot:sessions-changed", sessions.list());
+      broadcastSurface("bots", surface.listViews());
+      broadcastSurface("sessions", sessions.list());
       const st = surface.roomsStoreStatus();
       broadcast("bitbot:rooms-changed", st.ok ? { ok: true, rooms: st.rooms } : { ok: false, error: st.error });
     }
@@ -2890,7 +2999,7 @@ const roomRuntime = createRoomRuntime({
   onProgress: (row) => broadcast("bitbot:room-turn-progress", row),
   onBotActivity: () => {
     try {
-      broadcast("bitbot:bots-changed", surface.listViews());
+      broadcastSurface("bots", surface.listViews());
     } catch (_) {
       /* 广播失败不影响回合 */
     }
@@ -4241,7 +4350,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
           assistant: ids.slice(1),
         };
       }
-      broadcast("bitbot:sessions-changed", sessions.list());
+      broadcastSurface("sessions", sessions.list());
     }
     if (result && typeof result === "object") result.progress = progressRows;
     // GP-117 (§2.1): a turn that belongs to a Bot is real activity, so the
@@ -4253,7 +4362,7 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       try {
         botActivity = surface.touchBotActivity(touchedId);
         if (botActivity && botActivity.ok) {
-          broadcast("bitbot:bots-changed", surface.listViews());
+          broadcastSurface("bots", surface.listViews());
         }
       } catch (_) {
         botActivity = { ok: false, error: "touch_failed" };
@@ -4334,7 +4443,7 @@ ipcMain.handle("bitbot:msg:regenerate", async (_e, payload) => {
     const rows = appended.session.messages || [];
     assistantIds = rows.slice(rows.length - toStore.length).map((r) => r.id);
   }
-  broadcast("bitbot:sessions-changed", sessions.list());
+  broadcastSurface("sessions", sessions.list());
   return {
     ok: Boolean(result && result.ok !== false),
     messages: toStore.map((r) => r.text),
@@ -4356,7 +4465,7 @@ ipcMain.handle("bitbot:msg:delete", async (_e, payload) => {
   if (!got || !got.ok || !got.session) return { ok: false, error: "session_not_found" };
   const rm = sessions.removeMessage(sessionId, entryId);
   if (!rm || rm.ok === false) return { ok: false, error: (rm && rm.error) || "remove_failed" };
-  broadcast("bitbot:sessions-changed", sessions.list());
+  broadcastSurface("sessions", sessions.list());
   return { ok: true, session_id: sessionId, removed: entryId };
 });
 
@@ -5362,6 +5471,20 @@ app.whenReady().then(async () => {
       app.dock.setIcon(path.join(__dirname, "build", "icon.png"));
     } catch (_) { /* keep the default if the bundled icon is unavailable */ }
   }
+  /* T1-07 的代价实测出来的（本机 macOS，2026-11-12）：dev 态的常驻槽位是
+     `moon run cmd/desktop_turn --target native` 起的，moon 判定目标不新鲜就先编译
+     —— `moon build` 同一目标实测 3 个任务 59.7s（热缓存 0.09s）。这条成本原本整段
+     落在用户发的第一条消息上：boot 门 GP-14 的 45s 往返窗因此红，证据面是「内核 0 条
+     progress、provider stub 0 个请求、池里两个槽位都还在」，sample 抓到的是 clang 在
+     编译。开应用就把空闲槽位起来，让编译和「看界面、打字」重叠；不常驻
+     （BITBOT_KERNEL_RESIDENT=0）时 warmKernel 是空操作，打包态没有编译，也只是提前
+     一次进程创建。 */
+  try {
+    const warmPid = runner.warmKernel();
+    process.stdout.write(`[desktop] kernel_warm_pid=${warmPid || "none"}\n`);
+  } catch (_) {
+    /* 预热起不来不许挡住启动：第一条消息会按老路如实报错 */
+  }
   if (process.env.BITBOT_DESKTOP_SMOKE_TURN !== undefined) {
     return runSmokeTurnAndExit();
   }
@@ -5392,7 +5515,7 @@ app.whenReady().then(async () => {
   };
   const newChat = () => {
     sessions.create("新对话");
-    broadcast("bitbot:sessions-changed", sessions.list());
+    broadcastSurface("sessions", sessions.list());
     openMain();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("bitbot:menu-new-chat", {});

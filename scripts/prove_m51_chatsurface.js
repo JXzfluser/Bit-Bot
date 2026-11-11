@@ -32,9 +32,14 @@ const preload = fs.readFileSync(path.join(REPO, "hosts/desktop/preload.js"), "ut
 console.log("M51 chat surface（find / delete / day-sep / copy-id）proof");
 
 /* ---------- 1) 删除消息：Host IPC → preload → ghost 条按钮 ---------- */
+/* KP-07 之后「广播这一面」的唯一写法是 broadcastSurface("sessions", …)，
+   通道名不再写在调用处，而是由 broadcast_diff.js 一张表登记 —— 所以这里
+   两条都要验：调用点在，通道名在那张表里。 */
+const bdiff = fs.readFileSync(path.join(REPO, "hosts/desktop/broadcast_diff.js"), "utf8");
 if (/ipcMain\.handle\("bitbot:msg:delete"/.test(main)
   && /sessions\.removeMessage\(sessionId,\s*entryId\)/.test(main)
-  && /broadcast\("bitbot:sessions-changed",\s*sessions\.list\(\)\)/.test(main)) {
+  && /broadcastSurface\("sessions",\s*sessions\.list\(\)\)/.test(main)
+  && /channel:\s*"bitbot:sessions-changed"/.test(bdiff)) {
   ok("Host：bitbot:msg:delete 走 sessions.removeMessage 并广播 sessions-changed");
 } else {
   bad("delete IPC", "handler missing or not using removeMessage");

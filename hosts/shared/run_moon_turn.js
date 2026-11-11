@@ -945,6 +945,9 @@ function createTurnRunner(repoRoot, opts = {}) {
     localSpawns: () => localSpawns,
     resident: () => RESIDENT,
     kernelStats: () => (kernelServer ? kernelServer.stats() : null),
+    /* 开应用就起一个空闲内核槽位，把 dev 态「第一次 moon run 要编译」的成本从
+       用户的第一条消息里挪走；不常驻（kernelServer=null）时是空操作。 */
+    warmKernel: () => (kernelServer && typeof kernelServer.warm === "function" ? kernelServer.warm() : null),
     kernelCrashes: () => kernelCrashes.slice(),
     stopKernel: () => (kernelServer ? kernelServer.stop() : Promise.resolve(null)),
   };

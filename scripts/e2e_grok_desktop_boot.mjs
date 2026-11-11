@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { decodePng, avgLuma, pixelAt, encodeRgbPng } from "./lib_png_pixel.mjs";
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, killGateProcs, countAllGateProcs } from "./electron_env.mjs";
 
 /* Chromium 的单实例锁是按 user-data-dir 算的，而 app.getName() 跟着 productName
    走（"Bit Bot"）。不显式隔离时，用户自己开着的 Bit Bot 会让门禁实例在窗口出现
@@ -50,6 +50,10 @@ const { _electron } = require("playwright-core");
    regressions). BITBOT_REPO_ROOT tells the app the same root, so the gate also
    stops writing back into the user's real data/desktop. */
 let GATE_ROOT = REPO;
+/* 块内声明的 window 在 catch 里看不见，而「红点落在哪个选择器上」恰恰需要在报错那一刻
+   读现场。门禁 13 个块严格串行、同时只有一台 app，所以记「最后发起的那一扇窗」
+   就足够定位；块自己手上的 win 不受影响。 */
+let LAST_WIN = null;
 const dd = (n) => path.join(GATE_ROOT, "data/desktop", n);
 const rd = (n) => path.join(GATE_ROOT, "data/routines", n);
 const sd = (n) => path.join(GATE_ROOT, "data/secrets", n);
@@ -170,10 +174,27 @@ const skip = (name, why) => {
 
 // target-v2: under grok-ui the header 电脑/能力 buttons are intentionally
 // hidden (body.grok-ui #gp-panel-btn { display:none }). The Computer rail's
-// real user entry is Cmd/Ctrl+F (see the keydown handler) and it closes from
-// the rail's own × — drive those instead of the hidden legacy button.
+// real user entry is Cmd/Ctrl+Shift+F (see the keydown handler) and it closes
+// from the rail's own × — drive those instead of the hidden legacy button.
+/* 键位为什么是 Shift+F 而不是 F：index.html 的 accelerator 把 Cmd/Ctrl+F 让给了
+   「在对话里查找」（对齐 Grok 真机），电脑预览退到 Shift+F。门禁原来按的是 Cmd+F，
+   右栏永远不打开，于是 GP-119 两条宽度断言 + GP-124 互斥 + 两处 closeComputerRail
+   超时一起红，实测 widthsOpen={"rail":0,"toolsOpen":false} —— 尺子按的是上一个
+   版本的键位，不是产品少了一扇门。这里除了改按键，还把「F 归查找、Shift+F 归预览」
+   钉成断言（见 GP-119 块），下次谁再挪键位会当场报出来。
+   返回布尔而不是抛：让后面的宽度断言继续用真实 DOM 数字说话。 */
 async function openComputerRail(win) {
-  await win.keyboard.press(process.platform === "darwin" ? "Meta+f" : "Control+f");
+  await win.keyboard.press(process.platform === "darwin" ? "Meta+Shift+f" : "Control+Shift+f");
+  try {
+    await win.waitForFunction(
+      () => document.body.dataset.panel === "computer",
+      null,
+      { timeout: 5000 },
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 async function closeComputerRail(win) {
   await win.waitForSelector("#computer-rail-close", { state: "visible", timeout: 5000 });
@@ -218,16 +239,79 @@ function liveDisplay() {
   return process.env.DISPLAY || ":99";
 }
 
+/* 「行存在但不可见」有两种完全不同的病：区块整体被折叠、某一行自己或它的容器被
+   display:none、或者页面已经切到不显示侧栏的那一页。以前 helper 只默默点一下，
+   红点落在下游的 waitForSelector 上，三种病长得一模一样 —— 这份现场快照就是为了
+   把它们分开。纯读，不改任何状态。 */
+async function botListProbe(win) {
+  if (!win) return { probe: "no-window" };
+  try {
+    return await win.evaluate(() => {
+      const why = (el) => {
+        for (let n = el; n; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          if (cs.display === "none") return "display:none@" + (n.id || n.className || n.tagName);
+          if (cs.visibility === "hidden") return "visibility@" + (n.id || n.className || n.tagName);
+        }
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 ? "visible" : "box:" + Math.round(r.width) + "x" + Math.round(r.height);
+      };
+      const sec = document.getElementById("sb-bots-rooms");
+      const rows = Array.from(document.querySelectorAll("#bot-list [data-agent-id]"));
+      const first = rows[0] || null;
+      const chain = [];
+      for (let n = first ? first.parentElement : null; n && n.id !== "sidebar"; n = n.parentElement) {
+        chain.push(n.id || "." + String(n.className || "").split(" ")[0]);
+      }
+      return {
+        hasSec: Boolean(sec),
+        collapsed: Boolean(sec && sec.classList.contains("collapsed")),
+        detailsOpen: sec ? Boolean(sec.open) : null,
+        rows: rows.length,
+        visRows: rows.filter((r) => why(r) === "visible").length,
+        firstWhy: first ? why(first) : "no-rows",
+        firstChain: chain.join("<") || null,
+        page: (document.querySelector(".view.active") || {}).id || document.body.className.slice(0, 40),
+      };
+    });
+  } catch (e) {
+    return { probe_error: String((e && e.message) || e).slice(0, 80) };
+  }
+}
+
 /* G-28 #2：Bot 区块默认折叠（只留头像条）。凡是要点 Bot 行的地方先调这个，
-   等价于用户点一下折叠按钮 —— 幂等，已经展开就什么都不做。 */
+   等价于用户点一下折叠按钮 —— 幂等，已经展开就什么都不做。
+
+   为什么这里必须「等行画出来再点、点完再验收」而不是一枪打出去：
+   折叠状态是 paintBots **首次渲染**时才按设计加上的（collapseInit 那条），而 Bot 列表
+   来自异步 IPC —— 在 launch 那一刻读，sec 还没有 collapsed 类、#bot-list 是空的，
+   helper 于是「什么都没点」就返回。数据随后到达、区块一出现就是折叠的，下游每一处
+   等 #bot-list 行的断言都只能等到超时（实测 5 个块同一条红：collapsed:true /
+   detailsOpen:true / rows:37 / visRows:0 / firstWhy:"display:none@bot-list"，
+   而 clicked:false）。这不是产品的折叠行为坏了，是尺子抢跑。 */
 async function expandBotList(win) {
   try {
-    await win.evaluate(() => {
-      const sec = document.getElementById("sb-bots-rooms");
-      const btn = document.getElementById("bot-collapse-btn");
-      if (sec && sec.classList.contains("collapsed") && btn) btn.click();
-    });
-    await win.waitForTimeout(120);
+    await win.waitForFunction(
+      () => document.querySelectorAll("#bot-list [data-agent-id]").length > 0,
+      null,
+      { timeout: 20000 },
+    );
+    let st = null;
+    for (let i = 0; i < 10; i++) {
+      st = await botListProbe(win);
+      if (st.visRows > 0) return st;
+      await win.evaluate(() => {
+        const sec = document.getElementById("sb-bots-rooms");
+        const b = document.getElementById("bot-collapse-btn");
+        if (sec && sec.classList.contains("collapsed") && b) b.click();
+      });
+      await win.waitForTimeout(150);
+    }
+    st = await botListProbe(win);
+    if (st.firstWhy && st.firstWhy !== "visible") {
+      console.log("  · diag #bot-list 展开后仍不可见 → " + JSON.stringify(st));
+    }
+    return st;
   } catch (_) {
     /* 页面还没就绪时下一处断言会如实报错，这里不抢它的结论 */
   }
@@ -268,6 +352,18 @@ function newestLlmTurnArtifact() {
   }
 }
 
+/** 清掉还占着本门 UD 的残留实例，并等到它的辅助进程也散场，再让下一次 launch 进去。
+ *  SIGKILL 是异步落地的：不等这一拍，新进程仍可能撞在还没释放的单实例锁上。 */
+async function reapUdLocks() {
+  const killed = killGateProcs(UD);
+  if (!killed) return 0;
+  for (let t = 0; t < 20 && countAllGateProcs(UD) > 0; t++) {
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  console.log("  · reap：" + killed + " 个上一块没关掉的门禁实例（单实例锁已释放）");
+  return killed;
+}
+
 async function launchOnce(extraEnv) {
   /* GP-201：凡是这一轮给了本地 stub 地址的启动，必须同时钉死 provider。
      resolveLlmConfig()（hosts/shared/host_ffi.js:5289）选 provider 的顺序是
@@ -289,6 +385,16 @@ async function launchOnce(extraEnv) {
     extraEnv && extraEnv.BITBOT_LLM_BASE_URL && !extraEnv.BITBOT_LLM_PROVIDER
       ? { BITBOT_LLM_PROVIDER: "deepseek" }
       : {};
+  /* 每个块都从「单实例锁是空的」这一头开始。
+     为什么必须在这里扫：Chromium 的锁按 user-data-dir 算，而本门 13 个块共用一个 UD，
+     任何一块在 launch() 之后、shutdown() 之前抛异常（例如 waitForFunction 超时），
+     它那台 app 就留在场上；之后每一块 launch 起来的进程都会「把手势交给还在跑的旧实例
+     然后自己退出」，Playwright 于是报 Target page/context/browser has been closed ——
+     一次超时会被读成 11 条红，而产品代码完全无辜（实测：GP-14 超时后 GP-99..131 全红）。
+     killGateProcs(UD) 只按**本门这一份 UD** 清进程：别的门禁各用自己的 UD，
+     并行跑也互不误伤；用户自己开着的 Bit Bot 走默认 profile，永远匹配不到。
+     没有残留时它是空操作。 */
+  await reapUdLocks();
   const electronBinary = resolveElectronBinary(path.join(REPO, "hosts/desktop"));
   const app = await _electron.launch({
     executablePath: electronBinary,
@@ -296,6 +402,11 @@ async function launchOnce(extraEnv) {
       path.join(REPO, "hosts/desktop/main.js"),
       "--no-sandbox",
       "--disable-gpu",
+      /* 实测（本机 macOS，2 分钟对照）：不加这一条，app 进程的 stdout/stderr 在整个生命
+         周期里一行都没有，只在退出时漏出 1 行 —— 于是 logRing 永远是空，「app_tail」这个
+         诊断从来没起过作用。`--enable-logging=stderr` 让渲染端的 console（含未捕获异常的
+         警告）落到 stderr，红的时候才看得见现场。 */
+      "--enable-logging=stderr",
       "--use-fake-ui-for-media-stream",
       "--use-fake-device-for-media-stream",
       "--user-data-dir=" + UD,
@@ -339,6 +450,7 @@ async function launchOnce(extraEnv) {
      用户路径把它展开（点折叠按钮）—— 否则 #bot-list 里的行是 display:none，
      waitForSelector(visible) 只会一路等到 30s 超时。 */
   await expandBotList(win);
+  LAST_WIN = win;
   return { app, win, logRing };
 }
 
@@ -347,6 +459,43 @@ async function launchOnce(extraEnv) {
 function appTailNote(ring) {
   const rows = (ring || []).slice(-5);
   return rows.length ? rows : ["(空：启动日志早于 launch 解析)"];
+}
+
+/** 报错那一刻的侧栏现场，压缩成一行；读不到就如实说读不到。 */
+async function probeNote() {
+  const st = await botListProbe(LAST_WIN);
+  return JSON.stringify(st).slice(0, 300);
+}
+
+/* 转写面的同款现场：GP-14 这类「发一条消息，等它带持久 id 回到 DOM」的块，
+   超时时有三种完全不同的病 —— 回合根本没跑（provider/stub 不通）、跑了但 store
+   没写、写了但没回填 id。只看 e.message 分不出这三种，所以在这里一次读全。 */
+async function logProbe(win) {
+  if (!win) return { probe: "no-window" };
+  try {
+    return await win.evaluate(() => {
+      const msgs = Array.from(document.querySelectorAll("#log .msg"));
+      const last = msgs[msgs.length - 1] || null;
+      return {
+        msgs: msgs.length,
+        withId: msgs.filter((m) => m.dataset && m.dataset.mid).length,
+        lastRole: last
+          ? last.classList.contains("user")
+            ? "user"
+            : last.classList.contains("assistant")
+              ? "assistant"
+              : String(last.className || "?")
+          : null,
+        lastText: last ? String(last.textContent || "").replace(/\s+/g, " ").slice(0, 110) : null,
+        errNodes: msgs.filter((m) => m.querySelector(".msg-error, .err, .fail-code")).length,
+        pending: Boolean(document.querySelector("#log .typing, #log .pending, #log .thinking")),
+        welcome: Boolean(document.getElementById("welcome")),
+        composer: String((document.getElementById("text") || {}).value || "").slice(0, 40),
+      };
+    });
+  } catch (e) {
+    return { probe_error: String((e && e.message) || e).slice(0, 80) };
+  }
 }
 
 async function launch(extraEnv) {
@@ -365,12 +514,18 @@ async function launch(extraEnv) {
 }
 
 async function shutdown(app) {
+  // The shell hides to tray on window close; force the real quit path.
   try {
-    // The shell hides to tray on window close; force the real quit path.
     await app.evaluate(({ app: electronApp }) => {
       electronApp.isQuiting = true;
       electronApp.quit();
     });
+  } catch {
+    /* 窗口/CDP 已经没了 —— 但**不能**因此跳过下面的 close：
+       原写法把 evaluate 和 close 放进同一个 try，evaluate 一抛就什么都没关，
+       进程留着占住下一次 launch 的单实例锁。 */
+  }
+  try {
     await app.close();
   } catch {
     /* already gone */
@@ -409,6 +564,51 @@ async function pollRows(p, pred, { timeoutMs = 12000 } = {}) {
   }
 }
 
+/**
+ * 尺子前置：把内核的 native 编译成本挪到计时窗外面 —— 而且必须挪「产品真正会付的那笔」。
+ *
+ * 常驻槽位起的是 `moon run cmd/desktop_turn --target native -- --serve`。moon 对同
+ * 一个包 + 同一个 target，把 `moon run` 和 `moon build` 记成**两份各自的新鲜状态**，
+ * 交替使用就各付一次全量重编。本机 2026-11-12 实测（MOONBIT_NEW_NATIVE=0、同一 cwd）：
+ *   build（已热）92ms → run 60531ms → build「ran 3 tasks」62050ms → run 107ms
+ * 也就是说：拿 `moon build` 去预热槽位，不但没热到 run 那侧的缓存，还会把 run 那侧
+ * 弄脏 —— 上一版前置正是这样，结果 app 里 warm 槽位照旧编 60s，GP-14 的 45s 窗输，
+ * 而且把 boot2 的「聊天链路 / 账户 store」两条从绿拖成红（run4 122/1 → run5/6 120/3）。
+ * 所以这里跑的是**和产品一字不差的 argv**：`moon run … -- --serve`，stdin 立刻 EOF。
+ *
+ * env 也必须用产品自己的 `moonProcessEnv()`：它把 `MOONBIT_NEW_NATIVE` 强制成 0
+ * （产品 FFI 是 C stub，LLVM native 后端不链接它），否则编的是另一条流水线的工件。
+ *
+ * 产品侧的真修是开应用就预热槽位（hosts/desktop/main.js whenReady → runner.warmKernel，
+ * 用的是同一个 `moon run` argv）；本函数只保证尺子不再把编译器算成产品。
+ */
+async function prebuildKernelTarget(tag) {
+  if (process.env.BITBOT_KERNEL_BIN) return; // 打包态没有编译这回事
+  const startedAt = Date.now();
+  let buildLine = "no-moon";
+  try {
+    const mo = process.env.MOON_BIN || path.join(process.env.HOME || "", ".moon/bin/moon");
+    const { moonProcessEnv } = require(path.join(REPO, "hosts", "shared", "run_moon_turn.js"));
+    // 状态行在 stderr；非 0 退出也当如实信息打出来 —— 本条是前置，不是断言。
+    const r = require("node:child_process").spawnSync(
+      mo,
+      ["run", "cmd/desktop_turn", "--target", "native", "--", "--serve"],
+      { cwd: REPO, encoding: "utf8", timeout: 600000, env: moonProcessEnv(), input: "" },
+    );
+    const line = String((r.stderr || "") + "\n" + (r.stdout || ""))
+      .split("\n")
+      .filter((l) => /moon|error/i.test(l))
+      .pop() || "(serve 无 moon 状态行)";
+    buildLine = (r.status === 0 ? "" : "run_exit" + r.status + " ") + line.trim();
+  } catch (e) {
+    buildLine = "build_failed: " + String((e && e.stderr) || (e && e.message) || e).slice(0, 90);
+  }
+  console.log(
+    "  · 尺子前置 " + tag + "：内核槽位同款 argv（moon run --serve） " + buildLine +
+      "（" + ((Date.now() - startedAt) / 1000).toFixed(1) + "s，计时窗外）",
+  );
+}
+
 async function main() {
   // #10: snapshot the real store into an isolated temp root so the external
   // watcher that pollutes data/desktop across runs can't reach the gate's
@@ -440,7 +640,10 @@ async function main() {
     ? ok("E2E PNG 解码自检：filter/CRC/亮度全部对得上（" + lLeft.toFixed(1) + " vs " + lRight.toFixed(1) + "）")
     : bad("E2E PNG 解码自检", JSON.stringify({ lLeft, lRight, px }));
 
+  await prebuildKernelTarget("开跑前");
+
   // Fresh, deterministic store state for appearance + account assertions.
+
   const settingsBefore = fs.existsSync(SETTINGS_PATH)
     ? fs.readFileSync(SETTINGS_PATH)
     : null;
@@ -820,6 +1023,121 @@ async function main() {
     };
     let stubProc = null;
     let target = null;
+    /* 「45s 超时」有三种完全不同的病：provider 根本没收到请求（stub 不通）、请求到了
+       但 Host 没落盘、落盘了但 id 没回填 DOM。logProbe 只能看第三种。stub 自带
+       BITBOT_STUB_RECORD 请求记账（默认关，不影响任何应答），开在隔离根里就能把第一
+       种和第二种分开 —— 这是本段唯一能区分「产品没跑」和「跑了指针没回来」的证据面。 */
+    const g14StubRecord = path.join(GATE_ROOT, "gp14-stub-requests.jsonl");
+    function g14Evidence() {
+      let reqs = [];
+      try {
+        reqs = fs
+          .readFileSync(g14StubRecord, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => {
+            try {
+              const j = JSON.parse(l);
+              return {
+                seq: j.seq,
+                url: j.url,
+                model: j.model,
+                stream: j.stream,
+                n: (j.messages || []).length,
+                roles: (j.messages || []).map((m) => m.role).join("/").slice(0, 40),
+              };
+            } catch (_) {
+              return { raw: l.slice(0, 60) };
+            }
+          });
+      } catch (_) {
+        reqs = null; // 文件没建 = 一条请求都没来过
+      }
+      let store = null;
+      try {
+        const st = JSON.parse(fs.readFileSync(SESSIONS_PATH, "utf8"));
+        const rows = (st.sessions || []).flatMap((s) => (s.messages || []).map((m) => ({ ...m, sid: s.id })));
+        const mine = rows.filter((m) => /GP14/.test(String(m.text || "")));
+        store = {
+          sessions: (st.sessions || []).length,
+          active_id: st.active_id,
+          gp14_rows: mine.length,
+          gp14_ids: mine.slice(-2).map((m) => (m.id ? "有id" : "无id") + ":" + m.role),
+        };
+      } catch (e) {
+        store = { store_error: String(e.message || e).slice(0, 60) };
+      }
+      const art = newestLlmTurnArtifact() || {};
+      let exec = null;
+      try {
+        exec = String(JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8")).local_execution || "?");
+      } catch (_) {
+        exec = "no-settings";
+      }
+      /* 常驻内核池是「一个槽位跑一个回合」：前面的块若留下一个还挂在管道上的
+         desktop_turn，后面的回合就在池里排队 —— 表现 Exactly 是「stub 0 请求、
+         store 0 行、按钮一直转」。用 ps 看一眼自己根里的内核子进程。 */
+      let procs = "ps-failed";
+      try {
+        const appPid = (() => {
+          try {
+            return bootG14 && bootG14.app && bootG14.app.process() ? bootG14.app.process().pid : 0;
+          } catch (_) {
+            return 0;
+          }
+        })();
+        const out = require("node:child_process")
+          .execSync("ps -eo pid,ppid,etime,stat,args | grep '[d]esktop_turn' | head -6", {
+            encoding: "utf8",
+          });
+        const rows = out.split("\n").filter(Boolean).map((l) => {
+          const f = l.trim().split(/\s+/);
+          return { pid: f[0], ppid: f[1], up: f[2], stat: f[3], mine: f[1] === String(appPid) };
+        });
+        procs = (rows.length ? rows : ["none"])
+          .map((r) => (typeof r === "string" ? r : r.pid + "/" + r.up + "/" + r.stat + (r.mine ? "/mine" : "/pid" + r.ppid)))
+          .join(" ");
+      } catch (_) {
+        procs = "none";
+      }
+      /* GP-148 的优先级是「provider 自己的 env → active.json → 全局 BITBOT_LLM_*」：
+         如果这一回合选中的 provider 声明了 scoped env_base（例如 qwen 用
+         BITBOT_LLM_QWEN_BASE_URL），全局 BITBOT_LLM_BASE_URL 就被跳过，请求发向
+         active.json 里那个真地址 —— 表现正是「stub 0 请求 + 回合 90s 不返回」。
+         前面哪个块写过 active/providers.json，这条红就只在全量尺子里出现。 */
+      let llmCfg = "no-llm-dir";
+      try {
+        const llmDirPath = path.join(GATE_ROOT, "data/llm");
+        const act = JSON.parse(fs.readFileSync(path.join(llmDirPath, "active.json"), "utf8"));
+        const cat = JSON.parse(fs.readFileSync(path.join(llmDirPath, "providers.json"), "utf8"));
+        const want = String(act.provider_id || cat.default_provider || "deepseek").toLowerCase();
+        const prov = (cat.providers || []).find((p) => String(p.id || "").toLowerCase() === want) || {};
+        llmCfg = {
+          want,
+          scoped_base: String(prov.env_base || ""),
+          prov_base: String(prov.base_url || "").slice(0, 40),
+          active_base: String(act.base_url || "").slice(0, 40),
+          active_key: Boolean(act.api_key),
+          catalog_default: String(cat.default_provider || ""),
+          n_providers: (cat.providers || []).length,
+        };
+      } catch (e) {
+        llmCfg = { cfg_error: String(e.message || e).slice(0, 40) };
+      }
+      return JSON.stringify({
+        local_execution: exec,
+        stub_reqs: reqs === null ? "no-record-file" : reqs.length,
+        stub_last: Array.isArray(reqs) ? reqs.slice(-1)[0] || null : null,
+        kernel: procs,
+        llm: llmCfg,
+        store,
+        art: { ok: art.ok, http: art.http_status, err: art.error, at: art.at, base: art.base_url },
+      }).slice(0, 700);
+    }
+    /* bootG14 必须在 try 外面声明：块里任何一步抛异常（历史实测：45s waitForFunction
+       超时），close 都得有人做 —— 原来它活在 try 内，finally 够不着，于是那台 app
+       占着共用的 UD 单实例锁，把后面 10 个块的 launch 全打死。 */
+    let bootG14 = null;
     try {
       const { spawn: spawnChild } = require("node:child_process");
       stubProc = spawnChild(
@@ -832,6 +1150,7 @@ async function main() {
             ...process.env,
             BITBOT_STUB_PORT: String(stubPort),
             BITBOT_STUB_ECHO_ALL: "1",
+            BITBOT_STUB_RECORD: g14StubRecord,
           },
         },
       );
@@ -846,7 +1165,48 @@ async function main() {
         stubProc.on("error", rej);
       });
 
-      const bootG14 = await launch(g14Env);
+      await prebuildKernelTarget("GP-14 前");
+      bootG14 = await launch(g14Env);
+      /* 第四层证据面：Host 的三条回合事件（llm-stream / turn-progress / agent-loop）。
+         bitbot:turn 的 handler 进门第一件事就是 broadcast llm-stream phase=start
+         （main.js:4141），所以「start 有没有到渲染层」直接切分两种病：
+         没 start = invoke 根本没进主进程；有 start 无后续 = 卡在 runTurn 里面。
+         纯观察：只 addListener，不改任何回合行为。 */
+      await bootG14.win.evaluate(() => {
+        const tap = (window.__g14tap = { stream: [], progress: [], loop: [], busy: [] });
+        const push = (arr, v) => {
+          if (arr.length < 12) arr.push(v);
+        };
+        try {
+          window.bitbot.onLlmStream((c) =>
+            push(
+              tap.stream,
+              String((c && c.phase) || "?") +
+                "@" +
+                ((c && c.at) || Date.now()).toString().slice(-5) +
+                "/" +
+                String((c && c.session_id) || "?").slice(-6) +
+                "/" +
+                String((c && c.channel) || "dm") +
+                "/" +
+                String((c && c.user) || "").slice(0, 10),
+            ));
+        } catch (_) {}
+        try {
+          window.bitbot.onTurnProgress((ev) => push(tap.progress, String((ev && (ev.kind || ev.phase || ev.name)) || "?")));
+        } catch (_) {}
+        try {
+          window.bitbot.onAgentLoop((s) => push(tap.loop, String((s && (s.title || s.kind || s.text)) || "?").slice(0, 24)));
+        } catch (_) {}
+        try {
+          window.bitbot.onTurnBusy((p) => push(tap.busy, JSON.stringify(p || {}).slice(0, 24)));
+        } catch (_) {}
+        /* 内核循环的批准卡走的是 bitbot:loop-approval，不在产品审批队列里：
+           若它悄悄出现又没人点，回合就永远不回 —— 而 approvals.listPending() 仍是 0。 */
+        try {
+          window.bitbot.onLoopApproval((c) => push(tap.loop, "APPROVAL:" + String((c && (c.title || c.kind || c.id)) || "?").slice(0, 24)));
+        } catch (_) {}
+      });
       // 干净会话：前面的 boot 已往 active session 写过消息，Reply 目标必须唯一，
       // 所以这里从「新建对话」开始，而不是在污染的转写里猜。
       await bootG14.win.evaluate(() => window.bbUi.newSession());
@@ -1037,8 +1397,111 @@ async function main() {
             source: ga.reply_quote_source,
           }));
     } catch (e) {
-      bad("E2E GP-14 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+      /* 光报 e.message（"Timeout 45000ms exceeded"）分不出「回合没跑」还是
+         「跑了但转写没画出来」，那正是这条红曾经查不下去的原因。把 app 自己的
+         日志尾巴一起带出来，一眼就能看出请求有没有到 Host。
+         bad() 会把详情截到 200 字符，而这三层证据加起来必然超 —— 所以完整现场
+         单独打一行 diag，红条本身只留最短的定位。 */
+      let pend = "no-window";
+      try {
+        if (bootG14 && bootG14.win) {
+          pend = await bootG14.win.evaluate(async () => {
+            const p = await window.bitbot.approvals.listPending().catch((err) => ({ ipc_error: String(err) }));
+            return {
+              pending: (p && p.pending ? p.pending.length : 0),
+              sample: (p && p.pending ? p.pending.slice(0, 2) : []),
+              sendDisabled: !!(document.getElementById("send") || {}).disabled,
+              cancelVisible: !!(document.getElementById("turn-cancel") || {}).hidden === false,
+              agentSteps: (document.getElementById("agent-step-live") || {}).dataset
+                ? JSON.stringify(document.getElementById("agent-step-live").dataset)
+                : null,
+            };
+          });
+        }
+      } catch (err) {
+        pend = { eval_error: String(err.message || err).slice(0, 80) };
+      }
+      let taps = "(no-window)";
+      try {
+        if (bootG14 && bootG14.win) {
+          taps = await bootG14.win.evaluate(() => {
+            const t = window.__g14tap;
+            if (!t) return "no-tap";
+            const n = (a) => a.length + (a.length >= 12 ? "+" : "") + "[" + a.slice(0, 6).join(",") + "]";
+            return "stream=" + n(t.stream) + " progress=" + n(t.progress) + " loop=" + n(t.loop) + " busy=" + n(t.busy);
+          });
+        }
+      } catch (err) {
+        taps = "tap_error:" + String(err.message || err).slice(0, 40);
+      }
+      /* 控制回合 + 内核栈：分两种病，处置完全不同。
+         - 控制回合也 15s 不回 = 池/内核全局废了（尺子只能报「池已废」）；
+         - 控制回合秒回 = 只有 GP-14 这条请求被卡住 → 内核栈告诉你卡在哪儿。
+         sample 只读栈、不碰进程；只挑本 app 名下的 kernel（用户自己开着的实例
+         ppid 不是本 app，绝不会被打扰）。 */
+      let control = "skip";
+      try {
+        control = await Promise.race([
+          bootG14.win.evaluate(() =>
+            window
+              .bitbot.turn("G14CONTROL ping", {})
+              .then((r) => "ok:" + String(JSON.stringify(r)).slice(0, 36))
+              .catch((e) => "reject:" + String(e && e.message ? e.message : e).slice(0, 40)),
+          ),
+          new Promise((res) => setTimeout(() => res("TIMEOUT-15s"), 15000)),
+        ]);
+      } catch (err) {
+        control = "err:" + String(err.message || err).slice(0, 40);
+      }
+      let stacks = "no-sample";
+      try {
+        const { execSync: run } = require("node:child_process");
+        const appPid = bootG14 && bootG14.app && bootG14.app.process() ? bootG14.app.process().pid : 0;
+        const rows = run("ps -eo pid,ppid,stat,args", { encoding: "utf8", maxBuffer: 8192 * 1024 })
+          .split("\n")
+          .filter((l) => /desktop_turn/.test(l))
+          .map((l) => l.trim().split(/\s+/))
+          .map((f) => ({ pid: Number(f[0]), ppid: Number(f[1]), stat: f[2] }));
+        const moons = rows.filter((r) => r.ppid === appPid).map((r) => r.pid);
+        const leaves = rows.filter((r) => moons.includes(r.ppid)).map((r) => r.pid);
+        const targets = (leaves.length ? leaves : moons).slice(0, 2);
+        stacks = targets
+          .map((pid) => {
+            const f = "/tmp/g14-kstack-" + pid + ".txt";
+            try {
+              run("sample " + pid + " 2 -f " + f, { stdio: "ignore", timeout: 20000 });
+              const frames = fs
+                .readFileSync(f, "utf8")
+                .split("\n")
+                .map((l) => l.trim())
+                .filter((l) => /desktop_turn|moonbit|^core::|^std::/.test(l.replace(/^[0-9|+ -]+/, "")))
+                .slice(0, 3)
+                .map((l) => l.replace(/0x[0-9a-f]+/gi, "").slice(0, 64));
+              return pid + "{" + (frames.join(" | ") || "no-frames") + "}";
+            } catch (e) {
+              return pid + "{sample:" + String(e.message || e).slice(0, 24) + "}";
+            }
+          })
+          .join(" ") || "no-target";
+      } catch (err) {
+        stacks = "ps_error:" + String(err.message || err).slice(0, 40);
+      }
+      console.log("  · diag GP-14 control=" + control + " stacks=" + stacks);
+      console.log(
+        "  · diag GP-14 ev=" +
+          g14Evidence() +
+          " approvals=" +
+          JSON.stringify(pend).slice(0, 300) +
+          " taps=" +
+          taps +
+          " app_tail=" +
+          JSON.stringify((bootG14 && bootG14.logRing ? bootG14.logRing.slice(-18) : ["(空)"]))
+      );
+      bad("E2E GP-14 块异常", (e && e.message ? e.message : String(e)).slice(0, 160) +
+        " | log=" + JSON.stringify(await logProbe(bootG14 && bootG14.win)).slice(0, 140) +
+        " | ev=" + g14Evidence().slice(0, 40));
     } finally {
+      if (bootG14) await shutdown(bootG14.app);
       for (const k of Object.keys(g14Env)) delete process.env[k];
       if (stubProc) {
         try {
@@ -1547,7 +2010,8 @@ async function main() {
 
       await shutdown(bootG23.app);
     } catch (e) {
-      bad("E2E GP-111/112 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+      bad("E2E GP-111/112 块异常", (e && e.message ? e.message : String(e)).slice(0, 150) +
+        " | bot_list=" + await probeNote());
     } finally {
       if (memStoreBefore) fs.writeFileSync(MEM_STORE, memStoreBefore);
       else fs.rmSync(MEM_STORE, { force: true });
@@ -1841,7 +2305,25 @@ async function main() {
         log: document.getElementById("log").getBoundingClientRect().width,
         machines: document.getElementById("machines").getBoundingClientRect().width,
       }));
-      await openComputerRail(win);
+      /* 先钉键位分工：Cmd/Ctrl+F 是「在对话里查找」（Grok 真机），它**不**该带出
+         电脑预览右栏；预览归 Shift+F。这条来自上面那次误按 —— 一把 F 按下去，
+         三条宽度断言 + 两处关栏超时同时红，看着像产品右栏坏了。谁再挪键位，这条先红。 */
+      await win.keyboard.press(process.platform === "darwin" ? "Meta+f" : "Control+f");
+      await win.waitForTimeout(300);
+      const keySplit = await win.evaluate(() => ({
+        findOpen: !document.getElementById("find-bar").hidden,
+        panel: document.body.dataset.panel,
+        railW: document.getElementById("computer-rail").getBoundingClientRect().width,
+      }));
+      await win.keyboard.press("Escape");
+      await win.waitForTimeout(150);
+      keySplit.findOpen && keySplit.panel !== "computer" && keySplit.railW < 40
+        ? ok("E2E GP-119：Cmd/Ctrl+F 只开「在对话里查找」，电脑预览仍关着（键位分工）")
+        : bad("E2E GP-119 find/rail key split", JSON.stringify(keySplit).slice(0, 160));
+      const railOpenedByKey = await openComputerRail(win);
+      railOpenedByKey
+        ? ok("E2E GP-119：Cmd/Ctrl+Shift+F 打开电脑预览右栏（data-panel=computer）")
+        : bad("E2E GP-119 Shift+F rail entry", JSON.stringify(keySplit).slice(0, 160));
       await win.waitForFunction(
         () => document.body.classList.contains("computer-open"),
         null,
@@ -1873,7 +2355,8 @@ async function main() {
 
       await shutdown(bootG24.app);
     } catch (e) {
-      bad("E2E GP-116..119 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+      bad("E2E GP-116..119 块异常", (e && e.message ? e.message : String(e)).slice(0, 150) +
+        " | bot_list=" + await probeNote());
     } finally {
       if (botsBefore) fs.writeFileSync(BOTS_PATH, botsBefore);
       if (roomsBefore) fs.writeFileSync(ROOMS_PATH, roomsBefore);
@@ -2142,7 +2625,8 @@ async function main() {
 
       await shutdown(bootM25.app);
     } catch (e) {
-      bad("E2E GP-120..123 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+      bad("E2E GP-120..123 块异常", (e && e.message ? e.message : String(e)).slice(0, 150) +
+        " | bot_list=" + await probeNote());
     } finally {
       if (botsM25Before) fs.writeFileSync(BOTS_M25, botsM25Before);
       if (sessM25Before) fs.writeFileSync(SESS_M25, sessM25Before);
@@ -2340,7 +2824,8 @@ async function main() {
 
       await shutdown(bootM26.app);
     } catch (e) {
-      bad("E2E GP-124..127 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+      bad("E2E GP-124..127 块异常", (e && e.message ? e.message : String(e)).slice(0, 150) +
+        " | bot_list=" + await probeNote());
     } finally {
       if (botsM26Before) fs.writeFileSync(BOTS_M26, botsM26Before);
       if (setM26Before) fs.writeFileSync(SET_M26, setM26Before);
@@ -2600,7 +3085,8 @@ async function main() {
 
       await shutdown(bootM27.app);
     } catch (e) {
-      bad("E2E GP-128/129 块异常", (e && e.message ? e.message : String(e)).slice(0, 220));
+      bad("E2E GP-128/129 块异常", (e && e.message ? e.message : String(e)).slice(0, 150) +
+        " | bot_list=" + await probeNote());
     } finally {
       if (m27Stub) {
         try { m27Stub.kill("SIGKILL"); } catch (_) {}

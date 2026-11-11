@@ -334,7 +334,10 @@ function main() {
   /surface\.touchBotActivity\(touchedId\)/.test(readText(MAIN_PATH))
     ? ok("main.js 在 bitbot:turn 里记录活动（不是只靠 UI 点击）")
     : bad("turn wiring", "touchBotActivity not called from the turn handler");
-  /broadcast\("bitbot:bots-changed"/.test(readText(MAIN_PATH)) &&
+  // KP-07：广播调用点改成 broadcastSurface("bots", …)，通道名集中在
+  // broadcast_diff.js 的表里登记；两头都在才算这条链路接通。
+  /broadcastSurface\("bots"/.test(readText(MAIN_PATH)) &&
+  /channel:\s*"bitbot:bots-changed"/.test(readText(path.join(REPO, "hosts/desktop/broadcast_diff.js"))) &&
   /onBotsChanged: \(cb\)/.test(readText(PRELOAD_PATH)) &&
   /window\.bitbot\.onBotsChanged/.test(html)
     ? ok("回合结束后 Host 广播 bots-changed，渲染层重排侧栏（无需手动刷新）")

@@ -87,14 +87,64 @@ const roomFn = roomFnStart < 0 ? "" : runtimeSrc.slice(roomFnStart, runtimeSrc.i
 
 /* GP-145：群 composer 是独占态，点开 Bot / 会话必须让位回私聊。
    会话行点击已统一走 activateSessionById()（P2-7：行点击要清未读，不能只重画），
-   退出群聊的动作在那条共用路径里。所以这里认两种等价形状：内联 exitRoomChat，
-   或委托 activateSessionById。 */
-/function selectBotForChat\(b\)[\s\S]{0,400}if \(composerRoom\) exitRoomChat\(\);/.test(html) &&
-  (/el\.addEventListener\("click", async \(\) => \{\s*\n\s*\/\/ 群聊 composer 是独占态[\s\S]{0,200}if \(composerRoom\) exitRoomChat\(\);/.test(html) ||
-    /el\.addEventListener\("click", async \(\) => \{\s*\n\s*\/\/ 群聊 composer 是独占态[\s\S]{0,400}await activateSessionById\(s\.id\)/.test(html) &&
-      /async function activateSessionById\(sid\)[\s\S]{0,200}if \(composerRoom\) exitRoomChat\(\);/.test(html))
+   退出群聊的动作在那条共用路径里。
+   判据不再拿正则窗口去框「注释到调用之间多少字符」——KP-07 把行渲染收成
+   sessionRowEl(s)（handler 读 el.__sess 而不是闭包里的 s，因为复用的节点上
+   闭包指着上一份数据），窗口一挪这条就假红了。改成按**语法切片**判：
+   括号配平取出每个 click handler 的函数体，认「体里直接退群」或
+   「体里委托 activateSessionById 且那条路径自己退群」两种等价形状。 */
+function balancedBody(src, start) {
+  let depth = 0;
+  for (let i = src.indexOf("{", start); i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") {
+      depth--;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+function clickHandlerBodies(src) {
+  const out = [];
+  const needle = '.addEventListener("click", async () => {';
+  for (let i = src.indexOf(needle); i >= 0; i = src.indexOf(needle, i + needle.length)) {
+    const b = balancedBody(src, i);
+    if (b) out.push(b);
+  }
+  return out;
+}
+const EXIT_RE = /if \(composerRoom\) exitRoomChat\(\);/;
+/** 同一份判据跑两遍：正向吃当前源码，负向吃「摘掉共用路径那句退群」的副本。 */
+function gp145Judged(src) {
+  const selectBot = /function selectBotForChat\(b\)[\s\S]{0,400}if \(composerRoom\) exitRoomChat\(\);/.test(src);
+  const j = src.indexOf("async function activateSessionById(sid)");
+  const activateBody = j < 0 ? null : balancedBody(src, j);
+  const actExits = !!activateBody && EXIT_RE.test(activateBody);
+  const rowYields = clickHandlerBodies(src).some(
+    (b) => EXIT_RE.test(b) || (/await activateSessionById\(/.test(b) && actExits),
+  );
+  return selectBot && rowYields;
+}
+gp145Judged(html)
   ? ok("点开 Bot 私聊或切会话时退出群 composer（消息不会误发进群）")
   : bad("room composer does not yield to DM surfaces");
+/* 负向对照：摘掉共用路径里那句退群，判据必须翻假 —— 证明上面认的是真语义，
+   不是「文件里恰好有这行」。 */
+{
+  const j = html.indexOf("async function activateSessionById(sid)");
+  const activateBody = j < 0 ? null : balancedBody(html, j);
+  if (!activateBody || !EXIT_RE.test(activateBody)) {
+    bad("GP-145 negative control", "退群语句没在共用路径里，对照无从做起");
+  } else {
+    const stripped = html.replace(
+      activateBody,
+      activateBody.replace("if (composerRoom) exitRoomChat();", ""),
+    );
+    gp145Judged(stripped)
+      ? bad("GP-145 negative control", "摘掉退群后判据仍为真（恒真断言）")
+      : ok("负向对照：摘掉 activateSessionById 的退群 → 判据翻假");
+  }
+}
 /orchestrate: \(payload\) => ipcRenderer\.invoke\("bitbot:rooms:orchestrate"/.test(preloadSrc) &&
   /onRoomOrchestrating:/.test(preloadSrc) && /onRoomUpdated:/.test(preloadSrc) &&
   /onRoomsChanged:/.test(preloadSrc) && /"bitbot:rooms-changed"/.test(preloadSrc)

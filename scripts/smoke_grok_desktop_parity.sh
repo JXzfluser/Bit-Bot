@@ -1439,7 +1439,8 @@ grep -q "群聊失败卡走本地化语义" /tmp/g29-probe.log 2>/dev/null \
 grep -q "@Name → mentioned_only 且 responders 精确" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "@A @B → mentioned_only 且只跑点名的 2 个成员" /tmp/g29-probe.log 2>/dev/null \
   && grep -q "@everyone → all" /tmp/g29-probe.log 2>/dev/null \
-  && grep -q "无 @ → bot_discretion" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "无 @ → auto_route（单负责人）" /tmp/g29-probe.log 2>/dev/null \
+  && grep -q "无 @ 时不再落 bot_discretion" /tmp/g29-probe.log 2>/dev/null \
   && ok "G-29 GP-51/144：入口沿用真实路由语义（含多点名 @A @B 与含空格成员名）" \
   || bad "G-29 GP-51 routing missing"
 grep -q "rooms.json transcript 与 roomTurn 逐字一致" /tmp/g29-probe.log 2>/dev/null \
@@ -4704,6 +4705,63 @@ echo "    分别让 CS-04、CS-03、CS-07 翻红（改的是服务端源码副�
 echo "  · 已知偏差（诚实）：需求原文的「kernel_server.js 行协议加一条 subscribe」没落地 —— 内核是单回合"
 echo "    RPC、不持有跨回合状态，事件写者是 Host；再加一条流正好制造 §6 要消灭的双写者。"
 echo "    游标落在日志的读面上（docs/events.md §5.7）。手机侧仍用旧名 from_seq，本次不动它（旧客户端仍能连）。"
+
+echo "== G-119 侧栏广播从整份快照改成 diff：一条长回复的回合里，行不重建、滚动不跳（KP-07）=="
+# 对标需求 §4 KP-07 的可感面写在两句话里：「不再整列闪动」「滚动位置不跳」。
+# 这两句只有真 Electron 才量得到，所以这一门是两层：
+# ① 纯计算门 prove_broadcast_diff（diff 算法本身的形状、阈值、自愈口径 + 源码负向对照）
+# ② 真 app 门 e2e_desktop_sidebar_diff（MutationObserver 数节点、scrollTop 轨迹、字节比价）
+# 先钉接线：老口径那两处「整份重发」必须真的没人再调（11 个会话点 + 4 个 Bot 点全收口）。
+g119_s=$(grep -c 'broadcastSurface("sessions"' hosts/desktop/main.js)
+g119_b=$(grep -c 'broadcastSurface("bots"' hosts/desktop/main.js)
+g119_old=$(grep -c 'broadcast("bitbot:sessions-changed"\|broadcast("bitbot:bots-changed"' hosts/desktop/main.js)
+if [ "$g119_s" -eq 11 ] && [ "$g119_b" -eq 4 ] && [ "$g119_old" -eq 0 ]; then
+  ok "G-119 接线收口：会话 11 处 / Bot 4 处都走 broadcastSurface，整份重发的旧调用为 0"
+else
+  bad "G-119 接线没收口（会话 $g119_s/11、Bot $g119_b/4、旧口径残留 $g119_old，需求点名的 main.js:1111,1197,1214,1222,1227 就是这个）"
+fi
+if timeout 180 node scripts/prove_broadcast_diff.js > /tmp/g119-pure.log 2>&1; then
+  ok "G-119 纯计算 prove_broadcast_diff（$(grep 'prove_broadcast_diff: PASS=' /tmp/g119-pure.log)）"
+else
+  bad "G-119 纯计算（见 /tmp/g119-pure.log；$(grep 'prove_broadcast_diff: PASS=' /tmp/g119-pure.log)）"
+fi
+for g119_t in "BD-01 " "BD-02 " "BD-04 " "BD-09 " "BD-10 " "BD-13 " "BD-14 " "BD-20 " "BD-21 " "BD-22 " "BD-23 " "BD-25 " "BD-90 " "BD-91 " "BD-92 "; do
+  if grep -q "✓ $g119_t" /tmp/g119-pure.log; then ok "G-119 算法锚点：$g119_t"; else bad "G-119 算法锚点没跑绿：$g119_t"; fi
+done
+for g119_n in "N1 " "N2 " "N3 " "N4 "; do
+  if grep -q "✓ $g119_n" /tmp/g119-pure.log; then ok "G-119 源码负向对照：$g119_n"; else bad "G-119 负向对照没红起来（这条算法判据可能是空的）：$g119_n"; fi
+done
+# ② 真 app 那一层：三趟真 Electron（diff 开 / diff 关 / 自愈），夹具写临时根，绝不碰用户 data/
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g119_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g119_xvfb=(xvfb-run -a)
+  fi
+  if timeout 900 ${g119_xvfb[@]+"${g119_xvfb[@]}"} node scripts/e2e_desktop_sidebar_diff.mjs > /tmp/g119-e2e.log 2>&1; then
+    ok "G-119 真 app e2e_desktop_sidebar_diff（$(grep 'e2e_desktop_sidebar_diff: PASS=' /tmp/g119-e2e.log)）"
+  else
+    bad "G-119 真 app（见 /tmp/g119-e2e.log；$(grep 'e2e_desktop_sidebar_diff: PASS=' /tmp/g119-e2e.log)）"
+  fi
+  for g119_e in "KD-01a " "KD-01b " "KD-01c " "KD-02 " "KD-03a " "KD-03b " "KD-04a " "KD-04b " "KD-04c " "KD-04d " "KD-05 " "KD-06 " "KD-07 " "KD-08a " "KD-08b " "KD-08c " "KD-09a " "KD-09b " "KD-10a " "KD-10b " "KD-10c "; do
+    if grep -q "✓ $g119_e" /tmp/g119-e2e.log; then ok "G-119 真 app 锚点：$g119_e"; else bad "G-119 真 app 锚点没跑绿：$g119_e"; fi
+  done
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-119 真 app 那层没跑（SKIP ≠ PASS；算法层已在上面跑过）"
+fi
+echo "  · G-119 为什么长出来：main.js 里 sessions-changed 一直是 sessions.list() 整份重发"
+echo "    （需求点名 1111,1197,1214,1222,1227 五处），渲染端拿到就 box.innerHTML=\"\" 重画整列。"
+echo "    流式写一条长回复时侧栏每几百毫秒重画一次，行没了、scrollTop 被拉回 0——就是「整列闪动」。"
+echo "  · G-119 判据：算法层 BD-01..25 钉白名单/churn 阈值/桶与组/moved_bucket/noop/坏形状退回整份，"
+echo "    BD-90..92 自证覆盖面；真 app 层钉节点身份（WeakMap 逐个对上）、scrollTop 全程不动、"
+echo "    广播只点名该点那一行、diff 字节 < 实测整份字节、换组零次回读、漏收（reload）自愈成整份、"
+echo "    非广播的整份重画路径（refreshBots / refreshSessions）同样不拆列。"
+echo "  · G-119 负向对照两条，各管一层：算法层 N1..N4 改 broadcast_diff.js 的源码副本 + 真 app 层"
+echo "    KD-08 把 BITBOT_BROADCAST_DIFF=0 重跑同一回合（广播必须回到整份）；渲染层 KD-10c 在页内把"
+echo "    paintBots 换回老画法「清空 + 逐行新建」，同一条摘行判据必须立刻翻红——翻不红说明断言是空的。"
+echo "    负对照不量 scrollTop：老路径同步清空+重建，空布局那一帧不交给合成器，实测两趟滚动都待在 180。"
+echo "  · 已知残账（诚实）：rooms-changed 仍走整份快照，#room-list 与设置页各表仍是老画法；"
+echo "    换日期桶/换组/换桶走「本地缓存 + keyed 重画」，节点保住了但搬运是整列级别的；"
+echo "    Bot 改名后侧栏次要行的旧摘要要等下一次该 Bot 有动静才换新（DM 会话标题不跟着改）。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo

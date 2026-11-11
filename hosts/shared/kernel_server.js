@@ -485,7 +485,28 @@ function createKernelServer(options = {}) {
     return stats();
   }
 
-  return { request, stats, stop, size };
+  /**
+   * 预热一个空闲槽位（桌面在 whenReady 里调用）。
+   *
+   * 为什么值得单开一个口子：dev 态槽位是 `moon run cmd/desktop_turn --target native`
+   * 起的，moon 认为目标不新鲜时会先编译（实测本机 3 个任务 59.7s）。这条成本原本落在
+   * 用户发的**第一条消息**里 —— 屏幕上是「转圈一分钟、一个字都没有」。开应用就起槽位，
+   * 编译与看界面重叠；请求路径一行没改，槽位照样被 acquire 复用，spawns 计数不变。
+   *
+   * @returns {number|null} 新槽位 pid；已有活槽位 / 正在关停 / spawn 失败时返回 null
+   */
+  function warm() {
+    if (stopping) return null;
+    if (slots.some((s) => !s.dead)) return null;
+    try {
+      return makeSlot().pid;
+    } catch (_) {
+      // 预热不是回合：起不来就等第一条消息按老路如实报错，这里不制造第二条错误面。
+      return null;
+    }
+  }
+
+  return { request, stats, stop, size, warm };
 }
 
 module.exports = {
