@@ -10200,3 +10200,197 @@ C-11 的回执形态与 zh-TW 四个段名可以直接修，已进任务表。
 G-50 报告历史门重跑：`prove_report_history_intact: PASS=8 FAIL=0`
 （443 个标题无重复、349 个带编号小节严格递增、194 段代码围栏成对闭合、报告 10202 行、
 HEAD 版本一节没少 —— 本节是纯增量）。
+
+## 8.113 KP-08 第一片：diff 判据从渲染端搬进 Client Core，「切换」是拿重放对拍换来的，不是肉眼（2026-11-12）
+
+需求原话在 `docs/next-target-requirements.md:285-289`（T3-01 骨架 / T3-02 词表单点 / T3-03 fold 与现网
+一致 / T3-05「renderer 先对拍后切换」），对标口径在
+[docs/grok-desktop-parity/kernel-mechanism-parity.md:148](../../grok-desktop-parity/kernel-mechanism-parity.md)
+的 KP-08。这一片做的是判据搬家 + 对拍，`T3-04/06/07` 留在下面 4)。
+
+### 1) 动了哪四处
+
+- **核心落点**：`hosts/shared/client_core/{schema,reducer,diff_apply}.js`（182 / 195 / 245 行）。
+  不是仓库根上的 `client-core/` —— `hosts/desktop/package.json` 的 `build.files` 只收 hosts/desktop
+  的显式清单加 `{from:"../shared"}`，根目录那个目录名进不了 `app.asar`，结局就是开发态全绿、
+  装好的包里侧栏空白。放 shared 下面，dev 的 `../shared/client_core/*` 与包内的 `./shared/client_core/*`
+  同形，渲染端 `<script>` 直接引（[hosts/desktop/index.html:4256-4280](../../hosts/desktop/index.html)）。
+- **判据只留一份**：`diff_apply.js:98` 的 `applyDiff(state, diff, spec) → {state, effects, noop}`
+  是「这条 diff 能不能就地应用」的唯一口径，输出是闭集效果（8 类）与闭集结构原因（9 类）+ 自愈原因（2 类）。
+  渲染端只剩 effects→节点 的翻译：`index.html:7146` `applySessionsDiff`、`index.html:15521` `applyBotsDiff`、
+  `index.html:7100` `runSessionEffects`；两份 rev 锚点与两份缓存（`surfaceRev` / `botViewCache` /
+  `sessRowsCache`）和死码 `patchBotRowText` 一并删掉。
+- **面形状是注入的，不是抄的**：「今天是不是换桶了」要问 `new Date()`，「这一行的节点挂没挂」是渲染端的事实 ——
+  两条都以 `spec.dayBucket` / `spec.isMounted` 注入，核心本身保持零 DOM、零时钟。门和渲染端用的是
+  **同一个** `window.__bitbotSurfaceSpecs`（`index.html:7096`），对拍不许在测试里再抄一份 spec。
+- **对拍（T3-05 的证据）**：`scripts/e2e_desktop_sidebar_diff.mjs` 的 KD-11 —— 真回合跑完之后，页内拿
+  「整份基线 + 这一轮真收到的广播」按原顺序重放，逐行比界面画出来的那一列。
+
+### 2) 切换当天真把侧栏弄白过一次，而且门是绿的
+
+第一次跑 G-119 直接 `waitForSelector('#bot-list .agent-item')` 超时。页内实测三条：
+`ReferenceError: module is not defined`（schema/reducer 的出口没写模块守卫，浏览器里没有 `module`）、
+`SyntaxError: Identifier 'API' has already been declared` ×2、外加三条 `ERR_FILE_NOT_FOUND`
+（那是包内兜底路径，dev 里注定找不到）。`__bitbotClientCoreReady=false`、命名空间 0 个键、侧栏 0 行 ——
+完全对得上超时。
+
+修法：三份文件各自包进 IIFE（`schema.js:24` / `reducer.js:21` / `diff_apply.js:27`），出口统一写成
+「有模块系统就 `module.exports`，没有就往 `globalThis.__bitbotClientCore` 里 `Object.assign`」。
+
+**为什么门当时照不到**：CC-01b 原来的装配是给每份文件各套一个 `new Function("module","exports",src)` ——
+作用域彼此封闭，而浏览器里三个 classic script **共享同一份顶层词法作用域**。也就是说尺子测的形状和
+产品加载的形状不一样，「三份文件都在顶层写 `const API`」这种写法在它那儿根本传不进第二次声明。
+现在换成一个 `vm` realm 里按 `<script src>` 顺序执行（`scripts/prove_client_core.js:53` 的 `assembleRealm`），
+并补了两条负向对照：N8 把三份文件的 IIFE 外壳剥掉（就是翻车时的形状）→ 当场
+`Identifier 'API' has already been declared`；N9 摘掉模块导出守卫 → 当场 `module is not defined`。
+两条都翻得红，CC-01b 的绿才算有牙。
+
+### 3) 本轮真跑的数
+
+- G-120（新登记）`prove_client_core: PASS=27 FAIL=0`，自证覆盖面列出 27 条规则、9 条负向对照（N1..N9）。
+- G-119 `e2e_desktop_sidebar_diff: PASS=29 FAIL=0`。KD-11 四条的对拍原值：
+  a) 重放 diff bots 1 条 / sessions 1 条、整份 0 条、**自愈 0 次**、rev `{0,0}→{1,1}` ——
+  自愈为 0 是这条判据的前提，靠回读整份蒙过去的重放不算重放；
+  b) Bot 面核心 可见 15 + 隐藏 0 行 vs 界面 15 行，首个不一致「无」；
+  c) 会话面组序 `["today","yesterday"]`、每组 `[1,39]` 行 vs 界面 40 行，首个不一致「无」
+  —— 弹层是按日期组分桶画的，所以对拍比的是「渲染端自己的 dayBucket 分桶后逐行 id 相同」，
+  第一版直接比扁平顺序时就红在 `kp07-dm-kp07-bot-0` 那一行，那是画法不是判据；
+  d) 这一轮点名 `kp07-bot-0`（`changed_fields=["updated_at"]`），核心里的名字
+  `"KP07侧栏Bot 0"`（置顶 true）对上界面 `"★ KP07侧栏Bot 0"`。
+  同一条回合里 KD-01a 仍 `removed=0 created=0`、KD-02 滚动 `start=min=max=180`、
+  KD-01c 取整份 IPC `reads=0`、KD-05 diff 301B vs 实测整份 5417B（18.0×）、KD-10c 注入老画法照样翻红。
+- 搬家影响到的消费门全部重跑：`prove_broadcast_diff 32/0`、`prove_event_dual_write 31/0`、
+  `prove_event_only 7/0`、`prove_event_read_model 10/0`、`prove_event_log 10/0`、
+  `prove_m29_roomchat 43/0`、`prove_m51_chatsurface 17/0`、`prove_m40_a11y 8/0`、
+  `e2e_grok_desktop_boot 132/0`（真开机那层证明三份 `<script>` 在加载序列里没打断任何老断言）。
+- 全量矩阵的总量在本节写完后重跑，数字回填在下面 5)。
+
+### 4) 边界与残账（诚实）
+
+- 这一片只搬到「diff 判据 + fold 口径 + 词表」。**T3-04**（`transport.js` 与 IPC adapter）、
+  乐观命令的 `echo_entry_id` 回执（现在还是从 `result.stored_ids` 按位置回填 id）、
+  **T3-06** 核心侧游标去重、**T3-07** `checkJs` 都没落 —— 后一条要先装 typescript，按红线等点头。
+  所以 KP-08 的可感面「输入立刻上屏 / 落库后回执对上 / 拒绝变红带 KP-03 码」目前只兑现第一条。
+- 核心现在只被**桌面渲染端**用；手机页与 `cn_inbound_server` 还没接上同一份 diff 判据，
+  搬家的收益（一次判据、多处同形）要到 T3-04 才收得到。
+- `rooms` 面仍是整份快照（§8.110 的残账没变），核心里给它留的 spec 位还是空的。
+
+### 5) 全量矩阵 run9 的总量，和这总量里属于本片的账
+
+矩阵在本片落地后重跑（`/tmp/matrix-run9.log`）：**`smoke_grok_desktop_parity: PASS=869 FAIL=10`**。
+上一轮 run8 是 837/7，两条差值都能用本片解释清楚：
+
+- **+32 条绿**：G-120 新门 27 条 + G-119 的 KD-11a..e 与消费门新增判据。
+- **+3 条红**：全在 G-57（Box 打包清单闭包），是本片**带出来的真回归**，不是老账：
+  `hosts/shared/event_mirror.js:41` 改成 `require("./client_core/reducer.js")` 之后，
+  Box 那条扁平清单里没有这一条，P-01 红在「清单缺 `shared/reducer.js`」、P-02 红在「文件不存在」，
+  真 Box 取证 `pass=0 fail=1`（一起来就 MODULE_NOT_FOUND），收尾的 require 自检也没跑成。
+  桌面端看不见这个病 —— asar 是整目录拷贝（`{from:"../shared",to:"shared"}`），子目录天然进包；
+  只有 Box 那份手写文件名清单会犯，而这正是 G-57 存在的理由。
+- 剩下 4 条红（G-40 负向对照、G-46、G-53、G-64）run8 就在，属 §8.112 记过的老账。
+
+### 6) 修的是打包与尺子的视力，不是断言口径
+
+- `scripts/pack-box.sh`：`shared/` 那份清单从「只会平铺」改成「条目可以带子路径」，循环自己
+  `mkdir -p "$(dirname …)"`，并把 `client_core/reducer.js` 加进清单。包内相对拼法从此和仓库里一模一样。
+- `scripts/prove_box_pack_closure.js`：`normalize` 不再取 `path.basename`，改为**保留子路径**
+  （目录段 `shared/`、`desktop/` 仍然剥掉，那是包内布局的根，不是模块名的一部分）；
+  清单解析的条目正则同时放开 `/`，否则新条目会被静默丢掉。
+- 新增 **P-07 子目录依赖看得见**，并给它一条只打尺子的负向对照（矩阵 G-57 里新挂的「视力对照」）：
+  把 `normalize` 换回上一版的 basename 写法，同一份真清单重跑，
+  实测 `✗ P-07 … 闭包里 0 条带子目录的边`（汇总 `pass=5 fail=3`）——
+  红必须落在 P-07，只红在 P-01/P-02 说明是清单变了而不是视力退回。
+- 修完实测：`prove_box_pack_closure: pass=8 fail=0`（`shared=29` 条清单、P-07 认出
+  `shared/client_core/reducer.js` 这一条子目录边）；真 Box 取证
+  `prove_box_routine_sweep: pass=18 fail=0`，require 自检 **34 个 .js / 46 个 require 簇**
+  （run8 是 33/45，多的那一个就是这次进包的 `client_core/reducer.js`）。
+- 本片 + 本修的总量要以修完后的下一次全量矩阵为准，这里先把单门自证的数写全。
+
+## 8.114 KP-08 第二片：transport 落进核心 —— 乐观消息有身份、一帧一链，去重与跳号不再是渲染端的责任（2026-11-12）
+
+### 1) 这一片管的是三件「渲染端管不好」的事
+
+`hosts/shared/client_core/transport.js`（新，460 行，纯逻辑：无 DOM / 无 Electron / 无 fs /
+连另外三份 core 都不 require，fold/full/read/paint 全部注入）。它接的三条账都能指到现网的形状：
+
+- **一条面的帧必须排队。** 渲染端今天的 `applyBotsDiff` 是 `async`，自愈时 `await refreshBots()`；
+  这段 await 里再进来的广播作用在**旧的 `botState`** 上，取回来的那份又可能比它旧 —— 谁后写谁赢。
+  `createSurfaceStream` 给每张面一条自己的链：帧按到达顺序折叠，自愈取数也排在这条链上。
+- **回包的形状不能靠调用方记。** `bitbot.surface.read` 发的是 `{ok, surface, rev, payload}`，
+  快照在 `.payload` 里。§8.113 的 KD-11 对拍第一次就栽在这里：把信封整份交给 `snapshotToState`
+  折出 **0 行**，看着像核心算错了，其实是读包的人错了。`unwrapRead` 把这条形状规则收进核心。
+- **乐观消息要有身份。** 回车那一刻画的那条和落库那一条必须是同一条：渲染端生成
+  `client_msg_id`（`cm-` + 16 位），Host 落库时沿用同一个 id，回执把它作为 `echo_entry_id` 发回来。
+  于是对账变成「这两个字符串相等」，不再是今天 `hosts/desktop/main.js:4348` 那种
+  `stored_ids.user = rows.slice(-n)[0]` 按位置回填。
+  台账四态：`durable / rejected(+KP-03 的码) / unmatched / expired`，终态不被迟到回执改回去。
+
+### 2) 词汇表这次被钉回一个点
+
+`transport` 起初自己写了 `ECHO_FIELDS = ["echo_entry_id","entry_id","message_id"]`。后两个是猜的 ——
+`grep` 全仓 `hosts/`，`message_id` 只出现在**别的通道**的载荷里（回复引用 `run_moon_turn.js:64`、
+邮件台账 `host_ffi.js:3994`、reaction/channel 那几处），没有任何一处在**界面发送命令的回执**里用它当
+落库指针；`entry_id` 作为一个被读取的回执字段则一处都没有。留着别名的后果不是报错，
+而是**静默失配**：Host 换名字时 `echoOf()` 拿到空串，乐观那条永远亮成「未确认」。现在按证据收成一条，
+并让码字段和原文字段各归各位：
+
+```
+hosts/shared/client_core/schema.js
+  REJECTED_RECEIPT_FIELDS     = ["error_code", "rejection_code", "code"]
+  REJECTED_RECEIPT_TEXT_FIELDS = ["error", "message"]
+```
+
+`error_code` 是我们 Host 现在就在发的（桌面端 `index.html:7946` 的 `sendFailureText` 读它），
+`rejection_code` 是内核侧契约名（`docs/grok-desktop-parity/kernel-mechanism-parity.md` 的发送回执那段），
+`code` 是 `normalizeFailure` 输出的 canonical 名。原文只进诊断文案，绝不当成码 —— 这正是 KP-03 的纪律。
+`schema.selfCheck()` 同时新增两条：码字段与原文字段不许重名；至少一条 command 的 receipt 要带
+`echo_entry_id`（否则乐观对账无从做起）。**transport 抄的这两份名单，G-120 CC-16 逐字比对。**
+
+### 3) 门这次的覆盖面与实测数字
+
+单门自证（可直接复跑）：
+
+```
+$ node scripts/prove_client_core.js
+prove_client_core: PASS=39 FAIL=0
+```
+
+- 规则 39 条、负向对照 13 条（N1..N13）；目标文件把 `transport.js` 加进扫描名单，
+  CC-01/CC-01b/N8 从「三份」改成按目录实际清单扫（四份：197+195+245+460 行）。
+- 新增 CC-16..CC-23 八条：注入纯度 + realm 版与 Host 版同一串帧同一结果（CC-16）、
+  四态闭环（CC-17）、`idem_key` 复用（CC-18）、超时与 256 上限只淘汰终态（CC-19）、
+  游标去重（CC-20）、跳号不喂折叠器（CC-21）、取数在途时排队（CC-22）、信封只认 `.payload`（CC-23）。
+- 关键几条的实测值：CC-20 `dups=2 / 重画 2 次 / cursor 11 / resyncs 0`；CC-21 `folds=0 / resyncs=1 / heals=0`
+  且 `read` 带 `from_seq=10`；CC-22 `queued=1`、链上顺序 `full→full→diff`、最终 `cursor=13`；
+  CC-19 台账 321 条时 `size=256`、还在等的 81 条一条没丢；CC-23 把信封整份喂折叠器实测 **0 行**。
+- 三条 transport 负向对照不是只让计数变一变，要求**看得见危害**才认：
+  N11 摘掉游标判定 → 旧帧把游标拖回去，真正的改名帧被当成跳号整份盖掉，`画出来 对标 Grok>对标 Grok>对标 Grok>对标 Grok`
+  （改名丢了）；N12 摘掉跳号判定 → `画出来 对标 Grok>半截`（半截 diff 上了屏）；
+  N13 摘掉「排到链上」→ `queued=0`、那一帧在旧基线上被判跳号，取数回来后 `full:整份真值` 把它盖掉，
+  界面上永远看不见（`cursor=12` 而不是 13）。N10 是定值 `rand`：第二次 `begin` 必须当场抛
+  「client_msg_id 连续 8 次撞车」，台账还是 1 条 —— 屏幕上两条乐观消息静默合成一条这种事要响。
+- G-120 在矩阵里的接线判据改成**两条分支都收口**：transport 未上页面时必须正好引 3 份
+  并点名这条残账；一旦上页面就必须 `g120_scripts == 核心份数`，不许「引了一半」。两条分支都实测过
+  （临时给 `index.html` 加第 4 个 `<script>` 走 B 分支，去掉走 A 分支）。
+
+### 4) 可感面：这一片用户还看不见，看得见的部分说清楚差在哪
+
+按 KP-08 的可感面「输入框回车后立刻出现自己那条、落库后 `echo_entry_id` 对上、服务端拒绝时变红带 KP-03 的码」：
+这一片把**判据和身份**做出来了（台账、`cm-` id、`unwrapRead`、去重/跳号/排队），但它还没上页面 ——
+`index.html` 仍只引 3 份 `<script>`，Host 也还没把 `client_msg_id` 当落库 id、没回 `echo_entry_id`。
+所以桌面此刻的行为和 §8.113 结束时一模一样，屏幕上没有任何新东西；剩下的那一半是 T3-04 的接线
+（渲染端引第 4 份、发送走 `ledger.begin()` 画乐观行、回执走 `settle()`、`finally` 里那句无条件
+`✓✓ read` 要改成按 state 画）+ T3-06 的拔网重连端到端。这条边界同时写进了矩阵 G-120 的残账，
+不让门的绿冒充「T3-04 已交付」。
+
+### 5) 这一片动了什么、没动什么
+
+- 动：`hosts/shared/client_core/transport.js`（新）、`schema.js`（回执词汇 + selfCheck 两条）、
+  `scripts/prove_client_core.js`（CC-16..23 + N10..N13 + 四份文件扫描名单）、
+  `scripts/smoke_grok_desktop_parity.sh`（G-120 标题/锚点 26 条/负对照 13 条/接线两分支/判据与残账文案）。
+- 没动：渲染端一行、Host 一行 —— 上面 4) 说的就是这个「没动」。
+- 因此不受影响也不该假装受影响：G-57 Box 闭包重跑 `pass=8 fail=0`（transport 没被任何 Host 文件 require，
+  不该进 Box 清单，这条由闭包扫描自己得出，不是手写的）。
+- 总量以本片落地后的下一次全量矩阵为准。
+
+

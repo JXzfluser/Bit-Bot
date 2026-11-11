@@ -4253,6 +4253,30 @@
   <!-- GP-99/100/101/102: token-shape + `[REDACTED]` constant (same file the Host
        and the probe load, so masking can never drift). -->
   <script src="./secret_protocol.js"></script>
+  <!-- KP-08 / T3-05：Client Core 是这个页面的状态口径 —— 词表、fold、diff 应用
+       全在 hosts/shared/client_core/ 里，渲染端只把 effects 翻译成节点操作。
+       dev 走 ../shared；打包后 hosts/shared 被整目录复制成 ./shared
+       （electron-builder files 的 **/* 含子目录），和 untrusted_fence 同一套回退。 -->
+  <script>
+    window.__bitbotClientCore = {};
+  </script>
+  <script src="../shared/client_core/schema.js"></script>
+  <script src="../shared/client_core/reducer.js"></script>
+  <script src="../shared/client_core/diff_apply.js"></script>
+  <script>
+    if (!window.__bitbotClientCore.applyDiff) {
+      document.write('<script src="./shared/client_core/schema.js"><\/script>');
+      document.write('<script src="./shared/client_core/reducer.js"><\/script>');
+      document.write('<script src="./shared/client_core/diff_apply.js"><\/script>');
+    }
+    /* 打包后 app.asar 里没有这份目录时，这里会是 false —— 让门能看见，
+       而不是等侧栏空白了才发现核心没接上。 */
+    window.__bitbotClientCoreReady = !!(
+      window.__bitbotClientCore.applyDiff &&
+      window.__bitbotClientCore.foldEvents &&
+      window.__bitbotClientCore.COMMANDS
+    );
+  </script>
   <!-- GP-103/104/105: §8.4 fence grammar. Dev path is ../shared, packaged build
        copies hosts/shared → ./shared (electron-builder "files"), so the loader
        falls back once and never double-loads. -->
@@ -7020,83 +7044,111 @@
      * 声明必须放在这里（比 refreshBotsNow 早执行），否则 boot 时先跑到的调用
      * 会撞进 const 的暂时性死区。
      */
-    const surfaceRev = { sessions: null, bots: null };
+    const clientCore = window.__bitbotClientCore;
     const botRowById = new Map(); // bot id → { el, bot, bucket }
     const dmBotByTitle = {};      // "<Bot 名> · DM" → bot id（会话摘要要落回哪一行）
-    let botViewCache = null;      // 上一次画在侧栏上的那份 listViews()（diff 的本地真值）
     let botLastCache = {};        // bot id → DM 摘要（侧栏次要行的正文）
-    let sessRowsCache = null;     // 上一次画在弹层上的会话行（diff 的本地真值）
-    let sessActiveCache = null;
+    /* KP-08/T3-03：侧栏两张面的「本地真值」现在是核心状态对象（{rev,buckets,
+       scalars,order}）。rev 就存在状态里，不再有第二份锚点变量 —— 两份锚点
+       迟早给出两个不同的「下一条 diff 该不该就地应用」。 */
+    let botState = null;
+    let sessState = null;
+
+    /* 会话面：只有 visible 一个桶；active_id 是面级标量；摘要字段变了要把侧栏
+       那一行的次要行也刷掉（summaryFields → 核心的 summary_dirty 效果）。 */
+    const SESS_SPEC = {
+      surface: "sessions",
+      buckets: ["visible"],
+      bucketKeys: { visible: "sessions" },
+      scalars: ["active_id"],
+      dayField: "updated_at",
+      dayBucket: sessDayBucket,
+      summaryFields: ["title", "preview", "message_count"],
+      repaintOnScalar: true,
+    };
+    /* Bot 面：visible/hidden 两个桶；就地更新只认这几个字段，其余一律整份重画
+       —— 宁可多画一次，不许少画一个。 */
+    const BOT_SPEC = {
+      surface: "bots",
+      buckets: ["visible", "hidden"],
+      bucketKeys: { visible: "bots", hidden: "hidden_bots" },
+      scalars: ["primary_id"],
+      bucketField: "group",
+      patchFields: { name: 1, pinned: 1, description: 1, avatar_data_url: 1, job: 1, tags: 1, updated_at: 1 },
+      isMounted: (id) => {
+        const rec = botRowById.get(String(id));
+        return !!(rec && rec.el && rec.el.parentNode);
+      },
+      repaintOnScalar: false,
+    };
+
+    function sessViewFromState(st) {
+      return { sessions: (st && st.buckets.visible) || [], active_id: (st && st.scalars.active_id) || null };
+    }    function botViewFromState(st) {
+      return {
+        bots: (st && st.buckets.visible) || [],
+        hidden_bots: (st && st.buckets.hidden) || [],
+        primary_id: st && st.scalars.primary_id,
+      };
+    }
+    /* G-119 的 KD-11 对拍要用产品自己的面形状重放广播，不能在门里再抄一份 spec ——
+       抄的那份和这里漂移了，对拍就只是在自证。 */
+    window.__bitbotSurfaceSpecs = { sessions: SESS_SPEC, bots: BOT_SPEC };
+
+    /* 核心说的效果 → 节点操作。这里只剩「怎么动 DOM」，没有一条判断是
+       「这条 diff 能不能应用」——那条口径整个在 client_core/diff_apply.js 里。 */
+    function runSessionEffects(effects) {
+      const dirty = [];
+      for (const e of effects) {
+        switch (e.type) {
+          case "ignored":
+            break;
+          case "self_heal":
+            refreshSessions().catch(() => {});
+            break;
+          case "patch_row":
+            patchSessionRow(e.row);
+            break;
+          case "remove_row": {
+            const el = document.querySelector('#session-list .agent-item[data-session-id="' + cssEsc(e.entity_id) + '"]');
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+            break;
+          }
+          case "summary_dirty":
+            // 跨面一条：DM 会话有了新摘要 → 侧栏那一行的次要行也要跟着换（只取
+            // 动过的那一个 DM，不再把 21 个会话全 get 一遍）。
+            dirty.push(e.row);
+            break;
+          case "structural_rebuild":
+            paintSessionList(sessViewFromState(sessState));
+            break;
+          case "set_scalar":
+          case "reorder":
+            break; // 已并进状态：弹层下一次打开按 state 画；顺序由 structural 负责
+          default:
+            console.warn("[KP-08] 会话面收到不认识的效果：" + e.type);
+        }
+      }
+      return dirty;
+    }
 
     function renderSessionList(payload) {
       if (payload && payload.mode === "diff" && payload.surface === "sessions") {
         applySessionsDiff(payload);
         return;
       }
-      // 整份：认 rev（Host 的 list 回包带 rev；老夹具给的裸对象没有 → 下次 diff 自愈）
-      const rev = Number(payload && payload.rev);
-      surfaceRev.sessions = Number.isFinite(rev) ? rev : null;
-      sessRowsCache = ((payload && payload.sessions) || []).map((s) => Object.assign({}, s));
-      sessActiveCache = (payload && payload.active_id) || null;
+      // 整份：rev 认不认得到决定下一条 diff 是「就地应用」还是「自愈」
+      sessState = clientCore.snapshotToState(payload, SESS_SPEC);
       paintSessionList(payload);
     }
 
-    /* KP-07 · diff 应用：会话面（#session-list 弹层） */
+    /* KP-07 的行为 + KP-08 的形状：算的在核心，画的在这里。 */
     function applySessionsDiff(diff) {
-      const rev = Number(diff.rev);
-      const anchor = surfaceRev.sessions;
-      if (Number.isFinite(rev) && Number.isFinite(anchor) && rev <= anchor) return;
-      if (!Array.isArray(sessRowsCache) || !Number.isFinite(rev) || !Number.isFinite(anchor) || rev !== anchor + 1) {
-        // 跳号 / 没有基线 → 自愈成整份（refreshSessions 走带 rev 的 list 回包）
-        refreshSessions().catch(() => {});
-        return;
-      }
-      const rows = sessRowsCache;
-      const idx = (id) => rows.findIndex((s) => s && String(s.id) === String(id));
-      let structural = false;
-      const dmTouched = [];
-      for (const c of diff.changed || []) {
-        const cf = c.changed_fields || {};
-        const at = idx(c.entity_id);
-        if (at < 0) { structural = true; continue; }
-        const row = rows[at];
-        const prevUpdatedAt = row.updated_at;
-        for (const k of Object.keys(cf)) row[k] = cf[k];
-        // 换了日期桶（今天/昨天/更早）行就要挪窝 → 交给整份重画
-        if ("updated_at" in cf && sessDayBucket(prevUpdatedAt) !== sessDayBucket(row.updated_at)) {
-          structural = true;
-          continue;
-        }
-        if ("title" in cf || "preview" in cf || "message_count" in cf) dmTouched.push(row);
-        patchSessionRow(row);
-      }
-      for (const a of diff.added || []) {
-        const at = idx(a.entity_id);
-        const row = Object.assign({}, a.row || {}, { id: a.entity_id });
-        if (at >= 0) rows[at] = row; else rows.push(row);
-        structural = true;
-      }
-      for (const id of diff.removed || []) {
-        const at = idx(id);
-        if (at >= 0) rows.splice(at, 1);
-        const el = document.querySelector('#session-list .agent-item[data-session-id="' + cssEsc(String(id)) + '"]');
-        if (el && el.parentNode) el.parentNode.removeChild(el);
-        structural = true;
-      }
-      const sc = diff.scalars || {};
-      if ("active_id" in sc) sessActiveCache = sc.active_id;
-      if (diff.order && Array.isArray(diff.order.visible)) {
-        const sorted = diff.order.visible.map((id) => rows[idx(id)]).filter(Boolean);
-        if (sorted.length === rows.length) sessRowsCache = sorted; else structural = true;
-      }
-      surfaceRev.sessions = rev;
-      if (Object.keys(sc).length || structural) {
-        paintSessionList({ sessions: sessRowsCache, active_id: sessActiveCache });
-      }
-      renderUnreadMarks();
-      // 跨面一条：DM 会话有了新摘要 → 侧栏那一行的次要行也要跟着换（只取
-      // 动过的那一个 DM，不再把 21 个会话全 get 一遍）。
-      for (const row of dmTouched) refreshBotLineForSession(row);
+      const got = clientCore.applyDiff(sessState, diff, SESS_SPEC);
+      sessState = got.state;
+      const dirty = runSessionEffects(got.effects);
+      if (!got.noop) renderUnreadMarks();
+      for (const row of dirty) refreshBotLineForSession(row);
     }
 
     function cssEsc(s) {
@@ -15274,11 +15326,9 @@
       } catch (_) {
         botLast = {};
       }
-      // KP-07 · 侧栏画的正是这一份，所以 Host 的基线与 rev 也归到这个窗口：
-      // rev 连续才谈得上「就地应用 diff」，认不到 rev 就把锚点清空、下一条自愈。
-      const rev = Number(view && view.rev);
-      surfaceRev.bots = Number.isFinite(rev) ? rev : null;
-      botViewCache = view;
+      // KP-07 · 侧栏画的正是这一份，所以这条快照同时成为 diff 的本地基线：
+      // rev 连续才谈得上「就地应用 diff」，认不到 rev 锚点就是空、下一条自愈。
+      botState = clientCore.snapshotToState(view, BOT_SPEC);
       botLastCache = botLast;
       paintBots(view, botLast);
     }
@@ -15458,96 +15508,59 @@
     }
 
     /* =====================================================================
-     * KP-07 · Bot 侧栏的 diff 应用
+     * KP-07 的行为 · KP-08/T3-05 的形状：Bot 侧栏的 diff 应用
      *
      * 真回合里最常走的一条路径：Host 只发了「这个 Bot 的 updated_at 变了」，
      * 这里一个节点都不碰（排序没变）或只把移动的那一行插到位（排序变了）。
      * 改名/换头像 → 就地换文字与 img；增删行、换分组、换桶 → 用本地缓存整份
      * 重画，一次 IPC 都不发。以前是「广播一来 → list() + 每个 Bot 一次 get()
      * → innerHTML="" 重画」，那才是侧栏闪动与滚动跳的根源。
+     * 「这条 diff 能不能就地应用」由 client_core/diff_apply.js 判，本函数只做
+     * effects → 节点操作；节点在不在屏上是渲染端的事实，通过 isMounted 交回去。
      */
     async function applyBotsDiff(diff) {
-      const rev = Number(diff.rev);
-      const anchor = surfaceRev.bots;
-      if (Number.isFinite(rev) && Number.isFinite(anchor) && rev <= anchor) return; // 回声/重发：内容早已生效
-      if (
-        !botViewCache ||
-        !Array.isArray(botViewCache.bots) ||
-        !Number.isFinite(rev) ||
-        !Number.isFinite(anchor) ||
-        rev !== anchor + 1
-      ) {
-        await refreshBots(); // 跳号 / 没有基线（重载、错过广播、新窗口）→ 整份自愈
+      const got = clientCore.applyDiff(botState, diff, BOT_SPEC);
+      if (got.noop) {
+        if (got.effects[0] && got.effects[0].type === "self_heal") await refreshBots();
         return;
       }
-      const view = botViewCache;
-      if (!Array.isArray(view.hidden_bots)) view.hidden_bots = [];
-      let lists = { visible: view.bots, hidden: view.hidden_bots };
-      const find = (id) => {
-        for (const bucket of ["visible", "hidden"]) {
-          const at = lists[bucket].findIndex((x) => x && String(x.id) === String(id));
-          if (at >= 0) return { bucket, row: lists[bucket][at] };
-        }
-        return null;
-      };
+      botState = got.state;
+      const view = botViewFromState(botState);
       let rebuild = false;
-      for (const c of diff.changed || []) {
-        const cf = c.changed_fields || {};
-        const hit = find(c.entity_id);
-        if (!hit) { rebuild = true; continue; }
-        for (const k of Object.keys(cf)) hit.row[k] = cf[k];
-        if (c.moved_bucket || "group" in cf) { rebuild = true; continue; }
-        const rec = botRowById.get(String(c.entity_id));
-        if (!rec) { rebuild = true; continue; }
-        rec.bot = hit.row;
-        if (!patchBotRowText(rec, cf)) rebuild = true;
+      let order = null;
+      for (const e of got.effects) {
+        switch (e.type) {
+          case "structural_rebuild":
+            rebuild = true;
+            break;
+          case "remove_row": {
+            const rec = botRowById.get(e.entity_id);
+            if (rec && rec.el && rec.el.parentNode) rec.el.parentNode.removeChild(rec.el);
+            botRowById.delete(e.entity_id);
+            break;
+          }
+          case "patch_row": {
+            const rec = botRowById.get(e.entity_id);
+            if (!rec) break;
+            rec.bot = e.row;
+            patchBotRowDom(rec.el, e.row, rec.bucket === "hidden", botLastCache[e.row.id] || "");
+            break;
+          }
+          case "reorder":
+            order = e.order;
+            break;
+          case "ignored":
+          case "set_scalar":
+            break;
+          default:
+            console.warn("[KP-08] Bot 面收到不认识的效果：" + e.type);
+        }
       }
-      for (const a of diff.added || []) {
-        const bucket = a.bucket === "hidden" ? "hidden" : "visible";
-        const row = Object.assign({}, a.row || {}, { id: a.entity_id });
-        const at = lists[bucket].findIndex((x) => String(x.id) === String(a.entity_id));
-        if (at >= 0) lists[bucket][at] = row; else lists[bucket].push(row);
-        rebuild = true;
-      }
-      for (const id of diff.removed || []) {
-        lists = {
-          visible: lists.visible.filter((x) => String(x && x.id) !== String(id)),
-          hidden: lists.hidden.filter((x) => String(x && x.id) !== String(id)),
-        };
-        view.bots = lists.visible;
-        view.hidden_bots = lists.hidden;
-        const rec = botRowById.get(String(id));
-        if (rec && rec.el && rec.el.parentNode) rec.el.parentNode.removeChild(rec.el);
-        botRowById.delete(String(id));
-        rebuild = true;
-      }
-      const sc = diff.scalars || {};
-      if ("primary_id" in sc) view.primary_id = sc.primary_id;
-      if (diff.order && Array.isArray(diff.order.visible)) {
-        const sorted = diff.order.visible
-          .map((id) => (view.bots || []).find((x) => String(x.id) === String(id)))
-          .filter(Boolean);
-        if (sorted.length === (view.bots || []).length) view.bots = sorted; else rebuild = true;
-      }
-      surfaceRev.bots = rev;
       if (rebuild) {
         paintBots(view, botLastCache);
         return;
       }
-      if (diff.order && !reorderBotRows(view)) paintBots(view, botLastCache);
-    }
-
-    /* diff 就地更新与整份重画用同一个画法（patchBotRowDom），不再维护第二份
-       「每个字段一个 if」的逻辑 —— 两份逻辑迟早给出一闪一闪的两种侧栏。
-       白名单留在这里：认不出来的字段一律交给整份重画，宁可多画一次，不许少画一个。 */
-    function patchBotRowText(rec, cf) {
-      const el = rec.el;
-      const b = rec.bot || {};
-      if (!el || !el.parentNode) return false;
-      const known = { name: 1, pinned: 1, description: 1, avatar_data_url: 1, job: 1, tags: 1, updated_at: 1 };
-      if (!Object.keys(cf).every((k) => known[k])) return false;
-      patchBotRowDom(el, b, rec.bucket === "hidden", botLastCache[b.id] || "");
-      return true;
+      if (order && !reorderBotRows(view)) paintBots(view, botLastCache);
     }
 
     /* 只把「站到错位置的那几行」插到位：其余行保留原节点，侧栏不闪。
@@ -22706,7 +22719,7 @@
               return;
             }
             const rev = Number(view && view.rev);
-            if (Number.isFinite(rev) && Number.isFinite(surfaceRev.bots) && rev <= surfaceRev.bots) return;
+            if (Number.isFinite(rev) && botState && Number.isFinite(botState.rev) && rev <= botState.rev) return;
             refreshBots().catch(() => {});
           });
         }

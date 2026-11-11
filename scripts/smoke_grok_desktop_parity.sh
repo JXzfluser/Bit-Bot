@@ -2601,6 +2601,14 @@ if grep -q "✓ P-06 GP-184 回归锚" /tmp/gp169-closure.log; then
 else
   bad "G-57 锚点没跑绿：P-06（event_mirror 这条链的名字缺位）"
 fi
+# KP-08 把 fold 的唯一口径放进 hosts/shared/client_core/ 后，Box 这条扁平链第一次
+# 出现「带子目录的 require」。P-07 钉两件事：清单里有子路径条目、尺子认得出子路径。
+# 负向对照在下面的注入里（把 normalize 退回 basename，P-07 必须红）。
+if grep -q "✓ P-07 子目录依赖看得见" /tmp/gp169-closure.log; then
+  ok "G-57 锚点：P-07 $(grep -m1 -o 'P-07 子目录依赖看得见.*' /tmp/gp169-closure.log | head -1)"
+else
+  bad "G-57 锚点没跑绿：P-07（子目录依赖看不见，Box 会带着 MODULE_NOT_FOUND 出厂）"
+fi
 # 注入对照：把三个名字从清单里全量摘掉，在同一把尺子的副本上重跑 —— 必须翻红；
 # 同一副本不改时也必须是绿，否则红是尺子坏而不是清单坏。
 rm -rf /tmp/g57mut && mkdir -p /tmp/g57mut/scripts /tmp/g57mut/hosts
@@ -2623,6 +2631,27 @@ grep -q "fail=0" /tmp/g57-mut.log && mut_red=0
 cp -f /tmp/g57mut/scripts/pack-box.clean.sh /tmp/g57mut/scripts/pack-box.sh
 node /tmp/g57mut/scripts/prove_box_pack_closure.js >/tmp/g57-clean.log 2>&1 || mut_red=0
 if [ "$mut_red" = "1" ]; then ok "G-57 注入对照：摘掉三个名字的清单副本翻红、原样副本仍绿"; else bad "G-57 注入对照没成立（见 /tmp/g57-mut.log /tmp/g57-clean.log）"; fi
+# P-07 的视力对照：把 normalize 里的「保留子路径」换回上一版的 path.basename（旧视力），
+# 拿真的 pack-box.sh 重跑 —— 带子目录的那条边会被看成 shared/reducer.js，P-07 必须红。
+# 红在 P-07 才算数：只红在别处说明是清单变了，不是尺子退回旧版。
+rm -rf /tmp/g57vision && mkdir -p /tmp/g57vision/scripts /tmp/g57vision/hosts
+ln -s "$(pwd)/hosts/shared" /tmp/g57vision/hosts/shared
+ln -s "$(pwd)/hosts/desktop" /tmp/g57vision/hosts/desktop
+cp -f scripts/pack-box.sh /tmp/g57vision/scripts/pack-box.sh
+node -e '
+const fs=require("fs");
+const src=fs.readFileSync("scripts/prove_box_pack_closure.js","utf8");
+const hit=src.match(/const tail = [\s\S]*?;\n/);
+if(!hit){console.error("副本里找不到 normalize 的 tail 那两行（写法变了，对照失效）");process.exit(3);}
+const out=src.replace(hit[0],"const tail = path.basename(spec);\n");
+if(out===src){console.error("normalize 没被换掉，对照失效");process.exit(4);}
+fs.writeFileSync("/tmp/g57vision/scripts/prove_box_pack_closure.js",out);
+' && node /tmp/g57vision/scripts/prove_box_pack_closure.js >/tmp/g57-vision.log 2>&1
+if grep -q "✗ P-07" /tmp/g57-vision.log; then
+  ok "G-57 视力对照：normalize 退回 basename 后 P-07 当场翻红（子目录依赖只有这一条路看得见）"
+else
+  bad "G-57 视力对照没成立（见 /tmp/g57-vision.log；$(tail -1 /tmp/g57-vision.log)）"
+fi
 # 真机取证：真的 pack 出一个 Box、真的把 Host 进程起来、真的用设备密钥走一遍手机审批链
 if timeout 900 node scripts/prove_box_routine_sweep.js >/tmp/gp169-sweep.log 2>&1 && grep -q "fail=0" /tmp/gp169-sweep.log; then
   ok "G-57 真 Box 取证：打包→起进程→到点扫→手机拉待批→批准留痕→重复批准被拒（$(grep -m1 -o 'pass=[0-9]* fail=[0-9]*' /tmp/gp169-sweep.log)）"
@@ -4742,7 +4771,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   else
     bad "G-119 真 app（见 /tmp/g119-e2e.log；$(grep 'e2e_desktop_sidebar_diff: PASS=' /tmp/g119-e2e.log)）"
   fi
-  for g119_e in "KD-01a " "KD-01b " "KD-01c " "KD-02 " "KD-03a " "KD-03b " "KD-04a " "KD-04b " "KD-04c " "KD-04d " "KD-05 " "KD-06 " "KD-07 " "KD-08a " "KD-08b " "KD-08c " "KD-09a " "KD-09b " "KD-10a " "KD-10b " "KD-10c "; do
+  for g119_e in "KD-01a " "KD-01b " "KD-01c " "KD-02 " "KD-03a " "KD-03b " "KD-04a " "KD-04b " "KD-04c " "KD-04d " "KD-05 " "KD-06 " "KD-07 " "KD-08a " "KD-08b " "KD-08c " "KD-09a " "KD-09b " "KD-10a " "KD-10b " "KD-10c " "KD-11a " "KD-11b " "KD-11c " "KD-11d " "KD-11e "; do
     if grep -q "✓ $g119_e" /tmp/g119-e2e.log; then ok "G-119 真 app 锚点：$g119_e"; else bad "G-119 真 app 锚点没跑绿：$g119_e"; fi
   done
 else
@@ -4754,7 +4783,8 @@ echo "    流式写一条长回复时侧栏每几百毫秒重画一次，行没�
 echo "  · G-119 判据：算法层 BD-01..25 钉白名单/churn 阈值/桶与组/moved_bucket/noop/坏形状退回整份，"
 echo "    BD-90..92 自证覆盖面；真 app 层钉节点身份（WeakMap 逐个对上）、scrollTop 全程不动、"
 echo "    广播只点名该点那一行、diff 字节 < 实测整份字节、换组零次回读、漏收（reload）自愈成整份、"
-echo "    非广播的整份重画路径（refreshBots / refreshSessions）同样不拆列。"
+echo "    非广播的整份重画路径（refreshBots / refreshSessions）同样不拆列，"
+echo "    KD-11 是 KP-08 的对拍：页内拿「整份基线 + 这一轮真广播」用产品自己的 spec 重算状态，逐行等于界面。"
 echo "  · G-119 负向对照两条，各管一层：算法层 N1..N4 改 broadcast_diff.js 的源码副本 + 真 app 层"
 echo "    KD-08 把 BITBOT_BROADCAST_DIFF=0 重跑同一回合（广播必须回到整份）；渲染层 KD-10c 在页内把"
 echo "    paintBots 换回老画法「清空 + 逐行新建」，同一条摘行判据必须立刻翻红——翻不红说明断言是空的。"
@@ -4762,6 +4792,72 @@ echo "    负对照不量 scrollTop：老路径同步清空+重建，空布局�
 echo "  · 已知残账（诚实）：rooms-changed 仍走整份快照，#room-list 与设置页各表仍是老画法；"
 echo "    换日期桶/换组/换桶走「本地缓存 + keyed 重画」，节点保住了但搬运是整列级别的；"
 echo "    Bot 改名后侧栏次要行的旧摘要要等下一次该 Bot 有动静才换新（DM 会话标题不跟着改）。"
+
+echo "== G-120 Client Core 落地：词表 / fold / diff / transport 四份纯逻辑，渲染端只剩「怎么动节点」（KP-08 T3-01..03、T3-04/06 核心侧、T3-05）=="
+# 计划里写的 client-core/ 落在这里是 hosts/shared/client_core/，不是仓库根上那个目录名。
+# 理由只有一条但足够硬：hosts/desktop/package.json 的 build.files 只收 hosts/desktop 的显式
+# 清单 + {from:"../shared"}，仓库根的 client-core/ 进不了 app.asar —— 开发态全绿、用户装好的
+# 包里侧栏空白。所以这一门先把「两条加载路径都走得通」钉住。
+g120_scripts=$(grep -c '<script src="../shared/client_core/' hosts/desktop/index.html)
+g120_core=$(ls hosts/shared/client_core/*.js | wc -l | tr -d ' ')
+g120_wired=否
+grep -q 'client_core/transport.js' hosts/desktop/index.html && g120_wired=是
+if [ "$g120_wired" = "否" ] && [ "$g120_scripts" -eq 3 ] && [ "$g120_core" -eq 4 ]; then
+  ok "G-120 接线：核心 $g120_core 份里页面引了 3 份（schema→reducer→diff_apply），transport.js 在核心但还没上页面 —— T3-04 接线是残账，本节末尾点名"
+elif [ "$g120_wired" = "是" ] && [ "$g120_scripts" -eq "$g120_core" ]; then
+  ok "G-120 接线：核心 $g120_core 份全部上页面，transport.js 已按 <script> 引到渲染端"
+else
+  bad "G-120 接线没收口（核心份数=$g120_core、渲染端 <script> 数=$g120_scripts、transport 上页面=$g120_wired）"
+fi
+# 判据只许有一份：渲染端再留一个 rev 锚点 / 一份缓存 / 一处「这条 diff 能不能就地应用」，
+# 迟早和核心漂移。这些标识符在 index.html 里出现即为红（CC-13 同口径，这里当第二把尺）。
+g120_dup=$(grep -c 'surfaceRev\|botViewCache\|sessRowsCache\|patchBotRowText' hosts/desktop/index.html)
+if [ "$g120_dup" -eq 0 ]; then
+  ok "G-120 单份判据：index.html 里没有第二份 rev 锚点/缓存/就地 patch 的死码（残留 0 处）"
+else
+  bad "G-120 判据还是两份：index.html 里留着 $g120_dup 处旧标识符（surfaceRev / botViewCache / sessRowsCache / patchBotRowText）"
+fi
+if timeout 180 node scripts/prove_client_core.js > /tmp/g120-core.log 2>&1; then
+  ok "G-120 纯逻辑与对拍 prove_client_core（$(grep 'prove_client_core: PASS=' /tmp/g120-core.log)）"
+else
+  bad "G-120 纯逻辑（见 /tmp/g120-core.log；$(grep 'prove_client_core: PASS=' /tmp/g120-core.log)）"
+fi
+for g120_t in "CC-01 " "CC-01b " "CC-01c " "CC-02 " "CC-02b " "CC-03 " "CC-04 " "CC-05 " "CC-06 " "CC-07 " "CC-09 " "CC-10 " "CC-11 " "CC-12 " "CC-13 " "CC-13b " "CC-14 " "CC-15 " "CC-16 " "CC-17 " "CC-18 " "CC-19 " "CC-20 " "CC-21 " "CC-22 " "CC-23 "; do
+  if grep -q "✓ $g120_t" /tmp/g120-core.log; then ok "G-120 锚点：$g120_t"; else bad "G-120 锚点没跑绿：$g120_t"; fi
+done
+for g120_n in "CC-08-N1 " "CC-08-N2 " "CC-02-N3 " "CC-09-N4 " "CC-10-N5 " "CC-13b-N6 " "CC-10-N7 " "CC-01b-N8 " "CC-01b-N9 " "CC-18-N10 " "CC-20-N11 " "CC-21-N12 " "CC-22-N13 "; do
+  if grep -q "✓ $g120_n" /tmp/g120-core.log; then ok "G-120 负向对照：$g120_n"; else bad "G-120 负向对照没红起来（这条判据可能是空的）：$g120_n"; fi
+done
+echo "  · G-120 为什么长出来：T3-03 的完成定义是「fold(events) → UI state 与现网 UI 一致」，T3-05 是"
+echo "    「renderer 先对拍后切换」。此前判据散在渲染端：rev 锚点、两份缓存、两个 applyXxxDiff 各写一遍"
+echo "    「这条 diff 能不能就地应用」，Host 的 fold 与它是两份逻辑 —— 手机折出来的和桌面画出来的对不上时没人报错。"
+echo "  · G-120 判据：CC-01 四份核心无 require/import/DOM/Electron；CC-01b 在同一个 vm realm 里按 <script>"
+echo "    顺序装配（无模块系统 + 共享顶层作用域），CC-01c 装配版与 Host require 版同一条 diff 逐字节一样；"
+echo "    CC-02 fold 唯一口径（event_mirror 与核心同一个函数引用）；CC-03..06 词表与 docs/events.md、"
+echo "    ui_protocol/types.mbt 逐字对齐；CC-07 用写侧真函数派事件再 fold 回来三张面逐字段相等；"
+echo "    CC-09..12 是 diff 判据的闭集（rev 三条规则、13 行结构表、幂等且不改动入参、120 例模糊测试不许冒出未登记的效果/原因）；"
+echo "    CC-13/13b 钉渲染端只剩 effects→节点的翻译、每个效果都有分支；CC-14 钉打包 filter 与 <script> 路径；"
+echo "    CC-15 钉真 app 那层的装载核对（__bitbotClientCoreReady）确实被 G-119 的 KD-11e 读过 —— SKIP ≠ PASS。"
+echo "  · G-120 transport 侧（T3-04 接口 + T3-06 去重，核心那半份）：CC-16 transport 只认注入的 fold/full/read/paint"
+echo "    （不点核心函数名、不 require），浏览器 realm 版与 Host 版在同一串帧上给出同一状态 + 同一重画序列，回执的"
+echo "    echo/码/原文三份字段名逐字等于 schema 的单点定义；CC-17 乐观命令四态闭环（echo 相等才 durable，不等或没 echo"
+echo "    一律 unmatched 并记 anomaly，拒绝没码也记 anomaly，终态不被迟到回执改回去）；CC-18 idem_key 命中在等的命令"
+echo "    复用同一条；CC-19 expire 只动 pending、台账 256 上限只淘汰终态；CC-20 不比游标新的帧在 intake 就丢（去重在核心）；"
+echo "    CC-21 跳号那帧连折叠器都不许叫，改成带 from_seq 的整份取数（哪怕折叠器是「来就改」的那种）；CC-22 取数在途时后到的"
+echo "    帧只排队不插队；CC-23 surface.read 只认成功信封的 .payload（把信封整份喂折叠器折出 0 行，就是 KD-11 第一次栽的坑）。"
+echo "  · G-120 负向对照 13 条：N1/N2 摘 fold 分支、塞词表不认的 kind；N3 拆开 fold 的两处引用；N4 摘掉跳号自愈；"
+echo "    N5 摘掉可 patch 白名单；N6 抹掉渲染端 remove_row 分支；N7 摘掉 scalar 重画；N8 把四份文件的 IIFE 外壳剥掉"
+echo "    （就是这次真翻车时的形状），同 realm 第二次声明 const API 必须当场 SyntaxError；N9 摘掉模块导出守卫，"
+echo "    无模块系统的 realm 里必须当场 ReferenceError —— 这两条正是上一版尺子（每份文件各套一个 new Function）"
+echo "    照不到、而桌面侧栏真的白过一次的那两个形状。"
+echo "    N10 定值 rand 造出同一个 client_msg_id 必须当场抛（否则屏幕上两条乐观消息静默合成一条）；N11 摘掉 intake 的游标"
+echo "    判定后，重放的旧帧把游标拖回去，真正的改名帧被当成跳号整份盖掉 —— 改名丢了；N12 摘掉跳号判定后半截 diff 直接上屏；"
+echo "    N13 摘掉「排到链上」后取数在途时那一帧就在旧基线上被判跳号、取回来被整份盖掉，界面上永远看不见。"
+echo "    这三条不只要求计数变化，还要求看得见对应的危害（丢改名 / 半截上屏 / 帧被抹掉），否则判红。"
+echo "  · 已知残账（诚实）：transport 的判据这次已经在核心里跑绿，但它还没上页面 —— T3-04 的接线（渲染端引第 4 份 <script>、"
+echo "    Host 用 client_msg_id 落库并回 echo_entry_id、拒绝把 KP-03 码送回那条乐观消息）没做，现在还是按位置回填 id；"
+echo "    T3-06 的「拔网 10 s 重连无重复无缺失」端到端没跑；T3-07 的 checkJs（要装 typescript，未获授权）都没落 —— "
+echo "    KP-08 的可感面「输入立刻上屏、落库后回执对上、拒绝变红带 KP-03 码」目前只兑现了「立刻上屏」这一半。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo

@@ -26,6 +26,10 @@
  *         KD-10c 是渲染层的负向对照：页内把 paintBots 换回 KP-07 之前的「清空 + 逐行新建」，
  *         同一条判据必须立刻翻红 —— 侧栏不闪有两条机制（广播发 diff、重画复用节点），
  *         总闸只管前一条，后一条只能这样验。
+ *   KD-11 【KP-08 的对拍】回合结束后，页内拿「整份基线 + 这一轮真收到的广播」用产品自己的
+ *         spec 重放一遍状态，逐行比界面画出来的那一列：行数/id 顺序（Bot 分可见+隐藏两组、
+ *         会话比整序）、被点名那行的名字与置顶星号，都对上才算「renderer 只渲染」成立；
+ *         KD-11a 同时要求重放里**零次自愈** —— 靠回读整份蒙过去的重放不算重放。
  *
  * 纪律：isolatedRepoRoot（夹具写进临时根的 data/desktop，绝不碰用户 data/）+
  *       独立 user-data-dir + BITBOT_NO_SECRET_SYNC=1；跑完关进程、清临时根。
@@ -188,6 +192,30 @@ async function runPass(diffOn) {
   });
   await win.waitForSelector("#bot-list .agent-item", { timeout: 60000 });
 
+  /* KD-11 对拍的起点：先把两张面各整份读一份，作为「核心从哪儿开始重放」。
+     放在数 reads 的钩子之前 —— KD-01c「回合里一次都没为画侧栏去取整份」的口径
+     不被这一步污染。回包是 {ok, surface, rev, payload}，快照在 payload 里。 */
+  await win.evaluate(async () => {
+    const core = window.__bitbotClientCore;
+    const specs = window.__bitbotSurfaceSpecs;
+    window.__kdSeed = {
+      error: !core || !core.applyDiff || !specs ? "核心或面形状没暴露" : null,
+      coreReady: !!window.__bitbotClientCoreReady,
+      state: {},
+      rev: {},
+    };
+    if (window.__kdSeed.error) return;
+    for (const name of ["bots", "sessions"]) {
+      const res = await window.bitbot.surface.read(name);
+      if (!res || !res.ok || !res.payload) {
+        window.__kdSeed.error = name + " 整份回包形状不对：" + JSON.stringify(res && { ok: res.ok, error: res.error });
+        return;
+      }
+      window.__kdSeed.state[name] = core.snapshotToState(res.payload, specs[name]);
+      window.__kdSeed.rev[name] = window.__kdSeed.state[name].rev;
+    }
+  }).catch(() => {});
+
   // 观察者：数被摘掉/新建的行，记广播，记 scrollTop 轨迹
   await win.evaluate(() => {
     window.__kd = { rec: [], botRemoved: 0, botCreated: 0, sessRemoved: 0, sessCreated: 0, scroll: [] };
@@ -210,12 +238,12 @@ async function runPass(diffOn) {
     }
     if (window.bitbot.onBotsChanged) {
       window.bitbot.onBotsChanged((p) => {
-        window.__kd.rec.push({ surface: "bots", mode: p && p.mode, rev: p && p.rev, bytes: JSON.stringify(p || {}).length, changed: (p && p.changed) || null });
+        window.__kd.rec.push({ surface: "bots", mode: p && p.mode, rev: p && p.rev, bytes: JSON.stringify(p || {}).length, changed: (p && p.changed) || null, full: p });
       });
     }
     if (window.bitbot.onSessionsChanged) {
       window.bitbot.onSessionsChanged((p) => {
-        window.__kd.rec.push({ surface: "sessions", mode: p && p.mode, rev: p && p.rev, bytes: JSON.stringify(p || {}).length, changed: (p && p.changed) || null });
+        window.__kd.rec.push({ surface: "sessions", mode: p && p.mode, rev: p && p.rev, bytes: JSON.stringify(p || {}).length, changed: (p && p.changed) || null, full: p });
       });
     }
     const ag = document.getElementById("agents");
@@ -304,7 +332,92 @@ async function runPass(diffOn) {
     const ag = document.getElementById("agents");
     const rows = Array.from(document.querySelectorAll("#bot-list .agent-item"));
     const sess = Array.from(document.querySelectorAll("#session-list .agent-item"));
+    /* KD-11 对拍：从整份基线出发，把这一轮收到的广播按原顺序、用**产品自己那两份 spec**
+       重新算一遍状态，再和页面上真画出来的那一列逐行比。核心算出来的行如果对不上界面，
+       「renderer 只渲染」这句话就没有证据 —— 这里就是那份证据。
+       isMounted 换成恒真：补算发生在回合结束之后，节点早就挂好了，这条钩子问的是
+       「当时能不能就地改字」，补算不该因为它而退化成自愈。 */
+    let replay = { error: "无" };
+    try {
+      const core = window.__bitbotClientCore;
+      const specs = window.__bitbotSurfaceSpecs;
+      if (!window.__kdSeed || window.__kdSeed.error) replay = { error: (window.__kdSeed || {}).error || "没有基线" };
+      else {
+        const st = { bots: window.__kdSeed.state.bots, sessions: window.__kdSeed.state.sessions };
+        const res = {
+          error: null,
+          seedRev: window.__kdSeed.rev,
+          seedRows: { bots: st.bots.buckets.visible.length, sessions: st.sessions.buckets.visible.length },
+          fulls: { bots: 0, sessions: 0 },
+          applied: { bots: 0, sessions: 0 },
+          healed: { bots: 0, sessions: 0 },
+          ignored: { bots: 0, sessions: 0 },
+        };
+        for (const r of window.__kd.rec) {
+          if (!st[r.surface]) continue;
+          const spec = Object.assign({}, specs[r.surface], { isMounted: () => true });
+          if (r.mode !== "diff") {
+            st[r.surface] = core.snapshotToState(r.full, spec);
+            res.fulls[r.surface]++;
+            continue;
+          }
+          const got = core.applyDiff(st[r.surface], r.full, spec);
+          const t = core.effectTypes(got.effects);
+          if (t.includes("self_heal")) {
+            res.healed[r.surface]++;
+            continue;
+          }
+          st[r.surface] = got.state;
+          if (t.includes("ignored")) res.ignored[r.surface]++;
+          else res.applied[r.surface]++;
+        }
+        res.final = {
+          bots: core.idsOf(st.bots.buckets.visible),
+          hiddenBots: core.idsOf(st.bots.buckets.hidden),
+          sessions: core.idsOf(st.sessions.buckets.visible),
+          rev: { bots: st.bots.rev, sessions: st.sessions.rev },
+        };
+        res.dom = {
+          bots: rows.map((el) => String(el.dataset.agentId)),
+          sessions: sess.map((el) => String(el.dataset.sessionId)),
+        };
+        /* 会话弹层是「按日期组分桶、逐组往下画」的：组出现的先后是渲染端的画法，
+           核心只决定每桶里行的先后。对拍因此比这个 —— 拿渲染端自己的 dayBucket 钩子给
+           核心状态分桶，按界面真出现的组顺序展平，逐行 id 必须和弹层画出来的一模一样。 */
+        const sessBox = document.getElementById("session-list");
+        const groupSeq = [];
+        if (sessBox) {
+          let curKey = "";
+          for (const el of Array.from(sessBox.children)) {
+            if (el.classList.contains("sess-group")) {
+              curKey = String(el.dataset.groupKey || "");
+              if (!groupSeq.includes(curKey)) groupSeq.push(curKey);
+            }
+          }
+        }
+        const bucketFn = specs.sessions.dayBucket;
+        res.coreGrouped = groupSeq.map((k) => st.sessions.buckets.visible.filter((x) => bucketFn(x.updated_at) === k).map((x) => String(x.id)));
+        res.groupSeq = groupSeq;
+        /* 逐行的值也对一遍：这一轮广播点名了哪个 Bot，那一行的名字在核心里 == 界面上画出来的 */
+        const named = (window.__kd.rec.filter((x) => x.surface === "bots" && x.mode === "diff").pop() || {}).changed || [];
+        const spotId = named.length ? String(named[0].entity_id) : "";
+        const coreRow = st.bots.buckets.visible.concat(st.bots.buckets.hidden).filter((x) => String(x.id) === spotId)[0];
+        const domRow = rows.filter((el) => String(el.dataset.agentId) === spotId)[0];
+        res.spot = {
+          id: spotId,
+          fields: Object.keys((named[0] || {}).changed_fields || {}),
+          coreName: coreRow ? String(coreRow.name || "") : null,
+          corePinned: !!coreRow.pinned,
+          domLabel: domRow ? String(((domRow.querySelector(".name") || {}).textContent || "")).trim() : null,
+        };
+        replay = res;
+      }
+    } catch (e) {
+      replay = { error: String((e && e.message) || e) };
+    }
     return {
+      coreReady: !!window.__bitbotClientCoreReady,
+      replay,
       rec: window.__kd.rec,
       reads: window.__kd.reads,
       botRemoved: window.__kd.botRemoved,
@@ -422,6 +535,41 @@ const expect = (diffOn, name, cond, detail) => {
   /* KD-01c 这一轮渲染端一次都没为了画侧栏回去取整份 */
   expect(true, "KD-01c 回合全程渲染端没有发起过取整份 IPC（侧栏更新全靠手上的基线 + diff）",
     r.reads === 0, "surface.read 调用次数=" + r.reads);
+
+  /* KD-11 对拍（KP-08 / T3-03、T3-05 的可感证据）：核心重放出来的状态 == 页面画出来的行 */
+  const rp = r.replay || {};
+  expect(true, "KD-11a 对拍打得起：整份基线 + 这一轮广播逐条重放，两条面都真被 diff 前进过（不是靠自愈混过去）",
+    !rp.error && rp.healed && rp.healed.bots === 0 && rp.healed.sessions === 0 && rp.applied.bots > 0 && rp.applied.sessions > 0,
+    rp.error ? "重放没跑起来：" + rp.error
+      : "重放 diff：bots " + rp.applied.bots + " 条 / sessions " + rp.applied.sessions + " 条，整份 "
+        + JSON.stringify(rp.fulls) + "，自愈 " + (rp.healed.bots + rp.healed.sessions) + " 次，rev "
+        + JSON.stringify(rp.seedRev) + "→" + JSON.stringify((rp.final || {}).rev));
+  const sameSet = (a, b) => a.length === b.length && a.slice().sort().join() === b.slice().sort().join();
+  const f11 = rp.final || {}, d11 = rp.dom || {};
+  const visSet11 = new Set(f11.bots || []);
+  const domVis11 = (d11.bots || []).filter((id) => visSet11.has(id));
+  const domHid11 = (d11.bots || []).filter((id) => !visSet11.has(id));
+  expect(true, "KD-11b Bot 面：核心重放出的行 == 界面那一列（可见组按顺序逐个对上、隐藏组按集合对上、总数不多不少）",
+    !!f11.bots && f11.bots.length + f11.hiddenBots.length === (d11.bots || []).length
+      && JSON.stringify(domVis11) === JSON.stringify(f11.bots) && sameSet(domHid11, f11.hiddenBots),
+    f11.bots ? "核心 可见" + f11.bots.length + "+隐藏" + f11.hiddenBots.length + " 行 vs 界面 " + (d11.bots || []).length
+      + " 行；首个不一致：" + (domVis11.findIndex((x, i) => x !== f11.bots[i]) < 0 ? "无" : domVis11.find((x, i) => x !== f11.bots[i]))
+      : "无重放数据");
+  const flat11 = (rp.coreGrouped || []).reduce((a, b) => a.concat(b), []);
+  expect(true, "KD-11c 会话面：核心重放出的行按界面自己的日期组展平后，逐行 id == 弹层真画出来的那一列",
+    !!f11.sessions && flat11.length === f11.sessions.length && JSON.stringify(flat11) === JSON.stringify(d11.sessions),
+    f11.sessions ? "组序=" + JSON.stringify(rp.groupSeq) + " 每组 " + JSON.stringify((rp.coreGrouped || []).map((x) => x.length))
+      + " 行 vs 界面 " + (d11.sessions || []).length + " 行；首个不一致："
+      + (flat11.findIndex((x, i) => x !== (d11.sessions || [])[i]) < 0 ? "无" : flat11.find((x, i) => x !== (d11.sessions || [])[i]))
+      : "无重放数据");
+  const sp = rp.spot || {};
+  const domName11 = String(sp.domLabel || "").replace(/^★\s*/, "");
+  expect(true, "KD-11d 这一轮被点名那一行：核心里的 name == 界面画出来的名字（置顶星号另行核对）",
+    !!sp.id && !!sp.coreName && domName11 === sp.coreName && String(sp.domLabel || "").startsWith("★") === sp.corePinned,
+    "点名=" + sp.id + " 字段=" + JSON.stringify(sp.fields) + " 核心=" + JSON.stringify(sp.coreName)
+      + "(置顶" + sp.corePinned + ") 界面=" + JSON.stringify(sp.domLabel));
+  r.coreReady ? ok("KD-11e Client Core 在页面里真装上了（打包漏目录会在这里红，而不是留一条空白侧栏）",
+    "__bitbotClientCoreReady=true") : bad("KD-11e 页面里没装上 Client Core", "__bitbotClientCoreReady=" + r.coreReady);
 
   /* KD-08 负向对照（广播层）：把总闸 BITBOT_BROADCAST_DIFF=0 关掉再跑同一个回合，
    * 广播必须退回整份 —— 这是闸真正管的那一层，所以负对照就量在这一层。
@@ -658,9 +806,10 @@ const expect = (diffOn, name, cond, detail) => {
   killGateProcs(ud2);
   fs.rmSync(ud2, { recursive: true, force: true });
 
-  note("判据自证：真 app 上 23 条判据 + 1 条 stub 起停（KD-00 真发送 ×开/关两趟、KD-01a/b/c 节点身份+零回读、KD-02 滚动、"
+  note("判据自证：真 app 上 24 条 expect 判据 + KD-11e 装载核对 + 2 条真发送确认（KD-00 ×开/关两趟）+ 1 条 stub 起停（"
+    + "KD-01a/b/c 节点身份+零回读、KD-02 滚动、"
     + "KD-03a/b 会话弹层、KD-04a-d 广播形状、KD-05 实测比价、KD-06 自愈、KD-07 行数、KD-09a/b 换组、"
-    + "KD-10a/b 非广播重画路径），其中 KD-08a/b 为广播层负向对照（关总闸必须回到整份）、"
+    + "KD-10a/b 非广播重画路径、KD-11a–d 核心重放对拍），其中 KD-08a/b 为广播层负向对照（关总闸必须回到整份）、"
     + "KD-10c 为渲染层负向对照（页内摘掉 keyed 复用必须翻红）、KD-08c 如实记录老路径的整份字节数；"
     + "两趟回合都真发真落库，不是把界面 mock 成期望形状");
   } catch (e) {
