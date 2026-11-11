@@ -43,8 +43,10 @@ const check = (c, m, d) => (c ? ok(m) : bad(m, d));
 function parseLists(src) {
   // 只认 `for f in a.js b.js \
   //          c.js; do` 这两段；第一段进 shared/，第二段进包根（hosts/desktop 的文件）。
+  // 条目可以带子路径（client_core/reducer.js）：KP-08 之后 shared/ 里有一层模块目录，
+  // 打包循环自己 mkdir -p 父目录，包内拼法与仓库一致。
   const blocks = [...src.matchAll(/for f in ([\s\S]*?);?\s*do/g)].map((m) => (
-    m[1].replace(/\\\s*/g, " ").split(/\s+/).filter((f) => /^[A-Za-z0-9_.-]+\.js$/.test(f))
+    m[1].replace(/\\\s*/g, " ").split(/\s+/).filter((f) => /^[A-Za-z0-9_.\/-]+\.js$/.test(f))
   ));
   return { shared: blocks[0] || [], root: blocks[1] || [] };
 }
@@ -61,15 +63,25 @@ function dirFor(kind) {
  *                                也就是源里的 shared/x 与 desktop/x
  * 只看 `.` 开头的：内置模块与 node_modules 不归这里管。
  * try-chain（host_ffi.js:26-30 那种三条候选）会归出同一个 (kind,name)，靠 seen 去重，
- * 所以「三条里有一条能用」不会被误判成「三条都得在清单里」。 */
+ * 所以「三条里有一条能用」不会被误判成「三条都得在清单里」。
+ *
+ * name 保留**子路径**（client_core/reducer.js），不再取 basename：上一版取 basename
+ * 是因为 Box 只有平铺一层，KP-08 把 fold 的唯一口径放进子目录后，扁平视力会把
+ * `./client_core/reducer.js` 看成 `reducer.js` —— 于是 P-02 报「文件不存在」、
+ * P-01 报「清单缺 shared/reducer.js」，两条都是尺子看错，不是产品缺文件。
+ * 目录段（shared/desktop）仍然剥掉，因为那是包内布局的根，不是模块名的一部分。 */
 const REQUIRES = /require\(\s*(['"])(\.[^'"]+)\1\s*\)/g;
 
 function normalize(fromKind, spec) {
-  const name = path.basename(spec).replace(/\.(js|json)$/, "") + ".js";
-  if (/(^|\/)shared\//.test(spec)) return { kind: "shared", name };
-  if (/(^|\/)desktop\//.test(spec)) return { kind: "desktop", name };
-  if (spec.startsWith("./")) return { kind: fromKind, name };
-  return { kind: "desktop", name };
+  let kind = "desktop";
+  if (/(^|\/)shared\//.test(spec)) kind = "shared";
+  else if (/(^|\/)desktop\//.test(spec)) kind = "desktop";
+  else if (spec.startsWith("./")) kind = fromKind;
+  const tail = spec
+    .replace(/^(\.\/|\.\.\/)+/, "")
+    .replace(/^(?:hosts\/)?(?:shared|desktop)\//, "");
+  const name = /\.(js|json)$/.test(tail) ? tail : tail + ".js";
+  return { kind, name };
 }
 
 function closure(roots) {
@@ -77,6 +89,7 @@ function closure(roots) {
   const ghosts = [];   // require 了一个仓库里不存在的相对模块
   let crossDir = 0;    // 归一后换了目录的边
   let upEdges = 0;     // 其中来自 `../…` 的：老视力（只认 ./x）一条都走不到
+  let nested = 0;      // 归一后 name 里仍带子目录的边：P-07 用它自证不是「取 basename 的旧视力」
   const queue = roots.slice();
   while (queue.length) {
     const cur = queue.shift();
@@ -90,11 +103,12 @@ function closure(roots) {
       const next = normalize(cur.kind, m[2]);
       if (next.kind !== cur.kind) crossDir += 1;
       if (m[2].startsWith("../")) upEdges += 1;
+      if (next.name.includes("/")) nested += 1;
       if (!fs.existsSync(path.join(dirFor(next.kind), next.name))) ghosts.push(key + " -> " + m[2]);
       queue.push(next);
     }
   }
-  return { seen, ghosts, crossDir, upEdges };
+  return { seen, ghosts, crossDir, upEdges, nested };
 }
 
 console.log("prove_box_pack_closure — Box 打包清单的传递闭包");
@@ -115,7 +129,7 @@ const roots = [
   { kind: "shared", name: "host_ffi.js" },
   { kind: "desktop", name: "product_surface.js" },
 ];
-const { seen, ghosts, crossDir, upEdges } = closure(roots);
+const { seen, ghosts, crossDir, upEdges, nested } = closure(roots);
 const unpacked = [...seen].filter((k) => !packed.has(k)).sort();
 
 check(unpacked.length === 0, "P-01 真入口的 require 闭包全在打包清单里", "缺：" + unpacked.join(", "));
@@ -147,6 +161,17 @@ const gp184 = {
 };
 const gp184Miss = Object.entries(gp184).filter(([, v]) => !v).map(([k]) => k);
 check(gp184Miss.length === 0, "P-06 GP-184 回归锚：event_mirror 这条链三个名字各在其位", "缺：" + gp184Miss.join("、"));
+
+/* P-07 KP-08 的新视力：闭包里带子目录的边必须真的被认出来，并且以子路径出现在清单里。
+   这条是给 normalize 用的尺子：谁把它退回 path.basename（旧视力），这里立刻红 ——
+   红法是 `client_core/reducer.js` 归一成 `reducer.js`，清单里没有那个名字，
+   于是 nested 变成 0（视力失效）而不是「闭包刚好全绿」。 */
+const subNames = [...seen].filter((k) => k.split("/").length > 2);
+check(
+  nested >= 1 && subNames.length >= 1 && subNames.every((k) => packed.has(k)),
+  "P-07 子目录依赖看得见：闭包里 " + nested + " 条带子目录的边，包内名字 " + (subNames.join(",") || "无"),
+  "带子目录的 require 要么被归一成了 basename（视力退回旧版），要么没进清单：" + subNames.filter((k) => !packed.has(k)).join(","),
+);
 
 console.log("\nprove_box_pack_closure: pass=" + pass + " fail=" + fail);
 process.exit(fail === 0 ? 0 : 1);

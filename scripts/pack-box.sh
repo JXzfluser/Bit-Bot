@@ -73,13 +73,19 @@ cp -f "$KERNEL_SRC" "$OUT/bin/desktop_turn"
 chmod +x "$OUT/bin/desktop_turn"
 
 # --- shared/ : the Host, one flat dir --------------------------------------
+# 例外是 client_core/：fold 的口径在 KP-08 只留了一份（hosts/shared/client_core/reducer.js），
+# event_mirror.js 直接 require 它。这张清单以前只会平铺，于是 Box 开机就
+# MODULE_NOT_FOUND —— 桌面端有 asar 整目录拷贝看不见这个病，只有 Box 这条扁平链会犯。
+# 现在清单允许带子路径的条目，循环自己建目录：包内的相对拼法和仓库里一模一样。
 for f in agent_loop_ffi.js agent_loop_product_wire.js agent_loop_stream_stub.js \
          cn_inbound_product_on_turn.js cn_inbound_server.js device_keys.js \
          host_approval_gate.js host_ffi.js p0_security.js room_context.js \
          room_dispatch.js room_discretion.js room_runtime.js run_moon_turn.js \
          tool_policy.js turn_progress.js box_main.js routine_scheduler.js product_surface_ref.js machine_identity.js \
-         desktop_pairing.js lan_candidates.js machine_presence.js kernel_server.js event_log.js event_mirror.js event_read_model.js host_env.js; do
+         desktop_pairing.js lan_candidates.js machine_presence.js kernel_server.js event_log.js event_mirror.js event_read_model.js host_env.js \
+         client_core/reducer.js; do
   [[ -f "$ROOT/hosts/shared/$f" ]] || { echo "missing shared file: $f" >&2; exit 1; }
+  mkdir -p "$(dirname "$OUT/shared/$f")"
   cp -f "$ROOT/hosts/shared/$f" "$OUT/shared/$f"
 done
 
