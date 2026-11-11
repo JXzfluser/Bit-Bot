@@ -193,6 +193,75 @@ token 增量既大又无长期价值（评审 §8-5「不持久化 token 增量�
 每个写入点走完就把日志从头折一遍和磁盘比（DW-02），且**库里出现的每一类**
 事件都被真删后重放全部步骤（DW-04）——删了没反应的那类就是死词，门会红。
 
+### 5.5 失败码（KP-03：发送失败从自由文本升成码）
+
+§5.1–§5.4 记的是「发生了什么」；本节记的是「**没成，为什么**」。在此之前，
+一次发送失败从内核到界面走的是一行自由文本（`error:String?`，`turn_json.mbt`），
+房间侧再各写各的散装串（`room_surface_unavailable`、`orchestrator_unavailable`、
+`budget_max_wall_ms`…）。后果是屏幕上飘的是一句 `invalid JSON from MoonBit: …`，
+手机端无从按类型处理，同一件事三端三种措辞。
+
+**唯一真源是 `hosts/desktop/failure_codes.js`**（pure、零依赖、dual-load：
+渲染层 `<script src>` 挂 `window.__bitbotFailure`，Host `require()`）——Host 产的码、
+桌面显示的码、手机契约里的码是同一份表，第二份副本会让界面看着对、Host 其实发的是
+别的（沿用 §5.4 与 `progress_protocol.js` 的纪律）。本节列出这张表，代码只是它的实现。
+
+三条归一化规则（`normalizeFailure` 是**边界函数**：吃任意上游 error 文本/对象，永不抛错）：
+
+1. **先收编，不新造词**。每个 canonical 码都对应当前代码里**已经在产**的串（下表「收编自」列）。
+2. **显式机器码优先于自由文本**。上游同时带 `error_code` 和 `error` 原文时按 `error_code`
+   解析——机器码比措辞可靠；只有裸文本时才按别名/前缀收编。
+3. **认不出落 `unknown_failure`**，绝不把上游原文当码抛给界面。这条是反向对照钉死的：
+   怪串、`null`、`{}`、数字、空串一律得 `unknown_failure` 且不崩（`prove_failure_codes.js` N2/N3）。
+
+下表 34 个码，「显示」是桌面私聊发送失败面的中文文案（`fail*` i18n），
+「动作」是可照做的下一步（没有明确入口就不给，不编假按钮）：
+
+| 码 | 显示 | 动作 | 收编自（现有串） |
+|---|---|---|---|
+| `provider_unconfigured` | 未配置模型 | 去设置 > 模型 | `api_key_not_configured` |
+| `empty_user_text` | 消息内容为空 | — | `empty user text` |
+| `kernel_invalid_json` | 内核返回无法解析 | 重试一次 | 前缀 `invalid JSON from MoonBit…` |
+| `cancelled` | 已取消 | — | `canceled`（美式拼写） |
+| `local_execution_never` | 本地执行已被禁止 | — | 同名 |
+| `shell_approval_required` | 需要先批准这次操作 | 去审批 | 同名 |
+| `llm_chat_failed` | 模型或服务返回失败 | 重试一次 | 同名 |
+| `no_reply` | 这一轮没有返回内容 | 重试一次 | 同名 |
+| `turn_failed` | 这一轮没有成功 | — | 同名 |
+| `host_effect_failed` | 这一轮没有成功 | — | 同名 |
+| `room_turn_timeout` | 这一轮超时 | 重试一次 | `room_turn_deadline` |
+| `bot_not_found` | 找不到对应的 Bot | — | 同名 |
+| `responder_missing` | 这一轮没有成功 | — | 同名 |
+| `room_surface_unavailable` | 这一轮没有成功 | — | 同名（房间侧原样串） |
+| `orchestrator_unavailable` | 这一轮没有成功 | — | 同名（房间侧原样串） |
+| `room_and_text_required` | 这一轮没有成功 | — | 同名 |
+| `rooms_store_unreadable` | 这一轮没有成功 | — | 同名 |
+| `route_failed` / `orchestrate_failed` | 这一轮没有成功 | — | 同名 |
+| `no_responders` / `too_many_responders` | 这一轮没有成功 | — | 同名 |
+| `orchestrate_recursion` | 这一轮没有成功 | — | 同名 |
+| `responder_runner_required` | 这一轮没有成功 | — | 同名 |
+| `discretion_turn_failed` / `discretion_unclear` | 这一轮没有成功 | — | 同名 |
+| `handoff_runner_required` / `handoff_retry_runner_required` | 这一轮没有成功 | — | 同名 |
+| `handoff_stuck` | 这一轮没有成功 | — | 前缀 `handoff_stuck:<原因>` |
+| `synthesis_turn_failed` / `synthesis_no_reply` | 这一轮没有成功 | — | 同名 |
+| `budget_max_wall_ms` | 超出本轮预算上限 | — | `max_wall_ms` |
+| `budget_max_turns` | 超出本轮预算上限 | — | `max_turns` |
+| `budget_max_tokens` | 超出本轮预算上限 | — | `max_tokens` |
+| `unknown_failure` | 出现未知错误 | 重试一次 | 归一化兜底（无产出点，由规则 3 产生） |
+
+**面的分工（不冲突）**：桌面**私聊发送失败面**显示「发送失败：<显示>（`<码>`），<动作>」，
+码始终可见，便于对账；**群聊面**沿用 GP-147 纪律——只显示人话 label，协议码与上游原文
+只在 dev-mode 追加，绝不漏到产品脸面（`e2e_desktop_user_journeys` 钉着这条）。
+
+**可感面**：把供应商 key 清空后发一条消息，屏幕上是
+「发送失败：未配置模型（`provider_unconfigured`），去设置 > 模型」而非一行 `invalid JSON from MoonBit`。
+**终端可证**：`node scripts/approve.js --last-failure` 打印同一码。
+
+**验收门**：`scripts/prove_failure_codes.js`（码表穷举 T2「每个码至少一条产出路径」+
+收编 T3 + 反向对照 T4/N1/N2/N3 + dual-load T1 + 接线闭环 T6）；界面渲染由真 Electron 门
+`scripts/e2e_desktop_failure_code.mjs`（`BITBOT_MOBILE_HOST=1` 走真实「本机不持有 key」分支）；
+三层一起挂矩阵 **G-116**。
+
 ## 6. 单写者（T1-FR2）
 
 每个 `session_id` 同一时刻只有一个 actor 能追加。actor 身份 = `machine_id`（由

@@ -4555,6 +4555,69 @@ echo "    working 卡留落点 / Host 广播源行），N1..N4 四条源码负�
 echo "    P4 收到 ≥1 帧、P5 每帧按 bot/群分、P6 名字旁出现当前步、P7 序列含 start；注入对照摘掉"
 echo "    Host 广播那行 → P4 必须翻红。静态 + 真渲染各管一段，缺一条都可能是假绿。"
 
+echo "== G-116 发送失败要有码：清空 key 后屏上是「未配置模型（provider_unconfigured）」不是 invalid JSON（KP-03）=="
+# 对标 Grok：失败要能按类型处理，不是一行飘过的自由文本。翻代码：内核只有 error:String?
+# （turn_json.mbt），房间侧再各写各的散装串（room_surface_unavailable / budget_max_wall_ms…），
+# 结果屏幕上飘的是 `invalid JSON from MoonBit: …`，三端三种措辞。本门钉三层，各管一段：
+# ① 静态码表（唯一真源、dual-load、穷举、收编、反向对照、接线闭环）→ ② 终端可证
+# （approve.js --last-failure 打同一码，且码来自归一化不是写死）→ ③ 真渲染（真 Electron
+# 私聊发一条，屏上真的出现带码的「未配置模型…」，裸自由文本不再泄漏到产品面）。
+# ① 静态码表门 prove_failure_codes.js（T1..T6 + 源码负向对照 N1..N3）
+if timeout 120 node scripts/prove_failure_codes.js > /tmp/g116-static.log 2>&1; then
+  ok "G-116 静态码表 prove_failure_codes（$(grep 'prove_failure_codes: PASS=' /tmp/g116-static.log)）"
+else
+  bad "G-116 静态码表（见 /tmp/g116-static.log；$(grep 'prove_failure_codes: PASS=' /tmp/g116-static.log)）"
+fi
+for g116_t in "T1 " "T2 " "T3 " "T4 " "T5 " "T6 " "N1 " "N2 " "N3 "; do
+  if grep -q "✓ $g116_t" /tmp/g116-static.log; then ok "G-116 静态锚点：$g116_t"; else bad "G-116 静态锚点没跑绿：$g116_t"; fi
+done
+# ② 终端可证：approve.js --last-failure 读临时根里的失败 artifact，打 canonical 码。
+#    用 mktemp 隔离，绝不碰用户 data/llm/turns。反向对照证明码是 normalizeFailure 算出来的，
+#    不是对整段文本做硬匹配——上游给一句没见过的怪串必须落 unknown_failure。
+g116_tmp="$(mktemp -d)"
+mkdir -p "$g116_tmp/data/llm/turns"
+printf '{"ok":false,"error":"api_key_not_configured"}' > "$g116_tmp/data/llm/turns/chat-a.json"
+g116_pos="$(BITBOT_REPO_ROOT="$g116_tmp" timeout 60 node scripts/approve.js --last-failure 2>&1)"
+if printf '%s' "$g116_pos" | grep -q "最近一次发送失败：provider_unconfigured"; then
+  ok "G-116 终端可证 approve.js --last-failure：api_key_not_configured 收编成 provider_unconfigured"
+else
+  bad "G-116 终端可证没打出 provider_unconfigured" "$g116_pos"
+fi
+printf '{"ok":false,"error":"完全没见过的上游原文 ZZ9X 尾巴"}' > "$g116_tmp/data/llm/turns/chat-b.json"
+g116_neg="$(BITBOT_REPO_ROOT="$g116_tmp" timeout 60 node scripts/approve.js --last-failure 2>&1)"
+if printf '%s' "$g116_neg" | grep -q "最近一次发送失败：unknown_failure"; then
+  ok "G-116 反向对照：未知串落 unknown_failure（码来自归一化，不是写死硬匹配）"
+else
+  bad "G-116 反向对照没落 unknown_failure" "$g116_neg"
+fi
+rm -rf "$g116_tmp"
+# ③ 真渲染门 e2e_desktop_failure_code.mjs：静态/终端都证明不了「码真的落到界面、裸文本真的不泄漏」。
+#    BITBOT_MOBILE_HOST=1 走真实「本机不持有 key」分支（api_key 无条件为 ""），不发网络、不碰用户 key。
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g116_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g116_xvfb=(xvfb-run -a)
+  fi
+  if timeout 300 ${g116_xvfb[@]+"${g116_xvfb[@]}"} node scripts/e2e_desktop_failure_code.mjs > /tmp/g116-e2e.log 2>&1; then
+    ok "G-116 真渲染 e2e_desktop_failure_code（$(grep 'e2e_desktop_failure_code: PASS=' /tmp/g116-e2e.log)）"
+  else
+    bad "G-116 真渲染（见 /tmp/g116-e2e.log；$(grep 'e2e_desktop_failure_code: PASS=' /tmp/g116-e2e.log)）"
+  fi
+  for g116_p in "P1 真 Electron" "P2 llmStatus.key_configured=false" "P4 发送后屏幕" "P5 失败文案" "P6 屏幕上不再有"; do
+    if grep -q "✓ $g116_p" /tmp/g116-e2e.log; then ok "G-116 渲染锚点：$g116_p"; else bad "G-116 渲染锚点没跑绿：$g116_p"; fi
+  done
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-116 真渲染门未跑（SKIP ≠ PASS；静态+终端门已在上面跑过）"
+fi
+echo "  · G-116 为什么长出来：对标 Grok 失败按类型处理。此前内核只有 error:String?，房间侧散装串，"
+echo "    私聊发送失败屏上一行「invalid JSON from MoonBit」（kernel-mechanism-parity §4 KP-03）。"
+echo "    现在 Host→UI→手机共用 hosts/desktop/failure_codes.js 一份表；词表写进 docs/events.md §5.5。"
+echo "  · G-116 判据：静态 T1 dual-load、T2 穷举（34 码每个都有产出路径，unknown_failure 由兜底产生）、"
+echo "    T3 收编（api_key_not_configured→provider_unconfigured 等 9 条）、T4 反向对照（怪串/null/{}/数字"
+echo "    一律 unknown 且不抛）、T5 label 齐、T6 接线闭环；N1/N2/N3 三条源码负向对照。终端 approve.js"
+echo "    --last-failure 打同一码 + 垃圾串落 unknown（证码非写死）。真渲染 P2 key_configured=false、"
+echo "    P4 屏上出现带 provider_unconfigured 的失败、P5 文案三要素齐、P6 裸自由文本不再泄漏。三层各管一段。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 
 echo

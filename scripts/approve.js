@@ -28,6 +28,8 @@ const { URL } = require("url");
 
 const ROOT = path.resolve(__dirname, "..");
 const deviceKeys = require(path.join(ROOT, "hosts/shared/device_keys"));
+// KP-03：与界面/Host 同一份失败码表（纯模块），--last-failure 据此打印 canonical code。
+const failureCodes = require(path.join(ROOT, "hosts/desktop/failure_codes.js"));
 
 function arg(name, dflt) {
   const i = process.argv.indexOf("--" + name);
@@ -104,7 +106,45 @@ function request(baseUrl, method, urlPath, device, bodyObj) {
   });
 }
 
+/** KP-03：终端可证——最近一次发送失败的 canonical code（与界面同一份表）。
+ *  本地读 data/llm/turns 里 ok:false 的 artifact，不需要 box / 设备凭证。 */
+function printLastFailure() {
+  const dataRoot = process.env.BITBOT_REPO_ROOT
+    ? path.join(process.env.BITBOT_REPO_ROOT, "data")
+    : path.join(ROOT, "data");
+  const dir = path.join(dataRoot, "llm", "turns");
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => /^chat-.*\.json$/.test(f));
+  } catch (_) {
+    console.log("没有最近的失败记录（找不到 " + path.relative(ROOT, dir) + "）。");
+    return;
+  }
+  let latest = null;
+  for (const f of files) {
+    const p = path.join(dir, f);
+    let j;
+    try { j = JSON.parse(fs.readFileSync(p, "utf8")); } catch (_) { continue; }
+    if (!j || j.ok !== false) continue;
+    const m = fs.statSync(p).mtimeMs;
+    if (!latest || m > latest.m) latest = { m, p, j };
+  }
+  if (!latest) {
+    console.log("没有最近的失败记录。");
+    return;
+  }
+  const norm = failureCodes.normalizeFailure(latest.j);
+  console.log("最近一次发送失败：" + norm.code);
+  console.log("  原因：" + String(latest.j.error || norm.raw || "").slice(0, 200));
+  console.log("  来源：" + path.relative(ROOT, latest.p));
+}
+
 async function main() {
+  // KP-03：--last-failure 是本地只读查询，先于 box/凭证/位置参数处理。
+  if (has("last-failure")) {
+    printLastFailure();
+    return;
+  }
   const boxUrl = String(arg("box", process.env.BITBOT_BOX_URL || "http://127.0.0.1:18765")).replace(/\/+$/, "");
   const credentialPath = arg("credential", process.env.BITBOT_DEVICE_CREDENTIAL || "");
   const [cmd, id] = positionals();

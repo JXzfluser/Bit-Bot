@@ -482,6 +482,7 @@ function createTurnRunner(repoRoot, opts = {}) {
       return {
         ok: false,
         error: `invalid JSON from MoonBit: ${err.message}`,
+        error_code: "kernel_invalid_json",
         raw,
         stderr: stderr.trim(),
       };
@@ -506,6 +507,9 @@ function createTurnRunner(repoRoot, opts = {}) {
     ) {
       parsed.ok = false;
       parsed.error = String(productWire.state.llmError);
+      // KP-03：Host 已知真实原因时带上机器码；没有码就让 UI 边界按文本归一化。
+      if (productWire.state.llmErrorCode)
+        parsed.error_code = String(productWire.state.llmErrorCode);
       parsed.host_llm_failed = true;
     }
     // Prove-only. Product Desktop does not set this, so kernel stderr stays off the UI.

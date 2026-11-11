@@ -9774,3 +9774,72 @@ done  | llm_chat | model_reply | progModel | bot=bot-73c951
   command（「正在读 X 文件」）摊到名字旁 —— 与单回合进度行同口径，先保证「推来的、不串 Bot」。
 - 多 responder 同时干活时各自一张卡各自推进，已按 bot 分键；但综合回合（synthesis）的进度还没单独
   上卡（它走的是另一条 turn，本批只接成员回合的死线）。
+
+## 8.106 发送失败从自由文本升成码，并显示出来（KP-03，2026-11-11）
+
+对标 Grok：失败要能**按类型处理**，不是一行飘过的自由文本（kernel-mechanism-parity §4 第一批
+KP-03，排在 KP-01/KP-02 之后）。翻代码发现失败根本没有码：
+
+- 内核只有 `error:String?`（`turn_json.mbt:487`），没有码字段；
+- 房间侧各写各的散装串（`room_surface_unavailable`、`orchestrator_unavailable`、`budget_max_wall_ms`…）；
+- 私聊发送失败落界面，是一行 `LLM: invalid JSON from MoonBit: …` —— 用户看不懂，手机端无从分派，
+  同一件事 Host/UI/手机三种措辞。
+
+### 接法：一份表，先收编不新造词
+
+唯一真源新增 `hosts/desktop/failure_codes.js`（pure、零依赖、**dual-load**：渲染层 `<script src>`
+挂 `window.__bitbotFailure`，Host `require()`），沿用 `progress_protocol.js` 的纪律 —— 第二份副本会让
+界面看着对、Host 其实发的是别的。34 个 canonical 码，词表落进 `docs/events.md §5.5`。
+
+- **收编**（ALIASES/PREFIX_ALIASES，9 条）：把已在产的串映射到 canonical，不改产出点。
+  `api_key_not_configured`→`provider_unconfigured`、`canceled`→`cancelled`、
+  `room_turn_deadline`→`room_turn_timeout`、`max_wall_ms/turns/tokens`→`budget_max_*`、
+  前缀 `invalid JSON from MoonBit…`→`kernel_invalid_json`、`handoff_stuck:<原因>`→`handoff_stuck`。
+- **边界归一化** `normalizeFailure(input)`：吃任意 error 文本/对象，显式 `error_code` 优先于自由文本，
+  **认不出一律 `unknown_failure`，永不抛错** —— 绝不把上游原文当码抛给界面。
+- **传播链**（只补字段，不改行为）：`host_ffi.js` 两处失败守卫带上 `error_code` → 流式 chunk
+  `{phase:"error",error,error_code}` → `agent_loop_product_wire.js` 记 `llmErrorCode` →
+  `run_moon_turn.js` 无效 JSON 落 `kernel_invalid_json`、LLM 失败透传码。
+- **显示**：私聊发送失败面 `sendFailureText` = 「发送失败：<label>（`<码>`），<动作>」；
+  i18n 三语各补 17 个 `fail*` 键。**群聊面不动**（GP-147：只显示人话，协议码只在 dev-mode 追加）。
+- `package.json` 的 `build.files` 打进 `failure_codes.js`（asar 路径 `desktop/failure_codes.js`），
+  否则打包后渲染层 `<script>` 取不到。
+
+### 可感面
+
+命令：`node scripts/approve.js --last-failure`（读最近一条失败 artifact，打同一份表的码）：
+
+```
+最近一次发送失败：provider_unconfigured
+  原因：api_key_not_configured
+```
+
+屏幕上：把供应商 key 清空后发一条消息，出现的是「**发送失败：未配置模型（`provider_unconfigured`），
+去设置 > 模型**」，而不是一行 `invalid JSON from MoonBit`。真 Electron 验收用 `BITBOT_MOBILE_HOST=1`
+走真实「本机不持有 key」分支（`api_key` 无条件为 ""），不发网络、不碰用户真 key。
+
+### 判据（G-116，三层一起钉）
+
+- 静态 `prove_failure_codes.js` **9/0**：T1 dual-load（`module.exports` + `window.__bitbotFailure`）/
+  T2 穷举（34 码每个都能在 8 个产出文件里找到产出串，`unknown_failure` 由兜底产生）/ T3 收编（7 条别名
+  真收敛）/ T4 反向对照（怪串、`null`、`{}`、数字、空串一律 `unknown_failure` 且不抛）/ T5 每码有 label_key /
+  T6 接线闭环（Host 带码→流→渲染按码显示→approve.js→打进包，9 个子flag）。**源码负向对照 N1..N3**：
+  抹掉 `api_key_not_configured` → T2 里 `provider_unconfigured` 判假；去掉兜底 → T4 翻假；
+  让 `resolveToken` 对空对象抛错 → T4 抓到崩溃（「不崩溃」不是写死的 true）。
+  注意 T2 的 producer blob **必须排除码表模块自身**（它声明了每个码，含进去就恒真）。
+- 终端 `approve.js --last-failure`：正向 fixture（`api_key_not_configured`）打出
+  `provider_unconfigured`；反向 fixture（没见过的怪串）落 `unknown_failure` —— 证码来自归一化，
+  不是对整段文本硬匹配。用 `BITBOT_REPO_ROOT` 指向临时根，绝不碰用户 `data/llm/turns`。
+- 真渲染 `e2e_desktop_failure_code.mjs` **6/0**：真 Electron，P2 `key_configured=false`（未配置是真的）、
+  P3 建 Bot 进私聊、P4 屏上出现带 `provider_unconfigured` 的失败、P5 文案三要素齐（未配置模型＋码＋去设置）、
+  P6 屏上不再有 `invalid JSON…`/`LLM: 原文` 裸文本。独立 user-data-dir，rooms/sessions/bots 快照还原，
+  本轮失败 artifact 跑完即删。
+- G-116 挂进矩阵 focused harness **18/0**（静态 1+9 锚 ＋ 终端 2 ＋ 真渲染 1+5 锚），
+  `HAVE_ELECTRON_UI=1` 真跑；缺 electron 时诚实 SKIP（SKIP ≠ PASS，静态+终端门照跑，退化为 12/0）。
+
+### 残留
+
+- 34 码里只有 14 个配了专属中文 label，其余 20 个（多为房间内部失败）落通用「这一轮没有成功」——
+  它们只在群聊面出现，而群聊面本就按 GP-147 只给人话；等 KP-05+ 状态底座给每个码定产品文案再细化。
+- 手机端读同一份表：Android 侧目前把 `error_code` 原样带在契约里、渲染留待移动页跟进；本批先保证
+  「Host/UI/手机是同一份表」这个前提（`normalizeFailure` 是纯函数，可移植）。

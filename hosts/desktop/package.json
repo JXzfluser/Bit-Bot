@@ -37,6 +37,7 @@
           "grok_import.js",
           "room_orchestrator.js",
           "progress_protocol.js",
+          "failure_codes.js",
           "secret_protocol.js",
           "secret_vault.js",
           "link_open.js",

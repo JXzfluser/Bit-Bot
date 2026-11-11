@@ -639,10 +639,13 @@ function createProductSession(ffi, llmOpts) {
           // 会把这一票算成「成功回复」。这里只留原因、正文留空，交给 Host
           // 出口按 ok:false 报出去。
           state.llmError = String(res.error || res.stderr || "llm_chat_failed");
+          // KP-03：把 Host 产出的机器码一并捕获，出口（run_moon_turn）据此带上
+          // error_code，手机/桌面拿到的是同一个 canonical code 而不是自由文本。
+          state.llmErrorCode = res.error_code ? String(res.error_code) : "";
           // 失败也如实发一条 done（ok:false + error），进度行不许静默消失。
           if (state.hopProgress)
             state.hopProgress.done(hopIndex, hopEffect, { ok: false, error: state.llmError });
-          return { content: "", calls: [], error: state.llmError };
+          return { content: "", calls: [], error: state.llmError, error_code: state.llmErrorCode };
         }
         if (state.hopProgress)
           state.hopProgress.done(hopIndex, hopEffect, { ok: true });

@@ -5852,6 +5852,7 @@ function createHostFfi(repoRoot, opts = {}) {
         mode: "host_llm_chat",
         ok: false,
         error: "empty user text",
+        error_code: "empty_user_text",
         provider_id: cfg.provider_id,
         model: cfg.model,
         pretend_completion: false,
@@ -5866,6 +5867,7 @@ function createHostFfi(repoRoot, opts = {}) {
         stderr: "",
         reply_to: replyToId || "",
         error: "empty user text",
+        error_code: "empty_user_text",
       };
     }
 
@@ -5889,6 +5891,9 @@ function createHostFfi(repoRoot, opts = {}) {
       emitLlmStream({
         phase: "error",
         error: artifact.error,
+        // KP-03：机器码随流式 chunk 一起到渲染层，界面据此显示 canonical code
+        // 而不是把自由文本当码抛出去（error_code 此前只落在 artifact，被丢在这里）。
+        error_code: artifact.error_code,
         provider_id: cfg.provider_id,
       });
       return {
@@ -5899,6 +5904,7 @@ function createHostFfi(repoRoot, opts = {}) {
         stderr: "",
         reply_to: replyToId || "",
         error: artifact.error,
+        error_code: artifact.error_code,
       };
     }
 

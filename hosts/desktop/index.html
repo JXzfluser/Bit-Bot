@@ -4247,6 +4247,9 @@
   <script src="./link_discipline.js"></script>
   <!-- GP-96/97: same §5.7 category table the Host emitted progress against. -->
   <script src="./progress_protocol.js"></script>
+  <!-- KP-03: same failure-code table the Host emits error_code against, so the
+       send-failure surface shows a canonical code instead of raw upstream text. -->
+  <script src="./failure_codes.js"></script>
   <!-- GP-99/100/101/102: token-shape + `[REDACTED]` constant (same file the Host
        and the probe load, so masking can never drift). -->
   <script src="./secret_protocol.js"></script>
@@ -7695,6 +7698,17 @@
         row.appendChild(chip);
       }
       body.appendChild(row);
+    }
+    // KP-03：私聊「发送失败」面。Host 的 error_code（或自由文本）经唯一码表归一化，
+    // 显示「发送失败：<人话>（<canonical code>），<可照做的下一步>」。码始终可见——
+    // 它是产品可判定码，不是上游原文；群聊面另守 GP-147 的 dev-mode 纪律。
+    function sendFailureText(input) {
+      const proto = window.__bitbotFailure;
+      const norm = proto ? proto.normalizeFailure(input) : null;
+      if (!norm) return "LLM: " + String((input && input.error) || input || "failed");
+      let s = wavegT("failSendPrefix") + wavegT(norm.label_key) + "（" + norm.code + "）";
+      if (norm.action_key) s += "，" + wavegT(norm.action_key);
+      return s;
     }
     // 群聊失败原因：durable 行仍保留截断后的原始 reason（可审计），聊天卡默认只说
     // 人话——协议码/上游文案只在 dev-mode 追加，和产品态其它错误卡同一纪律。
@@ -17726,6 +17740,23 @@
         modelConnected: "已连接",
         modelUnconfigured: "未配置",
         modelNone: "未配置模型",
+        failSendPrefix: "发送失败：",
+        failProviderUnconfigured: "未配置模型",
+        failEmptyText: "消息内容为空",
+        failKernelJson: "内核返回无法解析",
+        failCancelled: "已取消",
+        failLocalNever: "本地执行已被禁止",
+        failApprovalRequired: "需要先批准这次操作",
+        failModelFailed: "模型或服务返回失败",
+        failNoReply: "这一轮没有返回内容",
+        failTimeout: "这一轮超时",
+        failBotNotFound: "找不到对应的 Bot",
+        failBudget: "超出本轮预算上限",
+        failUnknown: "出现未知错误",
+        failGeneric: "这一轮没有成功",
+        failActionModelSettings: "去设置 > 模型",
+        failActionApprove: "去审批",
+        failActionRetry: "重试一次",
         modelCurrentBadge: "当前",
         modelCurrent: "当前模型",
         modelEmpty: "暂无可用模型目录",
@@ -18748,6 +18779,23 @@
         modelConnected: "已連線",
         modelUnconfigured: "未設定",
         modelNone: "未設定模型",
+        failSendPrefix: "發送失敗：",
+        failProviderUnconfigured: "未設定模型",
+        failEmptyText: "訊息內容為空",
+        failKernelJson: "內核返回無法解析",
+        failCancelled: "已取消",
+        failLocalNever: "本地執行已被禁止",
+        failApprovalRequired: "需要先批准這次操作",
+        failModelFailed: "模型或服務返回失敗",
+        failNoReply: "這一輪沒有返回內容",
+        failTimeout: "這一輪逾時",
+        failBotNotFound: "找不到對應的 Bot",
+        failBudget: "超出本輪預算上限",
+        failUnknown: "出現未知錯誤",
+        failGeneric: "這一輪沒有成功",
+        failActionModelSettings: "去設定 > 模型",
+        failActionApprove: "去審批",
+        failActionRetry: "重試一次",
         modelCurrentBadge: "目前",
         modelCurrent: "目前模型",
         modelEmpty: "暫無可用模型目錄",
@@ -19766,6 +19814,23 @@
         modelConnected: "Connected",
         modelUnconfigured: "Not configured",
         modelNone: "No model configured",
+        failSendPrefix: "Send failed: ",
+        failProviderUnconfigured: "No model configured",
+        failEmptyText: "Message is empty",
+        failKernelJson: "Kernel returned unparseable output",
+        failCancelled: "Cancelled",
+        failLocalNever: "Local execution is disabled",
+        failApprovalRequired: "This action needs approval first",
+        failModelFailed: "The model or service failed",
+        failNoReply: "This turn returned no content",
+        failTimeout: "This turn timed out",
+        failBotNotFound: "Bot not found",
+        failBudget: "This turn exceeded its budget",
+        failUnknown: "An unknown error occurred",
+        failGeneric: "This turn did not succeed",
+        failActionModelSettings: "Open Settings > Model",
+        failActionApprove: "Review approval",
+        failActionRetry: "Retry",
         modelCurrentBadge: "Current",
         modelCurrent: "Current model",
         modelEmpty: "No model catalog available",
@@ -22176,7 +22241,9 @@
             }
             if (chunk.phase === "error") {
               // 同理：私聊的失败回执也不往群聊面里塞。
-              if (canPaintStream) addMsg("assistant", "LLM: " + (chunk.error || "failed"));
+              // KP-03：经唯一码表归一化，显示 canonical code + 可照做的下一步，
+              // 而不是把上游自由文本（"LLM: invalid JSON…"）原样抛给用户。
+              if (canPaintStream) addMsg("assistant", sendFailureText(chunk));
             }
           });
         }
