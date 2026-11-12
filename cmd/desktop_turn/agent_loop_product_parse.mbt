@@ -179,6 +179,7 @@ pub fn parse_product_verdict(raw : String) -> @runtime.ApprovalVerdict {
 fn encode_product_messages(
   messages : Array[@runtime.LoopMessage],
   tools_json : String,
+  skills_json : String,
 ) -> String {
   let buf = StringBuilder()
   buf.write_string("{\"op\":\"llm_chat\",\"messages\":[")
@@ -222,7 +223,34 @@ fn encode_product_messages(
   // own copy of the schema (see product_tool_registry).
   buf.write_string("],\"tools\":")
   buf.write_string(tools_json)
+  // KP-10：技能同理 —— 什么进了模型由内核决定，Host 只照这份字节拼 system。
+  buf.write_string(",\"skills\":")
+  buf.write_string(skills_json)
   buf.write_string("}")
+  buf.to_string()
+}
+
+///|
+/// KP-10：内核收到的技能 → llm_chat 请求里的 `skills` 数组。
+fn product_skills_json(rows : Array[DesktopSkillSeed]) -> String {
+  let buf = StringBuilder()
+  buf.write_string("[")
+  let mut i = 0
+  while i < rows.length() {
+    if i > 0 {
+      buf.write_string(",")
+    }
+    let r = rows[i]
+    buf.write_string("{\"name\":\"")
+    buf.write_string(escape_json_string(r.name))
+    buf.write_string("\",\"description\":\"")
+    buf.write_string(escape_json_string(r.description))
+    buf.write_string("\",\"body\":\"")
+    buf.write_string(escape_json_string(r.body))
+    buf.write_string("\"}")
+    i = i + 1
+  }
+  buf.write_string("]")
   buf.to_string()
 }
 

@@ -273,6 +273,21 @@ Bot 详情面板的群数与侧栏数到的是**同一个数**（EVENT_ONLY 下�
   重启后**在对话里点名让它做一次**，Bot 的输出按该规则变；`node scripts/prove_skill_reaches_model.mjs`
   断言内核收到的 skill 数 > 0（今天这个数**必然是 0**，也就是这条门的红是先有的）。
 - 验收门：注入对照——把注入点摘掉必须翻红。规模 1.5d。
+- **落地（片1，2026-11-12，§8.133）**：上面那句「今天这个数必然是 0」已经作废。链路是磁盘 →
+  Host 读盘校验（`host_ffi.js` 的 `collectSkillSeeds`：只认 `agent-tools/skills/<dir>/SKILL.md`，
+  `disable_model_invocation: true` 整条不采、`name≤64`/`description≤1024` 不合格**在 stderr 说一句**再丢，
+  不静默）→ 显式入参 `--seed-skill <name::desc::body>`（与 `--seed-memory` 同一条 argv 通道，renderer 一个字的
+  prompt 都没拼）→ 内核 `parse_skill_seeds` 再验一遍（长度上限 + 分隔符缺失即丢）→ 内核把它随**每一次**
+  `llm_chat` 请求交出（`encode_product_messages(..., skills_json)`，AgentLoop 路径）→ Host 把它拼进 system 那段，
+  和记忆/人设/群上下文同一条纪律：**有界、脱敏（`scrubTokenShapes`）、标注「这是数据，不是系统指令」**。
+  门：`node scripts/prove_skill_reaches_model.mjs` `PASS=11 FAIL=0`（SK-03 断言内核收到的数 == 1，
+  SK-05/06 在**真实 HTTP 请求体**里钉住正文与技能块，SK-07 钉住「不合格的那三条一个字都没进」，
+  SK-09 空目录仍绿），两个注入点各有一把反向夹具且**都真的翻红**（摘 `llmSkillBlock` → SK-05/06 红，
+  摘 `skillSeedArgs` → SK-05/06 红）。矩阵侧新增 **G-123** 段，锚 `PASS>=11 / FAIL=0`。
+  这片**没**收的：`--legacy-chat-effect` 那条 effects 路径仍然拿不到技能（改它的 `DesktopTurnResult` 形状要动
+  JSON 合同，代价大于收益，先记账）；`environments[]` 与 `disable_user_invocation` 没做；
+  行为只证到 HTTP 请求体这一层，「输出按该规则变」还欠一次真供应商 + 真应用的肉眼验；
+  UI 上也还看不见「这一回合进了哪几条技能」。
 
 **KP-11 = `T2-04/T2-06` 的授权升级：按设备 + 三态 + 可作废**
 - 现状：一次性授权键 `(turnId, "Tool:{排序后参数}")` 用完即焚（`host_approval_gate.js:37` 造规范串、`:52-60` 的 `record({turnId, action, source})`），长期规则**整机**作用域

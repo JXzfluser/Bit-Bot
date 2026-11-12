@@ -370,7 +370,7 @@ function createTurnRunner(repoRoot, opts = {}) {
       return { ok: false, error: "empty text" };
     }
     // GP-112: seeds (and --bot-id) come from this Bot's slot only.
-    const kernelArgs = [...ffi.memorySeedArgs(ctx.botId)];
+    const kernelArgs = [...ffi.memorySeedArgs(ctx.botId), ...ffi.skillSeedArgs()];
     if (ctx.sessionId) {
       kernelArgs.push("--session-id", String(ctx.sessionId));
     }

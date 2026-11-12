@@ -626,6 +626,9 @@ function createProductSession(ffi, llmOpts) {
         const res = await ffi.executeLlmChat("agent-loop", {
           ...chatOpts,
           messages: Array.isArray(req.messages) ? req.messages : [],
+          // KP-10：技能正文由内核随请求交出（argv --seed-skill → 这一跳）。
+          // Host 只负责把它和记忆/群上下文一样拼进 system —— 内容不归 renderer。
+          skills: Array.isArray(req.skills) ? req.skills : [],
           agentLoopTools: true,
           // The kernel owns the tool catalog: it sends the schema the model
           // must see, so the provider payload can never drift from what the

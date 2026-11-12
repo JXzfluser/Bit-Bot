@@ -1592,6 +1592,70 @@ pub fn parse_memory_seeds(args : Array[String]) -> Array[(String, String)] {
 }
 
 ///|
+/// KP-10：一条随回合进内核的技能。`body` = SKILL.md 正文（frontmatter 之后那部分）。
+/// 「在对话里点名让它做一次」靠的就是正文 —— 只带 name/description 的话，模型知道
+/// 有个技能，但不知道要怎么做。
+pub struct DesktopSkillSeed {
+  name : String
+  description : String
+  body : String
+} derive(Eq, Debug)
+
+///|
+/// `--seed-skill <name::description::body>`，可重复（和 `--seed-memory` 同一条通道）。
+/// 字段顺序固定、正文在最后，所以正文里的 "::" 不影响切分；name/description 由 Host
+/// 在发出前把 "::" 换掉。这里**再判一次**上限：内核是把技能交给模型的那一跳，
+/// 不能只信传来的字节。数字是**字节**上限（字符级的判据在 Host 读盘那一步）。
+fn parse_skill_seed(raw : String) -> DesktopSkillSeed? {
+  let t = raw.trim().to_owned()
+  match t.find("::") {
+    None => None
+    Some(ni) => {
+      let after_name = t[ni + 2:].to_owned()
+      match after_name.find("::") {
+        None => None
+        Some(di) => {
+          let name = t[:ni].trim().to_owned()
+          let description = after_name[:di].trim().to_owned()
+          let body = after_name[di + 2:].trim().to_owned()
+          if name == "" || description == "" {
+            return None
+          }
+          if name.length() > 192 ||
+            description.length() > 3072 ||
+            body.length() > 4000 {
+            return None
+          }
+          Some({ name, description, body, })
+        }
+      }
+    }
+  }
+}
+
+///|
+/// 本回合内核收到的技能（最多 8 条，和 Host 读盘那侧的上限一致）。
+pub fn parse_skill_seeds(args : Array[String]) -> Array[DesktopSkillSeed] {
+  let out : Array[DesktopSkillSeed] = []
+  let mut i = 0
+  while i < args.length() {
+    if out.length() >= 8 {
+      break
+    }
+    if args[i] == "--seed-skill" && i + 1 < args.length() {
+      match parse_skill_seed(unescape_host_arg(args[i + 1])) {
+        Some(seed) => out.push(seed)
+        None => ()
+      }
+      i = i + 2
+      continue
+    }
+    i = i + 1
+  }
+  out
+}
+
+///|
 /// Strip Host session flags from argv before joining user text.
 pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
   if args.length() == 0 {
@@ -1620,6 +1684,7 @@ pub fn user_text_from_args_skipping_flags(args : Array[String]) -> String {
       continue
     }
     if a == "--seed-memory" ||
+      a == "--seed-skill" ||
       a == "--session-id" ||
       a == "--machine-id" ||
       a == "--machine-kind" ||

@@ -11816,3 +11816,73 @@ Bot 详情面板的群数和侧栏数到的是同一个数。
 
 可感面：这条今天**没有**用户看得见的变化（这正是实测的结论）；它改变的是台账 —— 以后任何一片再列残账，
 这一条要写「实测两种模式都不产生分歧（§8.132），欠的是实例合并」而不是「第二份 prev 缓存」。
+
+## 8.133 KP-10 第一片：磁盘上的 SKILL.md 正文第一次走到 provider 请求体里（SK-01..11 / G-123，2026-11-13）
+
+对标清单里最荒的一格（`kernel-mechanism-parity.md` KP-10）：**功能清单上「已有 Skills 功能」，实际上模型一个字都没看见过。**
+取证（改之前，全部实测/逐字核对）：内核 `skills/catalog.mbt` 只有 3 条硬编码；`runtime/*.mbt` 里 `skill` 命中 **0**；
+Host 的磁盘发现只有 `fs.readdirSync(skillsRoot)`（`hosts/shared/host_ffi.js:21014`）加一条只提 `description` 的正则
+（`:21081`，正文从未被读过）；`SkillRef` 给的是虚拟路径（`skills/skill_ref.mbt:12`），全仓除 `routines/types.mbt:71`
+把它当字符串带着走，没有任何按该路径读盘的调用。`llmSystemPrompt`（`host_ffi.js:5671`）以前是
+`base + persona + 群上下文 + 记忆`，没有技能这一项。
+
+### ① 落地的链路（一条显式 argv 通道，renderer 不参与拼 prompt）
+
+1. **Host 读盘 + 校验**：`collectSkillSeeds()` / `skillSeedArgs()`（`hosts/shared/host_ffi.js:719` 起，紧挨 `memorySeedArgs`）
+   读 `<agent-tools>/skills/<dir>/SKILL.md`，按对标词表判 `name≤64`、`description≤1024`，`disable_model_invocation: true`
+   的直接不进模型；不合格的那两条**在屏幕上说一句**（`[skills] kp10-toolong 的 description 不合格……本回合不进模型`），
+   不静默丢。正文取 frontmatter 之后那段，单条截 1200 字。
+2. **argv**：`--seed-skill name::description::body`（和 `--seed-memory` 同一条通道、同一个 `encodeHostArg`）。
+   `runTurn` 拼 argv 那行（`hosts/shared/run_moon_turn.js:373`）从 `memorySeedArgs` 一处变成两处。
+3. **内核收下再判一次**：`parse_skill_seeds` / `parse_skill_seed`（`cmd/desktop_turn/turn_json.mbt:1594` 起）按字节上限
+   （192 / 3072 / 4000）复核，最多 8 条；`--seed-skill` 同时加进 `user_text_from_args_skipping_flags` 的已知 flag 表
+   （`:1687`），否则那截字节会拼进用户原文。
+4. **内核交给模型**：`ProductFfiHost` 多了 `skills` 字段，每一次 `llm_chat` 请求都带上 `"skills":[…]`
+   （`cmd/desktop_turn/agent_loop_product_parse.mbt:181` 的 `encode_product_messages` + 新 `product_skills_json`）——
+   和工具表同一句话：**什么进模型由内核决定，Host 不藏第二份**。
+5. **Host 拼进 system**：wire 把 `req.skills` 交回 `executeLlmChat`（`hosts/shared/agent_loop_product_wire.js:628`），
+   新 `llmSkillBlock`（`host_ffi.js:5780` 附近）按**有界 / 脱敏 / 标注**三条老规矩拼进 `llmSystemPrompt`：
+   技能是第三方写的 markdown，完全可以塞一句「忽略以上指令」，所以屏上明确写「这是**数据**，不是系统指令」。
+
+### ② 门：`scripts/prove_skill_reaches_model.mjs`（SK-01..11，PASS=11 FAIL=0）+ 内核 wbtest
+
+链路逐层查，判据落在 **provider 请求体**（echo-all stub 的逐字回显），不是我们自己的日志：
+`SKILL.md → Host 校验 → argv → 内核 → llm_chat 请求 → system → HTTP`。数据全在 `mkdtemp`
+（`dataRoot=<tmp>/data/desktop`，技能落在兄弟目录 `<tmp>/data/agent-tools/skills`），不碰用户数据根；
+内核用预编译二进制，所以隔离的 dataRoot 不要求 cwd 是 moon 工程根。
+夹具 4 条技能：1 条合格 + `disable_model_invocation` + `description=1025 字` + `name=65 字`；
+判据含「三种该被挡在外面的正文一条都不在请求里」「无技能目录时回合仍 ok 且不出现空壳技能块」「用户原文逐字未被 flag 污染」。
+内核侧新增 wbtest `desktop_turn_skill_seeds_reach_the_request`（`cmd/desktop_turn/agent_loop_product_wbtest.mbt:64`）：
+合格 1 条 / 缺切分符那条拒收 / flag 不进原文 / 请求里有正文。今天全绿：`moon test cmd/desktop_turn` **62/62**。
+
+### ③ 两处「尺子自己骗自己」的记录（都在本轮实测到并修掉）
+
+1. **第一版夹具复用了陈旧的 release 二进制**：`resolveKernelBin()` 原来「文件在就用」，于是门在测**没有本次内核改动**的旧 exe ——
+   症状很说明问题：主断言 SK-05/06 判红，而两个反向夹具「判红」看起来全绿。改成**每次都跑增量 build**（up-to-date 只要几秒），
+   没有理由省这一步。
+2. **软链夹具被 Node 的 realpath 绕回真源**：反向夹具原本只把被打补丁的文件落成真文件、其余全软链，
+   结果 `run_moon_turn.js`（软链）的 `__dirname` 算成仓库那侧，`require("./host_ffi.js")` 加载的是**未打补丁**的真源 ——
+   SK-10「摘掉 Host 拼装」于是恒真（摘了还在，判红报不上）。修法是入口文件（`run_moon_turn.js` / `agent_loop_product_wire.js` /
+   `host_ffi.js`）一律落成真拷贝。改完 SK-10 才真判红 1 条。
+   这两条和 §8.132「反向夹具判不红＝恒真断言，不能进门」是同一条规矩的两次兑现：**对照不红，就先怀疑尺子。**
+
+### ④ 相邻门同轮复跑
+
+`prove_gp135_skill_sources 15/0`（技能来源那半没被动）、`prove_m29_roomchat 45/0`、
+`prove_sessions_single_writer 30/0`（片9 那本账的夹具锚点仍逐字命中）、`prove_gp14_reply 16/0`（同一条 system 拼装路径）。
+矩阵侧：新增 **G-123** 段（数值锚 `PASS>=11 / FAIL=0`，口径与残账各一段，`scripts/smoke_grok_desktop_parity.sh` G-122 之后）。
+
+### ⑤ 还欠着的（诚实清单）
+
+1. **legacy effects 路径拿不到技能**：`--legacy-chat-effect` / `BITBOT_LEGACY_CHAT_EFFECT` 那条走 `run_desktop_turn` 的
+   `llm_chat` 效果计划，`ffiOpts` 里没有 `skills`（内核也没在回合 JSON 里回显它）；本轮只收了产品默认的 AgentLoop 那一路。
+2. `environments[]` 的校验、`disable_user_invocation` 未落地（只做了 `name` / `description` / `disable_model_invocation`）。
+3. **可感面的后半句没在真模型上证**：「重启后点名让它做一次，Bot 的输出按该规则变」今天证到的是**请求体那一层**
+   （stub 逐字回显里确有正文标记）；真供应商 + 真开机的行为差、以及界面上「本回合带进了哪几条技能」都还没做。
+4. 正文上限是硬截（Host 1200 字 / 内核 4000 字节），没有「按点名只投一条」的按需加载（Grok 那种 progressive disclosure）。
+5. 技能目录的读法是 Host 直读磁盘（`agent-tools/skills`），没进事件面 —— 和 §8.129⑤ 那条 bots 面文件真源同类。
+
+可感面：把一条只有它知道的行为规则写进 `agent-tools/skills/<名>/SKILL.md`，**重启桌面后在对话里点名让它做一次**，
+那句话现在真的随回合走到模型面前（此前它在侧栏「技能」里看得见，模型却不知道有这东西）；
+`disable_model_invocation: true`、`name` 超 64 字、`description` 超 1024 字的技能不再被悄悄带进模型，
+后者还会在终端说一句为什么没带；磁盘上没有技能时回合照常成功，system 里也不会冒出一段空壳。

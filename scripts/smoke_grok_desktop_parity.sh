@@ -5332,6 +5332,33 @@ echo "    交错写 8 步、两种模式（默认+双写 10 条事件 / EVENT_ON
 echo "    把 prev 的两条刷新摘掉也一模一样 —— 群面写路吃的是同实例刚读到的那份，不是缓存；"
 echo "    所以它降级为「冗余内存 + 潜在风险」，欠的是实例合并本身，不当 SW-28 立门（反向夹具判不红＝恒真断言）。"
 
+echo "== G-123 技能必须进模型（KP-10 第一片：SKILL.md 正文 → --seed-skill argv → 内核 → provider system，KP-10）=="
+# 这条门是先有红才立起来的：改之前内核根本没有技能通道（skills/catalog.mbt 只有 3 条硬编码、
+# runtime 里 skill 命中 0、Host 的磁盘发现只提 description、正文从没被读过）—— 磁盘上装了技能，
+# 模型一个字都没看见。
+if timeout 600 node scripts/prove_skill_reaches_model.mjs > /tmp/g123-skill-model.log 2>&1; then
+  ok "G-123 技能进模型全绿（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g123-skill-model.log | tail -1)）"
+else
+  bad "G-123 技能进模型翻红（见 /tmp/g123-skill-model.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g123-skill-model.log | tail -1)）"
+fi
+g123_line=$(grep -m1 'prove_skill_reaches_model: PASS=[0-9]* FAIL=[0-9]*' /tmp/g123-skill-model.log | tail -1)
+g123_pass=$(printf '%s' "$g123_line" | grep -o 'PASS=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+g123_fail=$(printf '%s' "$g123_line" | grep -o 'FAIL=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+if [ -n "$g123_line" ] && [ "$g123_fail" = "0" ] && [ "$g123_pass" -ge 11 ]; then
+  ok "G-123 锚点：SK-01..11 绿满 $g123_pass 项（正文进 HTTP 1 条 + 三种该挡的挡住 + 两个反向夹具各判红 1 条）"
+else
+  bad "G-123 锚点不足：需要 FAIL=0 且 PASS>=11，实测 $(printf '%s' "$g123_line")"
+fi
+echo "  · G-123 口径（诚实）：判据落在 provider 请求体（echo-all stub 的回显）而不是我们自己的日志 —— "
+echo "    链路是 agent-tools/skills/<dir>/SKILL.md → Host collectSkillSeeds（name≤64 / description≤1024 /"
+echo "    disable_model_invocation 不进模型）→ argv --seed-skill name::description::body → 内核 parse_skill_seeds（再判一次字节上限）"
+echo "    → 内核随每一次 llm_chat 请求把 skills 交回 → Host llmSkillBlock 拼进 system（有界 / 脱敏 / 标注：技能是数据不是指令）。"
+echo "    renderer 不参与拼 prompt；技能正文不进用户原文（SK-08 逐字比）。"
+echo "  · G-123 残账（实测到的）：legacy effects 路径（BITBOT_LEGACY_CHAT_EFFECT / --legacy-chat-effect）拿不到技能，"
+echo "    这条只收了产品默认的 AgentLoop 那一路；environments[] 的校验与 disable_user_invocation 没落地；"
+echo "    「Bot 的输出按该规则变」今天证到的是 HTTP 请求体那一层（stub 回显），真供应商 + 真开机的行为差还没量；"
+echo "    界面上也还看不见「本回合带进了哪几条技能」。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

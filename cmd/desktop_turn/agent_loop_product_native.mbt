@@ -17,14 +17,18 @@ struct ProductFfiHost {
   /// 这台机器的常驻授权:到点的定时任务自己执行(K-2 策略里的
   /// `routine_auto_execute`)。**只是事实**,不是模型能改的东西。
   auto_execute : Bool
+  /// KP-10：本回合随 argv 进内核的技能。内核把它们放进**每一次** llm_chat 请求，
+  /// 所以模型看到的技能正文是内核这一跳交付的 —— renderer 不参与拼 prompt。
+  skills : Array[DesktopSkillSeed]
 }
 
 ///|
 fn ProductFfiHost::new(
   sink : Array[DesktopEffect],
   auto_execute~ : Bool = false,
+  skills~ : Array[DesktopSkillSeed] = [],
 ) -> ProductFfiHost {
-  { marker: 1, effects: sink, auto_execute, }
+  { marker: 1, effects: sink, auto_execute, skills, }
 }
 
 ///|
@@ -103,7 +107,11 @@ pub impl @runtime.AgentLoopHost for ProductFfiHost with fn llm_chat(
   bitbot_ffi_trace("op=llm_chat")
   parse_product_llm_reply(
     bitbot_ffi_exchange(
-      encode_product_messages(messages, product_tool_schema_json()),
+      encode_product_messages(
+        messages,
+        product_tool_schema_json(),
+        product_skills_json(self.skills),
+      ),
     ),
   )
 }
@@ -224,6 +232,7 @@ fn run_agent_loop_chat(
   text : String,
   turn_id : String,
   ctx : DesktopTurnContext,
+  skills~ : Array[DesktopSkillSeed] = [],
 ) -> DesktopTurnResult {
   // CM-1106 / GP-101（§8.3）：粘贴密钥不是一次回合。旧 chat 分支的这道内核
   // 兜底必须同样挡在 AgentLoop 入口前，否则 CLI/API 调用方能把明文塞进历史。
@@ -254,6 +263,7 @@ fn run_agent_loop_chat(
   let host = ProductFfiHost::new(
     tool_effects,
     auto_execute=tool_policy.routine_auto_execute,
+    skills~,
   )
   // K-1/K-3: the agent's context has to survive the process, otherwise every
   // turn starts blind and the user never sees "it remembers me". The kernel
@@ -365,10 +375,11 @@ fn dispatch_desktop_main(args : Array[String]) -> DesktopTurnResult {
     )
   }
   let seeds = parse_memory_seeds(args)
+  let skill_seeds = parse_skill_seeds(args)
   let text = user_text_from_args_skipping_flags(args)
   let turn_id = parse_turn_id_flag(args, default="desktop-1")
   if want_product_agent_loop(args, text) {
-    run_agent_loop_chat(text, turn_id, ctx)
+    run_agent_loop_chat(text, turn_id, ctx, skills=skill_seeds)
   } else {
     run_desktop_turn(text, turn_id~, memory_seeds=seeds, ctx~)
   }
