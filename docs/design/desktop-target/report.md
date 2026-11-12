@@ -10391,6 +10391,14 @@ prove_client_core: PASS=39 FAIL=0
 - 没动：渲染端一行、Host 一行 —— 上面 4) 说的就是这个「没动」。
 - 因此不受影响也不该假装受影响：G-57 Box 闭包重跑 `pass=8 fail=0`（transport 没被任何 Host 文件 require，
   不该进 Box 清单，这条由闭包扫描自己得出，不是手写的）。
-- 总量以本片落地后的下一次全量矩阵为准。
+- 总量：本片落地后重跑全量矩阵（`/tmp/matrix-run10.log`）—— **`smoke_grok_desktop_parity: PASS=886 FAIL=7`**。
+  相对 run9（869/10）的 17 条增量逐门可对上：G-120 由 30 ✓ 涨到 42 ✓（CC-16..23 八条 + N10..N13 四条），
+  G-57 由 4 ✓ 涨到 12 ✓（Box 修完，run9 被前面红截断的锚点这次跑到了），G-47 由 8 ✓ 掉到 5 ✓。
+- **G-47 那 3 条红不是产品账，是 run10 里的一次连接抖动**：`/tmp/g47-roster.log` 停在
+  `✗ unexpected error — read ECONNRESET`（AR-11/AR-14 之后没跑成），两条 `pairing anchors missing`
+  是同一件事的下游 —— 判据锚点没打印出来，不是判据翻红。修完 KP-08 后单门复跑
+  `e2e_android_roster.v2: PASS=18 FAIL=0 SKIP=0`（AR-01..17 全绿）。这条按「本轮实测红 + 复跑绿」记，
+  不写进 FAIL=0 的宣称里。
+- 剩下 4 条红（G-40 负向对照、G-46、G-53、G-64）run8/run9 就在，属 §8.112 记过的老账。
 
 
