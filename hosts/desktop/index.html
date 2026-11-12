@@ -1259,6 +1259,20 @@
     color: #aaa;
   }
   .msg-status .ms-check.read { color: #22c55e; font-weight: 700; }
+  /* KP-08 T3-04：这一行的勾是「回执换来的」，不是「流程走完换来的」。被拒绝那几条
+     必须在气泡下方留下一行人话 + KP-03 的码，只把勾变色用户看不出为什么没发出去。 */
+  .msg-status .ms-check.failed { color: var(--danger); font-weight: 700; }
+  .msg.user.msg-send-failed { box-shadow: inset 0 0 0 1px var(--danger); }
+  .msg.user.msg-send-failed .body { color: var(--danger-ink); }
+  .msg.user.msg-send-unknown .msg-status .ms-check { color: #f59e0b; }
+  .msg .msg-send-note {
+    font-size: var(--text-sm);
+    line-height: 1.45;
+    margin-top: 4px;
+    text-align: right;
+    color: var(--danger-ink);
+  }
+  .msg.user.msg-send-unknown .msg-send-note { color: var(--muted); }
   /* Layout contract §3: the stream column is capped at --content-max, so the
      85% bubble must not outgrow it on wide windows (was 1047px at 1440). */
   /* Grok parity (G-28): an assistant turn is a flat block that fills the
@@ -4263,18 +4277,21 @@
   <script src="../shared/client_core/schema.js"></script>
   <script src="../shared/client_core/reducer.js"></script>
   <script src="../shared/client_core/diff_apply.js"></script>
+  <script src="../shared/client_core/transport.js"></script>
   <script>
     if (!window.__bitbotClientCore.applyDiff) {
       document.write('<script src="./shared/client_core/schema.js"><\/script>');
       document.write('<script src="./shared/client_core/reducer.js"><\/script>');
       document.write('<script src="./shared/client_core/diff_apply.js"><\/script>');
+      document.write('<script src="./shared/client_core/transport.js"><\/script>');
     }
     /* 打包后 app.asar 里没有这份目录时，这里会是 false —— 让门能看见，
        而不是等侧栏空白了才发现核心没接上。 */
     window.__bitbotClientCoreReady = !!(
       window.__bitbotClientCore.applyDiff &&
       window.__bitbotClientCore.foldEvents &&
-      window.__bitbotClientCore.COMMANDS
+      window.__bitbotClientCore.COMMANDS &&
+      window.__bitbotClientCore.createLedger
     );
   </script>
   <!-- GP-103/104/105: §8.4 fence grammar. Dev path is ../shared, packaged build
@@ -7951,6 +7968,71 @@
       if (norm.action_key) s += "，" + wavegT(norm.action_key);
       return s;
     }
+    /* KP-08 T3-04：乐观命令的「身份 + 状态面」。判据（这条到底算不算已送达）在
+       client_core/transport.js 的台账里，这里只把它翻译成节点：单 ✓ = 还在等，
+       ✓✓ + 绿 = 落库那条就是我发的这条，! + 红 = 被拒绝并带上 KP-03 的码。
+       为什么不再沿用 finally 里那句无条件 ✓✓：发送抛异常时它照样打勾，
+       界面把失败说成已送达 —— 屏幕上那个勾必须是回执换来的，不是流程走完换来的。 */
+    const sendLedger = window.__bitbotClientCore.createLedger
+      ? window.__bitbotClientCore.createLedger({})
+      : null;
+    const SEND_STATE = (window.__bitbotClientCore && window.__bitbotClientCore.CMD_STATE) || {};
+    if (sendLedger) window.__bitbotSendLedger = sendLedger;
+
+    function sendNote(userEl, text) {
+      let n = userEl.querySelector(".msg-send-note");
+      if (!n) {
+        n = document.createElement("div");
+        n.className = "msg-send-note";
+        userEl.appendChild(n);
+      }
+      n.textContent = text;
+      return n;
+    }
+
+    /**
+     * 台账里那条命令 → 屏幕上这一行。cmd 是 transport 给的同一对象（不复制状态），
+     * 所以这里读到的 state 永远是判据的那一份；durable 才把库里的 id 挂到节点上，
+     * Reply/反应 那些持久指针只能指向真落库的那条。
+     * @param {HTMLElement|null} userEl @param {any} cmd @param {any} [receipt]
+     */
+    function paintSendState(userEl, cmd, receipt) {
+      if (!userEl || !cmd) return;
+      const chk = userEl.querySelector(".msg-status .ms-check");
+      if (!chk) return;
+      const old = userEl.querySelector(".msg-send-note");
+      if (old) old.remove();
+      userEl.classList.remove("msg-send-failed", "msg-send-unknown");
+      chk.classList.remove("read");
+      userEl.dataset.send = String(cmd.state);
+      if (cmd.state === SEND_STATE.Durable) {
+        chk.textContent = "✓✓";
+        chk.classList.add("read");
+        if (cmd.entry_id) userEl.dataset.mid = String(cmd.entry_id);
+        return;
+      }
+      if (cmd.state === SEND_STATE.Rejected) {
+        chk.textContent = "!";
+        chk.classList.add("failed");
+        userEl.classList.add("msg-send-failed");
+        sendNote(userEl, receipt ? sendFailureText(receipt) : sendFailureText({ error_code: cmd.code }));
+        return;
+      }
+      if (cmd.state === SEND_STATE.Unmatched) {
+        chk.textContent = "✓";
+        userEl.classList.add("msg-send-unknown");
+        sendNote(userEl, wavegT("sendUnmatchedNote"));
+        return;
+      }
+      if (cmd.state === SEND_STATE.Expired) {
+        chk.textContent = "!";
+        userEl.classList.add("msg-send-unknown");
+        sendNote(userEl, wavegT("sendExpiredNote"));
+        return;
+      }
+      // pending：还是那条「已发出、等回执」的单勾，和以前一样，但不再由 finally 保证
+      chk.textContent = "✓";
+    }
     // 群聊失败原因：durable 行仍保留截断后的原始 reason（可审计），聊天卡默认只说
     // 人话——协议码/上游文案只在 dev-mode 追加，和产品态其它错误卡同一纪律。
     function roomFailReason(raw) {
@@ -11103,17 +11185,49 @@
       // Menu-driven protocol phrases (pin/hide/delete…) stay out of the
       // transcript — Grok's sidebar actions never echo raw commands.
       let userEl = null;
+      // KP-08 T3-04：这条消息的身份在**发出去之前**就由渲染端铸好（cm-…），
+      // Host 落库时采纳它当行 id，回执再把它原样带回来 —— 对账是字符串相等，
+      // 不是「按位置猜最后一条是不是我发的」。
+      let sendCmd = null;
       if (!(opts && opts.silentUser)) {
         // 会话跨天时先补一行日期分隔，再画这条消息（历史路径同一套 lastDayKey）
         ensureDaySepForNow();
-        userEl = addMsg("user", text + (opts && opts.approved ? " [approved]" : ""), {
+        const shown = text + (opts && opts.approved ? " [approved]" : "");
+        if (sendLedger) {
+          const begun = sendLedger.begin("user_message", {
+            session_id: activeSessionId || "",
+            text: shown,
+            idem_key: (opts && opts.idem_key) || "",
+          });
+          sendCmd = begun.cmd;
+        }
+        userEl = addMsg("user", shown, {
           // GP-14: show what this turn replies to (target id, resolved by Host).
           replyTo: (opts && opts.replyTo) || "",
           replyToText: (opts && opts.replyQuoteText) || "",
         });
+        if (sendCmd) {
+          userEl.dataset.clientMid = String(sendCmd.client_msg_id);
+          paintSendState(userEl, sendCmd);
+        }
       }
       sendBtn.disabled = true;
       if (turnCancelBtn) turnCancelBtn.hidden = false;
+      /* 回执 → 台账 → 那一行。成功路和异常路都走这里，两种结局共用同一份判据：
+         屏幕上那个勾只由「echo_entry_id === 我铸的那个 id」换来，不由「代码走完了」换来。 */
+      const settleSend = (receipt) => {
+        if (!sendLedger || !sendCmd || !userEl) return;
+        const settled = sendLedger.settle(sendCmd.client_msg_id, receipt);
+        const cmd = settled.cmd || sendCmd;
+        paintSendState(userEl, cmd, receipt);
+        if (cmd.state === SEND_STATE.Durable) attachMessageActions(userEl, "user", text);
+        // 落库指针和自己那条对不上时，真 id 仍要挂上（Reply/反应 得有据可指），
+        // 但那行的状态标记留在 unmatched —— 不许因为「拿到了一个 id」就当成已送达。
+        if (cmd.state === SEND_STATE.Unmatched && receipt && receipt.stored_user_id) {
+          userEl.dataset.mid = String(receipt.stored_user_id);
+          userEl.dataset.storedOnly = "1";
+        }
+      };
       streamEl = null;
       resetProgressRow();
       resetAgentStepRow();
@@ -11127,6 +11241,8 @@
           webSearch: !!composerWebSearch,
           // KP-04：这一回合「发出」的墙上时钟，交给 Host 起计时槽（回车→发出 一段的左端点）。
           enter_epoch_ms: Date.now(),
+          // KP-08 T3-04：把渲染端铸好的身份交给 Host，落库那一行就用它当 id。
+          client_msg_id: sendCmd ? String(sendCmd.client_msg_id) : "",
         });
         const r = await window.bitbot.turn(text, turnOpts);
         muteLlmStream = false;
@@ -11143,10 +11259,19 @@
         // GP-14: after the Host stored the rows, attach their durable ids so
         // Reply on this message points at a real message (survives reload).
         const storedIds = (r && r.stored_ids) || null;
-        if (storedIds && userEl && storedIds.user) {
+        if (sendLedger && sendCmd) {
+          settleSend({
+            ok: !(r && r.ok === false),
+            echo_entry_id: r ? r.echo_entry_id : "",
+            stored_user_id: storedIds ? storedIds.user : "",
+            error_code: r ? r.error_code : "",
+            error: r ? r.error : "",
+          });
+        } else if (storedIds && userEl && storedIds.user) {
+          // 核心没装上的老路（打包缺目录时才会走到）：位置回填 + 绿勾照旧，
+          // 但这条不在乐观台账里，G-121 的 OP-05 会当场把它判红。
           userEl.dataset.mid = String(storedIds.user);
           attachMessageActions(userEl, "user", text);
-          /* Grok-style: mark delivery (green ✓) once stored */
           const dSt = userEl.querySelector(".msg-status .ms-check");
           if (dSt && !dSt.classList.contains("read")) dSt.classList.add("read");
         }
@@ -13547,6 +13672,14 @@
       } catch (e) {
         const msg = String(e && e.message ? e.message : e);
         jsonOut.textContent = msg;
+        // KP-08 T3-04：异常这一路也是一条回执 —— 台账判成 rejected，界面上那条变红、
+        // 带上 KP-03 归一化出来的码。以前这里只往对话里补一条错误文本，自己那条
+        // 却在 finally 里被画成「已送达」，两行界面互相矛盾。
+        settleSend({
+          ok: false,
+          error_code: (e && (e.error_code || e.code)) || "",
+          error: msg,
+        });
         // 设置操作出错也只回设置面板：错误原文不该成为一条聊天消息。
         settingsSay(msg);
       } finally {
@@ -13555,11 +13688,8 @@
         if (turnCancelBtn) turnCancelBtn.hidden = true;
         input.focus();
         finishProgressRow();
-        /* Grok-style: mark user message delivery as read (green ✓✓) */
-        if (userEl) {
-          const st = userEl.querySelector(".msg-status .ms-check");
-          if (st) { st.textContent = "✓✓"; st.classList.add("read"); }
-        }
+        /* KP-08 T3-04：这里原来无条件打 ✓✓（「流程走完了就是已送达」），抛异常时照打。
+           现在那一行的勾只由 settleSend 按台账状态画 —— 代码走完不再产生任何送达标记。 */
       }
     }
 
@@ -18199,6 +18329,8 @@
         modelUnconfigured: "未配置",
         modelNone: "未配置模型",
         failSendPrefix: "发送失败：",
+        sendUnmatchedNote: "落库回来的不是这一条，先别当已送达",
+        sendExpiredNote: "等太久没回执，这条还没确认",
         failProviderUnconfigured: "未配置模型",
         failEmptyText: "消息内容为空",
         failKernelJson: "内核返回无法解析",
@@ -19238,6 +19370,8 @@
         modelUnconfigured: "未設定",
         modelNone: "未設定模型",
         failSendPrefix: "發送失敗：",
+        sendUnmatchedNote: "落庫回來的不是這一條，先別當已送達",
+        sendExpiredNote: "等太久沒回執，這條還沒確認",
         failProviderUnconfigured: "未設定模型",
         failEmptyText: "訊息內容為空",
         failKernelJson: "內核返回無法解析",
@@ -20273,6 +20407,8 @@
         modelUnconfigured: "Not configured",
         modelNone: "No model configured",
         failSendPrefix: "Send failed: ",
+        sendUnmatchedNote: "The stored row is not this one — not marked delivered",
+        sendExpiredNote: "No receipt yet — this message is unconfirmed",
         failProviderUnconfigured: "No model configured",
         failEmptyText: "Message is empty",
         failKernelJson: "Kernel returned unparseable output",

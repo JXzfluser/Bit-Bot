@@ -20,8 +20,13 @@
  *   CC-16..CC-23 transport（T3-04 接口 + T3-06 去重）—— 乐观命令的四种结局、
  *         回执字段词表与 schema 逐字一致、同面帧排队/去重/跳号取整份、
  *         `surface.read` 信封只认 .payload。这些判据要 await，挂在收尾之前跑。
+ *   CC-24..CC-26 T3-04 **接线**（判据搬进页面之后，门盯的是接线本身）——
+ *         渲染端每块内联脚本要过 JS 解析器（一块语法错 = 整块静默不执行，页面照开）、
+ *         送达标记只由台账状态画（身份在请求前铸好、成功/异常两路都回执、finally 不产勾）、
+ *         Host 只按 `^cm-[0-9a-z]{16}$` 采纳渲染端 id 并回显 `echo_entry_id`、
+ *         存储层撞 id 时另发新 id（让界面判成 unmatched，而不是悄悄覆盖）。
  *
- * 负向对照 13 条（N1..N13）：每条都是「把产品侧那段判据摘掉，这条必须翻红」，
+ * 负向对照 15 条（N1..N15）：每条都是「把产品侧那段判据摘掉，这条必须翻红」，
  * 并且 N11/N12/N13 还要求摘掉之后出现看得见的危害（丢改名 / 半截上屏 / 帧被盖掉），
  * 只让计数变化不算对照。
  *
@@ -58,10 +63,10 @@ const transport = require(path.join(CORE, "transport.js"));
 
 /* 核心目录里到底有几份纯逻辑文件 —— CC-01/CC-01b/N8 都按这份列表扫，
    免得「加了第四份文件、门还在测三份」这种半截覆盖。页面引了几份是另一件事，
-   由 CC-14 单独点名（transport 还没上页面，是 T3-04 的残账，不许被绿掩盖）。 */
+   由 CC-14 单独点名：T3-04 接线后四份全都上页面，任何一份掉出页面引用来都会红。 */
 const CORE_FILES = ["schema.js", "reducer.js", "diff_apply.js", "transport.js"];
 const CORE_SRC = { "schema.js": schemaSrc, "reducer.js": reducerSrc, "diff_apply.js": diffSrc, "transport.js": transportSrc };
-const PAGE_SCRIPTS = ["schema.js", "reducer.js", "diff_apply.js"];
+const PAGE_SCRIPTS = ["schema.js", "reducer.js", "diff_apply.js", "transport.js"];
 let assembled = { error: "装配未执行", growth: [], ns: {} };
 
 /* ---------- CC-01 干净：没有 fs / Electron / DOM ---------- */
@@ -468,7 +473,7 @@ const htmlBodies = {}; /* CC-13 取出的两个函数体，N6 复用 */
   ok14
     ? ok("CC-14", "packaged 路径可达：files 里 hosts/shared 用 **/*（含子目录）→ app.asar/shared/client_core/，页面引的 " + PAGE_SCRIPTS.length +
         " 个 <script> 的 dev(../shared) 与打包(./shared) 两形都写全；核心目录里 " + onDisk.length + " 份 .js 全在扫描名单内" +
-        "（未上页面的残账：" + unwired.join(",") + "，T3-04 接线）")
+        "（" + (unwired.length ? "未上页面的残账：" + unwired.join(",") : "四份核心全在页面上，页面上没有第二套判据可躲") + "）")
     : bad("CC-14", `shared 复制=${sharedCopy ? JSON.stringify(sharedCopy.filter) : "无"}；desktop 清单里不该出现 client_core=${!!notListed}；缺脚本=${missingTags.join(",")}；缺文件=${exists}；名单外的新文件=${notCovered}`);
 }
 
@@ -480,6 +485,123 @@ const htmlBodies = {}; /* CC-13 取出的两个函数体，N6 复用 */
   flag && seen
     ? ok("CC-15", "核心没装上时 window.__bitbotClientCoreReady=false，且 KD 门真的读了它（打包漏目录不会只留下空白侧栏）")
     : bad("CC-15", `index.html 暴露就绪位=${/window\.__bitbotClientCoreReady/.test(htmlSrc)}，e2e 读它=${seen}`);
+}
+
+/* ---------- CC-24 渲染端那份内联脚本本身要过 JS 解析器 ---------- */
+/* 浏览器是「按块」执行 <script> 的：一块里有语法错，整块一声不响地不跑。
+   2026-11-12 接线时差点带上线的就是这个形状 —— 一次编辑吞掉换行，把
+   `function roomFailReason` 粘到了上一行 `//` 注释的尾巴上，页面照常开、
+   侧栏照常画，发送这条链上的函数却全没了。这种红只有解析器认得。 */
+function inlineScriptBlocks(src) {
+  const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g;
+  const out = [];
+  let m;
+  while ((m = re.exec(src))) out.push(m[1]);
+  return out;
+}
+function parseInline(src) {
+  const bad = [];
+  const blocks = inlineScriptBlocks(src);
+  blocks.forEach((b, i) => {
+    if (!b.trim()) return;
+    try {
+      new Function(b);
+    } catch (e) {
+      bad.push("第" + (i + 1) + "块：" + String((e && e.message) || e).split("\n")[0]);
+    }
+  });
+  return { blocks: blocks.length, bad };
+}
+{
+  const r = parseInline(htmlSrc);
+  r.bad.length
+    ? bad("CC-24", "渲染端有内联 <script> 过不了解析器：" + r.bad.join(" / "))
+    : ok("CC-24", `index.html 里 ${r.blocks} 块内联脚本逐块 new Function 解析通过，0 处语法错（一块错 = 整块静默不执行）`);
+  // N14：把这次的真实翻车形状复制一遍（函数声明粘在注释行尾），判据必须当场红
+  const glueRe = /\/\/[^\n]*\n([ \t]*)(function [A-Za-z_$][\w$]*\()/;
+  const gm = glueRe.exec(htmlSrc);
+  if (!gm) bad("CC-24-N14", "找不到「注释行紧接函数声明」的位置，对照无从做起");
+  else {
+    const broken = htmlSrc.slice(0, gm.index) + gm[0].replace("\n" + gm[1], "") + htmlSrc.slice(gm.index + gm[0].length);
+    const rb = parseInline(broken);
+    rb.bad.length
+      ? ok("CC-24-N14", `摘掉那个换行后判据立刻点名（${rb.bad[0].slice(0, 56)}）—— 那整块里的函数当场不存在，页面却还是能打开的，CC-24 有牙`)
+      : bad("CC-24-N14", "复制出「函数粘在注释行尾」的写法后解析器照样通过，CC-24 是空的");
+  }
+}
+
+/* ---------- CC-25 送达标记只由回执换来（T3-04 渲染端接线） ---------- */
+function sendMarkViolations(src) {
+  const a = src.indexOf("async function runUserTurn(");
+  const b = src.indexOf('approveBtn.addEventListener("click"', a + 1);
+  if (a < 0 || b < 0) return ["runUserTurn 函数体取不到"];
+  const body = src.slice(a, b);
+  const fIdx = body.lastIndexOf("} finally {");
+  if (fIdx < 0) return ["runUserTurn 里没有 finally 块"];
+  const finallyBody = codeOnly(body.slice(fIdx));
+  const bodyCode = codeOnly(body);
+  const v = [];
+  /* 身份必须在「请求之前」铸好并挂到节点上：这是可感面第一条（回车立刻上屏）
+     和最后一条（对账不靠位置）的共同前提。判据扫的是代码不是说明 —— 那段
+     finally 的注释里就写着「原来无条件打 ✓✓」，不剥注释这条会永远红。 */
+  if (!/sendLedger\.begin\(\s*"user_message"/.test(bodyCode)) v.push("没有 sendLedger.begin(\"user_message\")：这条乐观消息没进台账");
+  if (!/userEl\.dataset\.clientMid = String\(sendCmd\.client_msg_id\)/.test(bodyCode)) v.push("节点上没挂 data-client-mid：回执回来找不到那一行");
+  const iBegin = bodyCode.indexOf("sendLedger.begin");
+  const iTurn = bodyCode.indexOf("window.bitbot.turn(");
+  if (!(iBegin >= 0 && iTurn >= 0 && iBegin < iTurn)) v.push(`身份/上屏不在请求之前（begin@${iBegin} turn@${iTurn}）`);
+  if ((bodyCode.match(/settleSend\(\{/g) || []).length < 2) v.push("成功路和异常路没都走 settleSend");
+  if (/✓✓/.test(finallyBody) || /classList\.add\(\s*["']read["']\s*\)/.test(finallyBody))
+    v.push("finally 里还有无条件送达标记：抛异常也会亮成已送达");
+  if (!/createLedger/.test(codeOnly(src))) v.push("页面没用 createLedger");
+  const pm = /function paintSendState\([\s\S]*?\n    \}/.exec(src);
+  if (!pm) v.push("paintSendState 取不到函数体");
+  else {
+    if (!/SEND_STATE\.Durable[\s\S]{0,120}✓✓/.test(pm[0])) v.push("✓✓ 不是由 Durable 状态画的");
+    for (const st of ["Durable", "Rejected", "Unmatched", "Expired"])
+      if (!new RegExp("SEND_STATE\\." + st + "\\b").test(pm[0])) v.push("paintSendState 没画 " + st);
+  }
+  const marks = (src.match(/textContent = "✓✓"/g) || []).length;
+  if (marks !== 1) v.push(`页面上有 ${marks} 处把勾写成 ✓✓（只该有台账状态那一处）`);
+  return v;
+}
+{
+  const v = sendMarkViolations(htmlSrc);
+  v.length ? bad("CC-25", "乐观命令的送达标记还不归回执管：" + v.join("、"))
+    : ok("CC-25", "runUserTurn：身份在请求前铸好并挂上节点、成功/异常两路都走 settleSend、finally 里一个送达标记都不产，" +
+        "✓✓ 只在 paintSendState 的 Durable 分支出现一次（全页 1 处），四态各有画法");
+  // N15：把当年那句「流程走完就打勾」原样放回 finally
+  const INJECT = [
+    '      const _c = userEl && userEl.querySelector(".msg-status .ms-check");',
+    '      if (_c) { _c.textContent = "✓✓"; _c.classList.add("read"); }',
+  ].join("\n");
+  const re15 = /\} finally \{\n([ \t]*)muteLlmStream = false;/;
+  if (!re15.test(htmlSrc)) bad("CC-25-N15", "找不到 runUserTurn 的 finally 块，对照无从做起");
+  else {
+    const patched = htmlSrc.replace(re15, (s, ind) => "} finally {\n" + ind + INJECT.split("\n").join("\n" + ind) + "\n" + s.slice(("} finally {\n").length));
+    const v15 = sendMarkViolations(patched);
+    const marks15 = (patched.match(/textContent = "✓✓"/g) || []).length;
+    v15.length
+      ? ok("CC-25-N15", `把无条件 ✓✓ 放回 finally 后判据当场翻红（${v15[0]}；全页 ✓✓ 由 1 处变 ${marks15} 处）—— ` +
+          "危害正是这套判据要防的那件事：发送抛异常，屏幕上还是「已送达」")
+      : bad("CC-25-N15", `finally 里塞回无条件 ✓✓ 后判据照样绿（violations=${v15.length} marks=${marks15}），CC-25 是空的`);
+  }
+}
+
+/* ---------- CC-26 Host 采纳身份 + 回显 echo + 落库不许撞 id ---------- */
+{
+  const mainSrc = fs.readFileSync(path.join(REPO, "hosts/desktop/main.js"), "utf8");
+  const storeSrc = fs.readFileSync(path.join(REPO, "hosts/desktop/sessions.js"), "utf8");
+  const v = [];
+  if (!/\^cm-\[0-9a-z\]\{16\}\$/.test(mainSrc)) v.push("Host 没按 ^cm-<16> 的形状采纳渲染端 id（乱传的 id 能直接进库）");
+  if (!/userRow\.id = clientMsgId/.test(mainSrc)) v.push("Host 没把采纳的 id 挂到 userRow.id");
+  const iEcho = mainSrc.indexOf("result.echo_entry_id");
+  const iStored = mainSrc.indexOf("result.stored_ids");
+  if (iEcho < 0) v.push("回包里不产 echo_entry_id（渲染端无从对账）");
+  else if (iStored >= 0 && iEcho < iStored) v.push("echo_entry_id 在 stored_ids 之前赋值（取的是没落库前的 ids）");
+  if (!/String\(r\.id\) === wanted/.test(storeSrc)) v.push("sessions.js 不再查重：两条消息可能共用一个 id");
+  v.length ? bad("CC-26", "Host 侧的乐观身份没闭合：" + v.join("、"))
+    : ok("CC-26", `main.js 只采纳形状为 ^cm-[0-9a-z]{16}$ 的 id 当落库行 id、回包按 stored_ids 之后回显 echo_entry_id；` +
+        "sessions.js 撞 id 时另发新 id（那条会在界面判成 unmatched，而不是悄悄覆盖）");
 }
 
 /* ---------- CC-08 负向对照（不翻红就说明上面是空的） ---------- */
@@ -919,10 +1041,10 @@ runTransportRules()
     console.log(
       "\n== 覆盖面自证 == 规则 " + notes.length + " 条（" + notes.join(",") + "）；" +
       "目标文件：hosts/shared/client_core/{" + CORE_FILES.join(",") + "}、hosts/shared/event_mirror.js、" +
-      "hosts/desktop/index.html、hosts/desktop/package.json、docs/events.md、ui_protocol/types.mbt；" +
+      "hosts/desktop/index.html、hosts/desktop/main.js、hosts/desktop/sessions.js、hosts/desktop/package.json、docs/events.md、ui_protocol/types.mbt；" +
       CORE_FILES.map((f) => f + " " + CORE_SRC[f].split("\n").length + " 行").join(" / ") + "；效果闭集 " + diffCore.EFFECTS.length +
       " 类、结构原因闭集 " + diffCore.REASONS.length + " 类；乐观命令终态 " + Object.keys(transport.CMD_STATE).length +
-      " 种；负向对照 13 条（N1..N13）"
+      " 种；负向对照 15 条（N1..N15）"
     );
     console.log("\nprove_client_core: PASS=" + PASS + " FAIL=" + FAIL);
     process.exit(FAIL ? 1 : 0);

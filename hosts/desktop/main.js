@@ -4303,6 +4303,16 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
         role: "user",
         text: tokenRefused && kernelUser ? kernelUser : String(text || ""),
       };
+      /* KP-08 T3-04：渲染端在按下回车之前就铸好了这条消息的身份（cm-…），Host 采纳它
+         当落库那一行的 id —— 对账从此是「字符串相等」，不再是「取末尾第 n 条」猜哪条
+         是我发的。只认这一个形状；旧渲染端/别的调用方不给时照旧由 Host 生成。 */
+      const clientMsgId = String((opts && opts.client_msg_id) || "").trim();
+      /* BITBOT_ADOPT_CLIENT_ID=0：把「Host 采纳渲染端身份」这一半关掉（口径同 KP-07 的
+         BITBOT_BROADCAST_DIFF 总闸）。产品默认开着；G-121 拿它跑真 app 的负向对照 ——
+         关掉后落库那条的 id 和界面上这条对不上，界面必须判 unmatched（有 id ≠ 已送达），
+         而不是把勾亮成绿的。 */
+      const adoptClientId = String(process.env.BITBOT_ADOPT_CLIENT_ID || "1") !== "0";
+      if (adoptClientId && /^cm-[0-9a-z]{16}$/.test(clientMsgId)) userRow.id = clientMsgId;
       // GP-14: persist which message this turn replied to (kernel-echoed id).
       if (result && result.reply_to) userRow.reply_to = String(result.reply_to);
       toStore.push(userRow);
@@ -4349,6 +4359,11 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
           user: ids[0] || "",
           assistant: ids.slice(1),
         };
+        /* KP-08 T3-04：乐观台账要的是「落库那条到底成了哪个 id」，不是「第几条」。
+           渲染端铸的 id 被采纳时这里原样回同一条（对账相等 → 已送达）；被会话里
+           已有的同 id 挡下时回的是 Host 另发的 id —— 界面据此判 unmatched，
+           而不是把两条消息并成一条。 */
+        result.echo_entry_id = ids[0] || "";
       }
       broadcastSurface("sessions", sessions.list());
     }

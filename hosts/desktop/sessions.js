@@ -313,8 +313,13 @@ function createSessionStore(repoRoot, opts = {}) {
       // 不传 at（现有全部调用方）时行为完全不变，仍写这一刻。
       const atRow =
         m.at && !Number.isNaN(Date.parse(String(m.at))) ? new Date(m.at).toISOString() : now;
+      /* KP-08 T3-04：调用方可以指定 id（乐观命令那条的身份）。同一个会话里 id 必须唯一 ——
+         撞车时这里**不覆盖**已有那行，改成另发一个 id。回执会把真 id 带回界面，
+         渲染端因此看得见「落库的不是我发的那条」，而不是两条消息静默并成一条。 */
+      const wanted = String(m.id || "");
+      const taken = !!wanted && hit.messages.some((r) => r && String(r.id) === wanted);
       const row = {
-        id: m.id || newMessageId(),
+        id: wanted && !taken ? wanted : newMessageId(),
         role: String(m.role),
         text: String(m.text || ""),
         at: atRow,

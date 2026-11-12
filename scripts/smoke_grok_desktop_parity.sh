@@ -4793,7 +4793,7 @@ echo "  · 已知残账（诚实）：rooms-changed 仍走整份快照，#room-l
 echo "    换日期桶/换组/换桶走「本地缓存 + keyed 重画」，节点保住了但搬运是整列级别的；"
 echo "    Bot 改名后侧栏次要行的旧摘要要等下一次该 Bot 有动静才换新（DM 会话标题不跟着改）。"
 
-echo "== G-120 Client Core 落地：词表 / fold / diff / transport 四份纯逻辑，渲染端只剩「怎么动节点」（KP-08 T3-01..03、T3-04/06 核心侧、T3-05）=="
+echo "== G-120 Client Core 落地：词表 / fold / diff / transport 四份纯逻辑 + 乐观命令接线，渲染端只剩「怎么动节点」（KP-08 T3-01..05、T3-04 接线）=="
 # 计划里写的 client-core/ 落在这里是 hosts/shared/client_core/，不是仓库根上那个目录名。
 # 理由只有一条但足够硬：hosts/desktop/package.json 的 build.files 只收 hosts/desktop 的显式
 # 清单 + {from:"../shared"}，仓库根的 client-core/ 进不了 app.asar —— 开发态全绿、用户装好的
@@ -4802,12 +4802,16 @@ g120_scripts=$(grep -c '<script src="../shared/client_core/' hosts/desktop/index
 g120_core=$(ls hosts/shared/client_core/*.js | wc -l | tr -d ' ')
 g120_wired=否
 grep -q 'client_core/transport.js' hosts/desktop/index.html && g120_wired=是
-if [ "$g120_wired" = "否" ] && [ "$g120_scripts" -eq 3 ] && [ "$g120_core" -eq 4 ]; then
-  ok "G-120 接线：核心 $g120_core 份里页面引了 3 份（schema→reducer→diff_apply），transport.js 在核心但还没上页面 —— T3-04 接线是残账，本节末尾点名"
-elif [ "$g120_wired" = "是" ] && [ "$g120_scripts" -eq "$g120_core" ]; then
-  ok "G-120 接线：核心 $g120_core 份全部上页面，transport.js 已按 <script> 引到渲染端"
+g120_ledger=否
+grep -q '__bitbotClientCore.createLedger' hosts/desktop/index.html && g120_ledger=是
+g120_echo=否
+grep -q 'result\.echo_entry_id' hosts/desktop/main.js && g120_echo=是
+# 「第 4 份引了但没人用」也算没接线：页面必须真的起台账，Host 必须真的回显 echo。
+# 曾经这里允许「未接线」形状绿（带残账点名），T3-04 落地后那种形状不再合法。
+if [ "$g120_wired" = "是" ] && [ "$g120_scripts" -eq "$g120_core" ] && [ "$g120_ledger" = "是" ] && [ "$g120_echo" = "是" ]; then
+  ok "G-120 接线：核心 $g120_core 份全上页面（含 transport.js）、渲染端 createLedger 起台账、Host 回包带 echo_entry_id —— 送达标记从此只由回执换来（CC-25/26 逐条判，真 app 端到端在 G-121）"
 else
-  bad "G-120 接线没收口（核心份数=$g120_core、渲染端 <script> 数=$g120_scripts、transport 上页面=$g120_wired）"
+  bad "G-120 接线没收口（核心份数=$g120_core、渲染端 <script> 数=$g120_scripts、transport 上页面=$g120_wired、页面台账=$g120_ledger、Host 回显 echo=$g120_echo）"
 fi
 # 判据只许有一份：渲染端再留一个 rev 锚点 / 一份缓存 / 一处「这条 diff 能不能就地应用」，
 # 迟早和核心漂移。这些标识符在 index.html 里出现即为红（CC-13 同口径，这里当第二把尺）。
@@ -4822,10 +4826,10 @@ if timeout 180 node scripts/prove_client_core.js > /tmp/g120-core.log 2>&1; then
 else
   bad "G-120 纯逻辑（见 /tmp/g120-core.log；$(grep 'prove_client_core: PASS=' /tmp/g120-core.log)）"
 fi
-for g120_t in "CC-01 " "CC-01b " "CC-01c " "CC-02 " "CC-02b " "CC-03 " "CC-04 " "CC-05 " "CC-06 " "CC-07 " "CC-09 " "CC-10 " "CC-11 " "CC-12 " "CC-13 " "CC-13b " "CC-14 " "CC-15 " "CC-16 " "CC-17 " "CC-18 " "CC-19 " "CC-20 " "CC-21 " "CC-22 " "CC-23 "; do
+for g120_t in "CC-01 " "CC-01b " "CC-01c " "CC-02 " "CC-02b " "CC-03 " "CC-04 " "CC-05 " "CC-06 " "CC-07 " "CC-09 " "CC-10 " "CC-11 " "CC-12 " "CC-13 " "CC-13b " "CC-14 " "CC-15 " "CC-24 " "CC-25 " "CC-26 " "CC-16 " "CC-17 " "CC-18 " "CC-19 " "CC-20 " "CC-21 " "CC-22 " "CC-23 "; do
   if grep -q "✓ $g120_t" /tmp/g120-core.log; then ok "G-120 锚点：$g120_t"; else bad "G-120 锚点没跑绿：$g120_t"; fi
 done
-for g120_n in "CC-08-N1 " "CC-08-N2 " "CC-02-N3 " "CC-09-N4 " "CC-10-N5 " "CC-13b-N6 " "CC-10-N7 " "CC-01b-N8 " "CC-01b-N9 " "CC-18-N10 " "CC-20-N11 " "CC-21-N12 " "CC-22-N13 "; do
+for g120_n in "CC-08-N1 " "CC-08-N2 " "CC-02-N3 " "CC-09-N4 " "CC-10-N5 " "CC-13b-N6 " "CC-10-N7 " "CC-01b-N8 " "CC-01b-N9 " "CC-18-N10 " "CC-20-N11 " "CC-21-N12 " "CC-22-N13 " "CC-24-N14 " "CC-25-N15 "; do
   if grep -q "✓ $g120_n" /tmp/g120-core.log; then ok "G-120 负向对照：$g120_n"; else bad "G-120 负向对照没红起来（这条判据可能是空的）：$g120_n"; fi
 done
 echo "  · G-120 为什么长出来：T3-03 的完成定义是「fold(events) → UI state 与现网 UI 一致」，T3-05 是"
@@ -4845,7 +4849,14 @@ echo "    一律 unmatched 并记 anomaly，拒绝没码也记 anomaly，终态�
 echo "    复用同一条；CC-19 expire 只动 pending、台账 256 上限只淘汰终态；CC-20 不比游标新的帧在 intake 就丢（去重在核心）；"
 echo "    CC-21 跳号那帧连折叠器都不许叫，改成带 from_seq 的整份取数（哪怕折叠器是「来就改」的那种）；CC-22 取数在途时后到的"
 echo "    帧只排队不插队；CC-23 surface.read 只认成功信封的 .payload（把信封整份喂折叠器折出 0 行，就是 KD-11 第一次栽的坑）。"
-echo "  · G-120 负向对照 13 条：N1/N2 摘 fold 分支、塞词表不认的 kind；N3 拆开 fold 的两处引用；N4 摘掉跳号自愈；"
+echo "  · G-120 接线侧（T3-04 落地，本节的绿从「核心判据对」升级成「页面真在用这份判据」）：CC-24 把 index.html 每块"
+echo "    没有 src 的内联 <script> 逐块丢进解析器 —— 浏览器按块执行，一块语法错整块静默不跑、页面却照常打开，这次接线"
+echo "    差点带上线的正是这个形状（一次编辑吞掉换行，把 function 粘到上一行 // 注释尾巴上）；CC-25 钉 runUserTurn 里"
+echo "    「cm- 身份在请求之前铸好并挂上 data-client-mid」「成功路和异常路都过 settleSend」「finally 一个送达标记都不产」"
+echo "    「✓✓ 只在 paintSendState 的 Durable 分支出现（全页 1 处）、四态各有画法」；CC-26 钉 Host 只按 ^cm-[0-9a-z]{16}$"
+echo "    采纳渲染端 id 当落库行 id、回包在 stored_ids 之后回显 echo_entry_id、sessions.js 撞 id 时另发新 id"
+echo "    （那条会在界面判成 unmatched，而不是悄悄覆盖前一条）。"
+echo "  · G-120 负向对照 15 条：N1/N2 摘 fold 分支、塞词表不认的 kind；N3 拆开 fold 的两处引用；N4 摘掉跳号自愈；"
 echo "    N5 摘掉可 patch 白名单；N6 抹掉渲染端 remove_row 分支；N7 摘掉 scalar 重画；N8 把四份文件的 IIFE 外壳剥掉"
 echo "    （就是这次真翻车时的形状），同 realm 第二次声明 const API 必须当场 SyntaxError；N9 摘掉模块导出守卫，"
 echo "    无模块系统的 realm 里必须当场 ReferenceError —— 这两条正是上一版尺子（每份文件各套一个 new Function）"
@@ -4854,10 +4865,73 @@ echo "    N10 定值 rand 造出同一个 client_msg_id 必须当场抛（否则
 echo "    判定后，重放的旧帧把游标拖回去，真正的改名帧被当成跳号整份盖掉 —— 改名丢了；N12 摘掉跳号判定后半截 diff 直接上屏；"
 echo "    N13 摘掉「排到链上」后取数在途时那一帧就在旧基线上被判跳号、取回来被整份盖掉，界面上永远看不见。"
 echo "    这三条不只要求计数变化，还要求看得见对应的危害（丢改名 / 半截上屏 / 帧被抹掉），否则判红。"
-echo "  · 已知残账（诚实）：transport 的判据这次已经在核心里跑绿，但它还没上页面 —— T3-04 的接线（渲染端引第 4 份 <script>、"
-echo "    Host 用 client_msg_id 落库并回 echo_entry_id、拒绝把 KP-03 码送回那条乐观消息）没做，现在还是按位置回填 id；"
-echo "    T3-06 的「拔网 10 s 重连无重复无缺失」端到端没跑；T3-07 的 checkJs（要装 typescript，未获授权）都没落 —— "
-echo "    KP-08 的可感面「输入立刻上屏、落库后回执对上、拒绝变红带 KP-03 码」目前只兑现了「立刻上屏」这一半。"
+echo "    N14 在页面源码上复刻那次真实翻车（删掉注释行与函数声明之间的换行）——CC-24 必须当场点出「第 5 块 Unexpected identifier」，"
+echo "    因为那种页面的表现是「能打开、侧栏也在，但发送链上的函数全没了」，任何只看渲染的门都看不见；N15 把「流程走完就打 ✓✓」"
+echo "    放回 finally ——CC-25 必须翻红，危害就是发送抛异常时屏幕上仍然写「已送达」，两行界面互相矛盾。"
+echo "  · 已知残账（诚实）：可感面三条的「判据 + 接线」在本节，端到端那一层在下一节 G-121（真 app 两趟：回车 →"
+echo "    那一行立刻在、落库后 data-mid == echo_entry_id == 库里那行 id、关掉采纳必须判 unmatched）——"
+echo "    缺 Electron/playwright 时 G-121 那层是 SKIP，不算本节替它跑绿。"
+echo "    房间/群聊那条发送链（sendRoomTurn）仍走自己的回执形状，没接台账；pending→expired 的死线在渲染端还没人按表调用"
+echo "    expire()（等 T3-06 的断线重连一起定「expired 之后迟到的 durable 要不要改回已送达」）；T3-07 的 checkJs（要装 typescript，未获授权）没落。"
+
+echo
+echo "== G-121 乐观命令端到端：真 app 里回车立刻上屏、落库后 echo 对上、拒绝变红带 KP-03 的码（KP-08 T3-04 可感面）=="
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g121_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g121_xvfb=(xvfb-run -a)
+  fi
+  if timeout 900 ${g121_xvfb[@]+"${g121_xvfb[@]}"} node scripts/e2e_desktop_optimistic.mjs > /tmp/g121-e2e.log 2>&1; then
+    ok "G-121 真 app e2e_desktop_optimistic（$(grep 'e2e_desktop_optimistic: PASS=' /tmp/g121-e2e.log)）"
+  else
+    bad "G-121 真 app（见 /tmp/g121-e2e.log；$(grep 'e2e_desktop_optimistic: PASS=' /tmp/g121-e2e.log)）"
+  fi
+  for g121_e in "S1 " "OP-00a " "OP-01 " "OP-01b " "OP-01c " "OP-02 " "OP-03 " "OP-03b " "OP-04 " "OP-05 " "OP-05b " "OP-06 "; do
+    if grep -q "✓ $g121_e" /tmp/g121-e2e.log; then ok "G-121 真 app 锚点：$g121_e"; else bad "G-121 真 app 锚点没跑绿：$g121_e"; fi
+  done
+  # 三句可感面各钉一条「实测数字必须在」的判据，防止锚点行在、量到的却是 0 行/空集
+  if grep -q "✓ OP-01 .*进入终态在出现之后 [1-9][0-9]*ms" /tmp/g121-e2e.log; then
+    ok "G-121 可感面①：量出了「那一行出现 → 进入终态」的正间隔（页内同一时钟）—— 出现早于回执，才是乐观上屏"
+  else
+    bad "G-121 可感面①没量到「立刻」：OP-01 那行没有正的 leadMs —— 要么那一行是等回执才出现的，要么观察器没挂上"
+  fi
+  if grep -q "✓ OP-02 .*含这一条=true" /tmp/g121-e2e.log; then
+    ok "G-121 可感面②：三方对账（界面 data-mid == 台账 entry_id == 库里那行 id）在真落库的库上成立"
+  else
+    bad "G-121 可感面②没成立：库里找不到界面上那条 id（echo 对账仍是按位置猜，或 Host 没采纳身份）"
+  fi
+  # 闭集项数从 failure_codes.js 现算（不写死 34）：页面那份和源文件那份必须同源
+  g121_ncode=$(node -e 'process.stdout.write(String(require("./hosts/desktop/failure_codes.js").CODES.length))' 2>/dev/null || echo 0)
+  if [ "$g121_ncode" -gt 0 ] && grep -q "码在闭集里的有 [a-z_]\{3,\}（闭集 ${g121_ncode} 项）" /tmp/g121-e2e.log; then
+    ok "G-121 可感面③：拒绝那行旁边的小字带的码在 KP-03 闭集里，且页面的闭集与 failure_codes.js 同为 ${g121_ncode} 项（不是自由文本）"
+  else
+    bad "G-121 可感面③没成立：拒绝的提示里没有闭集内的 KP-03 码，或页面闭集项数不等于源文件（源文件 ${g121_ncode} 项，见 OP-03 那行实测值）"
+  fi
+else
+  echo "  · skip：缺 playwright-core 或 electron，G-121 真 app 那层没跑（SKIP ≠ PASS；判据本身在 G-120 的 CC-17/24/25/26）"
+fi
+echo "  · G-121 为什么长出来：CC-17..26 证的是「台账这套判据自洽、页面确实在调它」，但可感面三句是用户"
+echo "    在一台真机器上看得见的事：那一行是不是在回执之前就在、勾是不是由回执换来的、拒绝时红的那行带的是哪个码。"
+echo "    这三句此前只有散文承诺；拿掉 G-121，把 settleSend 摘掉或让 finally 重新无条件打 ✓✓，矩阵仍然全绿。"
+echo "  · G-121 判据：OP-00a 真 app 装上核心并起出台账（终态 5 种齐）；OP-01 用 MutationObserver 抓那一行"
+echo "    「出现时」的快照（appearMs / data-client-mid / data-send / 勾），再在同一页时钟上量出「出现 → 进入终态」"
+echo "    的间隔 leadMs —— 「立刻」是对着这一条量出来的（必须 > 0，即出现早于回执），不是对着 stub 的配置常量说的；"
+echo "    OP-02 拿界面、台账、临时根里的"
+echo "    sessions.json 三方逐字比；OP-03/03b 让 stub 只对带标记那条 500，同一屏同时有 durable 和 rejected，"
+echo "    两行互不污染；OP-04 屏幕每一行的 data-send 都等于台账那条命令的 state（两趟逐行比，不只是回合末尾那一条）；"
+echo "    OP-06 两趟各读自己那份临时根，user 行 id 唯一且采纳趟有 2 条 cm- 形状、关闸趟 0 条。"
+echo "  · G-121 负向对照（真 app 层的总闸，口径同 KP-07 的 BITBOT_BROADCAST_DIFF）：OP-05 用"
+echo "    BITBOT_ADOPT_CLIENT_ID=0 关掉「Host 采纳渲染端身份」再跑同一句 —— 落库回来的 id 和界面上那条对不上，"
+echo "    那一行必须判 unmatched（不亮绿、勾不变 ✓✓），并把这笔异常记进台账；OP-05b 要求同一条判据在"
+echo "    开/关两趟给出不同答案（durable / unmatched），否则这条断言是空的。老写法（拿到一个落库 id 就算送达）"
+echo "    在同一趟会算成「已送达」，门把这个错误取值也一并打出来。OP-01b/OP-01c 管「立刻」这一条判据自己："
+echo "    b 把同一条判据也压在关掉采纳那一趟上（两条独立分支都要成立，谁把画那一行挪进回执处理就一起翻红），"
+echo "    c 把「等回执才画 + ✓✓」和「没有 cm- 身份」两种假形状喂给判据本身，它必须给假 —— 否则那条锚点是恒真的。"
+echo "  · G-121 已知残账（实测到的，不是推测）：OP-03 的码是 unknown_failure —— 供应商 HTTP 500 时 Host 的"
+echo "    llm_chat 主路径（hosts/shared/host_ffi.js 那一个 return）只回 error/stderr，不带 error_code，"
+echo "    于是渲染端只能把原文归一化成兜底码；KP-03 的 llm_chat_failed 要在 Host 侧把上游状态线映射成码之后才数得到，"
+echo "    这是 KP-03 的尾账（另开任务），不是本门的绿掩盖的东西。房间/群聊链 sendRoomTurn 未接台账、"
+echo "    expire() 无人按表调用（T3-06）、T3-07 checkJs 未授权 —— 同 G-120 残账，逐条可查。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
