@@ -199,12 +199,17 @@ function createProductSurface(repoRoot, opts = {}) {
     };
   }
 
+  /* bots.json 的读-改-写基底：本次 loadBots 交给调用方的那份快照，落盘时用来
+     分辨「我删掉的」和「别的进程刚加的」。见 saveBots / mergeBotsAgainstDisk。 */
+  let botsBaseText = null;
+
   function loadBots() {
     // Missing file AND a half-written file (bots present, builtin row absent)
     // both have to come back with agent-bit. G-1b / G-6 / G-26 address that
     // id directly; seeding only when the file is absent leaves the row out
     // as soon as anything else creates bots.json first.
     let data = readJson(BOTS_PATH, null);
+    botsBaseText = data ? JSON.stringify(data) : null;
     let dirty = false;
     if (!data || typeof data !== "object" || Array.isArray(data)) {
       data = { version: 1, primary_id: "agent-bit", bots: [] };
@@ -226,12 +231,92 @@ function createProductSurface(repoRoot, opts = {}) {
       data.version = 1;
       dirty = true;
     }
-    if (dirty) atomicWrite(BOTS_PATH, JSON.stringify(data, null, 2));
+    if (dirty) saveBots(data);
     return data;
   }
 
+  /* bots.json 不是事件面（docs/events.md §7 只收了 sessions/rooms/approvals），
+     所以它一度是跨进程「最后写者赢」：3 个进程各建 2 个 Bot，盘上只剩 3 个
+     （内建 + 最后那个进程的），另外两个进程紧接着用自己的 Bot 建群就被
+     roomCreate 点名 names_not_found —— 用户看到的是「Bot 建好了，群建不起来」。
+     写侧改成按 id 三方合并：基底 = 本次 loadBots 读到的那份，ours = 调用方这份，
+     disk = 盘上当前。我没改过的行用盘上更新的，我删掉的才删；别人新加的留着，
+     别人删掉的我不复活（SW-20 的交错尺子把这三条各钉了一遍）。
+     primary_id 仍是单个标量，按调用方落（多进程同时改主 Bot 不在这一片的范围里）。 */
   function saveBots(data) {
-    atomicWrite(BOTS_PATH, JSON.stringify(data, null, 2));
+    withBotsLock(() => atomicWrite(BOTS_PATH, JSON.stringify(mergeBotsAgainstDisk(data), null, 2)));
+  }
+
+  /* 合并要读盘，读盘和写盘之间不能被别人插进来 —— 否则两个进程读到同一份基底，
+     各自把自己那份写回去，合并照样丢。锁是 mkdir 原子创建，拿不到就短轮询；
+     持有者进程已死或锁超过 5s 视为陈旧并接管。超时后不阻塞用户：退回无锁写。
+     拿不到锁的**原因**决定下一步：只有 EEXIST（真有人持着）才等，其它失败
+     （面目录还不存在、只读盘、权限）直接退回无锁写 —— 第一版在这里写了个
+     `catch { continue; }`，把「data/desktop 目录还没建」的首次落盘变成 100% CPU
+     的死循环，由 SW-18 那把带墙钟的尺子抓出来。 */
+  function withBotsLock(fn) {
+    const lock = BOTS_PATH + ".lock";
+    const deadline = Date.now() + 5000;
+    let held = false;
+    try { fs.mkdirSync(path.dirname(BOTS_PATH), { recursive: true }); } catch (_) { /* 建不出来就让写盘自己报错 */ }
+    while (!held) {
+      let lockErr = null;
+      try { fs.mkdirSync(lock); held = true; } catch (err) { lockErr = err; }
+      if (held) { try { fs.writeFileSync(path.join(lock, "pid"), String(process.pid)); } catch (_) { /* 只是取证信息 */ } break; }
+      if (!lockErr || lockErr.code !== "EEXIST") break;
+      let ageMs = Infinity, owner = 0;
+      try {
+        ageMs = Date.now() - fs.statSync(lock).mtimeMs;
+        owner = Number(fs.readFileSync(path.join(lock, "pid"), "utf8")) || 0;
+      } catch (_) { /* 锁刚被释放：按陈旧算，下一轮重试 mkdir */ }
+      let ownerAlive = true;
+      if (owner && owner !== process.pid) { try { process.kill(owner, 0); } catch (_) { ownerAlive = false; } }
+      if (ageMs > 5000 || !ownerAlive) { try { fs.rmSync(lock, { recursive: true, force: true }); } catch (_) { /* 别人先接管了 */ } continue; }
+      if (Date.now() > deadline) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+    try { return fn(); } finally {
+      if (held) { try { fs.rmSync(lock, { recursive: true, force: true }); } catch (_) { /* 已被陈旧接管清掉 */ } }
+    }
+  }
+
+  function mergeBotsAgainstDisk(data) {
+    if (!data || !Array.isArray(data.bots)) return data;
+    let disk = null;
+    try { disk = JSON.parse(fs.readFileSync(BOTS_PATH, "utf8")); } catch (_) { return data; }
+    if (!disk || !Array.isArray(disk.bots)) return data;
+    // 基底 = 本次 loadBots 读到的那份。null 不是「没有基底」而是「我读的时候盘上
+    // 没有可解析的一份」——那时任何一行都不可能是我删的，全部按别人的新增留着。
+    let baseBots = new Map();
+    if (botsBaseText) {
+      let base = null;
+      try { base = JSON.parse(botsBaseText); } catch (_) { return data; }
+      baseBots = new Map(((base && base.bots) || []).filter((b) => b && b.id).map((b) => [b.id, b]));
+    }
+    const mine = new Map(data.bots.filter((b) => b && b.id).map((b) => [b.id, b]));
+    const merged = [];
+    const seen = new Set();
+    for (const d of disk.bots) {
+      if (!d || !d.id) continue;
+      seen.add(d.id);
+      const m = mine.get(d.id);
+      if (!m) {
+        // 我没写回去：基底里有 = 我删的；基底里没有 = 别的进程刚加的，不归我删。
+        if (!baseBots.has(d.id)) merged.push(d);
+        continue;
+      }
+      const b = baseBots.get(d.id);
+      merged.push(b && JSON.stringify(b) === JSON.stringify(m) ? d : m);
+    }
+    for (const m of data.bots) {
+      if (!m || !m.id || seen.has(m.id)) continue;
+      /* 我这轮带了这行、盘上却没有：基底里有 = 别的写者把它删了，我不许把它复活
+         （SW-20 的确定性交错实测到「A 删掉的 Bot 被 B 紧接着的整份写带回侧栏」）；
+         基底里没有 = 我这轮新建的，留着。 */
+      if (baseBots.has(m.id)) continue;
+      merged.push(m);
+    }
+    return { ...data, bots: merged };
   }
 
   /* §2.2 tags: comma-separated in the product phrase, stored as a small array.

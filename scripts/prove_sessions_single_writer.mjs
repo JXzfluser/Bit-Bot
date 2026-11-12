@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 "use strict";
-/* KP-09 片1..3：事件面只剩一个写者、读写同源，且多进程写同一张面不许互相抹掉。
+/* KP-09 片1..4：事件面只剩一个写者、读写同源，且多进程写同一张面不许互相抹掉。
  *
  * 先有的红（修复前实测，临时 dataRoot、真代码路径，见 §8.123）：
  *   EVENT_ONLY 下删 Bot 的级联自己 readJson + atomicWrite sessions.json，
@@ -37,8 +37,15 @@
  *          entity_removed 把**别的进程刚写的行**从唯一真源删掉，子进程零报错、fold 少 1~6 行
  *   SW-11 同一毫秒里 3 个进程各写 bots.json：不许有 ENOENT rename（tmp 名带 pid 之前的实测）
  *   SW-12 残账，不判绿红：3 进程各建 3 个群，事件 fold 里剩几个（store 面仍是跨进程多写者）
+ *   SW-15..17 三个真进程同时写 bots.json：谁的 Bot 都不许从盘上消失、谁的建群都不许被打死、
+ *     事件里折出来的群数必须等于进程数（KP-09 片4：bots 面的读-改-写 + 跨进程锁）
  *   SW-13 tmp 命名静态账（棘轮，只许降）+ 旧写法夹具反向对照
  *   SW-14 开库并发四件事静态账（busy 先于 WAL / IMMEDIATE / 无 deferred / 撞车重读版本）+ 旧顺序夹具
+ *   SW-18 全新裸目录（dataRoot 和 data/desktop 都不存在）首次建 Bot + 建群：20s 墙钟内必须返回
+ *     —— 本片新加的跨进程锁第一版在这里死循环（mkdir 的 ENOENT 被当成「有人持锁」），修完 6ms 返回
+ *   SW-19 自旋出口静态四判据（分辨 EEXIST / 无裸 catch{continue} / 先建面目录 / 有 deadline）+ 踩坑版夹具反向对照
+ *   SW-20 把交错钉死在 load 与 save 之间的三方合并尺子：别人删的不复活 / 我的改名不被盖回 /
+ *          别人新加的不抹掉；反向夹具 = 同一份模块摘掉合并那层，必须判红 3 条
  *
  * 全部跑在临时目录，绝不碰仓库里的 data/。
  */
@@ -64,6 +71,8 @@ let swWriters = [];
 let swStoreWriters = 0;
 let swReaders = 0;
 let xpRows = 0, xpPrefixes = 0, xpStoreRooms = 0, xpTmpSites = 0, xpTmpBad = -1, xpOrderBad = -1, xpKidsOk = false;
+let xpBotsLost = -1, xpBotsOk = -1, xpBotsRooms = -1, xpBotsSynced = false;
+let xpSpinMs = -1, xpSpinOk = false, xpSpinBad = -1, xpSw20 = -1, xpSw20Neg = -1;
 const ok = (id, msg) => { PASS++; console.log(`  ✓ ${id} ${msg}`); };
 const bad = (id, msg, extra) => { FAIL++; console.log(`  ✗ ${id} ${msg}${extra ? " — " + (typeof extra === "string" ? extra : JSON.stringify(extra)) : ""}`); };
 
@@ -300,6 +309,152 @@ function xpChildSource() {
     "}catch(e){out.errs.push(String((e&&e.message)||e).slice(0,200));}",
     "process.stdout.write(JSON.stringify(out)+'\\n');",
   ].join("\n");
+}
+
+/* KP-09 片4 的子进程：先和另外两个进程对齐到同一时刻，再各写 K 轮 Bot，
+   写完再对齐一次，然后用**自己刚建的**两个 Bot 建群。两次 barrier 把
+   「读到同一份基底 → 各自整份写回」这个窗口按到最宽，不靠交错运气。 */
+function xpBotsChildSource() {
+  const q = JSON.stringify(REPO);
+  return [
+    '"use strict";',
+    "const fs=require('fs'), path=require('path');",
+    "const dataRoot=process.argv[2], N=Number(process.argv[3]||3), K=Number(process.argv[4]||6);",
+    "process.env.BITBOT_EVENT_ONLY='1';",
+    `const R=${q};`,
+    "const {getSessionStore}=require(path.join(R,'hosts/desktop/sessions.js'));",
+    "const {createProductSurface}=require(path.join(R,'hosts/desktop/product_surface.js'));",
+    "const tag='kid'+process.pid;",
+    "const out={tag,botIds:[],rooms:[],fails:[],errs:[],sync:true};",
+    "const bar=path.join(dataRoot,'bar-'+N);",
+    "const sync=(n,ph)=>{fs.mkdirSync(bar,{recursive:true});fs.writeFileSync(path.join(bar,tag+'.'+ph),'1');",
+    "  const cnt=()=>fs.readdirSync(bar).filter((x)=>String(x).endsWith('.'+ph)).length;",
+    "  const dl=Date.now()+60000;",
+    "  while(cnt()<n&&Date.now()<dl){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);}",
+    "  out.sync=out.sync&&cnt()>=n;};",
+    "try{",
+    "  const store=getSessionStore(dataRoot,{dataRoot});",
+    "  const s=createProductSurface(dataRoot,{dataRoot,sessions:store});",
+    "  sync(N,'go');",
+    "  let b1=null,b2=null;",
+    "  for(let k=0;k<K;k++){",
+    "    b1=s.botsCreate({name:tag+'-甲'+k,model:'m'}).bot;",
+    "    b2=s.botsCreate({name:tag+'-乙'+k,model:'m'}).bot;",
+    "    out.botIds.push(b1.id,b2.id);",
+    "  }",
+    "  sync(N,'made');",
+    "  const r=s.roomCreate([b1.id,b2.id].join(','),tag+'-群');",
+    "  const id=(r&&r.room&&r.room.id)||(r&&r.id);",
+    "  if(id){out.rooms.push(id);}else{out.fails.push(String((r&&r.error)||'?')+':'+JSON.stringify((r&&r.names_not_found)||[]).slice(0,120));}",
+    "}catch(e){out.errs.push(String((e&&e.message)||e).slice(0,200));}",
+    "process.stdout.write(JSON.stringify(out)+'\\n');",
+  ].join("\n");
+}
+
+/**
+ * 片4 的锁自己踩过的坑（本轮实测）：withBotsLock 的 mkdir 失败原因不分辨，
+ * 「面目录 data/desktop 还不存在」这种 ENOENT 也被当成「别人持着锁」，于是
+ * statSync 又抛 → continue → 100% CPU 死循环，botsCreate 永不返回。
+ * HEAD 没锁所以没事，加了锁就把首次落盘打死 —— 这把尺子先红过一次才立起来。
+ * 子进程跑真模块、真首次落盘，父进程只给它墙钟：卡死必须判红，不许拖死门。
+ */
+function sw18ChildSource() {
+  const q = JSON.stringify(REPO);
+  return [
+    '"use strict";',
+    "const fs=require('fs'), path=require('path');",
+    "const dataRoot=process.argv[2];",
+    "process.env.BITBOT_EVENT_ONLY='1';",
+    `const R=${q};`,
+    "const {createProductSurface}=require(path.join(R,'hosts/desktop/product_surface.js'));",
+    "const t0=Date.now();",
+    "const out={ok:false,ms:0,onDisk:0,err:''};",
+    "try{",
+    "  const s=createProductSurface(R,{dataRoot});",
+    "  const a=s.botsCreate({name:'裸目录甲',model:'m'}).bot;",
+    "  const b=s.botsCreate({name:'裸目录乙',model:'m'}).bot;",
+    "  const r=s.roomCreate(a.id+','+b.id,'裸目录群');",
+    "  out.ok=!!((r&&r.room&&r.room.id)||(r&&r.id));",
+    "  out.onDisk=(JSON.parse(fs.readFileSync(path.join(dataRoot,'desktop','bots.json'),'utf8')).bots||[]).length;",
+    "  out.ms=Date.now()-t0;",
+    "}catch(e){out.err=String((e&&e.message)||e).slice(0,160);out.ms=Date.now()-t0;}",
+    "process.stdout.write(JSON.stringify(out)+'\\n');",
+  ].join("\n");
+}
+
+/* SW-20 的确定性交错：把「别的写者」正好钉在我的 load 和 save 之间。
+   SW-15..17 撞的是跨进程的随机窗口，这条不用撞运气 —— 拦住 B 读基底的那第一口
+   readFileSync(BOTS_PATH)，在同一刻用 A 的实例做三件事：删掉一个两边都认得的 Bot、
+   把另一个改名、再新建一个，然后才让 B 把自己那份写回去。
+   把合并摘掉的那份代码上实测三条全红（§8.127④：连修好的第一版也只挡住两条，
+   「别人删的被我复活」是这把尺子自己量出来的第三个缺口）。 */
+function sw20ChildSource() {
+  return [
+    '"use strict";',
+    "const fs=require('fs'), path=require('path');",
+    "const dataRoot=process.argv[2], R=process.argv[3];",
+    "delete process.env.BITBOT_EVENT_ONLY;",
+    "const BOTS=path.join(dataRoot,'desktop','bots.json');",
+    "const {createProductSurface}=require(path.join(R,'hosts/desktop/product_surface.js'));",
+    "const a=createProductSurface(R,{dataRoot});",
+    "const b=createProductSurface(R,{dataRoot});",
+    "const bx=a.botsCreate({name:'甲一',model:'m'}).bot;",
+    "const by=a.botsCreate({name:'共同的',model:'m'}).bot;",
+    "b.botsCreate({name:'乙零',model:'m'});",
+    "let armed=true;",
+    "const orig=fs.readFileSync;",
+    "fs.readFileSync=function(p,...rest){",
+    "  const out=orig.call(fs,p,...rest);",
+    "  if(armed&&String(p)===BOTS){armed=false;a.botsDelete(by.id,'yes');a.botsUpdate({bot_id:bx.id,name:'甲改过名的'});a.botsCreate({name:'甲插进来的',model:'m'});}",
+    "  return out;",
+    "};",
+    "const cz=b.botsCreate({name:'乙一',model:'m'}).bot;",
+    "fs.readFileSync=orig;",
+    "const rows=JSON.parse(orig.call(fs,BOTS,'utf8')).bots||[];",
+    "const has=(id)=>rows.some((x)=>x.id===id);",
+    "const nameOf=(id)=>{const r=rows.find((x)=>x.id===id);return r?r.name:'(没了)';};",
+    "const v=[];",
+    "if(has(by.id))v.push('A 删掉的 Bot 被 B 的写复活了');",
+    "if(nameOf(bx.id)!=='甲改过名的')v.push('A 的改名被 B 盖回：'+nameOf(bx.id));",
+    "if(!rows.some((x)=>x.name==='甲插进来的'))v.push('A 在交错窗口里新建的 Bot 被 B 整份写抹掉了');",
+    "if(!has(cz.id))v.push('B 自己新建的 Bot 也没了');",
+    "process.stdout.write(JSON.stringify({rows:rows.length,v})+'\\n');",
+  ].join("\n");
+}
+
+/* 反向对照的夹具：同一份 product_surface，只把 saveBots 里那层合并摘掉（= 修复前的
+   「整份写」形状），其余文件用符号链接指回仓库。这条夹具不成立，SW-20 就是假绿。 */
+function mergeDisabledFarm() {
+  const farm = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-nomerge-"));
+  const desk = path.join(farm, "hosts", "desktop");
+  fs.mkdirSync(desk, { recursive: true });
+  fs.symlinkSync(path.join(REPO, "hosts", "shared"), path.join(farm, "hosts", "shared"));
+  for (const f of fs.readdirSync(path.join(REPO, "hosts", "desktop"))) {
+    if (f === "product_surface.js") continue;
+    fs.symlinkSync(path.join(REPO, "hosts", "desktop", f), path.join(desk, f));
+  }
+  const src = fs.readFileSync(path.join(REPO, "hosts/desktop/product_surface.js"), "utf8");
+  const patched = src.replace(
+    "atomicWrite(BOTS_PATH, JSON.stringify(mergeBotsAgainstDisk(data), null, 2))",
+    "atomicWrite(BOTS_PATH, JSON.stringify(data, null, 2))");
+  if (patched === src) return null;
+  fs.writeFileSync(path.join(desk, "product_surface.js"), patched);
+  return farm;
+}
+
+/* 静态账：锁的自旋必须有出口。四条各自可核实 ——
+   ①mkdir 的失败按 err.code 分辨（只有 EEXIST 才等）；②没有裸 catch{continue} 的空转口；
+   ③建锁前先保证面目录在；④等待路径上有 deadline 出口。 */
+function spinLoopViolations(text) {
+  const at = text.indexOf("function withBotsLock");
+  if (at < 0) return ["找不到 withBotsLock（尺子失效）"];
+  const body = text.slice(at, at + 2600);
+  const v = [];
+  if (!/EEXIST/.test(body)) v.push("mkdir 失败没分辨原因：不是「有人持锁」也照样进等待路径");
+  if (/catch\s*\([^)]*\)\s*\{\s*continue\s*;?\s*\}/.test(body)) v.push("有 catch{continue} 的裸空转口");
+  if (!/mkdirSync\(\s*path\.dirname\(/.test(body)) v.push("建锁前没保证面目录存在（首次落盘会 ENOENT）");
+  if (!/Date\.now\(\)\s*>\s*deadline/.test(body)) v.push("等待路径没有 deadline 出口（拿不到锁就永远等）");
+  return v;
 }
 
 function spawnXpChild(childPath, dataRoot, n) {
@@ -575,9 +730,11 @@ async function main() {
     // store 形状的面（rooms/sessions）跨进程还是多写者：这一条只报数，不判绿也不判红，
     // 因为它测的是「本轮的交错运气」，而 T1-06 的边界目前只收到进程内（见 §8.125⑤）。
     console.log(`  · SW-12 残账（本轮实测）：${KID} 进程各建 3 个群，事件 fold 里 ${xpStoreRooms}/9 —— ` +
-      "少于 9 就是跨进程的 store 面丢行：jsonl 面（审批）按行派事件所以精确（上面 36/36），" +
-      "store 面按 prev→next 整份换，谁的 prev 陈旧谁就把别人刚建的群从自己那次 diff 里漏掉。" +
-      "修前同形状实测过 6/9、7/9。T1-06「一张面一个写者」今天成立的范围是**一个进程内**，跨进程的 store 面仍是多写者。");
+      "少的那几行不是 diff 删掉的（取证：事件库里 entity_removed 一条都没有），而是那几家进程的 botsCreate " +
+      "先把别人写的 Bot 整份覆盖掉，紧接着自己的 roomCreate 就报 names_not_found，群根本没建成。" +
+      "那条已从写侧收口（SW-15..17），收口后连测 5 轮都是 9/9 —— 但这把尺子的交错窗口没测到 store 面的丢行，" +
+      "不等于它不在：默认（非 EVENT_ONLY）模式下会话/群这两张面仍是整份文件写，" +
+      "两个进程读到同一份基底时谁后写谁就把别人刚建的那行抹掉，跨进程还是多写者。");
 
     /* 静态账：两处尺子的反向对照在夹具里真跑红，才允许这两条算绿 */
     const hostTexts = listHostJs().map((rel) => ({ name: rel, text: fs.readFileSync(path.join(REPO, rel), "utf8") }));
@@ -607,10 +764,147 @@ async function main() {
     if (orderRepo.length === 0 && orderOld.length >= 3)
       ok("SW-14", `开库的并发四件事都在（busy 先于 WAL / IMMEDIATE / 无 deferred BEGIN / 撞车重读版本），旧顺序夹具被判 ${orderOld.length} 条违规`);
     else bad("SW-14", "开库尺子失效或仓库里还缺并发该有的那几件事", { repo: orderRepo, oldFixture: orderOld.length });
+
+    /* ===== SW-15..17：bots.json 跨进程读-改-写（KP-09 片4） =====
+       bots 面不在事件词表里（docs/events.md §7），它一度是「最后写者赢」。修前实测
+       （同一把尺子、4 轮）：3 进程各写 12 个 Bot，盘上只剩 1 家的，另两家紧接着
+       用自己刚建的 Bot 建群被点名 names_not_found —— 屏幕上「Bot 建好了、群建不起来」。 */
+    const BKID = 3, BROUND = 6;
+    const botsRoot = freshRoot("botsxp");
+    const botsChildPath = path.join(botsRoot.root, "xp-bots-child.cjs");
+    fs.writeFileSync(botsChildPath, xpBotsChildSource());
+    const botsSpawn = () => new Promise((res) => {
+      const p = spawn(process.execPath, [botsChildPath, botsRoot.dataRoot, String(BKID), String(BROUND)],
+        { stdio: ["ignore", "pipe", "pipe"] });
+      let buf = "", eb = "";
+      p.stdout.on("data", (c) => { buf += String(c); });
+      p.stderr.on("data", (c) => { eb += String(c); });
+      p.on("error", (e) => res({ code: -1, out: "", err: String((e && e.message) || e) }));
+      p.on("close", (code) => res({ code, out: buf, err: eb }));
+    });
+    const brs = await Promise.all(Array.from({ length: BKID }, botsSpawn));
+    closeMirrors();
+    const bkids = brs.map((r) => {
+      try { return JSON.parse(String(r.out).trim()); }
+      catch { return { tag: "kid?" + r.code, botIds: [], rooms: [], fails: [], errs: ["子进程没吐 JSON（exit=" + r.code + "）：" + String(r.err).slice(0, 120)], sync: false }; }
+    });
+    const bErrs = bkids.reduce((a, k) => a.concat(k.errs || []), []);
+    let bDisk = new Set();
+    try {
+      bDisk = new Set(((JSON.parse(fs.readFileSync(path.join(botsRoot.dataRoot, "desktop", "bots.json"), "utf8")).bots) || [])
+        .map((b) => b && b.id).filter(Boolean));
+    } catch (_) { /* 读不出来按 0 个算，让 SW-15 直接判红 */ }
+    const bWanted = bkids.flatMap((k) => k.botIds || []);
+    xpBotsSynced = bkids.every((k) => k.sync === true);
+    xpBotsLost = bWanted.filter((id) => !bDisk.has(id)).length;
+    xpBotsOk = bkids.filter((k) => (k.rooms || []).length === 1).length;
+    const bfh = fold(botsRoot.dataRoot);
+    xpBotsRooms = ((bfh.rooms && bfh.rooms.rooms) || []).length;
+    if (xpBotsSynced && bErrs.length === 0 && xpBotsLost === 0 && bWanted.length === BROUND * 2 * BKID)
+      ok("SW-15", `${BKID} 个真进程各写 ${BROUND * 2} 个 Bot（两次 barrier 对齐读写窗口）：${bWanted.length} 个 Bot 在盘上一个没丢`);
+    else bad("SW-15", "跨进程写 bots.json 还有 Bot 从盘上消失", { synced: xpBotsSynced, lost: xpBotsLost, want: bWanted.length, onDisk: bDisk.size, errs: bErrs.slice(0, 2) });
+
+    if (xpBotsOk === BKID)
+      ok("SW-16", `每个进程随后用自己刚建的 Bot 建群，${xpBotsOk}/${BKID} 全部成功（修前 4 轮实测只有 1~2 家成得了）`);
+    else bad("SW-16", "有进程的建群被别人的整份写覆盖打死（names_not_found）",
+      { ok: xpBotsOk, expect: BKID, fails: bkids.map((k) => (k.fails || []).join(";")).filter(Boolean).slice(0, 2) });
+
+    if (xpBotsRooms === BKID)
+      ok("SW-17", `事件里折回 ${xpBotsRooms}/${BKID} 个群：Bot 面（文件真源）不再把群面（事件真源）的行拽掉`);
+    else bad("SW-17", "群面折回来的群数少于进程数", { rooms: xpBotsRooms, expect: BKID });
+
+    /* ===== SW-18/19：锁自己别把首次落盘打死（本片踩过的坑） =====
+       bots 面的锁是新加的，加完的第一个动作就是它把 `data/desktop` 还不存在的
+       首次写盘变成死循环（本轮实测：同一份 standalone 探针在修好的锁上 6ms 返回，
+       在踩坑的锁上 30s 零输出被墙钟打死）。SW-18 是真模块 + 真裸目录 + 墙钟，
+       SW-19 是那 4 条静态判据，且必须点中「踩坑版」那 15 行。 */
+    const SPIN_LIMIT_MS = 20000;
+    const bareBase = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-bare-"));
+    const bareData = path.join(bareBase, "nope", "data");   // dataRoot 和面目录都不存在
+    const s18Path = path.join(bareBase, "sw18-child.cjs");
+    fs.writeFileSync(s18Path, sw18ChildSource());
+    const s18 = await new Promise((res) => {
+      const p = spawn(process.execPath, [s18Path, bareData], { stdio: ["ignore", "pipe", "pipe"] });
+      let buf = "", eb = "";
+      p.stdout.on("data", (c) => { buf += String(c); });
+      p.stderr.on("data", (c) => { eb += String(c); });
+      const timer = setTimeout(() => {
+        try { p.kill("SIGKILL"); } catch (_) { /* 已经没了 */ }
+        res({ hang: true, out: buf, err: eb });
+      }, SPIN_LIMIT_MS);
+      p.on("error", (e) => { clearTimeout(timer); res({ hang: false, err: String((e && e.message) || e), out: "" }); });
+      p.on("close", (code) => { clearTimeout(timer); res({ hang: false, code, out: buf, err: eb }); });
+    });
+    let s18j = null;
+    try { s18j = JSON.parse(String(s18.out).trim()); } catch (_) { /* 没吐 JSON 按卡死算 */ }
+    xpSpinMs = s18j ? Number(s18j.ms) : -1;
+    xpSpinOk = !s18.hang && !!s18j && s18j.ok === true && s18j.onDisk === 3 && !s18j.err;
+    if (xpSpinOk && xpSpinMs >= 0 && xpSpinMs < 5000)
+      ok("SW-18", `全新裸目录（data/desktop 还不存在）里首次建 2 个 Bot + 1 个群：${xpSpinMs}ms 返回、盘上 ${s18j.onDisk} 行（我建的 2 个 + 内建 agent-bit）—— 锁没把首次落盘打死`);
+    else bad("SW-18", s18.hang ? "首次落盘在 " + SPIN_LIMIT_MS + "ms 墙钟里没返回（自旋没有出口）" : "首次落盘结果不对",
+      { hang: !!s18.hang, json: s18j, ms: xpSpinMs, err: String(s18.err || "").slice(0, 160) });
+    try { fs.rmSync(bareBase, { recursive: true, force: true }); } catch (_) { /* 临时目录清不掉不影响判定 */ }
+
+    const psText = fs.readFileSync(path.join(REPO, "hosts/desktop/product_surface.js"), "utf8");
+    const spinRepo = spinLoopViolations(psText);
+    const spinOld = spinLoopViolations([
+      "  function withBotsLock(fn) {",
+      "    const lock = BOTS_PATH + \".lock\";",
+      "    const deadline = Date.now() + 5000;",
+      "    let held = false;",
+      "    while (!held) {",
+      "      try { fs.mkdirSync(lock); held = true; } catch (_) { /* 已有人持锁，下面判断能不能接管 */ }",
+      "      if (held) { fs.writeFileSync(path.join(lock, \"pid\"), String(process.pid)); break; }",
+      "      let ageMs = Infinity, owner = 0;",
+      "      try { ageMs = Date.now() - fs.statSync(lock).mtimeMs; } catch (_) { continue; }",
+      "      if (ageMs > 5000) { fs.rmSync(lock, { recursive: true, force: true }); }",
+      "      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);",
+      "    }",
+      "    try { return fn(); } finally { if (held) fs.rmSync(lock, { recursive: true, force: true }); }",
+      "  }",
+    ].join("\n"));
+    xpSpinBad = spinRepo.length;
+    if (spinRepo.length === 0 && spinOld.length >= 2)
+      ok("SW-19", `自旋出口的四条静态判据在仓库里 0 违规，而刚踩过坑的那 15 行被判 ${spinOld.length} 条（${spinOld[0]}）`);
+    else bad("SW-19", "空转尺子失效或仓库里还有没出口的自旋", { repo: spinRepo, oldFixture: spinOld });
+
+    /* ===== SW-20：合并的三条语义，用一把不撞运气的交错尺子 =====
+       片4 第一版的合并挡住了「别人新加的」和「我自己删的」，量不到第三种：
+       别的写者删掉的那一行，我这份里还带着 —— 写回去就把它复活。这条尺子把
+       交错钉死在 load 与 save 之间，修第一版当场红在复活那条（§8.127④）。 */
+    {
+      const sw20Base = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-sw20-"));
+      const sw20Path = path.join(sw20Base, "sw20-child.cjs");
+      fs.writeFileSync(sw20Path, sw20ChildSource());
+      const runSw20 = (repoRoot) => new Promise((res) => {
+        const dRoot = fs.mkdtempSync(path.join(sw20Base, "d-"));
+        fs.mkdirSync(path.join(dRoot, "desktop"), { recursive: true });
+        const p = spawn(process.execPath, [sw20Path, dRoot, repoRoot], { stdio: ["ignore", "pipe", "pipe"] });
+        let buf = "", eb = "";
+        p.stdout.on("data", (c) => { buf += String(c); });
+        p.stderr.on("data", (c) => { eb += String(c); });
+        const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch (_) { /* 已经没了 */ } }, 30000);
+        p.on("error", (e) => { clearTimeout(timer); res({ out: "", err: String((e && e.message) || e) }); });
+        p.on("close", (code) => { clearTimeout(timer); res({ code, out: buf, err: eb }); });
+      });
+      const sw20Parse = (r) => { try { return JSON.parse(String(r.out).trim()); } catch (_) { return null; } };
+      const real = sw20Parse(await runSw20(REPO));
+      const farm = mergeDisabledFarm();
+      const neg = farm ? sw20Parse(await runSw20(farm)) : null;
+      xpSw20 = real && real.v ? real.v.length : -1;
+      xpSw20Neg = neg && neg.v ? neg.v.length : -1;
+      if (real && real.v && real.v.length === 0 && real.rows === 5 && neg && neg.v && neg.v.length === 3)
+        ok("SW-20", `交错窗口里三条语义全守住（别人删的不复活 / 我的改名不被盖回 / 别人新加的不抹掉，盘上 ${real.rows} 行）；摘掉合并的夹具在同一条尺子上判红 3 条（${neg.v[0]}）`);
+      else bad("SW-20", real && real.v && real.v.length ? "合并的交错语义有缺口" : "交错尺子或反向夹具失效",
+        { real, neg, farmErr: farm ? "" : "夹具建不出来（合并那行不在了）", err: String((real && real.err) || "").slice(0, 160) });
+      if (farm) { try { fs.rmSync(farm, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ } }
+      try { fs.rmSync(sw20Base, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
+    }
+
     delete process.env.BITBOT_EVENT_ONLY;
   }
 
-  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad}`);
+  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad} bots_lost=${xpBotsLost} bots_room_ok=${xpBotsOk} bots_rooms=${xpBotsRooms} spin_ms=${xpSpinMs} spin_bad=${xpSpinBad} sw20=${xpSw20} sw20_neg=${xpSw20Neg}`);
   console.log("prove_sessions_single_writer: PASS=" + PASS + " FAIL=" + FAIL);
   process.exit(FAIL === 0 ? 0 : 1);
 }

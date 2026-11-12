@@ -11314,3 +11314,138 @@ run14 跑在 §8.125 之前，所以那 945 不是当前树的数 —— 下一�
    `systemd_unit_installed alone is insufficient`，它另外要 active）。
 3. macOS 上这份 unit 文件根本没有监督者会跑它 —— 桌面是靠 `main.js:1010` 拉守护兜住的，
    这条 residual 在 mac 上不可能靠 systemd 关掉，界面上不该给「装好 systemd unit 就行」的暗示。
+
+## 8.127 KP-09 片4：别的进程把「我刚建好的 Bot」整份覆盖掉，于是我的群建不起来（SW-15..17 / G-122 片4，2026-11-13）
+
+### ① 先把上一片写错的归因更正过来
+
+§8.125⑤ 和 `SW-12` 那行残账当时说的是「store 面整份写 + 陈旧 prev → 别人刚建的群被 diff 删掉」。
+对同一个残账重做取证（隔离 ROOT，把事件库、`rooms` fold、`bots.json` 三份对齐看）得到的不是这个故事：
+
+- 事件库里 **`entity_removed` 一条都没有** —— 少的那几行不是 diff 派出去的删除；
+- 少的是 `bots.json`：3 个进程各建 Bot，盘上只剩最后一个写者那份；
+- 那几家紧接着用自己的 Bot 建群，在成员解析里被点名（[hosts/desktop/product_surface.js:1969](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1969) 起
+  的 `names_not_found`，[：1990](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1990) 直接 `return {ok:false}`，**不抛错**）——
+  **群根本没建成**。
+
+所以 6/9 是「建群失败」的下游，不是「事件把行删了」。残账的措辞已按这个事实改口
+（[scripts/prove_sessions_single_writer.mjs:670](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L670)）。
+
+### ② 用户看得见的那件事
+
+桌面上开两个窗口（或桌面 + 定时守护，两个进程共用一份 `data/`）：A 建 Bot → 用刚建的 Bot 建群。
+B 在中间写了一次 `bots.json`，A 的 Bot 就不在盘上了；A 的建群返回 `names_not_found`。
+屏幕上留下的是「Bot 建好了」+ 一个建不起来的群，**没有任何失败原因**（`pretend_saved:false`，所以也不装作成功）。
+
+### ③ 落地：`saveBots` 这一个口子改读-改-写三方合并 + 跨进程锁
+
+`bots` 面不在事件词表里（docs/events.md §7 只收 sessions/rooms/approvals），所以这一片的收口手段是文件层的：
+
+- [product_surface.js:204](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L204) `botsBaseText`：
+  `loadBots()`（[：212](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L212)）把**这次交给调用方的那份快照**记下来当基底；
+- [：245](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L245) `saveBots` 成为唯一落盘口：锁内做「读盘 → 合并 → `atomicWrite`」；
+  11 个 `saveBots` 调用点前面都跟着 `loadBots()`，所以单点能覆盖；
+- [：282](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L282) `mergeBotsAgainstDisk` 四条规则：
+  盘上有而 mine 没有 → 基底里也没有 = 别人刚加的，**留着**；基底里有 = 我删的，**才删**；
+  盘上 mine 都有 → 我和基底一模一样（没改）就用**盘上更新的**那份，改过才用我的；
+  mine 里有而盘上没有 → 基底里也没有 = 我这轮新建的，**追加**；基底里有 = 别人删掉的，**不再写回**
+  （第四条是 SW-20 那把交错尺子量出来才补的，见 ⑤）；
+- [：256](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L256) `withBotsLock`：`mkdir` 原子建锁目录 + 里面写 owner pid；
+  拿不到就 20ms 短轮询，**owner 进程已死**（`process.kill(pid,0)`）或锁超过 5s 判陈旧并接管；
+  5s 拿不到则**退回无锁写** —— 宁可冒一次覆盖的险，也不把用户卡住。
+
+基底是 `null`（我第一次读的时候盘上没有可解析的一份）不等于「没有基底」：那时任何一行都不可能是我删的，
+全部按别人的新增留着。这是第一版写错、尺子当场判红的那条（见 ④）。
+
+### ④ 这片自己踩的坑：锁把「首次落盘」打成了死循环（SW-18/19 就是为它立的）
+
+锁合并都写完、SW-15..17 已经绿了，回头跑群失败面那把门（`prove_room_failure_surfaces.mjs`）时它**不返回了**：
+RF1..RF1c 打完就停在那儿，两次都是。对照着跑 HEAD 的 worktree（6ms 跑完）就知道是我这一片带的。
+用一份最小探针（真 `product_surface.js` + 一个 `data/desktop` 还不存在的 dataRoot）复现：
+修后的锁 6ms 返回、**踩坑版 20s 零输出被墙钟打死**（100% CPU）。
+
+原因不在合并，在锁的失败分类：`fs.mkdirSync(lock)` 因为**面目录不存在**抛 ENOENT，
+代码把任何 mkdir 失败都当成「有人持着锁」，于是进 `statSync(lock)` → 同一个 ENOENT 再抛 →
+`catch (_) { continue; }` → 无出口空转。HEAD 没有锁所以永远不会中这一枪；**加了锁才第一次有这一枪**。
+
+改口在 [product_surface.js:256-281](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L256-L281)：
+建锁前先 `mkdirSync(path.dirname(BOTS_PATH), {recursive:true})`；mkdir 的失败**分辨原因**，
+只有 `EEXIST` 才进等待路径，其它失败直接退回无锁写；等待路径上始终有 `deadline` 出口。
+两条新尺子（[prove_sessions_single_writer.mjs:360-405](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L360-L405)）：
+
+- **SW-18** 真模块 + 真裸目录 + **父进程只给墙钟**（20s，到点 `SIGKILL` 判红）：卡死必须让门翻红，
+  不许把门一起拖死 —— 这是这一枪能被自动接住的唯一前提（`freshRoot` 一直先建 `data/desktop`，
+  所以 SW-15..17 那几条对它天然是瞎的）；
+- **SW-19** 静态四判据（分辨 EEXIST / 无裸 `catch{continue}` / 先建面目录 / 有 deadline）：
+  仓库上 0 违规，把**踩坑那 15 行**喂进去必须判 4 条 —— 反向夹具是这一片自己刚写坏过的那版，
+  不是编出来的旧写法。
+
+### ⑤ 尺子：SW-15/16/17 撞运气的两次 barrier + SW-20 把交错钉死在同一刻
+
+`xpBotsChildSource()`（[scripts/prove_sessions_single_writer.mjs:315](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L315)）
+生成一个真 `spawn` 的 CJS 子进程：`BITBOT_EVENT_ONLY=1`、直接 require 仓里的 `sessions.js` / `product_surface.js`、
+`BKID=3` 家在「都读完了」和「都写完了」两道闸上会齐（marker 文件按 **phase 打标签**，`.go` / `.made`，
+否则第二道闸会被第一道的残留瞬间满足 —— 这是这把尺子第一版的假绿口子）。
+
+- **SW-15**：每家 12 个 Bot、共 36 行，盘上一个不许丢；
+- **SW-16**：每家随后用自己刚建的两个 Bot 建群，3/3 家成功；
+- **SW-17**：事件里折回 3/3 个群 —— Bot 面（文件真源）不再把群面（事件真源）的行拽掉。
+
+两个方向都量过，红是真红、绿不是构造出来的：
+
+| | 轮数 | bots_lost | 建群成功家数 |
+|---|---|---|---|
+| 修前（`git worktree` 检出 `b9b4f94`，同一把尺子） | 4 | 6 / 11 / 23 / 24 | 2 / 2 / 1 / 1 |
+| 修后（当前树） | 3 | 0 / 0 / 0 | 3 / 3 / 3 |
+| 修后 N=5 加压 | 1 | 0 | 5 / 5 |
+
+交错尺子 **SW-20**（[scripts/prove_sessions_single_writer.mjs:391](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L391)
+`sw20ChildSource()`）不是撞运气：它拦住 B 读基底的那第一口 `readFileSync(bots.json)`，在同一刻用 A 的实例
+做三件事 —— 删掉一个两边都认得的 Bot、把另一个改名、再新建一个 —— 然后才让 B 把自己那份写回去。
+立它的原因是合并的**第一版只挡住两条**：盘上有而 mine 没有的情形处理了，「mine 里有而盘上没有」却被
+一律当成我的新增追加回去，于是**别的写者删掉的那一行被我复活**（屏幕上就是刚删掉的 Bot 又出现在侧栏）。
+改口在 [product_surface.js:311-318](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L311-L318)：
+基底里有、盘上没了的行不再写回。两个方向都量过 —— 真模块 0 违规，
+把合并那层摘掉的夹具（[：427](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L427) `mergeDisabledFarm()`：
+同一份 `hosts/desktop` 符号链接 + 只改 `saveBots` 一行）在同一条尺子上 **3 条全红**，
+`HEAD`（`b9b4f94` 的 worktree）跑同一条尺子也是 3 条 —— 尺子不恒真才允许绿。
+本轮全绿实测：`prove_sessions_single_writer: PASS=23 FAIL=0`，
+`SW_METRICS mode=prod … xp_store_rooms=9 tmp_bad=0 order_bad=0 bots_lost=0 bots_room_ok=3 bots_rooms=3 spin_ms=6 spin_bad=0 sw20=0 sw20_neg=3`，
+反向对照 `mode=neg pass=8 fail=0`。矩阵侧 G-122 段：`SECTION PASS=12 FAIL=0`，
+新增六条锚点（[scripts/smoke_grok_desktop_parity.sh:5121](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5121) 钉三个数、
+[：5128](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5128) 钉 SW-15/16/17 三条行为、
+[：5135](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5135) 钉 `spin_ms` 落在 0~4999 且 `spin_bad=0`、
+[：5141](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5141) 钉 SW-18/19、
+[：5148](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5148) 钉 `sw20=0` 且 `sw20_neg=3`、
+[：5153](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5153) 钉 SW-20 那条行为），
+`g122_pass` 的下限从 17 提到 23。
+取数那次翻过一次红：`sw20` 用 `grep -o 'sw20=[0-9-][0-9]*'` 再摘一次数字，会把键名里的 **20** 当成值（`sw20=20`），
+现在按整段 token 尾随定位（`sed -n 's/.* sw20=\([0-9-]*\) sw20_neg.*/\1/p'`）—— 键名带数字的 token 不能再拿数字正则二次摘。
+
+### ⑥ 修完之后重新量的那件事（不把「没测到」写成「不在」）
+
+`bots` 面收口后，`SW-12` 那行残账连测 **5 轮都是 9/9**（修前是 9/9、9/9、6/9）。
+这不改变结论：默认（非 EVENT_ONLY）模式下 `rooms.json` / `sessions.json` 仍是整份文件写，
+两个进程读到同一份基底时谁后写谁就把别人刚建的那行抹掉 —— 只是这一把尺子的交错窗口恰好没测到它。
+残账的两处措辞都按这个口径写（[prove_sessions_single_writer.mjs:670](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L670)、
+[smoke_grok_desktop_parity.sh:5192](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5192)），
+下一片要做的是给 store 面补一把和 SW-15 同形状的确定性 barrier，而不是继续用「本轮的交错运气」报数。
+
+### ⑦ 还欠着的（诚实清单）
+
+1. `bots` 面的真源仍是文件，没进事件词表 —— 跨进程靠锁和合并，不是靠事件；
+2. `primary_id` 这类标量仍是最后写者赢；
+3. 锁只护 `bots.json`：`settings.json` / routines 等 `data/` 直写点还没进 actor；
+4. 同一进程里 `product_surface` 仍有两个实例（`main.js` 与 `host_ffi.js` 各建一个），
+   各自一份 `lastTextBySurface` 是第二份 prev 缓存 —— §8.123 那笔债的内存版；
+5. `kill -9` 恢复那一半（T1-06 完成定义的后半句）没动。
+
+### ⑧ 补 §8.126③ 欠的账：G-53「成员列表问答」不是并发污染
+
+run14 那条红在**隔离重跑**里稳定复现（两次独立运行，同一条断言、同一个结果
+`{answeredMembers:false, allNames:false, txt:""}`），所以「矩阵并发污染」这个解释对它不成立。
+测的动作是：在群里发一句**没有 @ 任何人**的话，等 200s 看有没有新的 `bot_reply`（
+[scripts/e2e_desktop_user_journeys.mjs](file:///Users/zfl/Downloads/bitbot/scripts/e2e_desktop_user_journeys.mjs) 的成员列表问答那一步）——
+今天没有任何 responder 开口，所以答案文本是空的、名单自然一个都不在。
+可疑方向是 `mentions_only` 那一路路由（[hosts/shared/host_ffi.js:6930](file:///Users/zfl/Downloads/bitbot/hosts/shared/host_ffi.js#L6930) 起）：
+群消息没人被 @ 时谁该接。修法未定，这条留给下一轮，不和 §8.121 之前那种「归因给环境」混在一起。
