@@ -192,6 +192,18 @@ const surfSrc = fs.readFileSync(path.join(REPO, "hosts/desktop/product_surface.j
   /broadcast\("bitbot:rooms-changed", st\.ok \?/.test(mainSrc)
   ? ok("rooms:list 与 rooms-changed 都带 ok 标志：读不到就说读不到，不报「空目录」")
   : bad("rooms IPC still hides store failures");
+/* KP-09 片8（同一张面只有一种读法 + 坏文件不许演成空面）。两条都是字面判据：
+ * - Bot 详情面板的「群数」以前直读 rooms.json，而 EVENT_ONLY 下那张 JSON 一个字节都
+ *   不再写 —— 实测同一次操作里面持有者数到 1 个群、面板报 0，两个互相矛盾的数字同屏。
+ * - bots.json 撕裂以前走 readJson 的静默回落：loadBots 当「一个 Bot 都没有」，从内建
+ *   Bot 起步并紧接着 saveBots 把坏字节整份覆盖掉（证据没了，屏上只说 bot_not_found）。 */
+!/readJson\((ROOMS_PATH|BOTS_PATH)/.test(surfSrc) && /const roomsFace = loadRooms\(\);/.test(surfSrc)
+  ? ok("rooms 面只有一种读法：Bot 详情走面持有者（EVENT_ONLY 下不再有陈旧副本同屏）")
+  : bad("some consumer still reads rooms.json directly (stale copy under EVENT_ONLY)");
+/function readFaceJson\(/.test(surfSrc) && /readFaceJson\(BOTS_PATH, "bots", null\)/.test(surfSrc) &&
+  /function quarantineFaceFile\(/.test(surfSrc) && /fs\.rmSync\(tmp, \{ force: true \}\)/.test(surfSrc)
+  ? ok("bots 面坏文件先隔离（字节留住 + 说一句）再起步；写失败的 tmp 不许留在盘上")
+  : bad("bots face still treats a torn bots.json as an empty face");
 /if \(res && res\.ok === false\) return null;/.test(html) &&
   /if \(entries === null\)/.test(html) && /roomTranscriptReadFail/.test(html) &&
   /room-list-readfail/.test(html) && /roomListReadFail/.test(html)

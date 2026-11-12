@@ -11678,10 +11678,17 @@ A 刚追加的那条消息被吞、而 A 刚删掉的那条会话被 B 的陈旧
 
 ### ⑤ 还欠着的（诚实清单）
 
-1. 就地写只收了会话面这一处：`readJson` 的 `catch { return fallback }` 在别的文件上仍是「坏文件当空面」，
-   而且那些面的坏文件同样没有证据留存这一步 —— 之所以先收会话面，因为只有它把「读不出来」直接变成用户的历史没了；
-2. `rooms/<id>.json` 这类每群一份的 transcript 文件没有证据留存，坏了就是空群；
-3. EVENT_ONLY 下这张面的真源是事件库，撕裂的账在库那侧（WAL），本片的尺子只覆盖默认模式；
+1. **群面 / Bot 面的坏文件仍是「静默当空面」**，但两半的账不一样（本轮实测，写在这里是为了下一片接得住）：
+   `bots.json` 撕裂成半截（1251→625 字节）后 `botDetail` 回的是 **`ok:false, error:"bot_not_found"`**
+   —— 侧栏不只是空，是把一个真存在的 Bot 判成「没有这个 Bot」；stderr 0 行、没有证据文件，
+   紧接着一次 `botsCreate` 拿到 `ok:true` 并把坏字节销毁（653 字节的合法新面，原字节找不回）——
+   **会话面片7 修掉的两件事，Bot 面两件都还在**；
+2. `rooms.json` 撕裂（2764 字节那份）后 `loadRooms` 静默回 **0 个群 / 0 条 transcript**（那 11 条群里的话一起不见了；
+   每个群的 transcript 就存在 `rooms.json` 里，**没有** `rooms/<id>.json` 那种每群一份的文件 —— 我上一版把它写错了），
+   但写侧已经 fail loud：`roomCreate` 抛 `rooms_store_unreadable:rooms_json_parse_failed`，
+   于是旧字节和那句「第 0 句」都还在盘上 —— 群面缺的只是**读侧那一句 + 隔离**，不是覆盖保护；
+3. EVENT_ONLY 下这两张面的真源是事件库，本片的尺子只覆盖默认模式（隔离也必须只在默认模式下做，
+   否则会动到 EO-05 那条「遗留 rooms.json 不许污染事件真源」的夹具）；
 4. 注入是「只写一半再抛」，没量真磁盘满（要填满卷，本机不做）；
 5. §8.129⑥ 第 1..5 条（行级合并不到字段、标量最后写者赢、bots 面文件真源、同进程两份 `product_surface`、两份 `withFaceLock`）未变；
 6. 真 app 门（G-21 / G-119）本轮没跑，全量矩阵仍待授权。
@@ -11690,3 +11697,78 @@ A 刚追加的那条消息被吞、而 A 刚删掉的那条会话被 B 的陈旧
 不再出现「打开来一个会话都没有、历史静默清零」；万一那张面已经坏了（本机修之前就撕裂过的用户会撞上），
 现在会**在屏幕上说一句**并把原始字节改名留在旁边（`sessions.json.corrupt-<时刻>`），
 下一次发消息也不会把那份证据覆盖掉 —— 手工救得回来了；崩在写与改名之间的半截 tmp 也会被清掉，不在数据目录里堆垃圾。
+
+## 8.131 KP-09 片8：半截的 bots.json 被读成「没有这个 Bot」、rooms.json 被读成「你没有群」，坏字节又被紧接着那一次写盖掉（SW-25/SW-26/SW-27 / G-122 片8，2026-11-13）
+
+§8.130⑤ 第 1、2 条到这里收。片7 修的是会话面，同一把尺子搬到另外两张 store 形状的面上一量，形状逐字相同、
+但 Bot 面更糟一档：它不只是把历史演成空面，还把一个**真存在的 Bot** 判成 `bot_not_found`。
+
+### ① 先量，再改（都在临时 dataRoot，没碰用户数据）
+
+- **Bot 面**：`bots.json` 逐字截半（1251→625 字节）后喂给真 `product_surface` —— `list()` 只剩内建 Bot，
+  `botDetail(b1.id)` 回 **`ok:false, error:"bot_not_found"`**（错误的诊断，不是降级），stderr **0 行**、盘上没有证据文件；
+  紧接着一次 `botsCreate` 拿到 **`ok:true`**，落盘的是 653 字节的合法新面 —— 那 625 字节里那些 Bot **原字节找不回**。
+  片7 会话面修掉的两件事（读回来当空面 / 下一次写销毁证据），Bot 面**两件都还在**。
+- **群面**：`rooms.json` 截半（2764 字节那份）后 `loadRooms` 静默回 **0 个群 / 0 条 transcript**（那 11 条群里的话一起不见了）。
+  写侧确实早已 fail loud —— `roomCreate` 抛 `rooms_store_unreadable:rooms_json_parse_failed`，坏字节与那句「第 0 句」都还在原路径。
+  所以群面缺的只是**读侧那一句**：`loadRooms` 的其它消费者（定时任务读的成稿回执、host 交接）拿到的是空面而不是「我读不到」，
+  于是邮件正文把「我读不到」写成「本群暂无成稿」。
+- **同一片里第三件实测到的事**（不是坏文件，是同屏两个数）：Bot 详情面板的「群数」以前直读 `rooms.json`。
+  EVENT_ONLY 下盘上根本没有那份文件 —— 实测面持有者数到 **1** 个群、面板 `rooms_total` 报 **0**、`rooms.json 存在=false`。
+  这正是「同屏两个来源的数字互相矛盾」那条老规矩撞上的形状。
+
+### ② 两面不对称，所以改法不对称（这里记的是**为什么没照抄**）
+
+- Bot 面两半都缺 → 全套搬过来：`atomicWrite` 写失败先清 tmp 再把错**原样抛出去**
+  （[hosts/desktop/product_surface.js:131](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L131)；吞掉就是拿着 ok 的调用方 + 盘上的坏面），
+  读侧换成 `readFaceJson`（[:178](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L178)）——
+  文件不在 = 正常首次起步；字节读不到（权限）= 不动证据只回落；parse 不成或 `bots` 不是数组 = 先 `quarantineFaceFile` 留证据再说一句，然后才从内建 Bot 起步。
+- 群面**不做隔离**：`rooms.json` 的写侧契约是 GP-164 P7/P8 钉死的「坏字节留在**原文件**里」，
+  给它改名搬走等于把自己的门踩掉。所以群面只补读侧那一句
+  （[:1846](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1846)：`[rooms] … 读不出群面（rooms_json_parse_failed）——本次按空目录显示，这不是「你没有群」…`），
+  语义仍是空目录 + 写侧照旧抛，一个字节都不动。
+- 「隔离必须在任何一次写**之前**」这条顺序仍是这片的关键：实测崩后第一次 `botsCreate` 之后，
+  `bots.json.corrupt-<UTC>` 的字节仍与坏面**逐字相同**，被隔离掉的那两行也没被下次合并复活。
+- 崩溃留下的孤儿 tmp 在文件面上以前一直没人清：`pruneOrphanFaceTmp`
+  （[:229](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L229)）只清「文件名里的 pid 已不在 + mtime 老于 60s」那几个。
+
+### ③ 门：SW-25（行为）+ SW-26（读路形状）+ SW-27（群数同源），各配一台必须判红的夹具
+
+- **SW-25**（[scripts/prove_sessions_single_writer.mjs:683](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L683)）真模块 **0 违规**，摘掉两处修复的夹具判红 **3 条**，
+  第一条逐字是「半截 bots.json 没被留成证据（证据文件 0 个）：坏字节还在原路径上，下一次写就把整份 Bot 面盖掉」。
+- **尺子分两阶段、用两个 dataRoot**：把两面撕在同一份数据里跑不出账 —— 撕掉 `bots.json` 会让 b1/b2 消失，
+  `roomCreate` 在「Bot 名找不到」那一步就返回，群面的判据永远执行不到。这是**尺子的形状**，不是产品缺口，原因写在源码注释里。
+- **SW-26**（静态七条，[:827](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L827)）：Bot 面走 `readFaceJson` / 坏分支先留证据再回落 / 隔离是改名不是删除 /
+  群面读侧带说明 / `atomicWrite` 写失败清 tmp 且抛错 / rooms 只有一种读法 / 孤儿 tmp 有人清。仓库 **0 违规**，
+  五处修复一起摘掉的夹具判红 **5 条**（第一条「Bot 面还在用 readJson 的静默回落：坏文件等于「一个 Bot 都没有」」）。
+- **SW-27**（[:743](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L743)）：`botDetail` 的群数改走 `loadRooms()`
+  （[hosts/desktop/product_surface.js:914](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L914)）。修后 holder=**1** / rooms_total=**1** / 盘上无 `rooms.json`；
+  换回直读 JSON 的夹具报 **0** —— 夹具不判红这条就是恒真断言，当场翻红。
+- 今天全绿：尺子 `PASS=30 FAIL=0`（`sw25=0 sw25_neg=3 sw26=0 sw26_neg=5 sw27=0 sw27_neg=1`）、
+  G-122 段 `SECTION PASS=20 FAIL=0`（18→20）、`prove_m29_roomchat 43→45 FAIL=0`
+  （新增两条：`!/readJson\((ROOMS_PATH|BOTS_PATH)/` + 面持有者那条，把「又有人直读 rooms.json」钉死在静态账里）。
+- 相邻门同轮复跑（这片动的是每次建 Bot / 每一次群写都要路过的落盘与读路口）：`prove_event_dual_write 31/0`、
+  `prove_event_only 7/0`、`prove_event_read_model 10/0`、`prove_room_rename 8/0`、`prove_gp164_room_library 8/0`、
+  `prove_room_failure_surfaces all green`、`prove_room_context pass=15 fail=0`、`prove_gp143_orchestration 40/0`、
+  `prove_report_history_intact 8/0`。
+- 过程中一次**假红**值得留着：改名局部变量 `rooms`→`roomsFace` 之前，m29 那条既有静态规则
+  （禁止 `const rooms = loadRooms();`，因为写路径不许基于陈旧快照）把我的新读法判成违规。
+  改局部名而不是改那条规则 —— 规则的意思仍然成立。
+
+### ④ 还欠着的（诚实清单）
+
+1. `product_surface.js` 里还剩 **10 处** `readJson` 是「读不到就用默认值」（settings / approval-rules / computer-use / llm-usage /
+   routines + host-routines / memory store / profile vault / account profile）——那里的默认值本来就是产品语义（没有设置 = 用默认设置），
+   不是把用户的数据演成空，所以没跟着改；如果哪张面以后变成「用户的历史」，得按这片同形收；
+2. 隔离**只在默认模式**做：EVENT_ONLY 下这两张面的真源是事件库，动文件会把 EO-05 那条「遗留 rooms.json 不许污染事件真源」的夹具踩掉；
+3. `bots.json` 的真源仍是文件、没进事件词表（§8.127⑦ 未变）；
+4. `primary_id` / `active_id` 仍是最后写者赢；同一行被两个进程同时改两个字段仍是行级最后写者赢（合并不到字段级）；
+5. 同一进程里 `product_surface` 仍有两个实例（`main.js` 与 `host_ffi.js`），各自的 `lastTextBySurface` 是第二份 prev 缓存；
+6. 证据留存与孤儿 tmp 清理的逻辑现在在 `sessions.js` 与 `product_surface.js` 各一份（同 `withFaceLock` 的债，靠静态尺子扫两份兜住）；
+7. 真 app 门（G-21 / G-119）本轮没跑，全量矩阵仍待授权。
+
+可感面：磁盘写满、进程被强杀、断电之后重开桌面 ——**Bot 列表要么还是崩前那一份，要么就是这次写完整的那一份**；
+万一 `bots.json` 已经坏了（撕裂过一次的本机会撞上），现在屏幕上会**说一句**并把原始字节改名留在旁边
+（`bots.json.corrupt-<时刻>`），下一次建 Bot 也不会把那份证据覆盖掉；`rooms.json` 坏了侧栏照旧显示空目录，但
+日志与终端会告诉你「读不出群面，这不是你没有群」，定时任务的邮件也不会再把「我读不到」写成「本群暂无成稿」；
+Bot 详情面板的群数和侧栏数到的是同一个数。

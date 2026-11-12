@@ -5067,7 +5067,7 @@ echo "    KP-03 的尾账（供应商 HTTP 500 时 Host 的 llm_chat 主路径�
 echo "    于是渲染端只能把原文归一化成兜底 unknown_failure）已在 OP-03c 收掉：Host 现在从同一份"
 echo "    failure_codes.js 产出 error_code，实测台账 code=llm_chat_failed 而不是兜底。"
 
-echo "== G-122 事件面的单写者与读写同源（T1-06 第一~七片 · sessions/rooms/bots 面的读写都归面的持有者 + 多进程写同一张面 + 撕裂写，KP-09）=="
+echo "== G-122 事件面的单写者与读写同源（T1-06 第一~八片 · sessions/rooms/bots 面的读写都归面的持有者 + 多进程写同一张面 + 撕裂写 + 坏文件的证据与说明，KP-09）=="
 # 这把尺子是先中枪才立起来的：EVENT_ONLY 下删 Bot 的级联绕过 store 自己 readJson + atomicWrite
 # sessions.json，而那张面的真源那时已是事件库 —— 实测（临时 dataRoot、真代码路径）
 # sessions_deleted=0、sessions_cascaded=false：Bot 从列表里没了，它的 DM 会话在侧栏和 fold 里
@@ -5077,7 +5077,7 @@ if timeout 300 node scripts/prove_sessions_single_writer.mjs > /tmp/g122-single-
 else
   bad "G-122 会话面单写者翻红（见 /tmp/g122-single-writer.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g122-single-writer.log | tail -1)）"
 fi
-g122_sw=$(grep -o 'SW_METRICS mode=prod pass=[0-9][0-9]* fail=[0-9][0-9]* writers=[0-9][0-9]* store_writers=[0-9][0-9]* readers=[0-9][0-9]* xp_rows=[0-9][0-9]* xp_prefixes=[0-9][0-9]* xp_store_rooms=[0-9][0-9]* tmp_sites=[0-9][0-9]* tmp_bad=[0-9-][0-9]* order_bad=[0-9-][0-9]* bots_lost=[0-9-][0-9]* bots_room_ok=[0-9-][0-9]* bots_rooms=[0-9-][0-9]* spin_ms=[0-9-][0-9]* spin_bad=[0-9-][0-9]* sw20=[0-9-][0-9]* sw20_neg=[0-9-][0-9]* sw21=[0-9-][0-9]* sw21_neg=[0-9-][0-9]* sw22=[0-9-][0-9]* sw22_neg=[0-9-][0-9]* sw23=[0-9-][0-9]* sw23_neg=[0-9-][0-9]* sw24=[0-9-][0-9]* sw24_neg=[0-9-][0-9]*' /tmp/g122-single-writer.log | head -1)
+g122_sw=$(grep -o 'SW_METRICS mode=prod pass=[0-9][0-9]* fail=[0-9][0-9]* writers=[0-9][0-9]* store_writers=[0-9][0-9]* readers=[0-9][0-9]* xp_rows=[0-9][0-9]* xp_prefixes=[0-9][0-9]* xp_store_rooms=[0-9][0-9]* tmp_sites=[0-9][0-9]* tmp_bad=[0-9-][0-9]* order_bad=[0-9-][0-9]* bots_lost=[0-9-][0-9]* bots_room_ok=[0-9-][0-9]* bots_rooms=[0-9-][0-9]* spin_ms=[0-9-][0-9]* spin_bad=[0-9-][0-9]* sw20=[0-9-][0-9]* sw20_neg=[0-9-][0-9]* sw21=[0-9-][0-9]* sw21_neg=[0-9-][0-9]* sw22=[0-9-][0-9]* sw22_neg=[0-9-][0-9]* sw23=[0-9-][0-9]* sw23_neg=[0-9-][0-9]* sw24=[0-9-][0-9]* sw24_neg=[0-9-][0-9]* sw25=[0-9-][0-9]* sw25_neg=[0-9-][0-9]* sw26=[0-9-][0-9]* sw26_neg=[0-9-][0-9]* sw27=[0-9-][0-9]* sw27_neg=[0-9-][0-9]*' /tmp/g122-single-writer.log | head -1)
 g122_pass=$(printf '%s' "$g122_sw" | grep -o 'pass=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g122_fail=$(printf '%s' "$g122_sw" | grep -o 'fail=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g122_w=$(printf '%s' "$g122_sw" | grep -o '[^_]writers=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
@@ -5102,8 +5102,14 @@ g122_sw22neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw22_neg=\(-\{0,1\}[0-9][0-
 g122_sw23=$(printf '%s' "$g122_sw" | sed -n 's/.* sw23=\(-\{0,1\}[0-9][0-9]*\) sw23_neg.*/\1/p')
 g122_sw23neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw23_neg=\(-\{0,1\}[0-9][0-9]*\) sw24=.*/\1/p')
 g122_sw24=$(printf '%s' "$g122_sw" | sed -n 's/.* sw24=\(-\{0,1\}[0-9][0-9]*\) sw24_neg.*/\1/p')
-g122_sw24neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw24_neg=\(-\{0,1\}[0-9][0-9]*\)$/\1/p')
-if [ -n "$g122_sw" ] && [ "$g122_fail" = "0" ] && [ "$g122_pass" -ge 27 ] \
+g122_sw24neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw24_neg=\(-\{0,1\}[0-9][0-9]*\) sw25=.*/\1/p')
+g122_sw25=$(printf '%s' "$g122_sw" | sed -n 's/.* sw25=\(-\{0,1\}[0-9][0-9]*\) sw25_neg.*/\1/p')
+g122_sw25neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw25_neg=\(-\{0,1\}[0-9][0-9]*\) sw26=.*/\1/p')
+g122_sw26=$(printf '%s' "$g122_sw" | sed -n 's/.* sw26=\(-\{0,1\}[0-9][0-9]*\) sw26_neg.*/\1/p')
+g122_sw26neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw26_neg=\(-\{0,1\}[0-9][0-9]*\) sw27=.*/\1/p')
+g122_sw27=$(printf '%s' "$g122_sw" | sed -n 's/.* sw27=\(-\{0,1\}[0-9][0-9]*\) sw27_neg.*/\1/p')
+g122_sw27neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw27_neg=\(-\{0,1\}[0-9][0-9]*\)$/\1/p')
+if [ -n "$g122_sw" ] && [ "$g122_fail" = "0" ] && [ "$g122_pass" -ge 30 ] \
   && [ "$g122_w" = "$g122_sw2" ] && [ "$g122_w" -le 3 ] && [ "$g122_r" = "0" ]; then
   ok "G-122 锚点：sessions.json 的 $g122_w 处写点全在 store 内（store_writers==writers，棘轮只许降），事件面读旁路 $g122_r 处，SW-01..09 绿满 $g122_pass 项"
 else
@@ -5201,6 +5207,22 @@ if grep -q "✓ SW-23" /tmp/g122-single-writer.log && grep -q "✓ SW-24" /tmp/g
 else
   bad "G-122 片7 撕裂写行为锚点缺失（SW-23/SW-24 有一条没跑绿，见 /tmp/g122-single-writer.log）"
 fi
+# 片8（文件面的坏文件）：sw25 = bots/rooms 两面各自撕裂后在真模块上的违规条数（必须 0），
+# sw25_neg = 把「Bot 面走 readFaceJson」与「群面读侧说一句」两处摘掉的夹具的红条数（必须 3）；
+# sw26 = 文件面读路静态七条在仓库上的违规条数（必须 0），sw26_neg = 五处修复一起摘掉的夹具条数（必须 5）；
+# sw27 = Bot 详情的群数与面持有者是否同一个数（必须 0=一致），sw27_neg = 换回直读 rooms.json 的夹具是否报不一致（必须 1=不一致）。
+if [ "$g122_sw25" = "0" ] && [ "$g122_sw25neg" = "3" ] && [ "$g122_sw26" = "0" ] && [ "$g122_sw26neg" = "5" ] \
+  && [ "$g122_sw27" = "0" ] && [ "$g122_sw27neg" = "1" ]; then
+  ok "G-122 片8 坏文件锚点：半截 bots.json 先留证据再说一句、崩后重建不销毁证据（真模块 0 违规 / 夹具判红 $g122_sw25neg 条）；读路形状静态七条 0 违规 / 夹具判红 $g122_sw26neg 条；Bot 详情群数与面持有者同一个数 / 直读 JSON 的夹具判不一致 $g122_sw27neg 条"
+else
+  bad "G-122 片8 坏文件锚点不成立（sw25=${g122_sw25:-?} 期望 0，sw25_neg=${g122_sw25neg:-?} 期望 3，sw26=${g122_sw26:-?} 期望 0，sw26_neg=${g122_sw26neg:-?} 期望 5，sw27=${g122_sw27:-?} 期望 0，sw27_neg=${g122_sw27neg:-?} 期望 1）"
+fi
+if grep -q "✓ SW-25" /tmp/g122-single-writer.log && grep -q "✓ SW-26" /tmp/g122-single-writer.log \
+  && grep -q "✓ SW-27" /tmp/g122-single-writer.log; then
+  ok "G-122 片8 行为锚点在：SW-25（两面各自撕裂现场）与 SW-26（读路形状）与 SW-27（群数同源）连同各自反向夹具在同一次跑里绿"
+else
+  bad "G-122 片8 行为锚点缺失（SW-25/SW-26/SW-27 有没跑绿的，见 /tmp/g122-single-writer.log）"
+fi
 # 片2（读写同源）三条锚点：读侧账 + 邮件端到端 + 那条链的前提。钉 id，不钉子门散文。
 if grep -q "✓ SW-06" /tmp/g122-single-writer.log \
   && grep -q "✓ SW-07" /tmp/g122-single-writer.log \
@@ -5282,9 +5304,30 @@ echo "    门为什么不是「拿真 kill -9 数撕裂次数」：同尺寸 8MB
 echo "    差别是真的，但那个数取决于杀在哪一毫秒，所以 SW-23 改成确定性注入：在落盘那一步只写一半字节再抛 ENOSPC，"
 echo "    这就是 kill 落在 write 中间留下的形状。真模块 0 违规（面逐字不变 / 错上抛 / 不留孤儿 tmp / 坏面先留证据再说一句 /"
 echo "    崩后重建不销毁证据），摘掉 tmp+rename 与证据留存的夹具判红 3 条；SW-24 再把落盘口的形状钉成静态七条（仓库 0 / 夹具 3）。"
-echo "  · G-122 片7 残账（实测到的）：就地写的还有别的文件——本次只收会话面这一处（它是唯一「读回来当空面」的）；"
-echo "    rooms.json / rooms/<id>.json 等仍走 atomicWrite（tmp+rename 早已在），但坏文件同样没有证据留存那一步；"
+echo "  · G-122 片7 残账（实测到的）：就地写的还有别的文件 —— 会话面这次收的是「读回来当空面 + 下一次写盖掉证据」那一半；"
+echo "    rooms.json / bots.json 走的是 atomicWrite（tmp+rename 早已在），撕裂本身不会新产生，但已经坏掉的文件仍然没人管 ——"
+echo "    这条到片8 收了（片7 那句「它是唯一读回来当空面的」是错的：bots.json 也是，见下面片8 的实测数）；"
 echo "    EVENT_ONLY 下这张面的真源是事件库，撕裂写的账在库那边（WAL），本片的尺子只覆盖默认模式。"
+echo "  · G-122 片8（本轮新增，SW-25/SW-26/SW-27）：坏文件在另外两张 store 形状的面上的账收口。"
+echo "    实测的形状和片7 逐字相同但更糟：把 bots.json 截半（1251→625 字节），旧产品读回来是「一个 Bot 都没有」，"
+echo "    屏上连一句都没有，botDetail 报的是 bot_not_found（错误的诊断），紧接着一次 botsCreate 就 ok:true —— 坏字节"
+echo "    当场被整份覆盖，625 字节里那些 Bot 连手工救的余地都没了。改法与会话面同形：先把字节改名留成"
+echo "    bots.json.corrupt-<时间戳>、说一句，再从内建 Bot 起步；顺序反了下一次写就把证据盖掉（SW-25 判据①②③）。"
+echo "    群面不照抄：rooms.json 的写侧早已 fail closed（requireWritableRooms 抛 rooms_store_unreadable，坏字节留在原路径，"
+echo "    GP-164 P8 钉的就是「原文件还在原路径」）—— 给它做隔离反而把那条门自己踩掉，所以群面只补「读侧要说话」那半条："
+echo "    loadRooms 交出空目录时 stderr 必须有一句「读不出群面（rooms_json_parse_failed）」，定时任务的邮件才不至于把"
+echo "    「我读不到」写成「本群暂无成稿」（SW-25 判据④⑤，夹具摘掉这两处必须判红 3 条）。"
+echo "    SW-26 把读路形状钉成静态七条（Bot 面走 readFaceJson / 坏分支先留证据再回落 / 隔离是改名不是删除 /"
+echo "    群面读侧带说明 / atomicWrite 写失败清 tmp 且把错抛出去 / rooms 只有一种读法 / 孤儿 tmp 有人清）：仓库 0 违规，"
+echo "    五处修复一起摘掉的夹具判红 5 条 —— 这条补的是片7 那句「atomicWrite 已有 tmp+rename 就够」没覆盖到的两个洞："
+echo "    写失败既不清那截 tmp 也可能被调用方吞掉，而崩溃留下的孤儿 tmp 在文件面上一直没人清。"
+echo "    SW-27 是同一片里第三件实测到的事：Bot 详情面板的「群数」以前直读 rooms.json —— EVENT_ONLY 下盘上根本没有那份文件，"
+echo "    面持有者数到 1 个群、面板报 0，同屏两个互相矛盾的数字（本轮实测修前 0 / 修后 1，夹具换回直读又报 0）。"
+echo "  · G-122 片8 残账（实测到的）：product_surface.js 里还剩 10 处 readJson 是「读不到就用默认值」——"
+echo "    settings / approval-rules / computer-use / llm-usage / routines(+host-routines) / memory store / profile vault / account profile；"
+echo "    那里默认值本来就是产品语义（没有设置 = 用默认设置），不是把用户的数据演成空；bots 面的真源仍是文件、没进事件词表；"
+echo "    primary_id / active_id 仍是最后写者赢；同一行被两个进程同时改两个字段仍是行级最后写者赢；"
+echo "    同一进程里 product_surface 仍有两个实例（main.js 与 host_ffi.js），各自的 lastTextBySurface 是第二份 prev 缓存。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo

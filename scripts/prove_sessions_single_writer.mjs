@@ -52,6 +52,9 @@
  *   SW-22 同一把交错尺子搬到会话面（片6）：甲删的不复活 / 甲改的名不被盖回 /
  *   SW-23 撕裂写（片7）：写一半失败时面逐字不变；已经是半截 JSON 时字节先留成证据 + 说一句
  *   SW-24 撕裂写的静态账（片7）：落盘口必须是唯一 tmp + rename，坏面必须先留证据
+ *   SW-25 同一把撕裂尺子搬到 bots/rooms 面（片8）：坏字节先留证据再说一句，群面写字节留在原路径
+ *   SW-26 文件面读路的静态账（片8）：readFaceJson / 隔离是改名 / 读侧带说明 / 写失败清 tmp 且抛错
+ *   SW-27 Bot 详情的群数走面持有者（片8）：EVENT_ONLY 下不许再报 rooms.json 的陈旧副本
  *          甲追加的那条消息不被吞掉 / 甲新建的不被抹掉；反向夹具 = 摘掉会话面合并，必须判红 4 条
  *
  * 全部跑在临时目录，绝不碰仓库里的 data/。
@@ -79,7 +82,7 @@ let swStoreWriters = 0;
 let swReaders = 0;
 let xpRows = 0, xpPrefixes = 0, xpStoreRooms = 0, xpTmpSites = 0, xpTmpBad = -1, xpOrderBad = -1, xpKidsOk = false;
 let xpBotsLost = -1, xpBotsOk = -1, xpBotsRooms = -1, xpBotsSynced = false;
-let xpSpinMs = -1, xpSpinOk = false, xpSpinBad = -1, xpSw20 = -1, xpSw20Neg = -1, xpSw21 = -1, xpSw21Neg = -1, xpSw22 = -1, xpSw22Neg = -1, xpSw23 = -1, xpSw23Neg = -1, xpSw24 = -1, xpSw24Neg = -1;
+let xpSpinMs = -1, xpSpinOk = false, xpSpinBad = -1, xpSw20 = -1, xpSw20Neg = -1, xpSw21 = -1, xpSw21Neg = -1, xpSw22 = -1, xpSw22Neg = -1, xpSw23 = -1, xpSw23Neg = -1, xpSw24 = -1, xpSw24Neg = -1, xpSw25 = -1, xpSw25Neg = -1, xpSw26 = -1, xpSw26Neg = -1, xpSw27 = -1, xpSw27Neg = -1;
 const ok = (id, msg) => { PASS++; console.log(`  ✓ ${id} ${msg}`); };
 const bad = (id, msg, extra) => { FAIL++; console.log(`  ✗ ${id} ${msg}${extra ? " — " + (typeof extra === "string" ? extra : JSON.stringify(extra)) : ""}`); };
 
@@ -663,6 +666,205 @@ function tornWriteViolations(text) {
   if (!/throw err;/.test(body)) v.push("写失败的错被吞了：调用方拿到正常回执，盘上却是坏面");
   if (!/quarantineCorrupt\(\);/.test(loadWin)) v.push("坏面没有「先把字节留住」这一步：静默当空面，下一次写还把证据覆盖掉");
   if (!/function pruneOrphanTmp/.test(text)) v.push("崩在 write 与 rename 之间的孤儿 tmp 没人清");
+  return v;
+}
+
+/* SW-25（KP-09 片8）：把会话面撕裂写那把尺子搬到另外两张 store 形状的面。
+   现场的形状和片7 逐字相同 —— bots.json 被截成半截时，产品以前：
+     ① readJson 静默回落 → loadBots 当「一个 Bot 都没有」，从内建 Bot 起步；
+     ② 侧栏只说没有 Bot，botDetail 报的是 bot_not_found（错误的诊断）；
+     ③ 紧接着的第一次 botsCreate 就把坏字节整份覆盖 —— 手工救的余地也没了。
+   rooms.json 那一半形状不同：写侧早已 fail closed（坏字节留在原路径），缺的是
+   「读侧要说话」—— loadRooms 交出空目录时一句都没有，于是定时任务邮件里写的是
+   「本群暂无成稿」而不是「rooms.json 坏了」。
+   两面各跑一个独立 dataRoot：撕裂 bots.json 会让 Bot 行消失，紧接着的 roomCreate
+   就在「Bot 名字找不到」那一步返回了，根本走不到群面的存储 —— 第一版把两面塞进
+   同一次现场，量出来的 roomThrew=none 就是这么来的（尺子的形状，不是产品缺口）。 */
+function sw25ChildSource() {
+  return [
+    '"use strict";',
+    "const fs=require('fs'), path=require('path'), os=require('os');",
+    "const dataRoot=process.argv[2], R=process.argv[3];",
+    "delete process.env.BITBOT_EVENT_ONLY;",
+    "const {createProductSurface}=require(path.join(R,'hosts/desktop/product_surface.js'));",
+    "const {getSessionStore}=require(path.join(R,'hosts/desktop/sessions.js'));",
+    "const mk=(d)=>createProductSurface(R,{dataRoot:d,sessions:getSessionStore(R,{dataRoot:d})});",
+    "const v=[];",
+    "const cap=(fn)=>{const lines=[];const ow=process.stderr.write;",
+    "  process.stderr.write=(c,...k)=>{lines.push(String(c));return ow.call(process.stderr,c,...k);};",
+    "  let out=null,threw='';try{out=fn();}catch(e){threw=String((e&&e.code)||e.message);}",
+    "  process.stderr.write=ow;return {out,threw,lines};};",
+    "/* --- A：Bot 面 --- */",
+    "const DA=dataRoot, BA=path.join(DA,'desktop','bots.json');",
+    "const sA=mk(DA);",
+    "const a1=sA.botsCreate({name:'甲 Bot'}).bot;",
+    "const a2=sA.botsCreate({name:'乙 Bot'}).bot;",
+    "const botsGood=fs.readFileSync(BA,'utf8');",
+    "const botsTorn=botsGood.slice(0,Math.floor(botsGood.length/2));",
+    "fs.writeFileSync(BA,botsTorn);",
+    "const rA=cap(()=>{const x=mk(DA);const d=x.botDetail(a1.id);const c=x.botsCreate({name:'撕裂后又建一个 Bot'});return {d,c};});",
+    "const ev=fs.readdirSync(path.dirname(BA)).filter((f)=>f.indexOf('bots.json.corrupt-')===0);",
+    "const evBytes=ev.length===1?fs.readFileSync(path.join(path.dirname(BA),ev[0]),'utf8'):'(没有证据文件)';",
+    "if(ev.length!==1)v.push('半截 bots.json 没被留成证据（证据文件 '+ev.length+' 个）：坏字节还在原路径上，下一次写就把整份 Bot 面盖掉');",
+    "if(ev.length===1&&evBytes!==botsTorn)v.push('证据文件的字节和崩掉那份不一样：留住的不是原始字节');",
+    "if(!rA.lines.some((l)=>l.indexOf('不是合法的 Bot 面 JSON')>=0))v.push('Bot 面坏了而屏幕上一句都没有：侧栏只说没有 Bot，botDetail 报 '+((rA.out&&rA.out.d)||{}).error);",
+    "if(!rA.out||rA.out.c.ok!==true)v.push('崩后第一次建 Bot 没成功（证据移走之后不该再被坏文件挡住）');",
+    "if(ev.length===1&&fs.readFileSync(path.join(path.dirname(BA),ev[0]),'utf8')!==botsTorn)v.push('崩后重建改掉了证据字节');",
+    "let reBots=null;try{reBots=JSON.parse(fs.readFileSync(BA,'utf8'));}catch(_){}",
+    "if(!reBots||!Array.isArray(reBots.bots))v.push('崩后重建写出的 bots.json 自己就不是合法面');",
+    "if(reBots&&!reBots.bots.some((b)=>b&&b.id==='agent-bit'))v.push('崩后重建的 Bot 面连内建 Bot 都没了');",
+    "if(reBots&&a1&&reBots.bots.some((b)=>b&&b.id===a1.id))v.push('撕裂那份里被隔离掉的 Bot 又被合并回来了');",
+    "/* --- B：群面（独立 dataRoot，Bot 行都在） --- */",
+    "const DB=fs.mkdtempSync(path.join(os.tmpdir(),'kp09-sw25b-'));",
+    "fs.mkdirSync(path.join(DB,'desktop'),{recursive:true});",
+    "const sB=mk(DB);",
+    "const b1=sB.botsCreate({name:'甲 Bot'}).bot, b2=sB.botsCreate({name:'乙 Bot'}).bot;",
+    "const rc=sB.roomCreate([b1.id,b2.id].join(','),'两个 Bot 的群');",
+    "for(let i=0;i<6;i+=1)sB.appendRoomTranscript(rc.room.id,{role:'user',bot_id:b1.id,text:'第 '+i+' 句：'+'内容'.repeat(40)});",
+    "const ROOMS=path.join(DB,'desktop','rooms.json');",
+    "const roomsGood=fs.readFileSync(ROOMS,'utf8');",
+    "const roomsTorn=roomsGood.slice(0,Math.floor(roomsGood.length/2));",
+    "fs.writeFileSync(ROOMS,roomsTorn);",
+    "const rB=cap(()=>{const x=mk(DB);const l=x.loadRooms();const c=x.roomCreate([b1.id,b2.id].join(','),'撕裂后不该建成');return {l,c};});",
+    "if(!rB.lines.some((l)=>l.indexOf('读不出群面')>=0))v.push('群面坏了而 loadRooms 一声不吭：消费者拿到的是空目录而不是「我读不到」');",
+    "if(fs.readFileSync(ROOMS,'utf8')!==roomsTorn)v.push('群面的坏字节被改名或被覆盖掉了：群面必须留在原路径（GP-164 P8 钉的就是那条）');",
+    "const rcErr=String((rB.out&&rB.out.c&&rB.out.c.error)||'');",
+    "const roomFail=rcErr||rB.threw;",
+    "if(roomFail.indexOf('rooms_store_unreadable')!==0)v.push('撕裂群面之后的写没有如实报 rooms_store_unreadable：'+(roomFail||'ok'));",
+    "if(((rB.out&&rB.out.l&&rB.out.l.rooms)||[]).length!==0)v.push('坏群面被演成了非空目录（不该猜）');",
+    "process.stdout.write(JSON.stringify({v,ev:ev.length,linesB:rB.lines.length,rcErr:roomFail})+'\\n');",
+  ].join("\n");
+}
+
+/* SW-27（KP-09 片8）：Bot 详情面板的「群数」以前直读 rooms.json。
+   EVENT_ONLY 下那张 JSON 一个字节都不再写 —— 实测面持有者数到 1 个群、面板报 0，
+   两个互相矛盾的数字同屏（用户在同一块面板里看到的正是那一句）。
+   判据：rooms_total 必须等于面持有者数到的群数；夹具把那一行换回直读 JSON 后必须报 0。 */
+function sw27ChildSource() {
+  return [
+    '"use strict";',
+    "const fs=require('fs'), path=require('path'), os=require('os');",
+    "const R=process.argv[2];",
+    "process.env.BITBOT_EVENT_ONLY='1';",
+    "const dataRoot=fs.mkdtempSync(path.join(os.tmpdir(),'sw27-'));",
+    "fs.mkdirSync(path.join(dataRoot,'desktop'),{recursive:true});",
+    "const {createProductSurface}=require(path.join(R,'hosts/desktop/product_surface.js'));",
+    "const {getSessionStore}=require(path.join(R,'hosts/desktop/sessions.js'));",
+    "const s=createProductSurface(R,{dataRoot,sessions:getSessionStore(R,{dataRoot})});",
+    "const b1=s.botsCreate({name:'甲 Bot'}).bot;",
+    "const b2=s.botsCreate({name:'乙 Bot'}).bot;",
+    "const rc=s.roomCreate([b1.id,b2.id].join(','),'EO 里的群');",
+    "s.appendRoomTranscript(rc.room.id,{role:'user',bot_id:b1.id,text:'一句'});",
+    "const j=s.loadRooms();",
+    "const rows=Array.isArray(j)?j:((j&&j.rooms)||[]);",
+    "const holder=rows.filter((r)=>r&&Array.isArray(r.members)&&r.members.includes(b1.id)).length;",
+    "const total=s.botDetail(b1.id).rooms_total;",
+    "process.stdout.write(JSON.stringify({holder,total,hasJson:fs.existsSync(path.join(dataRoot,'desktop','rooms.json'))})+'\\n');",
+  ].join("\n");
+}
+
+/* 反向夹具（片8）：同一份 product_surface.js，按 patches 把修复逐条摘回修复前的形状。
+   任何一个锚点没命中就返回 null —— 门会明说「夹具建不出来」，不会悄悄假绿。 */
+function faceReadFarm(patches) {
+  const farm = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-faceread-"));
+  const desk = path.join(farm, "hosts", "desktop");
+  fs.mkdirSync(desk, { recursive: true });
+  fs.symlinkSync(path.join(REPO, "hosts", "shared"), path.join(farm, "hosts", "shared"));
+  for (const f of fs.readdirSync(path.join(REPO, "hosts", "desktop"))) {
+    if (f === "product_surface.js") continue;
+    fs.symlinkSync(path.join(REPO, "hosts", "desktop", f), path.join(desk, f));
+  }
+  let src = fs.readFileSync(path.join(REPO, "hosts/desktop", "product_surface.js"), "utf8");
+  for (const p of patches) {
+    const next = src.replace(p.from, p.to);
+    if (next === src) return null;
+    src = next;
+  }
+  fs.writeFileSync(path.join(desk, "product_surface.js"), src);
+  return farm;
+}
+
+const FACE_PATCHES = {
+  // 摘掉 Bot 面的专用读法 = 回到「readJson 的静默回落」
+  botsRead: {
+    from: '    let data = readFaceJson(BOTS_PATH, "bots", null);',
+    to: "    let data = readJson(BOTS_PATH, null);",
+  },
+  // 摘掉群面读侧那句说明（写侧的 fail closed 不动 —— 那条早就在，GP-164 P8 盯着）
+  roomsSilence: {
+    from: [
+      "    sayOnce(`rm-empty-${hit.reason}`,",
+      "      `[rooms] ${ROOMS_PATH} 读不出群面（${hit.reason}）——本次按空目录显示，这不是「你没有群」：` +",
+      '      "写侧已 fail closed，坏字节仍留在原文件里（改法不是隔离，群面的历史要靠那份字节），请手工检查。\\n");',
+    ].join("\n"),
+    to: "    // 夹具：读侧一句话都不说（片8 之前的形状）",
+  },
+  // 摘掉 atomicWrite 的「失败清 tmp + 把错抛出去」
+  atomicSwallow: {
+    from: [
+      "    } catch (err) {",
+      "      try { fs.rmSync(tmp, { force: true }); } catch (_) { /* 清不掉只是多一个垃圾 */ }",
+      "      throw err;",
+      "    }",
+    ].join("\n"),
+    to: "    } catch (_) { /* 夹具：吞掉失败，那截 tmp 留在盘上 */ }",
+  },
+  // 把「改名留证据」换成「删掉」—— 字节没了就没有手工救的余地
+  quarantineDeletes: {
+    from: "      fs.renameSync(filePath, keep);",
+    to: "      fs.rmSync(filePath, { force: true });",
+  },
+  // 把 Bot 详情的群数换回直读 rooms.json（EVENT_ONLY 下的陈旧副本）
+  staleRoomsCopy: {
+    from: "      const roomsFace = loadRooms();",
+    to: "      const roomsFace = readJson(ROOMS_PATH, null);",
+  },
+};
+
+/* SW-26 的静态账（文件面的读路形状）：七条各自可核实；夹具把五处各摘一次必须判红 5 条。
+   这些判据盯的是「形状」，不需要真把盘搞坏就能红 —— 以后有人把隔离改成删除、
+   把说明删掉、把写失败重新吞掉，当场就能看到。 */
+function faceReadViolations(text) {
+  const v = [];
+  const rfAt = text.indexOf("function readFaceJson");
+  const qAt = text.indexOf("function quarantineFaceFile");
+  const lbAt = text.indexOf("function loadBots");
+  const lrAt = text.indexOf("function loadRooms");
+  const awAt = text.indexOf("function atomicWrite");
+  if (rfAt < 0 || qAt < 0 || lbAt < 0 || lrAt < 0 || awAt < 0) {
+    return ["找不到 readFaceJson / quarantineFaceFile / loadBots / loadRooms / atomicWrite（尺子失效）"];
+  }
+  const bodyAt = (at) => {
+    const end = text.indexOf("\n  }\n", at);
+    return text.slice(at, end < 0 ? at + 2200 : end);
+  };
+  const rfBody = bodyAt(rfAt);
+  const qBody = bodyAt(qAt);
+  const lbBody = text.slice(lbAt, lbAt + 1200);
+  const awBody = bodyAt(awAt);
+  const lrEnd = text.indexOf("function parseRoomsRaw", lrAt);
+  const lrBody = text.slice(lrAt, lrEnd < 0 ? lrAt + 3000 : lrEnd);
+  if (!/readFaceJson\(\s*BOTS_PATH\s*,\s*"bots"\s*,\s*null\s*\)/.test(lbBody)) {
+    v.push("Bot 面还在用 readJson 的静默回落：坏文件等于「一个 Bot 都没有」");
+  }
+  if (!/quarantineFaceFile\([\s\S]{0,140}return fallback/.test(rfBody)) {
+    v.push("readFaceJson 的坏文件分支没有「先留证据再回落」这一步（顺序反了下一次写就盖掉证据）");
+  }
+  if (!/renameSync\(\s*filePath\s*,\s*keep\s*\)/.test(qBody) || /\.corrupt-/.test(qBody) === false || /rmSync\(\s*filePath\s*,/.test(qBody)) {
+    v.push("隔离变成了删除或不改名：坏字节一没，用户的 Bot 就再也救不回来");
+  }
+  if (!/const hit = parseRoomsRaw\(\);[\s\S]{0,900}sayOnce\(/.test(lrBody)) {
+    v.push("群面读侧把 parse 失败当空面而不说一句：定时任务/交接的消费者拿到的是「没有群」不是「读不到」");
+  }
+  if (!/rmSync\(\s*tmp/.test(awBody) || !/throw err;/.test(awBody)) {
+    v.push("atomicWrite 写失败既没清那截 tmp 也没把错抛出去：调用方拿到 ok:true 而盘上是坏的");
+  }
+  if (/readJson\(\s*ROOMS_PATH/.test(text) || !/const roomsFace = loadRooms\(\);/.test(text)) {
+    v.push("还有消费者直读 rooms.json：EVENT_ONLY 下那是永不更新的陈旧副本，同屏两个数字会互相矛盾");
+  }
+  if (!/function pruneOrphanFaceTmp/.test(text) || (rfBody.match(/pruneOrphanFaceTmp\(/g) || []).length < 2) {
+    v.push("文件面的孤儿 tmp 没人清：每次崩在 write 与 rename 之间就多攒一截垃圾");
+  }
   return v;
 }
 
@@ -1252,10 +1454,97 @@ async function main() {
       else bad("SW-24", real24.length ? "落盘口形状退回就地写" : "SW-24 反向夹具没判红（尺子失效）", { real: real24, neg: neg24 });
     }
 
+    /* ===== SW-25：撕裂文件的形状搬到 bots/rooms 面（KP-09 片8） =====
+       片7 那把尺子证的是会话面；这里同一件事在 Bot 面上实测过一遍：截半的
+       bots.json 必须先被留成证据、屏幕上必须有一句响的、崩后重建不许销毁证据。
+       群面只缺「读侧要说话」那半条（写侧的 fail closed 是 GP-164 P8 早就钉住的），
+       所以那条判据量的是「字节留在原路径 + 写照样抛 + 读侧说一句」。 */
+    {
+      const sw25Base = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-sw25-"));
+      const sw25Path = path.join(sw25Base, "sw25-child.cjs");
+      fs.writeFileSync(sw25Path, sw25ChildSource());
+      const runSw25 = (repoRoot) => new Promise((res) => {
+        const dRoot = fs.mkdtempSync(path.join(sw25Base, "d-"));
+        fs.mkdirSync(path.join(dRoot, "desktop"), { recursive: true });
+        const p = spawn(process.execPath, [sw25Path, dRoot, repoRoot], { stdio: ["ignore", "pipe", "pipe"] });
+        let buf = "", eb = "";
+        p.stdout.on("data", (c) => { buf += String(c); });
+        p.stderr.on("data", (c) => { eb += String(c); });
+        const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch (_) { /* 已经没了 */ } }, 45000);
+        p.on("error", (e) => { clearTimeout(timer); res({ out: "", err: String((e && e.message) || e) }); });
+        p.on("close", () => { clearTimeout(timer); res({ out: buf, err: eb }); });
+      });
+      const parse25 = (r) => { try { return JSON.parse(String(r.out).trim().split("\n").pop()); } catch (_) { return null; } };
+      const real25 = parse25(await runSw25(REPO));
+      const farm25 = faceReadFarm([FACE_PATCHES.botsRead, FACE_PATCHES.roomsSilence]);
+      const neg25 = farm25 ? parse25(await runSw25(farm25)) : null;
+      xpSw25 = real25 && real25.v ? real25.v.length : -1;
+      xpSw25Neg = neg25 && neg25.v ? neg25.v.length : -1;
+      if (real25 && real25.v && real25.v.length === 0 && real25.ev === 1 && real25.linesB >= 1 &&
+          /^rooms_store_unreadable/.test(String(real25.rcErr || "")) &&
+          neg25 && neg25.v && neg25.v.length === 3 && neg25.ev === 0)
+        ok("SW-25", `两张面的撕裂现场都收口：半截 bots.json 先留成证据（证据文件 ${real25.ev} 个、字节逐字相同）再说一句、崩后建 Bot 成功且不销毁证据、被隔离掉的那行也没被合并回来；半截 rooms.json 的字节留在原路径、写照样报 ${real25.rcErr}、读侧说一句（群面 stderr ${real25.linesB} 行）；摘掉这两处修复的夹具在同一条尺子上判红 3 条（${neg25.v[0]}）`);
+      else bad("SW-25", real25 && real25.v && real25.v.length ? "文件面的坏文件仍有缺口" : "SW-25 尺子或反向夹具失效",
+        { real: real25, neg: neg25, farmErr: farm25 ? "" : "夹具建不出来（botsRead / roomsSilence 的锚点文本不在）", err: String((real25 && real25.err) || "").slice(0, 200) });
+      if (farm25) { try { fs.rmSync(farm25, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ } }
+      try { fs.rmSync(sw25Base, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
+    }
+
+    /* ===== SW-26：文件面读路的静态账（形状不许悄悄退回静默回落） ===== */
+    {
+      const surfText = fs.readFileSync(path.join(REPO, "hosts/desktop/product_surface.js"), "utf8");
+      const real26 = faceReadViolations(surfText);
+      xpSw26 = real26.length;
+      const farm26 = faceReadFarm([FACE_PATCHES.botsRead, FACE_PATCHES.roomsSilence,
+        FACE_PATCHES.atomicSwallow, FACE_PATCHES.quarantineDeletes, FACE_PATCHES.staleRoomsCopy]);
+      let neg26 = ["夹具建不出来（五处锚点里有一处文本漂移，SW-26 的负对照失效）"];
+      let negCount = -1;
+      if (farm26) {
+        neg26 = faceReadViolations(fs.readFileSync(path.join(farm26, "hosts/desktop/product_surface.js"), "utf8"));
+        negCount = neg26.length;
+        try { fs.rmSync(farm26, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
+      }
+      xpSw26Neg = negCount;
+      if (real26.length === 0 && neg26.length === 5)
+        ok("SW-26", `文件面读路的七条形状判据全在（Bot 面走 readFaceJson / 坏分支先留证据再回落 / 隔离是改名不是删除 / 群面读侧带说明 / 写失败清 tmp 且抛错 / rooms 只有一种读法 / 孤儿 tmp 有人清），把五处修复一起摘掉的夹具判红 5 条（${neg26[0]}）`);
+      else bad("SW-26", real26.length ? "读路形状退回静默回落" : "SW-26 反向夹具没判红 5 条（尺子失效）", { real: real26, neg: neg26 });
+    }
+
+    /* ===== SW-27：Bot 详情的「群数」必须走面持有者（KP-09 片8） =====
+       EVENT_ONLY 下 rooms.json 一个字节都不再写，直读它 = 报一份永不更新的副本。
+       夹具把那行换回直读后必须报 0（holder 仍是 1）—— 尺子自己有牙齿。 */
+    {
+      const sw27Base = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-sw27-"));
+      const sw27Path = path.join(sw27Base, "sw27-child.cjs");
+      fs.writeFileSync(sw27Path, sw27ChildSource());
+      const runSw27 = (repoRoot) => new Promise((res) => {
+        const p = spawn(process.execPath, [sw27Path, repoRoot], { stdio: ["ignore", "pipe", "pipe"] });
+        let buf = "", eb = "";
+        p.stdout.on("data", (c) => { buf += String(c); });
+        p.stderr.on("data", (c) => { eb += String(c); });
+        const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch (_) { /* 已经没了 */ } }, 45000);
+        p.on("error", (e) => { clearTimeout(timer); res({ out: "", err: String((e && e.message) || e) }); });
+        p.on("close", () => { clearTimeout(timer); res({ out: buf, err: eb }); });
+      });
+      const parse27 = (r) => { try { return JSON.parse(String(r.out).trim().split("\n").pop()); } catch (_) { return null; } };
+      const real27 = parse27(await runSw27(REPO));
+      const farm27 = faceReadFarm([FACE_PATCHES.staleRoomsCopy]);
+      const neg27 = farm27 ? parse27(await runSw27(farm27)) : null;
+      xpSw27 = real27 && real27.holder === real27.total ? 0 : 1;
+      xpSw27Neg = neg27 && neg27.total !== neg27.holder ? 1 : -1;
+      if (real27 && real27.holder === 1 && real27.total === 1 && !real27.hasJson &&
+          neg27 && neg27.holder === 1 && neg27.total === 0)
+        ok("SW-27", `EVENT_ONLY 下 Bot 详情的 rooms_total 与面持有者数到的是同一个数（${real27.total}，且盘上根本没有 rooms.json）；换回直读 JSON 的夹具报的是 ${neg27.total} —— 那就是同屏两个互相矛盾的数字的来源`);
+      else bad("SW-27", "Bot 详情的群数又变成陈旧副本，或尺子/夹具失效",
+        { real: real27, neg: neg27, farmErr: farm27 ? "" : "夹具建不出来（roomsFace 那行文本漂移）" });
+      if (farm27) { try { fs.rmSync(farm27, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ } }
+      try { fs.rmSync(sw27Base, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
+    }
+
     delete process.env.BITBOT_EVENT_ONLY;
   }
 
-  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad} bots_lost=${xpBotsLost} bots_room_ok=${xpBotsOk} bots_rooms=${xpBotsRooms} spin_ms=${xpSpinMs} spin_bad=${xpSpinBad} sw20=${xpSw20} sw20_neg=${xpSw20Neg} sw21=${xpSw21} sw21_neg=${xpSw21Neg} sw22=${xpSw22} sw22_neg=${xpSw22Neg} sw23=${xpSw23} sw23_neg=${xpSw23Neg} sw24=${xpSw24} sw24_neg=${xpSw24Neg}`);
+  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad} bots_lost=${xpBotsLost} bots_room_ok=${xpBotsOk} bots_rooms=${xpBotsRooms} spin_ms=${xpSpinMs} spin_bad=${xpSpinBad} sw20=${xpSw20} sw20_neg=${xpSw20Neg} sw21=${xpSw21} sw21_neg=${xpSw21Neg} sw22=${xpSw22} sw22_neg=${xpSw22Neg} sw23=${xpSw23} sw23_neg=${xpSw23Neg} sw24=${xpSw24} sw24_neg=${xpSw24Neg} sw25=${xpSw25} sw25_neg=${xpSw25Neg} sw26=${xpSw26} sw26_neg=${xpSw26Neg} sw27=${xpSw27} sw27_neg=${xpSw27Neg}`);
   console.log("prove_sessions_single_writer: PASS=" + PASS + " FAIL=" + FAIL);
   process.exit(FAIL === 0 ? 0 : 1);
 }

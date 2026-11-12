@@ -142,8 +142,15 @@ function createProductSurface(repoRoot, opts = {}) {
     const tmp = filePath + ".tmp." + process.pid + "." + Date.now() + "." + Math.random().toString(36).slice(2, 8);
     const m = mirror();
     const token = m.capture(filePath);
-    fs.writeFileSync(tmp, data);
-    fs.renameSync(tmp, filePath);
+    /* 写失败不许把 tmp 留在盘上，更不许把错吞掉（KP-09 片8，与会话面 writeStore 同形）：
+       吞掉就是「ok:true 但盘上还是陈旧的」，留在盘上就是每次崩都攒一个垃圾。 */
+    try {
+      fs.writeFileSync(tmp, data);
+      fs.renameSync(tmp, filePath);
+    } catch (err) {
+      try { fs.rmSync(tmp, { force: true }); } catch (_) { /* 清不掉只是多一个垃圾 */ }
+      throw err;
+    }
     m.commit(filePath, token, data);
   }
 
@@ -154,6 +161,94 @@ function createProductSurface(repoRoot, opts = {}) {
     } catch {
       return fallback;
     }
+  }
+
+  /* ===== store 形状的面（bots.json）的读法：坏文件不许演成「一个都没有」 =====
+     KP-09 片8。readJson 有 15 处调用（settings / 缓存 / memory 都在里面），
+     那里「读不到就用默认值」是正当的降级；但 Bot 面不是默认值能盖住的：
+     实测把 bots.json 截一半（1251→625 字节），loadBots 拿到 null 就当
+     「一个 Bot 都没有」，用内建 Bot 起步并紧接着 saveBots 把坏字节整份覆盖 ——
+     用户的 Bot 连手工救的余地都没了，侧栏只说没有 Bot，botDetail 报的是
+     bot_not_found（错误的诊断），stderr 一个字节都没有。
+     改法与会话面片7 逐字同形：先把字节改名留住（.corrupt-<时间戳>）、说一句，
+     再交回 fallback 让内建 Bot 起步 —— 顺序不能反，反了下一次写就把证据盖掉。
+     群面（rooms.json）不在这条路上：它的写侧早已 fail closed（requireWritableRooms
+     直接抛，坏字节留在原文件里，GP-164 P8 钉的就是「原文件还在原路径」），
+     给它做隔离反而会把那条门自己踩掉，所以群面只补「读侧要说话」那半条。 */
+  function readFaceJson(filePath, rowsKey, fallback) {
+    if (!fs.existsSync(filePath)) {
+      pruneOrphanFaceTmp(filePath);
+      return fallback;
+    }
+    let text = null;
+    try {
+      text = fs.readFileSync(filePath, "utf8");
+    } catch (_) {
+      return fallback; // 连字节都读不出（权限/只读盘）时不动证据
+    }
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch (_) {
+      parsed = null;
+    }
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed[rowsKey])) {
+      quarantineFaceFile(filePath, rowsKey);
+      pruneOrphanFaceTmp(filePath);
+      return fallback;
+    }
+    pruneOrphanFaceTmp(filePath);
+    return parsed;
+  }
+
+  function quarantineFaceFile(filePath, rowsKey) {
+    const at = new Date().toISOString().replace(/[:.]/g, "-");
+    const keep = filePath + ".corrupt-" + at;
+    let how = "";
+    try {
+      fs.renameSync(filePath, keep);
+      how = "已改名留成 " + keep;
+    } catch (_) {
+      try {
+        fs.copyFileSync(filePath, keep);
+        how = "已另存一份到 " + keep;
+      } catch (_) {
+        how = "没能另存（原文件仍在那里，但这次读不出来）";
+      }
+    }
+    const face = path.basename(filePath);
+    sayOnce("corrupt-" + keep,
+      `[bots] ${filePath} 不是合法的 Bot 面 JSON（多半是写一半失败留下的）——原始字节${how}；` +
+      `本次从内建 Bot 起步，这不是「你没有 Bot」（${rowsKey} 里那些行还在那些字节里），请手工检查那份文件。\n`);
+    return keep;
+  }
+
+  /* 崩在 write 与 rename 之间的进程来不及清理自己那个 tmp（片8 之前 atomicWrite
+     连清理都没有：写失败直接把 tmp 留在面旁边）。pid 不在了 + 老于 60s 才清 ——
+     别的活着的进程可能正在写它自己那个 tmp。 */
+  function pruneOrphanFaceTmp(filePath) {
+    let names = [];
+    try {
+      names = fs.readdirSync(path.dirname(filePath))
+        .filter((f) => f.startsWith(path.basename(filePath) + ".tmp."));
+    } catch (_) {
+      return;
+    }
+    const now = Date.now();
+    for (const f of names) {
+      const pid = Number(String(f).split(".")[3]);
+      if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) continue;
+      if (isPidAlive(pid)) continue;
+      const full = path.join(path.dirname(filePath), f);
+      try {
+        if (now - fs.statSync(full).mtimeMs < 60000) continue;
+        fs.rmSync(full, { force: true });
+      } catch (_) { /* 清不掉只是磁盘上多一个垃圾，不影响这次开面 */ }
+    }
+  }
+
+  function isPidAlive(pid) {
+    try { process.kill(pid, 0); return true; } catch (e) { return String((e && e.code) || "") === "EPERM"; }
   }
 
   function appendJsonl(filePath, entry) {
@@ -208,7 +303,7 @@ function createProductSurface(repoRoot, opts = {}) {
     // both have to come back with agent-bit. G-1b / G-6 / G-26 address that
     // id directly; seeding only when the file is absent leaves the row out
     // as soon as anything else creates bots.json first.
-    let data = readJson(BOTS_PATH, null);
+    let data = readFaceJson(BOTS_PATH, "bots", null);
     botsBaseText = data ? JSON.stringify(data) : null;
     let dirty = false;
     if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -812,8 +907,12 @@ function createProductSurface(repoRoot, opts = {}) {
 
     let roomCount = 0;
     try {
-      const rooms = readJson(ROOMS_PATH, null);
-      const rows = Array.isArray(rooms) ? rooms : (rooms && Array.isArray(rooms.rooms) ? rooms.rooms : []);
+      /* 片2 的纪律（面的读法归面的持有者）在这里还剩一处漏网：这一行以前直读
+         rooms.json。EVENT_ONLY 下那张 JSON 一个字节都不再写，于是 Bot 详情面板
+         显示的「群数」是陈旧副本 —— 实测同一次操作里 loadRooms 数到 1 个群、
+         rooms_total 报 0，两个互相矛盾的数字同屏（用户看到的正是那一句）。 */
+      const roomsFace = loadRooms();
+      const rows = Array.isArray(roomsFace) ? roomsFace : (roomsFace && Array.isArray(roomsFace.rooms) ? roomsFace.rooms : []);
       roomCount = rows.filter((r) => Array.isArray(r && r.members) && r.members.includes(id)).length;
     } catch (_) { /* rooms store missing → 0 */ }
 
@@ -1738,7 +1837,21 @@ function createProductSurface(repoRoot, opts = {}) {
         );
       }
     }
-    return readJson(ROOMS_PATH, { version: 1, rooms: [] });
+    /* KP-09 片8（群面读侧要说话）：这一行以前是 readJson 的静默回落 —— 坏文件直接
+       交出空目录，一声不吭。rooms.json 撕裂时 loadRooms 交出「一个群都没有」。写侧确实
+       fail closed（requireWritableRooms 抛，坏字节留在原文件里），渲染层也有
+       roomsStoreStatus 这条诚实通道，但 loadRooms 的其它消费者（定时任务读的成稿回执、
+       host 交接）拿到的是空面而不是「我读不到」，于是邮件里写的是「本群暂无成稿」而不是
+       「rooms.json 坏了」。这里只补这一句说明，语义（空目录 + 写侧照旧抛）不变。 */
+    const hit = parseRoomsRaw();
+    if (!hit.unreadable) return hit.data;
+    if (hit.reason === "rooms_file_unreadable" && !fs.existsSync(ROOMS_PATH)) {
+      return { version: 1, rooms: [] }; // 还没建过群：空目录是正当默认值，不用报
+    }
+    sayOnce(`rm-empty-${hit.reason}`,
+      `[rooms] ${ROOMS_PATH} 读不出群面（${hit.reason}）——本次按空目录显示，这不是「你没有群」：` +
+      "写侧已 fail closed，坏字节仍留在原文件里（改法不是隔离，群面的历史要靠那份字节），请手工检查。\n");
+    return { version: 1, rooms: [] };
   }
 
   // GP-146：rooms.json 坏掉时 readJson 会静默回落成「空目录」。读侧把这种状态
