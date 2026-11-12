@@ -10654,3 +10654,84 @@ e2e_desktop_optimistic: PASS=14 FAIL=0 SKIP=0   （G-121，新）
   增量子门逐条复跑绿（CC 52/0、e2e 19/0/0）。增量口径：G-120 静态 +8、G-121 子门 +4、
   矩阵 G-121 锚点 +4、可感面 +2，run13 复跑后按门逐条回填总量。
 
+
+## 8.118 run13 总量回填 + 两条红各归其主：Box 清单缺的那张码表（真账，我自己欠的）与钉散文的 G-40 锚点（尺子账）（2026-11-12）
+
+### 1) run13 实测总量与逐门对账
+
+`smoke_grok_desktop_parity: PASS=915 FAIL=9`（run11 记的是 907/7，日志 `/tmp/run13-matrix.log`）。
+§8.116/§8.117 两片承诺的增量这次全部落地，逐门实测（都是从子门自己的汇总行 grep 出来的，不是 `tail`）：
+
+| 门 | run11 记录 | run13 实测 | 增量口径核对 |
+|---|---|---|---|
+| G-116 静态码表 `prove_failure_codes` | 9/0 | **11/0** | +2（T2b、N4）✓ |
+| G-120 纯逻辑与对拍 `prove_client_core` | 44/0 | **52/0** | +8（CC-27/28/29 + N18/N19/N20 及各判据自证）✓ |
+| G-121 真 app `e2e_desktop_optimistic` | 14/0 | **19/0**（SKIP=0） | +5：OP-03c、OP-07、OP-07b、OP-07c、OP-07d ✓ |
+| G-121 矩阵锚点 | 13 条 | **17 条** | +4 ✓ |
+| G-121 可感面 | ①..④ | **①..⑥** | +2，数字全部运行时现取（死线 10000ms、静默 14045ms、第 11001ms 落判、吐字 21643ms）✓ |
+
+### 2) G-57 那 5 条红：KP-03 那片欠的打包清单账（真产品退化，本片收掉）
+
+`prove_box_pack_closure: pass=7 fail=1` 只缺一行 —— `缺：desktop/failure_codes.js`。
+这条是 §8.116（GP-184 之后的 KP-03 尾账，提交 6b5bdbb）自己引进的：那片给
+`hosts/shared/host_ffi.js:48-52` 加了 `llmFailureCode`，它 require 的就是那张 34 项码表，
+而 Box 的允许清单没人跟着加。危害不是「清单不好看」：平铺包里 `host_ffi` 的三档兜路径
+只有 `../failure_codes.js` 指得到文件，那一档不在清单里 → Box 上 `_failureCodes=null` →
+`llmFailureCode` 对**任何**失败都只能说 `llm_chat_failed`，`cancelled` /
+`provider_unconfigured` 这些认得出的码在手机那一头看不见 —— 正是桌面端刚修完的那个病，
+在 Box 上原样留着。尺子（P-01 传递闭包 + 包内 require 自检）两片之间没被跑到，所以这笔账
+挂到 run13 才露出来。
+
+修法一行（`scripts/pack-box.sh` 包根那一段加 `failure_codes.js`，并写明为什么平铺包只有
+`../` 这一档命中）：
+
+- `prove_box_pack_closure`：改前 7/1 → 改后 **pass=8 fail=0**（P-00 报「shared=29 包根=6」）。
+- 注入对照：把三个名字的清单副本摘掉 → **6/2 翻红**，同副本原样 → **8/0 绿**（红在 P-01/P-04，不是别处）。
+- 真 Box 取证 `prove_box_routine_sweep`：**pass=18 fail=0**，连跑两次各一次；
+  取证日志里点名 `require 自检通过：35 个 .js、47 个 require 簇`（run13 那条「自检没出现」的红随之消失）。
+- 诚实账：run13 那次 pack-box 是在 `[pack-box] staging …` 之后退出的（`tail -3` 截断，看不到具体错误行）。
+  同一条命令本轮两次都打成功并跑完 18 项，**不复现，来源未定位**，不写「已修」。最像的解释是矩阵里
+  常驻内核门与它并发抢 `_build/native/debug/...` 那份二进制（拷贝时对方正在重写），但没有证据支持到
+  可以下结论的程度 —— 留在观察清单上。
+
+### 3) G-40 那条红：尺子钉散文，子门措辞一改就假红（本片的尺子账）
+
+`prove_m40_a11y: PASS=8 FAIL=0`，矩阵里该档 4 条契约锚点全绿，只有最后一行红：
+矩阵 grep 的是 `负向对照：抹掉 :focus-visible 规则`，而 §8.116 把子门那句改成
+`抹掉断言命中的那条 :focus-visible 焦点环`（那次改的是尺子本身：原来抹「文件里第一处」，
+抹错了对象）。产品没退化，是矩阵把**子门的措辞当成了契约**。
+比假红更糟的是反向：钉散文时，子门把那条负向对照**整段删掉、只留下那句话**，矩阵照样绿。
+
+改法按 §8.116 自己立的口径（尺子只钉关系，不钉名字与散文）：给子门 8 条断言各配一个稳定
+id（`A11Y-01..07` + `A11Y-NC`，✓/✗ 两条分支都带），矩阵那档改成逐条 `grep "✓ A11Y-xx "`，
+汇总行也从 `tail -1` 换成 `grep -m1 'prove_m40_a11y: PASS='`（不拿最后一行当计数）。
+该档锚点数 5 → 9（矩阵总量下次 +4）。
+
+自证（本轮实测）：把子门日志里 `A11Y-NC` 那行的措辞改掉 → 新尺子**只有那一条**翻红，
+其余 7 条不受影响；也就是说它认的是 id 与断言的对应关系，不是句子。
+
+### 4) 剩下 3 条红的归属（本轮只登记，不动手）
+
+- **G-46 `C-11`（1 条，任务 #65）**：用户敲 `create routine id=… cron=@daily prompt=…` 之后，
+  可见气泡里拿到协议原文 `routine_schedule: gate-r1|@daily|gate smoke`、
+  `[host] ADR 0002 continue applied`、`rt:schedule:gate-r1/snap/long_lived_cron_residual`。
+  取证已定位到四段候选链路（内核正确文案在 `cmd/desktop_turn/turn_json.mbt:2464`，被
+  `continue_after_host_ffi` 的原文转储覆盖；渲染端 chip 在 `index.html:7028`/`:13700`；
+  历史重载 `index.html:9676` 不走 `wavegLocalizeReply`），下一步用一次插桩运行确认
+  「debug-only 的行是怎么变成可见的」，再定改哪层。
+- **G-53（1 条，内含 2 项）**：群里问成员列表那条回合没产出文本；zh-TW 界面仍漏
+  General/Computer/Usage/Updates 四个英文页签名。与 run10 逐字相同，未修。
+- **G-64（1 条）**：dev 数据根被历轮门写脏（`data/routines` 五千余条、drafts 两千八），
+  同一条 ack 在 messages 里出现两次。删残留按红线要点头，未动。
+
+### 5) 本片动了什么、没动什么
+
+- 动：`scripts/pack-box.sh`（包根清单 +`failure_codes.js` 与三行说明）、
+  `scripts/prove_m40_a11y.js`（8 条断言加 id，✓/✗ 两分支同 id）、
+  `scripts/smoke_grok_desktop_parity.sh`（G-40 那档从 5 条散文 grep 改为 9 条 id 锚点 +
+  汇总行现取，并写清这次假红的来路）、本报告。
+- 没动：产品代码一行没改；C-11 泄漏、G-53 两条、G-64 脏数据与重复 ack 全部原样挂着；
+  房间链 `sendRoomTurn` 未接台账、T3-07 `checkJs` 待授权、取消那一路的台账终态仍未量（任务 #64）。
+- 矩阵总量本片**未重跑**：`bash -n` 已过，`prove_box_pack_closure` 8/0、
+  `prove_box_routine_sweep` 18/0（两次）、`prove_m40_a11y` 8/0 三条单门复跑绿，
+  增量口径是 G-57 五条红转绿 + G-40 该档 +4 条锚点，下次复跑按门回填。

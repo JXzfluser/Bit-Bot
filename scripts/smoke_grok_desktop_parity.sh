@@ -1736,25 +1736,17 @@ grep -q "负向对照：抹掉 opacity:0" /tmp/g39-probe.log 2>/dev/null \
 
 echo "== G-40 无障碍（M40：键盘焦点环 + prefers-reduced-motion）=="
 if timeout 900 node scripts/prove_m40_a11y.js > /tmp/g40-probe.log 2>&1; then
-  ok "G-40 M40 无障碍契约全绿（$(grep -c '✓' /tmp/g40-probe.log) 项，$(tail -1 /tmp/g40-probe.log)）"
+  ok "G-40 M40 无障碍契约全绿（$(grep -c '✓ A11Y-' /tmp/g40-probe.log) 项，$(grep -m1 'prove_m40_a11y: PASS=' /tmp/g40-probe.log)）"
 else
-  bad "G-40 M40 无障碍契约（见 /tmp/g40-probe.log）"
+  bad "G-40 M40 无障碍契约（见 /tmp/g40-probe.log；$(grep -m1 'prove_m40_a11y: PASS=' /tmp/g40-probe.log || tail -1 /tmp/g40-probe.log)）"
 fi
-grep -q ":focus-visible 焦点环：2px solid accent" /tmp/g40-probe.log 2>/dev/null \
-  && ok "G-40 GP-M40：:focus-visible 键盘焦点环（2px solid accent，仅键盘可见）" \
-  || bad "G-40 focus-visible missing"
-grep -q "prefers-reduced-motion: reduce)：全局 transition/animation" /tmp/g40-probe.log 2>/dev/null \
-  && ok "G-40 GP-M40：prefers-reduced-motion 全局压平 transition/animation" \
-  || bad "G-40 reduced-motion missing"
-grep -q "reduced-motion 下 composer send:active transform 归零" /tmp/g40-probe.log 2>/dev/null \
-  && ok "G-40 GP-M40：reduced-motion 下 composer 按压位移归零" \
-  || bad "G-40 rm composer missing"
-grep -q "M39 msg-actions 淡入契约仍在" /tmp/g40-probe.log 2>/dev/null \
-  && ok "G-40 M39 回归不破：msg-actions 淡入仍在" \
-  || bad "G-40 M39 regression"
-grep -q "负向对照：抹掉 :focus-visible 规则" /tmp/g40-probe.log 2>/dev/null \
-  && ok "G-40 负向对照：抹掉 :focus-visible → 焦点环断言翻假（非恒真）" \
-  || bad "G-40 negative control"
+# 锚点钉的是子门自带的 id（A11Y-01..07 + A11Y-NC），不是它那句散文。
+# run13 实测：子门 8/0 全绿、矩阵这条却红 —— 因为 §8.116 把负向对照的措辞从
+# 「抹掉 :focus-visible 规则」改成「抹掉断言命中的那条」，钉原文的 grep 当场失效。
+# 危害不止假红：钉散文时，子门把那条对照**删掉但保留这句话**也能糊过矩阵，恒真方向同样成立。
+for g40_a in "A11Y-01 " "A11Y-02 " "A11Y-03 " "A11Y-04 " "A11Y-05 " "A11Y-06 " "A11Y-07 " "A11Y-NC "; do
+  if grep -q "✓ $g40_a" /tmp/g40-probe.log; then ok "G-40 锚点：$g40_a"; else bad "G-40 锚点没跑绿：$g40_a"; fi
+done
 
 echo "== G-41 中英混排收尾（M41：动态 meta 前缀 + 内部枚举外泄）=="
 if timeout 900 node scripts/prove_m41_cn.js > /tmp/g41-probe.log 2>&1; then
