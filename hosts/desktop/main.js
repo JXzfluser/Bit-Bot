@@ -141,7 +141,7 @@ try {
     stripApproved,
   } = require("../shared/host_approval_gate"));
 }
-const { createSessionStore } = require("./sessions");
+const { getSessionStore } = require("./sessions");
 // M52b: 一轮结束把真正落盘的产物挑出来存进消息行（否则刷新就丢图片/ics/eml 卡）。
 const { collectTurnArtifacts } = require("./turn_artifacts");
 const { buildRoomContext: buildRoomContextData } = require("../shared/room_context");
@@ -751,10 +751,10 @@ function setTurnActivity(delta) {
 }
 const approvalGate = createApprovalGate();
 let liveLoopApproval = null;
-const sessions = createSessionStore(REPO_ROOT, { dataRoot: DATA_ROOT });
+const sessions = getSessionStore(REPO_ROOT, { dataRoot: DATA_ROOT });
 const ffi = createHostFfi(REPO_ROOT, { dataRoot: DATA_ROOT, kernelBin: KERNEL_BIN });
 /** Wave G stores: bots / settings / approvals / computer / rooms / usage (docs/grok-desktop-parity/ipc-contract.md §2). */
-const surface = createProductSurface(REPO_ROOT, { dataRoot: DATA_ROOT });
+const surface = createProductSurface(REPO_ROOT, { dataRoot: DATA_ROOT, sessions });
 /**
  * GP-99/100/101/102 — Host-owned secret vault (§8.3).
  *

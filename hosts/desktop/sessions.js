@@ -474,4 +474,23 @@ function createSessionStore(repoRoot, opts = {}) {
   };
 }
 
-module.exports = { createSessionStore };
+module.exports = { createSessionStore, getSessionStore };
+
+/* KP-09 片1（单写者）：一个进程里同一个 dataRoot 只能有一个 sessions store 实例。
+   实例各自记着「最后一次读到的状态文本」——EVENT_ONLY 下那是 diff 的左半边，两个实例
+   交替写同一张面，后写的就拿陈旧的 prev 做 diff，等于把一张面拆成两条账。
+   grok_import.js 早就在注释里要求调用方复用 Host 的那两个实例，但约定不是结构：
+   这里按 repoRoot+dataRoot 收口，谁要都用同一个。 */
+const storeInstances = new Map();
+
+function getSessionStore(repoRoot, opts = {}) {
+  const root = path.resolve(repoRoot);
+  const dataRoot = opts.dataRoot ? path.resolve(opts.dataRoot) : path.join(root, "data");
+  const key = root + "\u0000" + dataRoot;
+  let hit = storeInstances.get(key);
+  if (!hit) {
+    hit = createSessionStore(repoRoot, opts);
+    storeInstances.set(key, hit);
+  }
+  return hit;
+}

@@ -28,7 +28,8 @@ function createProductSurface(repoRoot, opts = {}) {
   const COMPUTER_PATH = path.join(DESKTOP_DIR, "computer.json");
   const LLM_USAGE_PATH = path.join(DESKTOP_DIR, "llm-usage.json");
   const ROOMS_PATH = path.join(DESKTOP_DIR, "rooms.json");
-  const SESSIONS_PATH = path.join(DESKTOP_DIR, "sessions.json");
+  /* sessions.json 没有本地路径常量了：这张面只有一个写者（sessions store），
+     谁想读写它都得经过上面那个 store 句柄 —— 见 §8.123 / G-122 的 SW-02 棘轮。 */
   const MEMORY_DIR = path.join(DATA_ROOT, "memory");
   const MEMORY_STORE_PATH = path.join(MEMORY_DIR, "desktop-host.json");
   const PROFILE_VAULT_PATH = path.join(MEMORY_DIR, "profile-vault.json");
@@ -40,6 +41,20 @@ function createProductSurface(repoRoot, opts = {}) {
   // 共享任务板（群编排的共享工作区）：与内核 section store 同一目录/同一格式，
   // key 统一成 room id —— 内核写的 section_post，成员下一轮能在 prompt 里读到。
   const roomBoard = roomOrchestrator.createRoomBoard(REPO_ROOT, { dataRoot: DATA_ROOT });
+
+  /* KP-09 片1：sessions.json 这张面的读写都从这里出去。
+     main.js 把它自己那个实例注进来（同一个进程里两个实例交替 load/save 就是
+     grok_import.js 注释里点名要避免的那种丢更新）；没注入时按同一 dataRoot
+     取进程内缓存的那一个。Box 若没打包到 sessions 模块则为 null，调用点必须
+     说出口而不是假装做成。 */
+  const sessionsStore = (() => {
+    if (opts.sessions) return opts.sessions;
+    try {
+      return require("./sessions").getSessionStore(REPO_ROOT, { dataRoot: DATA_ROOT });
+    } catch (_) {
+      return null;
+    }
+  })();
 
   // Atomic write helper: tmp + rename
   /* T1-03 双写旁路：只有 sessions.json / rooms.json / pending-approvals.jsonl
@@ -547,30 +562,29 @@ function createProductSurface(repoRoot, opts = {}) {
       // routines dir missing, skip
     }
 
-    // GP-07: cascade sessions. sessions.json is {version, active_id, sessions:[]}
-    // and DM sessions are titled "<bot name> · DM" (renderer convention),
-    // with no per-bot field on the row itself.
+    /* GP-07: cascade sessions —— KP-09 片1 把这段收进唯一的写者。
+       以前它自己 readJson(SESSIONS_PATH) + atomicWrite(SESSIONS_PATH)，于是这张面
+       有两个写者；更坏的是 EVENT_ONLY 下 JSON 不再是真源，这条读的是永远陈旧的
+       文件，实测（临时 dataRoot、真代码路径）删 Bot 后 sessions_deleted=0、
+       sessions_cascaded=false —— Bot 从列表里没了，它的 DM 会话在侧栏和事件库里
+       都还在，而且一声不吭。现在只有 sessions store 能写这张面。 */
     let sessions_deleted = 0;
-    try {
-      const store = readJson(SESSIONS_PATH, null);
-      if (store && Array.isArray(store.sessions)) {
-        const dmTitles = new Set([bot.name || bot_id, bot_id].map((x) => String(x) + " · DM"));
-        const kept = store.sessions.filter(
-          (s) => !(s && dmTitles.has(String(s.title || "")))
-        );
-        sessions_deleted = store.sessions.length - kept.length;
-        if (sessions_deleted > 0) {
-          store.sessions = kept;
-          if (!kept.length) {
-            store.active_id = "";
-          } else if (kept.every((s) => s.id !== store.active_id)) {
-            store.active_id = kept[0].id;
-          }
-          atomicWrite(SESSIONS_PATH, JSON.stringify(store, null, 2));
-        }
+    let sessions_cascade_deferred = "";
+    const dmTitles = new Set([bot.name || bot_id, bot_id].map((x) => String(x) + " · DM"));
+    if (!sessionsStore) {
+      /* 唯一可能的缺席是打包清单没带上 store（Box 少一个文件）——那时宁可说出口，
+         也不能像以前那样把「没做成」报成「做完了」。 */
+      sessions_cascade_deferred = "no_store";
+      sayOnce("cascade-no-sessions-store",
+        "[product-surface] 删 Bot 的会话级联没执行：本进程拿不到 sessions store（sessions.json 的唯一写者），" +
+        "这个 Bot 的 DM 会话要手动删\n");
+    } else {
+      const rows = sessionsStore.list();
+      for (const row of (rows && rows.sessions) || []) {
+        if (!row || !dmTitles.has(String(row.title || ""))) continue;
+        const rm = sessionsStore.remove(row.id);
+        if (rm && rm.ok) sessions_deleted++;
       }
-    } catch {
-      // sessions.json missing or malformed, skip
     }
 
     // GP-07: remove the bot from rooms; drop rooms that fall below 2 members.
@@ -636,6 +650,7 @@ function createProductSurface(repoRoot, opts = {}) {
       pretend_saved: false,
       sessions_cascaded: sessions_deleted > 0,
       sessions_deleted,
+      sessions_cascade_deferred,
       memory_dropped,
       routines_deleted,
       rooms_removed,
@@ -687,17 +702,17 @@ function createProductSurface(repoRoot, opts = {}) {
 
     let sessionCount = 0;
     let lastSessionAt = "";
-    try {
-      const store = readJson(SESSIONS_PATH, null);
-      if (store && Array.isArray(store.sessions)) {
-        const titles = new Set([String(bot.name || id) + " · DM", id + " · DM"]);
-        const hits = store.sessions.filter((s) => s && titles.has(String(s.title || "")));
-        sessionCount = hits.length;
-        for (const s of hits) {
-          if (String(s.updated_at || "") > lastSessionAt) lastSessionAt = String(s.updated_at || "");
-        }
-      }
-    } catch (_) { /* sessions store missing → 0 */ }
+    /* GP-124..127：这一块以前直读 sessions.json。EVENT_ONLY 下那张面的真源是事件库
+       （JSON 一个字节都不再写），于是 Bot 详情里的会话数与「最近活动」看的是一份陈旧副本。
+       改走 store 以后，读写两边看到的是同一张面。 */
+    const dmTitlesForBot = new Set([String(bot.name || id) + " · DM", id + " · DM"]);
+    const dmRows = sessionsStore ? (sessionsStore.list().sessions || []) : [];
+    for (const s of dmRows) {
+      if (!s || !dmTitlesForBot.has(String(s.title || ""))) continue;
+      sessionCount++;
+      const at = String(s.updated_at || "");
+      if (at > lastSessionAt) lastSessionAt = at;
+    }
 
     let roomCount = 0;
     try {

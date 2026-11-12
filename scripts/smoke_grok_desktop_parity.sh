@@ -2722,8 +2722,8 @@ if node -e "require('node:sqlite')" 2>/dev/null; then
   echo "  · G-61 负向对照（本轮实测，断言非恒真）：把 NEVER_PERSISTED 清空后同一道门"
   echo "    立刻 EL-05「本该抛错，却没有」翻红，汇总从 pass 10/fail 0 变 pass 7/fail 3；"
   echo "    还原后回到 10/0 —— delta 能落库就意味着状态不再只由 fold(events) 得到"
-  echo "  · G-61 残留（诚实）：T1-04 读切换、T1-06 单写者还没接上（T1-03 双写由 G-62 盯）——"
-  echo "    本门只证明「日志本身立得住」，不证明 product_surface 已经改读它"
+  echo "  · G-61 残留（诚实）：T1-04 读切换还没接上；T1-06 单写者第一片已接上（sessions.json 收到 store，G-122 盯）——"
+  echo "    本门只证明「日志本身立得住」；删 Bot 的会话级联改走 store 由 G-122 盯（product_surface 那两处直写点已收）"
 else
   echo "  · skip：本机 node 没有 node:sqlite，G-61 未跑（SKIP ≠ PASS）"
 fi
@@ -5066,6 +5066,42 @@ echo "    物理拔网这一步仍没测。"
 echo "    KP-03 的尾账（供应商 HTTP 500 时 Host 的 llm_chat 主路径只回 error/stderr、不带 error_code，"
 echo "    于是渲染端只能把原文归一化成兜底 unknown_failure）已在 OP-03c 收掉：Host 现在从同一份"
 echo "    failure_codes.js 产出 error_code，实测台账 code=llm_chat_failed 而不是兜底。"
+
+echo "== G-122 会话面的单写者（T1-06 第一片 · sessions.json 只有 sessions store 一个写者，KP-09）=="
+# 这把尺子是先中枪才立起来的：EVENT_ONLY 下删 Bot 的级联绕过 store 自己 readJson + atomicWrite
+# sessions.json，而那张面的真源那时已是事件库 —— 实测（临时 dataRoot、真代码路径）
+# sessions_deleted=0、sessions_cascaded=false：Bot 从列表里没了，它的 DM 会话在侧栏和 fold 里
+# 都还在，一声不吭。修复 = 级联与 Bot 详情的读都走 store，store 按 dataRoot 收成进程内单实例。
+if timeout 300 node scripts/prove_sessions_single_writer.mjs > /tmp/g122-single-writer.log 2>&1; then
+  ok "G-122 会话面单写者全绿（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g122-single-writer.log | tail -1)）"
+else
+  bad "G-122 会话面单写者翻红（见 /tmp/g122-single-writer.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g122-single-writer.log | tail -1)）"
+fi
+g122_sw=$(grep -o 'SW_METRICS mode=prod pass=[0-9][0-9]* fail=[0-9][0-9]* writers=[0-9][0-9]* store_writers=[0-9][0-9]*' /tmp/g122-single-writer.log | head -1)
+g122_pass=$(printf '%s' "$g122_sw" | grep -o 'pass=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+g122_fail=$(printf '%s' "$g122_sw" | grep -o 'fail=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+g122_w=$(printf '%s' "$g122_sw" | grep -o '[^_]writers=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+g122_sw2=$(printf '%s' "$g122_sw" | grep -o 'store_writers=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+if [ -n "$g122_sw" ] && [ "$g122_fail" = "0" ] && [ "$g122_pass" -ge 8 ] \
+  && [ "$g122_w" = "$g122_sw2" ] && [ "$g122_w" -le 3 ]; then
+  ok "G-122 锚点：sessions.json 的 $g122_w 处写点全在 store 内（store_writers==writers，棘轮只许降），SW-01..05 绿满 $g122_pass 项"
+else
+  bad "G-122 锚点不成立（token=${g122_sw:-子门没打印}；fail=${g122_fail:-?} writers=${g122_w:-?}/store=${g122_sw2:-?}）"
+fi
+# 反向对照：把「绕过 store 直写 JSON」这步旧写法照样喂给同一把尺子，事件 fold 必须仍留着那条 DM；
+# SW-NEG 若缺席或判绿失效，SW-03 就是恒真断言。
+log=/tmp/g122-neg.log
+if NEG_CONTROL=1 timeout 300 node scripts/prove_sessions_single_writer.mjs >"$log" 2>&1 \
+  && grep -q "SW-NEG" "$log" && grep -q "SW_METRICS mode=neg" "$log"; then
+  ok "G-122 反向对照：旧写法（直写 JSON）在 fold 里留下幽灵 DM 会话被照出，SW-03 认的是写者而不是运气"
+else
+  bad "G-122 反向对照失效：要么跑红，要么没打出 SW-NEG / mode=neg token（见 ${log}）"
+fi
+echo "  · G-122 口径（诚实）：SW-02 的静态账只扫 hosts/{desktop,shared}/*.js 里「写函数 + 目标这张面」的行，"
+echo "    剥掉注释再判（不剥时会把「解释旧写法」那行判成旧写法本身，本轮踩过一次）；"
+echo "    grok_import.js 与 run_moon_turn.js 里的 sessions.json 是读点/迁移入口，没算进写者账。"
+echo "  · G-122 残账（实测到的）：T1-06 的完成定义还有「并发压测无覆盖、kill -9 恢复正确」两半 —— 本片只收了"
+echo "    「谁都能写」这一半；rooms.json / bots.json 等其余 data/ 直写点还没进 actor。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo

@@ -30,7 +30,8 @@
  *   DW-08 seq 账：双写出来的行 seq 严格递增、三张面共用同一条流，
  *          镜像自报条数 == 库里由它写的行数（两个数必须讲同一件事）
  *   DW-09 兜底网：store 顶层冒出/消失一个陌生字段、以及 active_id 归零
- *          （product_surface.js:486 那条绕过 store 的级联会造出这个形状）
+ *          （这个形状曾由 product_surface 那条绕过 store 的级联造出来；§8.123 把级联
+ *           收进 store 后，下面这两段是手工构造同一形状 —— 兜底网还是要网住它）
  *          都要被认领、能折回来、且不许记失败
  *   DW-10 起得来：运行时没有 node:sqlite（如 Electron ≤34 = Node 20.x；桌面现
  *          为 Electron 37 / Node 22.21，此防御给旧运行时与老 CLI host）时，
@@ -267,7 +268,7 @@ function scenario(dataRoot) {
     const d = ps.logApprovalDeny({ id: r.id, kind: "mail_send", command: "send report", reason: "手动拒" });
     return !!r.id && d !== undefined;
   });
-  step("bots.delete 级联改 sessions.json（product_surface.js:478 那个绕过 store 的写入点）", () => {
+  step("bots.delete 级联走 sessions store（§8.123 前它是绕过 store 的直写点）", () => {
     const r = ps.deleteBot(ctx.bot, "yes");
     return r.ok === true;
   });
@@ -676,8 +677,9 @@ function walk(dir) {
     else ok("DW-09", `store 顶层字段冒出→消失都被 store_state_changed 认领（${added.seq}/${removed.seq} 两行），fold 与快照仍逐字段相等`);
   }
 
-  /* 半个字段都不许漏：active_id 变成 "" 是 product_surface.js:486 那条绕过 store 的
-     级联写法会造出来的形状（删掉最后一个「· DM」会话时）。镜像曾经拿它当 session_id
+  /* 半个字段都不许漏：active_id 变成 "" 这个形状过去由绕过 store 的级联亲手造出来
+     （删掉最后一个「· DM」会话时）。§8.123 把级联收进 store 后这里改成手工构造，
+     兜底网仍要网住它。镜像曾经拿它当 session_id
      去 append，适配器按「需要 sessionId」当场拒收，异常被咽下后同一批剩下的事件一起丢，
      于是日志与快照从此分道、还一声不吭。 */
   {

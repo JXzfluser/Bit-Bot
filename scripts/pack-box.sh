@@ -95,7 +95,7 @@ done
 # 平铺只有最后一档命中）。KP-03 尾账把这张码表接进了 Host 的产码路径，清单没跟着加，
 # G-57 的闭包当场把它判红 —— 少这张表时 Box 上所有模型失败都只剩 llm_chat_failed，
 # cancelled / provider_unconfigured 这些认得出的码在手机上就看不见了。
-for f in product_surface.js room_orchestrator.js secret_protocol.js progress_protocol.js event_mirror_ref.js failure_codes.js; do
+for f in product_surface.js sessions.js room_orchestrator.js secret_protocol.js progress_protocol.js event_mirror_ref.js failure_codes.js; do
   [[ -f "$ROOT/hosts/desktop/$f" ]] || { echo "missing desktop file: $f" >&2; exit 1; }
   cp -f "$ROOT/hosts/desktop/$f" "$OUT/$f"
 done

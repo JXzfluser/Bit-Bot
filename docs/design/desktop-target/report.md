@@ -11024,3 +11024,72 @@ CN05E_METRICS half_len=16 screen=16 receipt=16 store=16 stream_left=0 stream_lef
    `agent_ctx` 让模型下一轮知道自己说过半句话 —— 今天内核走 `LoopStop::Cancelled` 不 append，所以它不记得。
 2. run14 全量矩阵还没带着这些改动跑过（G-46 现在是八个门 + 两支负向对照）。
 3. #61 KP-09 单写者、#56/#58 T3-07 `checkJs`（等 `npm install typescript` 授权）。
+
+## 8.123 删掉的 Bot 会在侧栏留下自己的 DM 会话：会话面的第二个写者收进 store（KP-09 第一片，G-122，2026-11-12）
+
+### ① 先有的红（临时 dataRoot、真代码路径，不是推测）
+
+`/tmp/kp09-probe.js` 按 main.js 的形状同时建 store 与 surface，造一个 Bot、建它的「级联尺子 · DM」会话、
+落一句话，再 `botsDelete`：
+
+```
+JSON 模式：sessions_deleted=1  sessions_cascaded=true   store 与盘上文件都没那条 DM
+EVENT_ONLY：sessions_deleted=0  sessions_cascaded=false  store 里 DM 还在（2 条）
+                                     事件 fold：["级联尺子 · DM", "新对话"]，无 anomalies
+```
+
+责任点在 [hosts/desktop/product_surface.js](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js) 那条 GP-07 级联：
+它自己 `readJson(SESSIONS_PATH)` + `atomicWrite(SESSIONS_PATH)`。EVENT_ONLY 下这张面的真源是事件库、
+JSON 一个字节都不再写，于是它读的是一份**永不更新的陈旧副本** —— 过滤出 0 条、写回原样，
+回执却照旧 `ok:true`。用户侧就是：Bot 从列表里消失了，它的私聊还在侧栏、还能点开、还能继续写。
+JSON 模式看着没事，只因为那条路每次调用都重新 load 文件。
+
+同一张面还有第二处直读：Bot 详情里的 `sessions_total / last_session_at`（GP-124..127 那一段），
+读的还是那份陈旧 JSON —— 这与 §8.63 的「同屏两个来源的数字不能互相矛盾」是同一类病。
+
+### ② 修法：一张面只有一个写者，读写同源
+
+- [hosts/desktop/sessions.js:484-500](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L484-L500) 新增 `getSessionStore(repoRoot, opts)`：
+  按 `repoRoot+dataRoot` 收成进程内单实例。`grok_import.js:378-380` 早就在注释里要求调用方复用 Host 那两个实例，
+  但**约定不是结构**；这里把它变成结构（两个实例各自记着 EVENT_ONLY 的 diff 左半边，交替写等于把一张面拆成两条账）。
+- [hosts/desktop/product_surface.js:49-58](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L49-L58) 解析这张面唯一的写者（注入优先，其次取缓存实例），
+  级联改成 `list()` 找 DM 标题 → 逐条 `remove(id)`（product_surface.js:570-583），Bot 详情那段改读 `list()`。
+  拿不到 store 时**说出口**：回执新增 `sessions_cascade_deferred:"no_store"` + 一句 stderr，
+  不再把「没做成」报成「做完了」。
+- [hosts/desktop/main.js:144,754,757](file:///Users/zfl/Downloads/bitbot/hosts/desktop/main.js#L754)：main 自己改用 `getSessionStore`，
+  并把它注入 `createProductSurface` —— 桌面里那个「Bot 列表」和「会话列表」从此是同一份账。
+- [scripts/pack-box.sh:98](file:///Users/zfl/Downloads/bitbot/scripts/pack-box.sh#L98) 把 `sessions.js` 加进 Box 清单：
+  Box 的 surface 也要能拿到这个写者（G-57 的闭包门实测 `prove_box_pack_closure: pass=8 fail=0`）。
+
+### ③ 新档 `scripts/prove_sessions_single_writer.mjs`（G-122）
+
+判据按面而非按实现：`SW-01/01b` JSON 三面一致、`SW-04` 级联不扩大打击面（「我的其它对话」仍在）、
+`SW-05` 同 dataRoot 单实例 + Bot 详情读到 `sessions_total=1`、`SW-03a/03/03b` EVENT_ONLY 下
+store 与 fold 都没那条 DM 且无 anomalies、`SW-02` 静态账（只认「写函数 + 目标这张面」，注释行剥掉再判 ——
+不剥时会把我自己那句解释旧写法的注释判成旧写法，本轮踩过一次）。
+
+实测：prod `PASS=8 FAIL=0`，token `SW_METRICS mode=prod pass=8 fail=0 writers=3 store_writers=3`；
+反向对照 `NEG_CONTROL=1` → `SW_METRICS mode=neg pass=6 fail=0`，其中 `SW-NEG` 证的是
+「拿旧写法（绕过 store 直写 JSON）做同样的级联，事件 fold 仍留着那条 DM」—— SW-03 认的是写者，不是运气。
+
+回归面（都真跑）：`prove_event_dual_write: PASS=31 FAIL=0`、`prove_event_only: PASS=7 FAIL=0`、
+`prove_event_read_model: PASS=10 FAIL=0`、`prove_box_pack_closure: pass=8 fail=0`。
+DW-09 那两段原本靠级联亲手造出 `active_id=""` 的形状，现在是手工构造同一形状（兜底网仍要网住它），
+注释里点名为 §8.123；那个级联写入点在 DW 清单里也改成了「走 sessions store」。
+
+### ④ 矩阵登记与三条验证方向
+
+`scripts/smoke_grok_desktop_parity.sh` 新增 G-122（放在 G-121 之后）：跑子门 + 读 `SW_METRICS` 的
+token 等式（`fail=0 && pass≥8 && writers==store_writers && writers≤3`，这是 KP-09 的棘轮，只许降）
++ 一支要求 `SW-NEG` 与 `mode=neg` 都在的反向对照。锚点拿真日志复放过三个方向：
+绿日志 → ok；把 `writers=3` 篡成 `4` → 翻红；整行 token 删掉 → 翻红（`token=子门没打印`）。
+G-61 那句「T1-04 读切换、T1-06 单写者还没接上」同步更正为「T1-06 第一片已接上（G-122 盯）」。
+[kernel-mechanism-parity.md:155](file:///Users/zfl/Downloads/bitbot/docs/grok-desktop-parity/kernel-mechanism-parity.md#L155)
+那句「14 个直写 `data/` 的文件」也改了 —— 它从没被任何尺子数过，现在按面清点：会话面曾有 2 个写者，现在 1 个。
+
+### ⑤ 本片没做的（别当已交付）
+
+1. KP-09 完成定义还剩两半没量：「并发压测无覆盖」要的是跨窗口/跨进程写同一张面，
+   今天进程内是同步读改写，跨进程还得有锁或 actor；「`kill -9` 恢复正确」只在事件家族（G-61 EL-09）量过。
+2. 其余 `data/` 直写点（rooms/bots/settings/routines…）还没进 actor —— SW-02 那把尺子按面复制即可。
+3. 级联的匹配口径仍是「标题 == `<Bot 名> · DM`」这个渲染端约定，Bot 改名后旧 DM 会话会脱靶（今天的既有行为，未改）。
