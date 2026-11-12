@@ -11772,3 +11772,47 @@ A 刚追加的那条消息被吞、而 A 刚删掉的那条会话被 B 的陈旧
 （`bots.json.corrupt-<时刻>`），下一次建 Bot 也不会把那份证据覆盖掉；`rooms.json` 坏了侧栏照旧显示空目录，但
 日志与终端会告诉你「读不出群面，这不是你没有群」，定时任务的邮件也不会再把「我读不到」写成「本群暂无成稿」；
 Bot 详情面板的群数和侧栏数到的是同一个数。
+
+## 8.132 KP-09 片9 取证：同进程两个 product_surface 实例「各有第二份 prev 缓存」这条残账，实测在两种模式下都不产生分歧（不立门，登记为已量过，2026-11-13）
+
+§8.124 起，这条债在每一片的诚实清单里都被抄了一遍（§8.129⑥ 第 4 条、§8.131④ 第 5 条…）。
+这次动手量它，是为了让「欠着」这个词有个数，而不是继续当传说。
+
+### ① 现场
+
+- 实例确实有两个：[hosts/desktop/main.js:757](file:///Users/zfl/Downloads/bitbot/hosts/desktop/main.js#L757) 与 [hosts/shared/host_ffi.js:201](file:///Users/zfl/Downloads/bitbot/hosts/shared/host_ffi.js#L201)
+  在同一进程里各调一次 `createProductSurface(REPO_ROOT, { dataRoot })`，所以 `lastTextBySurface`
+  （[hosts/desktop/product_surface.js:72](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L72)）在内存里真的有两份。
+- 交错写法（临时 dataRoot，同一串 8 步：A 建群 / B 发消息 / B 建群 / A 改名 / 交替追加，B 全程没读过 A 建的那两个群）
+  与单实例逐字对照，量三个数：**事件条数**、**每实例自己的视图**、**从事件折出来的面**。
+
+| 模式 | 单实例事件 | 双实例事件 | 差 | 双实例三视图是否一致 |
+|---|---|---|---|---|
+| 默认 + 双写 | 10 | 10 | 0 | 是（逐步 `fold == rooms.json` 逐字段，8/8 步） |
+| EVENT_ONLY | 9 | 9 | 0 | 是 |
+
+### ② 反向对照：把「prev 的两条刷新」摘掉，跑出来一模一样
+
+探针 `/tmp/p9-probe4.cjs` 用符号链接农场改 `product_surface.js`，摘两处：
+`eventOnlyWrite` 里缓存没命中时从真源现算 prev 的那一行（[:123](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L123)），
+以及 `loadRooms` 的 EVENT_ONLY 分支里那句 `setLastTextFor(ROOMS_PATH, text)`
+（[:1806](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1806)）。
+夹具两种模式 × 单双实例四个组合跑出来与真模块**逐字相同**（`delta=0`、`agree=true`）。
+
+原因不是「这两行没用」，而是**这条写路不吃它们**：群面的每次整份写都是同一个实例里的 read-modify-write
+（`loadRooms` 刚读到的那份文本直接作为 prev 传给落库口），默认模式另有 `mirror().capture()` 的 token 快照兜底 ——
+所以第二份缓存只在**同一个实例自己**读过时才被填，读不到时也不会拿它当账。
+
+### ③ 结论与处置（不拿假门凑数）
+
+1. **这条从「数据正确性的债」降级为「冗余内存 + 潜在风险」**：真有风险的是将来某个写点改成「不吃刚读到的那份、
+   直接读 `lastTextBySurface`」，那才会把一张面拆成两条账；今天的代码没有这种写点。
+2. **不立 SW-28**：反向夹具判不红（四个组合全绿），按「绿门必须自证覆盖面」那条老规矩，
+   这样的尺子是恒真断言，不能进门 —— 记在这里比造一个能判红的假场景更诚实。
+   （试过的那条真场景就是本节的交错写法，它现在为真，所以它只能当基线，不能当门。）
+3. 真正该收的是**实例数**本身：把 `host_ffi.js` 那次 `createProductSurface` 改成复用 `main.js` 的那份
+   （或按 `repoRoot+dataRoot` 收单实例，和 §8.123 给 sessions store 做的那件事同形）。这条动的是接线的形状、
+   不是数据的对错，所以它排在 KP-10/KP-11 之后 —— 记在这里，不再抄成「已欠多片」。
+
+可感面：这条今天**没有**用户看得见的变化（这正是实测的结论）；它改变的是台账 —— 以后任何一片再列残账，
+这一条要写「实测两种模式都不产生分歧（§8.132），欠的是实例合并」而不是「第二份 prev 缓存」。

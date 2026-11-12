@@ -5327,7 +5327,10 @@ echo "  · G-122 片8 残账（实测到的）：product_surface.js 里还剩 10
 echo "    settings / approval-rules / computer-use / llm-usage / routines(+host-routines) / memory store / profile vault / account profile；"
 echo "    那里默认值本来就是产品语义（没有设置 = 用默认设置），不是把用户的数据演成空；bots 面的真源仍是文件、没进事件词表；"
 echo "    primary_id / active_id 仍是最后写者赢；同一行被两个进程同时改两个字段仍是行级最后写者赢；"
-echo "    同一进程里 product_surface 仍有两个实例（main.js 与 host_ffi.js），各自的 lastTextBySurface 是第二份 prev 缓存。"
+echo "    同一进程里 product_surface 仍有两个实例（main.js:757 与 host_ffi.js:201）—— 这条到 §8.132 量过了："
+echo "    交错写 8 步、两种模式（默认+双写 10 条事件 / EVENT_ONLY 9 条）单实例与双实例逐字同数、三张视图一致，"
+echo "    把 prev 的两条刷新摘掉也一模一样 —— 群面写路吃的是同实例刚读到的那份，不是缓存；"
+echo "    所以它降级为「冗余内存 + 潜在风险」，欠的是实例合并本身，不当 SW-28 立门（反向夹具判不红＝恒真断言）。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
