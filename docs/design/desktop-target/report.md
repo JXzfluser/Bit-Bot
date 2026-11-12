@@ -10869,3 +10869,62 @@ effects 药丸、`rt:` 标签，任何一次真开机都看得见。
 （`rowsOf(T1,"bot_reply")`）不是 DOM，所以 200s 内 Bot 一句没答是内核/会话侧的账，另立任务查；
 ② 全体 assistant 调试行的可见性只由 C-11b 这一档盯，Alt+D 的开关本身仍归 G-46 之外的门，run14 复跑时
 G-46 该档从 36/2 变 40/0，矩阵总量按锚点净增一条。
+
+## 8.121 停止时那半句去哪了：查到了责任层，但今天的门禁连一个字节的流式增量都观察不到，所以修复没有落地（KP-08 尾账 #67，2026-11-12）
+
+### ① 半句的 custody：不是渲染端一删了之，是抢跑那一步就丢了
+
+顺着「按下停止 → 屏上空白」这条线逐层量（只读，未改产品）：
+
+1. 增量的全文在 [hosts/shared/host_ffi.js:5463-5469](file:///Users/zfl/Downloads/bitbot/hosts/shared/host_ffi.js#L5463-L5469)：
+   `const delta = now.slice(before.length)` 之后 `emitLlmStream({phase:"delta", text:delta, partial:text})` ——
+   `partial` 才是「到目前为止的全文」。
+2. Host 收到后只做两件事（main.js:1165-1168 注册 handler）：记首字时间、`broadcast("bitbot:llm-stream")`。
+   **Host 自己不缓存全文**，渲染端把增量拼进 DOM 气泡（index.html:22919-22922）。
+3. 取消时 `run_moon_turn.js:453-474` 把在跑的 FFI 调用和 `cancelPromise` 抢跑，赢的是取消那侧，
+   交回内核的是 `{cancel:true, content:""}` → 内核 `runtime/agent_loop.mbt:961-969` 走
+   `finish_run(..., LoopStop::Cancelled, "", ...)`，不 `append_assistant`；
+   回合 JSON 因此是 `messages:[user, {assistant, text:""}]`。
+4. `main.js:4319-4330` 落库时 `if (m && m.role === "assistant" && m.text)` —— 空文本那条根本不入库；
+   `index.html:11336` 又把流式气泡 removeChild 掉，然后照 `r.messages` 重画。两侧一合计，
+   「停止」在用户眼里就成了「把这一轮的答案删掉」。
+
+责任层因此很清楚：**Host** 是唯一同时握着增量、`cancelState` 和落库权力的地方。渲染端单独改不可能成立
+（库里没有那半句，刷新就蒸发），内核不用改（它如实报了 Cancelled）。
+
+### ② 写好过、又退回的修法
+
+草稿两片（现已回到 HEAD，`/tmp/main.js.with-partial` 是当时的整份文件）：
+`latchTurnPartialIfStreaming(chunk)` 在 `setLlmStreamHandler` 里把 `chunk.partial` 扣到本回合的计时槽上
+（判据与 KP-04 的 `first_token_at_ms` 同一条：只有私聊回合在跑才扣，避免拿群聊/routine 的半句冒充），
+落库前若 `cancelState.requested === true` 且这半句非空、且 `result.messages` 里没有别的真话，
+就把文本填回那条空的 assistant 行 —— 落库、`stored_ids`、渲染端重画三条路自动共用同一份文本。
+
+### ③ 为什么不落地：这一档观察不到「已经吐出来的字」
+
+把它接上 `scripts/e2e_desktop_turn_cancel.mjs` 真跑两轮，实测事实是：
+
+```
+CN05E_PRE {"rows":[… {"s":"0","len":0} …],"hidden":true,"got":0} streamed_len=0
+CN05_METRICS lead_ms=11 stop_ms=11 half_len=0 half_screen=0 half_store=0 stream_left=0
+e2e_desktop_turn_cancel: PASS=13 FAIL=4
+```
+
+也就是说：把 `BITBOT_LLM_STREAM` 从这一档原本写死的 `"0"` 翻成产品默认的流式（host_ffi.js:5880
+`!== "0"`）、并给正文加 stub 的逐片停 `[[gap:420]]` 之后，25s 内屏上仍然没有出现一条
+`[data-streaming="1"]` 且 ≥4 个字的行；回合收尾时倒留下一条 `data-streaming="0"`、正文 0 字的气泡。
+全仓 `scripts/*.mjs` 里没有任何一档断言过「屏上的流式字数在增长」（只有
+`scripts/prove_room_ux_render.mjs:242` 数过 `[data-streaming]` 的**条数**）。
+
+结论：#67 的判据今天无法被证伪，硬落地就是拿一条恒真断言换绿 —— 这是禁止的。所以本轮把两片产品改动
+和门禁实验一起退回，`e2e_desktop_turn_cancel` 复跑回到 `PASS=14 FAIL=0`（`/tmp/cn05-revert-check.log`）。
+
+### ④ 前置账（下一档要做的事，按顺序）
+
+1. 先做一档**能看见流式增量**的 Electron 门：真开机、真发一条 `[gap]` 长回合，断言
+   `[data-streaming="1"]` 气泡的字数在两次采样之间增长（这本身就是「打字效果」的可感面，今天没人盯）。
+   它同时会回答上面那个 0 字气泡是 Host 没请求 stream、还是 resident 内核那侧没把增量交回 handler。
+2. 那一档绿了，再把 §8.121② 的两片接进 `e2e_desktop_turn_cancel` 的 CN-05，判据是三面同真：
+   屏上那半句在（且不是悬着的流式假气泡）、Host 回执带着它、`sessions.json` 里有它。
+3. 落库口径的产品裁决仍欠：半句要不要标成「已停止的部分回答」，以及它进入 `agent_ctx` 后
+   模型下一轮是否该知道自己说过半句话（今天内核没 append，所以它不记得）。
