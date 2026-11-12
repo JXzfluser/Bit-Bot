@@ -1897,7 +1897,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g46_xvfb=(xvfb-run -a)
   fi
-  for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity; do
+  for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity stream_typing; do
     log=/tmp/g46-$g.log
     pkill -9 -f "dist/[e]lectron" 2>/dev/null
     sleep 1
@@ -1936,6 +1936,33 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   echo "  · G-46 C-11 本轮改的是皮肤不是文案：ui_chrome.css 那条 7 类的 grid 选择器特异性压掉了"
   echo "    index.html 里 3 类的 .msg.debug-only{display:none}，Alt+D 没开时 Host 施工说明/effects 药丸全实名上路；"
   echo "    补 :not(.debug-only) 后 C-11b 两面同页量（藏 6/6、显 6/6），负向对照=改回旧选择器后 vis_hits>0"
+  # ST（KP-08 尾账 #67 / 报告 §8.121④1）：打字效果第一次被量——「屏幕上真的在长字」这件事
+  # 以前没有任何一档断言过（prove_room_ux_render 只数过 [data-streaming] 的条数）。
+  # 锚点读 ST_METRICS 的机器 token 并要等式成立；钉 id 与数值，不钉子门散文。
+  g46_st=$(grep -o 'ST_METRICS mode=prod reqs=[0-9][0-9]* stream_reqs=[0-9][0-9]* deltas=[0-9][0-9]* spread_ms=[0-9][0-9]* painted=[0-9][0-9]* distinct=[0-9][0-9]* growth=[0-9][0-9]*' /tmp/g46-stream_typing.log | head -1)
+  g46_deltas=$(printf '%s' "$g46_st" | grep -o 'deltas=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+  g46_spread=$(printf '%s' "$g46_st" | grep -o 'spread_ms=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+  g46_distinct=$(printf '%s' "$g46_st" | grep -o 'distinct=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+  g46_growth=$(printf '%s' "$g46_st" | grep -o 'growth=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+  if [ -n "$g46_st" ] && [ "$g46_deltas" -ge 3 ] && [ "$g46_spread" -ge 140 ] \
+    && [ "$g46_distinct" -ge 3 ] && [ "$g46_growth" -ge 8 ]; then
+    ok "G-46 ST 打字效果：${g46_deltas} 片增量跨到渲染层、相隔 ${g46_spread}ms，屏上气泡出现 ${g46_distinct} 个不同长度、净涨 ${g46_growth} 字（不是整块交付）"
+  else
+    bad "G-46 ST 打字效果没量到（token=${g46_st:-子门没打印}；deltas=${g46_deltas:-?} spread=${g46_spread:-?} distinct=${g46_distinct:-?} growth=${g46_growth:-?}）"
+  fi
+  # 负向对照：产品里关掉流式（BITBOT_LLM_STREAM=0 那一形状）→ 同一条判据必须翻红，
+  # 且红的必须是「屏上看不到打字效果」，否则 ST-04 是恒真的装饰品。
+  log=/tmp/g46-neg-stream.log
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if NEG_CONTROL=1 timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node scripts/e2e_desktop_stream_typing.mjs >"$log" 2>&1; then
+    bad "G-46 ST 负向对照失效：关掉流式后门禁仍全绿（恒真断言）"
+  else
+    grep -q "✗ ST-04 屏幕上看不到打字效果" "$log" \
+      && grep -q "ST_METRICS mode=neg" "$log" \
+      && ok "G-46 ST 负向对照真红：BITBOT_LLM_STREAM=0 → 屏上不再长字（$(grep -o 'ST_METRICS mode=neg deltas=[0-9]* growth=[0-9]*' "$log" | head -1)）" \
+      || bad "G-46 ST 负向对照跑红了，但红的不是 ST-04（见 ${log}）"
+  fi
   grep -q "R-02 窄窗" /tmp/g46-sidebar_adapt.log 2>/dev/null \
     && grep -q "R-04 手动收起后" /tmp/g46-sidebar_adapt.log 2>/dev/null \
     && grep -q "R-05 收起态的重开条" /tmp/g46-sidebar_adapt.log 2>/dev/null \
@@ -1961,9 +1988,9 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   fi
   pkill -9 -f "dist/[e]lectron" 2>/dev/null
 else
-  echo "  · skip：playwright-core / electron dist 缺失，G-46 的六个真实门禁未跑（SKIP ≠ PASS）"
+  echo "  · skip：playwright-core / electron dist 缺失，G-46 的八个真实门禁未跑（SKIP ≠ PASS）"
 fi
-echo "  · G-46 说明：六个门禁均为真实 Electron（Xvfb）渲染断言；串行执行并逐个清场，避免并发 profile 互撞"
+echo "  · G-46 说明：八个门禁均为真实 Electron（Xvfb）渲染断言（a652416 的六个 + 本轮 ST 打字效果）；串行执行并逐个清场，避免并发 profile 互撞"
 
 
 echo "== G-47 安卓移动端门禁（线路契约 / 机器身份 / 在线证据 / APK 真编译）=="
@@ -4505,6 +4532,8 @@ fi
 # ③ 真渲染门 e2e_desktop_turn_cancel：静态/行为都证明不了「按钮真的在界面上出现、点下去真的
 #    收得回」—— 这条用真 Electron + 慢 8s 的桩，空闲藏 → 回合起来显形顶掉麦克风 → 点完成就
 #    收起 → 空闲再点如实回 had_active_turn:false。独立 user-data-dir，会话文件跑前快照跑后还原。
+#    CN-05e 起这一档不再写死 BITBOT_LLM_STREAM=0：半句要能被量，增量就得真的流到屏幕；
+#    带 [[gap]] 的那一条由桩跳过 8s 整体延迟（openai_compat_stub.js），其余回合仍靠它撑「回合在跑」。
 if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   g114_xvfb=()
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
@@ -4519,7 +4548,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     if grep -q "$g114_e" /tmp/g114-e2e.log; then ok "G-114 渲染锚点：$g114_e"; else bad "G-114 渲染锚点没跑绿：$g114_e"; fi
   done
   # CN-05（KP-08 尾账 #64）：按「停止」之后，屏幕、台账、Host 回执各怎么说，钉 id 不钉散文。
-  for g114_c in "CN-05a " "CN-05b " "CN-05c " "CN-05d " "CN-05-NC "; do
+  for g114_c in "CN-05a " "CN-05b " "CN-05c " "CN-05d " "CN-05-NC " "CN-05e①" "CN-05e②" "CN-05e③" "CN-05e④" "CN-05e⑤"; do
     if grep -c "✓ $g114_c" /tmp/g114-e2e.log | grep -qE '[1-9]'; then
       ok "G-114 渲染锚点：$g114_c（$(grep -c "✓ $g114_c" /tmp/g114-e2e.log) 条）"
     else
@@ -4534,6 +4563,30 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   else
     bad "G-114 可感面没量到数（见 /tmp/g114-e2e.log）"
   fi
+  # CN-05e（KP-08 尾账 #67 / 报告 §8.121）：停在「正在吐字」的中间时，那半句要三面都在。
+  # 锚点读 CN05E_METRICS 的机器 token 并要等式成立，不钉子门散文（G-40/G-46 的教训：
+  # 钉散文时子门措辞一改就假红，run13 那条 grep -q "C-11" 甚至在子门 FAIL=2 时仍打勾）。
+  g114_e5=$(grep -o 'CN05E_METRICS half_len=[0-9][0-9]* screen=[0-9][0-9]* receipt=[0-9][0-9]* store=[0-9][0-9]* stream_left=[0-9][0-9]* stream_left_doc=[0-9][0-9]* partial_flag=[0-9][0-9]*' /tmp/g114-e2e.log | head -1)
+  g114_half=$(printf '%s' "$g114_e5" | sed -n 's/.*half_len=\([0-9]*\).*/\1/p')
+  g114_scr=$(printf '%s' "$g114_e5" | sed -n 's/.* screen=\([0-9]*\).*/\1/p')
+  g114_rcp=$(printf '%s' "$g114_e5" | sed -n 's/.*receipt=\([0-9]*\).*/\1/p')
+  g114_sto=$(printf '%s' "$g114_e5" | sed -n 's/.*store=\([0-9]*\).*/\1/p')
+  g114_left=$(printf '%s' "$g114_e5" | sed -n 's/.*stream_left=\([0-9]*\).*/\1/p')
+  g114_flag=$(printf '%s' "$g114_e5" | sed -n 's/.*partial_flag=\([0-9]*\).*/\1/p')
+  if [ -n "$g114_half" ] && [ "$g114_half" -ge 12 ] && [ "$g114_scr" -ge 12 ] \
+     && [ "$g114_rcp" -ge 12 ] && [ "$g114_sto" -ge 12 ] && [ "$g114_left" = "0" ] && [ "$g114_flag" = "1" ]; then
+    ok "G-114 CN-05e 三面同源：吐到停止时 ${g114_half} 字，屏上 ${g114_scr} / 回执 ${g114_rcp} / 库里 ${g114_sto}，悬着的流式气泡 ${g114_left} 条（半句不再凭空消失）"
+  else
+    bad "G-114 CN-05e 那半句没落到三面（token=${g114_e5:-子门没打印}；half=${g114_half:-?} screen=${g114_scr:-?} receipt=${g114_rcp:-?} store=${g114_sto:-?} left=${g114_left:-?} flag=${g114_flag:-?}）"
+  fi
+  echo "  · G-114 CN-05e（报告 §8.121 / KP-08 尾账 #67）为什么现在才钉上：§8.121 那轮想落这一条时，"
+  echo "    实测 stop_ms=11、屏上 0 字 —— 桩的 8s 整体延迟让「按停止」发生在第一个字节之前，"
+  echo "    半句根本没开始吐，判据无法证伪就没落地。本轮先补 e2e_desktop_stream_typing（ST-01..06）"
+  echo "    证明流式真能观察到（增量 9 片、相隔 1135ms、屏上 7→70 字在长），再让带 [[gap]] 的请求跳过"
+  echo "    整体延迟，这一条才量到：吐到停止 16 字 → 屏上 16 / 回执 16 / 库里 16、悬着的流式气泡 0。"
+  echo "    负向对照两面都真跑过：摘掉 main.js 那段 latch+fill → ①②③④ 全红（screen=0 receipt=0 store=0）；"
+  echo "    库里那条最早还误判过绿（取「会话最后一条 assistant」抓到的是上一轮答完的那句），"
+  echo "    现在按这一条用户消息之后的行看 —— 三面的判据同源于「这一轮」。"
 else
   echo "  · skip：缺 playwright-core 或 electron，G-114 真渲染门未跑（SKIP ≠ PASS；静态+行为门已在上面跑过）"
 fi

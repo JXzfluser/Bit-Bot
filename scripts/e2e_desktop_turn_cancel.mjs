@@ -64,6 +64,10 @@ function startStub(port) {
       // 故意慢：不慢的话回合可能在第一次轮询前就结束了，「按钮出现过」这件事
       // 永远观察不到（假绿）。2s 时第一版就栽在这里：按钮刚断言完就被回合收走。
       BITBOT_STUB_DELAY_MS: "8000",
+      // CN-05e 用：正文里的 [[gap:NNN]] 让这一条请求一边吐字一边跑几秒。
+      // 带 gap 的那一条会被桩跳过上面的 8s 整体延迟（见 openai_compat_stub.js 那段注释），
+      // 否则「按停止」发生在第一个字节之前，那半句根本还没吐出来 —— §8.121 实测 stop_ms=11。
+      BITBOT_STUB_LATENCY_FROM_TEXT: "1",
     },
   });
   return new Promise((res, rej) => {
@@ -99,7 +103,9 @@ function startStub(port) {
         BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + port + "/v1",
         BITBOT_LLM_API_KEY: "e2e-stub-key",
         BITBOT_LLM_MODEL: "e2e-stub",
-        BITBOT_LLM_STREAM: "0",
+        /* CN-05e 要观察「停在半句」这件事，必须让增量真的流到屏幕 —— 这里**不再**写
+           BITBOT_LLM_STREAM=0，用产品默认（host_ffi.js:5880：只有显式 "0" 才关流式）。
+           其余几步的回合不带 [[gap]]，仍由桩的 8s 整体延迟撑住「回合在跑」这个观察点。 */
       }),
       timeout: 90000,
     });
@@ -351,6 +357,183 @@ function startStub(port) {
             ? ok("CN-05-NC 同一条判据在正常回合上仍然成立（那一行 " + nc.rowSend + " = 台账 " + nc.state +
                  "）—— 两轴拆开后没有把成功的那一路弄坏")
             : bad("CN-05-NC 正常回合被改坏了", JSON.stringify(nc));
+        }
+      }
+    }
+
+    /* ---------- 7) CN-05e 停在「正在吐字」的中间：那半句必须三面都在（KP-08 尾账 #67，§8.121④2）
+       这一步是 §8.121 的落地：以前按停止时，屏幕上的半句会凭空消失 —— 内核在取消抢跑赢的那一侧
+       交回空串（run_moon_turn.js:453-474 + runtime/agent_loop.mbt:961-969 不 append），Host 是唯一
+               还留着增量的地方，所以修复扣在 Host（main.js latchTurnPartialIfStreaming），落库/回执/重画三条路共用同一份文本。
+       观察前提由 e2e_desktop_stream_typing 先证明（ST-01..04：真开机、真流式、屏上字数在涨）。
+       判据钉三面同真：① 屏幕上那半句还在、且不是一条悬着的流式假气泡 ② Host 回执带着它
+       ③ sessions.json 里有它。任何一面单独绿都不算 —— 少哪一面，用户看到的都是「话说到一半没了」。 */
+    const cm5e = await win.evaluate(async () => {
+      const inp = document.getElementById("text");
+      inp.value =
+        "停止验证：一个字一个字吐出来 [[gap:260]] " +
+        "半句也要留在屏上这一段要足够长一些好让停止落在中间而不是开头";
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+      const before = document.querySelectorAll("#log .msg.user[data-client-mid]").length;
+      document.getElementById("send").click();
+      for (let i = 0; i < 240; i++) {
+        const rows = document.querySelectorAll("#log .msg.user[data-client-mid]");
+        if (rows.length > before) return rows[rows.length - 1].dataset.clientMid || "";
+        await new Promise((x) => setTimeout(x, 25));
+      }
+      return "";
+    });
+    if (!cm5e) {
+      bad("CN-05e 这一条没起出乐观命令（三面观察无从谈起）");
+    } else {
+      const streaming = await win
+        .waitForFunction(
+          () => {
+            const el = document.querySelector('#log .msg.assistant[data-streaming="1"] .body');
+            return !!el && String(el.textContent || "").replace(/\s+/g, " ").trim().length >= 12;
+          },
+          null,
+          { timeout: 25000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!streaming) {
+        bad("CN-05e 屏幕上从没出现过 ≥12 字的流式气泡：半句还没吐出来就谈不到「停在中间」" +
+            "（前置门 e2e_desktop_stream_typing 的 ST-04 若同时红，是流式链路出了问题）");
+      } else {
+        const halfSeen = await win.evaluate(() => {
+          const el = document.querySelector('#log .msg.assistant[data-streaming="1"] .body');
+          return String((el && el.textContent) || "").replace(/\s+/g, " ").trim();
+        });
+        await win.click("#turn-cancel");
+        const settledE = await win
+          .waitForFunction(
+            (cm) => {
+              const c = window.__bitbotSendLedger && window.__bitbotSendLedger.get(cm);
+              return !!c && c.state !== "pending";
+            },
+            cm5e,
+            { timeout: 60000 },
+          )
+          .then(() => true)
+          .catch(() => false);
+        if (!settledE) {
+          bad("CN-05e 按了停止但台账没落终态");
+        } else {
+          const faces = await win.evaluate((cm) => {
+            let rj = null;
+            try { rj = JSON.parse(document.getElementById("json-out").textContent || "null"); } catch (_) { rj = null; }
+            /* 只看**这一轮之后**的 assistant 行：#log 里还留着前面几轮（CN-05/NC）的答复，
+               它们的开头和桩回执同出一句（"Bit Bot stub reply: …"），整屏扫一遍会让
+               「半句还在不在」这条判据在前一轮的旧行上误判成绿 —— 实测 screen=47 vs 库里 16 就是这么来的。 */
+            const anchor = document.querySelector('#log .msg.user[data-client-mid="' + cm + '"]');
+            const rows = [];
+            for (let n = anchor ? anchor.nextElementSibling : null; n; n = n.nextElementSibling) {
+              if (n.classList && n.classList.contains("msg") && n.classList.contains("assistant")) {
+                rows.push({
+                  streaming: String(n.dataset.streaming || ""),
+                  txt: String((n.querySelector(".body") || {}).textContent || "").replace(/\s+/g, " ").trim(),
+                });
+              }
+            }
+            const el = document.querySelector('#log .msg.user[data-client-mid="' + cm + '"]');
+            return {
+              rowSend: el ? el.dataset.send || "" : "",
+              state: (window.__bitbotSendLedger.get(cm) || {}).state || "",
+              receiptCancelled: !!(rj && rj.cancelled === true),
+              receiptPartialFlag: rj && typeof rj === "object" ? Number(rj.cancelled_partial || 0) : 0,
+              receiptAssistant: (() => {
+                const ms = (rj && Array.isArray(rj.messages) ? rj.messages : [])
+                  .filter((m) => m && m.role === "assistant")
+                  .map((m) => String(m.text || "").replace(/\s+/g, " ").trim());
+                return ms.length ? ms[ms.length - 1] : "";
+              })(),
+              screenRows: rows,
+              streamLeft: rows.filter((r) => r.streaming === "1").length,
+              streamLeftDoc: document.querySelectorAll('#log .msg.assistant[data-streaming="1"]').length,
+            };
+          }, cm5e);
+          /* 库里那一条：用乐观 id 认会话（KP-08 T3-04 之后 Host 采纳的就是这个 id），
+             不靠「取最后一个会话」猜——门禁同时开着别的会话时会猜错。 */
+          let storeAssistant = "";
+          let storeErr = "";
+          try {
+            const j = JSON.parse(fs.readFileSync(SESS, "utf8"));
+            const s = (j.sessions || []).find((x) =>
+              (x.messages || []).some((m) => m && m.id === cm5e));
+            const ms = (s && s.messages) || [];
+            /* 只看**这一条用户消息之后**的 assistant 行。取「会话里最后一条 assistant」是错的：
+               取消那一轮不落 assistant 时，最后一条是**上一轮**答完的那句，
+               判据会在别人的消息上误判成绿（负向对照实测 store=35 字 = 对照那一条）。 */
+            let idx = -1;
+            for (let i = ms.length - 1; i >= 0; i--) {
+              if (ms[i] && ms[i].id === cm5e) { idx = i; break; }
+            }
+            for (let i = idx + 1; i < ms.length; i++) {
+              if (ms[i] && ms[i].role === "assistant") {
+                storeAssistant = String(ms[i].text || "").replace(/\s+/g, " ").trim();
+                break;
+              }
+            }
+            if (!s) storeErr = "会话里找不到 id=" + cm5e;
+            else if (idx < 0) storeErr = "库里找不到这一条用户消息 id=" + cm5e;
+          } catch (e) {
+            storeErr = String((e && e.message) || e);
+          }
+          const startsWithHalf = (x) =>
+            x.length >= 12 && (x === halfSeen || halfSeen.startsWith(x) || x.startsWith(halfSeen));
+          const screenHalf = faces.screenRows
+            .filter((r) => r.streaming !== "1" && startsWithHalf(r.txt))
+            .map((r) => r.txt);
+          console.log(
+            "CN05E_METRICS half_len=" + halfSeen.length +
+            " screen=" + (screenHalf[0] || "").length +
+            " receipt=" + faces.receiptAssistant.length +
+            " store=" + storeAssistant.length +
+            " stream_left=" + faces.streamLeft +
+            " stream_left_doc=" + faces.streamLeftDoc +
+            " partial_flag=" + faces.receiptPartialFlag,
+          );
+          screenHalf.length >= 1 && faces.streamLeft === 0 && faces.streamLeftDoc === 0
+            ? ok("CN-05e① 屏上那半句还在，且收在一条正常消息行里（" + screenHalf[0].length +
+                " 字，悬着的流式气泡 " + faces.streamLeft + " 条）—— 停止=停在这半句之后")
+            : bad("CN-05e① 停止把那半句从屏幕上弄没了（用户看到的是话凭空断掉）", JSON.stringify({
+                吐到停时: halfSeen.slice(0, 40),
+                屏上助手行: faces.screenRows,
+              }));
+          startsWithHalf(faces.receiptAssistant) || faces.receiptPartialFlag === 1
+            ? ok("CN-05e② Host 回执带着这半句（messages 末条 " + faces.receiptAssistant.length +
+                " 字，cancelled_partial=" + faces.receiptPartialFlag + "）")
+            : bad("CN-05e② 回执里没有那半句", JSON.stringify({
+                receiptAssistant: faces.receiptAssistant.slice(0, 40),
+                half: halfSeen.slice(0, 40),
+              }));
+          startsWithHalf(storeAssistant)
+            ? ok("CN-05e③ sessions.json 里有它（" + storeAssistant.length + " 字）—— 刷新后不会消失")
+            : bad("CN-05e③ 库里没落那半句", JSON.stringify({
+                store: storeAssistant.slice(0, 40),
+                half: halfSeen.slice(0, 40),
+                err: storeErr,
+              }));
+          /* 三面同源：屏上/回执/库里必须是同一句话，不能各自拼一份。 */
+          const sameSource =
+            screenHalf.length >= 1 &&
+            startsWithHalf(faces.receiptAssistant) &&
+            startsWithHalf(storeAssistant) &&
+            (storeAssistant === screenHalf[0] ||
+              storeAssistant.startsWith(screenHalf[0].slice(0, 12)));
+          sameSource
+            ? ok("CN-05e④ 三面同源（屏上 = 回执 = 库里，同一份文本而不是三份猜测）")
+            : bad("CN-05e④ 三面不同源", JSON.stringify({
+                屏: (screenHalf[0] || "").slice(0, 30),
+                回执: faces.receiptAssistant.slice(0, 30),
+                库: storeAssistant.slice(0, 30),
+              }));
+          /* 停止不改送达（#64 那两根轴仍然成立）—— 这一轮加了流式，必须重新确认没把成功那侧弄坏。 */
+          faces.state === "durable" && faces.rowSend === faces.state
+            ? ok("CN-05e⑤ 打开流式后，停止那一次的送达口径没被改坏（那一行 " + faces.rowSend + " = 台账）")
+            : bad("CN-05e⑤ 流式打开后台账/屏幕对不上", JSON.stringify(faces));
+          await win.screenshot({ path: path.join(os.tmpdir(), "bb-turn-cancel-half.png") });
         }
       }
     }

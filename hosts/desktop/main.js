@@ -435,6 +435,20 @@ function markTurnFirstTokenIfStreaming(chunk) {
   if (hasContent) activeTurnLatency.first_token_at_ms = Date.now();
 }
 
+/* KP-08 尾账 #67：把「已经吐到屏上的那半句」扣在回合槽上。
+   取消时内核交回的 content 是空串（run_moon_turn.js 让在跑的 FFI 调用和
+   cancelPromise 抢跑，赢的那侧直接丢掉 host_ffi 的增量累积），Host 是这一路
+   唯一同时看着增量、cancelState 和落库的层，所以半句只能在这扣、在这补进会话。
+   判据与 first_token 同一条（只有私聊回合在跑才扣）：群聊/routine 也广播同一个
+   handler，拿别人的半句冒充这一轮的回答比丢掉更糟。 */
+function latchTurnPartialIfStreaming(chunk) {
+  if (!activeTurnLatency || !chunk) return;
+  if (chunk.phase !== "delta" && chunk.phase !== "partial") return;
+  // host_ffi 的 partial 字段是「到目前为止的全文」，不是增量；只认它。
+  const full = String(chunk.partial || "");
+  if (full.length > 0) activeTurnLatency.partial_text = full;
+}
+
 // 回合收尾（无论成功/失败/取消）落一行 jsonl，然后清空槽——时间线到此为止。
 function flushTurnLatency() {
   const slot = activeTurnLatency;
@@ -1165,6 +1179,8 @@ function surfaceReadForPeer(surfaceName, wc) {
 ffi.setLlmStreamHandler((chunk) => {
   // KP-04：首个流式 token 到 Host 的时刻——只有私聊回合在跑时才记，公式不在这。
   markTurnFirstTokenIfStreaming(chunk);
+  // KP-08 尾账 #67：同一判据下扣住这半句，取消时才有东西可落库。
+  latchTurnPartialIfStreaming(chunk);
   broadcast("bitbot:llm-stream", chunk);
   // GP-130 (§7.1): every real successful model call lands in the weekly
   // usage store — requests always, tokens only when the provider reported
@@ -4166,6 +4182,8 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       enter_epoch_ms: Number(opts && opts.enter_epoch_ms) || 0,
       composed_at_ms: Date.now(),
       first_token_at_ms: 0,
+      // KP-08 尾账 #67：这半句只有被取消那一轮会被读，别的回合不写它。
+      partial_text: "",
     };
     // A1-2：回合开始 → 落 turn_started（回合流事件，由手机端 SSE 直接消费）。
     try {
@@ -4316,6 +4334,30 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       // GP-14: persist which message this turn replied to (kernel-echoed id).
       if (result && result.reply_to) userRow.reply_to = String(result.reply_to);
       toStore.push(userRow);
+      /* KP-08 尾账 #67：被用户按停的这一轮，已经吐到屏上的半句不能凭空消失。
+         内核交回的 assistant 文本是空串（增量的全文在 host_ffi 那一侧，取消抢跑赢了
+         就把累积丢了），而 Host 是唯一还留着它的地方 —— 上面 latchTurnPartialIfStreaming
+         扣下的那一段。填回 result.messages 以后，落库、stored_ids、渲染端重画三条路
+         自动走同一份文本：「停止」= 停在这半句之后，而不是顺手把这一轮的回答删掉。 */
+      if (cancelState.requested === true) {
+        const half = String((activeTurnLatency && activeTurnLatency.partial_text) || "").trim();
+        const rows = Array.isArray(result && result.messages) ? result.messages : null;
+        if (half && rows && !PRODUCT_DEBUG_RE.test(half)) {
+          let target = null;
+          for (const m of rows) {
+            if (!m || m.role !== "assistant") continue;
+            // 内核已交出非空文本时以它为准，这里绝不覆盖成真话的一半。
+            if (String(m.text || "").trim()) { target = null; break; }
+            if (!target) target = m;
+          }
+          if (!target) {
+            target = { role: "assistant", text: "" };
+            rows.push(target);
+          }
+          target.text = half;
+          if (result && typeof result === "object") result.cancelled_partial = 1;
+        }
+      }
       if (result && Array.isArray(result.messages)) {
         const withheld = [];
         for (const m of result.messages) {

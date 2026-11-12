@@ -10928,3 +10928,99 @@ e2e_desktop_turn_cancel: PASS=13 FAIL=4
    屏上那半句在（且不是悬着的流式假气泡）、Host 回执带着它、`sessions.json` 里有它。
 3. 落库口径的产品裁决仍欠：半句要不要标成「已停止的部分回答」，以及它进入 `agent_ctx` 后
    模型下一轮是否该知道自己说过半句话（今天内核没 append，所以它不记得）。
+
+## 8.122 打字效果第一次被量到，于是那半句终于能落地（KP-08 尾账 #67 收口，2026-11-12）
+
+### ① §8.121④1 的答案：Host 请求了流式、增量也到了渲染层 —— 红是门禁自己站错了面
+
+新档 `scripts/e2e_desktop_stream_typing.mjs` 第一次真跑（`/tmp/st-run1.log`）就是三条绿夹一条红：
+
+```
+✓ ST-01 provider 请求带 stream:true（1/1 枪）—— Host 确实按产品默认请求了流式
+✓ ST-02 渲染进程收到 9 个 phase:"delta"（增量真的送到了这一层）
+✓ ST-03 首末增量相隔 1145ms（≥ 一片的 140ms）—— 不是一次性整块交付
+✗ ST-04 屏幕上看不到打字效果：流式气泡采样 22 次，命中 0 次，增长 0 字
+ST_METRICS mode=prod reqs=1 stream_reqs=1 deltas=9 spread_ms=1145 painted=0 distinct=0 growth=0 ... final_chars=70
+```
+
+这两头都不是责任层：**Host 请求了流式**（`stream_reqs=1`，桩自己记账的请求体为证），
+**resident 内核也确实把增量交回了 handler**（渲染层收到 9 个 delta、跨 1145ms）。
+真正错的是这一档观察的「面」——run1/run3 直接调 `window.bitbot.turn(...)` 发回合，从没点进私聊会话，
+而 [hosts/desktop/index.html:22890](file:///Users/zfl/Downloads/bitbot/hosts/desktop/index.html#L22890)
+`const canPaintStream = !composerRoom;` 是**按设计**在群面上收增量却不画气泡：产品创建过占位行、
+永不 append（`stream_nodes_max=0`、`#log` 恒 55 行）。改的是门禁的站位，不是被测行为：
+run5 先点侧栏那一行进私聊、由 ST-00b 拿「群横幅不可见」作证，再从 composer 点发送。
+
+另一条把 §8.121 的 `stop_ms=11` 解释干净的前置事实：stub 的 `BITBOT_LLM_STREAM` 无关整段延迟
+`BITBOT_STUB_DELAY_MS` 会盖住逐片停，于是「首字还没吐就按下停止」。
+[scripts/dev_stubs/openai_compat_stub.js:137-139](file:///Users/zfl/Downloads/bitbot/scripts/dev_stubs/openai_compat_stub.js#L137-L139)
+让正文里带 `[[gap:N]]` 的请求跳过整段延迟（只影响显式要节拍的枪，`e2e_desktop_optimistic` 从不设
+`BITBOT_STUB_DELAY_MS`，逐门查过未被波及）。
+
+### ② ST-01..06：「打字效果」第一次有可感面
+
+判据与本轮实测（`/tmp/st-run5.log` → `e2e_desktop_stream_typing: PASS=9 FAIL=0`，
+`ST_METRICS mode=prod … deltas=9 spread_ms=1135 painted=21 distinct=9 growth=63 stream_nodes_max=1 stream_chars_max=70 hanging=0 final_chars=70`）：
+
+1. ST-01 桩记账的 HTTP 体里 `stream: true`（Host 按产品默认请求流式，不是门禁替它打开）。
+2. ST-02 渲染层 ≥3 个 `phase:"delta"`；ST-03 首末 delta 跨度 ≥ 一片时长 —— 这条把「流」和「块」分开，
+   一次性整块交付必红。
+3. ST-04 屏幕上 `[data-streaming="1"]` 气泡字数在两次采样之间**增长**（命中 21 次、9 个不同长度、净增 63 字）
+   —— 这就是用户看得见的打字效果，此前全仓没人盯。
+4. ST-05 收尾没有悬着的流式假气泡、最后一行有字；ST-06 屏幕最终文本 == `sessions.json` 那条 assistant。
+
+负向对照（`NEG_CONTROL=1` → `BITBOT_LLM_STREAM=0`，`/tmp/st-neg2.log` → `PASS=5 FAIL=4`，红在
+ST-01/02/03/04，`stream_reqs=0 deltas=0 painted=0 growth=0`）里 **`final_chars` 仍是 70**：
+块状交付照样把整句吐完，所以这四条钉的确实是「增量」而不是「有没有答案」——判据可证伪。
+结算信号也不再用 `#turn-cancel` 的忙闲边沿（一轮快过 60ms 采样就整个漏掉，NEG 首跑因此挂满 120s），
+改读乐观台账 `window.__bitbotSendLedger.get(cm).state !== "pending"`（ST-00c，
+[scripts/e2e_desktop_stream_typing.mjs:215](file:///Users/zfl/Downloads/bitbot/scripts/e2e_desktop_stream_typing.mjs#L215)）。
+
+### ③ #67 落地：Host 扣住 `partial`，取消时把它填回那条空 assistant
+
+§8.121② 那两片重新接进产品（这次有门盯得住）：
+`latchTurnPartialIfStreaming` [hosts/desktop/main.js:444-450](file:///Users/zfl/Downloads/bitbot/hosts/desktop/main.js#L444-L450)
+在 `setLlmStreamHandler` 里（main.js:1183）把 `chunk.partial` 扣到本回合计时槽（新增 `partial_text`，main.js:4186），
+落库前若 `cancelState.requested === true` 就从 main.js:4339-4343 取那半句填进 `result.messages`
+那条空的 assistant 行 —— 填在 `result` 上而不是另起一路，落库、`stored_ids`、渲染端重画三条路才共用同一份文本；
+`PRODUCT_DEBUG_RE` 那道过滤保留（半句不能把内部 token 送上屏）。
+
+三面同真的判据是 `e2e_desktop_turn_cancel` 新增的 CN-05e①..⑤。带着修复实测
+（`/tmp/cn05e-run3.log` → `PASS=19 FAIL=0`）：
+
+```
+CN05E_METRICS half_len=16 screen=16 receipt=16 store=16 stream_left=0 stream_left_doc=0 partial_flag=1
+```
+
+把两片临时退回 HEAD 的负向对照（`/tmp/cn05e-neg2.log` → `PASS=15 FAIL=4`，红在 ①②③④）：
+`screen=0 receipt=0 store=0 partial_flag=0`，①的红证词正是用户投诉的那个现象 ——
+屏上助手行只剩 `[{"streaming":"","txt":""},{"streaming":"","txt":"已取消"}]`，话凭空断掉。
+⑤ 钉的是「打开流式这一路没有改坏送达口径」：那一行仍是 durable、台账与屏幕对得上。
+
+### ④ 两处假绿：判据要钉「这一轮」，不是钉「这一面」
+
+1. **屏面**：扫全部 `#log .msg.assistant` 会命中**上一轮**那句（桩回信都以 `Bit Bot stub reply: ` 开头），
+   于是修复缺席时 `screen=47` 仍绿、而库里只有 16 字。改成从这条回合的 `data-client-mid` 用户行往下走兄弟节点
+   （[scripts/e2e_desktop_turn_cancel.mjs:429-431](file:///Users/zfl/Downloads/bitbot/scripts/e2e_desktop_turn_cancel.mjs#L429-L431)）。
+2. **库面**：取「会话里最后一条 assistant」，取消那一轮不落 assistant 时拿到的是上一轮的答话，
+   负向对照因此假绿（`store=35`）。改成从 `m.id === cm5e` 那行往后扫第一条 assistant
+   （[scripts/e2e_desktop_turn_cancel.mjs:470-477](file:///Users/zfl/Downloads/bitbot/scripts/e2e_desktop_turn_cancel.mjs#L470-L477)）。
+
+两处同根：观察对象写成了「面」，实际要钉的是「这一轮」；负向对照是唯一把它们照出来的手段。
+
+### ⑤ 矩阵登记（锚点读 token 等式，不钉子门散文）
+
+- G-46 循环加 `stream_typing`，「六个」→「八个」（[scripts/smoke_grok_desktop_parity.sh:1900](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L1900)、1991、1993 文案同步）；
+  ST 锚点读 `ST_METRICS mode=prod` 并要求 `deltas≥3 && spread≥140 && distinct≥3 && growth≥8`（smoke:1941-1957）；
+  另设 ST 负向对照：关流式后必须**真红**且打到 `✗ ST-04` + `ST_METRICS mode=neg`（smoke:1958-1963）。
+- G-114 锚点扩 `CN-05e①..⑤` 与 `CN05E_METRICS half/screen/receipt/store≥12 && stream_left=0 && partial_flag=1`
+  （smoke:4567-4569）。
+- 两把尺子各在真实日志上放过三个方向：绿日志（run5 / cn05e-run3）绿、负向日志（neg2 / cn05e-neg2）红、
+  token 被删红。
+
+### ⑥ 这一档之后仍欠的账
+
+1. §8.121④3 的落库口径是产品裁决，不是工程默认：半句要不要显式标成「已停止的部分回答」、要不要进
+   `agent_ctx` 让模型下一轮知道自己说过半句话 —— 今天内核走 `LoopStop::Cancelled` 不 append，所以它不记得。
+2. run14 全量矩阵还没带着这些改动跑过（G-46 现在是八个门 + 两支负向对照）。
+3. #61 KP-09 单写者、#56/#58 T3-07 `checkJs`（等 `npm install typescript` 授权）。

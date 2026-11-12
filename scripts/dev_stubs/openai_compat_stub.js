@@ -130,9 +130,13 @@ const server = http.createServer((req, res) => {
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     /* 慢回执开关：给「回合进行中」这类**时间维度**的验收用（停止按钮显不显示、
-       滚动跟随、进度行是否实时）。默认 0 = 与以前完全一致，不影响任何现有门禁。 */
+       滚动跟随、进度行是否实时）。默认 0 = 与以前完全一致，不影响任何现有门禁。
+       带 [[gap:]] 的请求例外：那一条本来就要「一边吐字一边跑够时间」，
+       再压 8s 会让客户端在第一个字节之前就把回合停掉 —— 实测 stop_ms=11、
+       屏上 0 字，「停止时那半句」这件事根本没机会发生（§8.121）。 */
     const delayMs = Number(process.env.BITBOT_STUB_DELAY_MS || 0);
-    if (delayMs > 0) {
+    const gapInBody = /\[\[gap:\d+\]\]/.test(String(body || ""));
+    if (delayMs > 0 && !gapInBody) {
       setTimeout(respond, delayMs);
       return;
     }
