@@ -11268,3 +11268,49 @@ G-122 在矩阵侧多了两条锚点：数字锚（`xp_rows=36`、`xp_prefixes=3
    `lastTextBySurface` 是第二份 prev 缓存 —— §8.124 ⑤ 那条还欠着。
 4. T1-06 完成定义的「`kill -9` 恢复」这半没动；并发这半今天只收了审批面。
 5. 全量矩阵还没在含 §8.122/§8.123/§8.124/§8.125 四片改动的树上跑过（run14 的那 2 条红另账）。
+
+## 8.126 run14 的两条红：一条是门在本机恒红，另一条到现在还没归因（G-64 / G-53，2026-11-12）
+
+### ① run14 的总量（先记账）
+
+`PASS=945 FAIL=2`。两条红是 `G-53 e2e_desktop_user_journeys`（「成员列表问答」那一步）和
+`G-64 smoke_desktop_turn.sh:962`。这棵树还含着 §8.122/§8.123/§8.124/§8.125 四片的改动，
+run14 跑在 §8.125 之前，所以那 945 不是当前树的数 —— 下一次全量（run15）才是。
+
+### ② G-64：屏幕上说「装好了」，机器说没装
+
+`--install-user-unit` 那段在无 systemd 的机器（macOS）上做的是：把 unit 文件**抄到**
+`~/.config/systemd/user/`，然后 `command -v systemctl` 找不到东西、`SYSTEMD_UNIT` 保持 0，
+于是 `daemon-status.json` 里 `systemd_unit_installed=false`（[scripts/host_routine_daemon.sh:15873](file:///Users/zfl/Downloads/bitbot/scripts/host_routine_daemon.sh) 那本账），
+**而 stdout 照样打 `OK: installed user systemd unit → …`**（修前实测：`systemd_unit=0 active=0`
+却还是那句 installed）。门这边更直白：它按 `systemd_unit_installed is True` 断言，
+所以这条在 macOS 上**从写下来那天起就是恒红**，Linux CI 上却是绿的 —— 两边看到的不是同一件事。
+
+改了三处，都朝「说的那句话=机器认的那个事实」：
+
+- [:56](file:///Users/zfl/Downloads/bitbot/scripts/host_routine_daemon.sh#L56) 起一个 `HAS_SYSTEMCTL`，
+  [:122](file:///Users/zfl/Downloads/bitbot/scripts/host_routine_daemon.sh#L122) 的
+  `systemd_unit_installed` 必须同时有 systemctl 才算装，另加两个能各自核实的字段
+  `systemd_unit_has_systemd` / `systemd_unit_file_written`；
+- [:148](file:///Users/zfl/Downloads/bitbot/scripts/host_routine_daemon.sh#L148) 那句提示分 platform：
+  没有 systemctl 时打 `OK: wrote user unit file → … (systemd_unit_installed=false scope=none: 本机没有 systemctl，未安装也未启用)`；
+- 门（[scripts/smoke_desktop_turn.sh:961](file:///Users/zfl/Downloads/bitbot/scripts/smoke_desktop_turn.sh#L961)）
+  不再钉死 True，而是钉**一致性**四件事：`has_systemd == 这台机器上真有 systemctl`、
+  文件真在盘上、`installed is True` 与 `has_systemd` 同真同假、
+  **stdout 里出现 `OK: installed` 当且仅当 `has_systemd`**。`:964` 那条 long-lived 断言同批改掉。
+
+两个方向都验过（隔离 ROOT + `XDG_CONFIG_HOME` 指临时目录，不碰仓库 `data/`、不碰用户 home、
+也不去动那个正在跑的 long-lived daemon）：当前树 → 尺子 PASS；
+`git show HEAD:` 把修前的脚本单独跑一遍 → 尺子红在 `has_systemd` 缺失，且那句假 installed 被
+最后一条判据单独抓住。Linux 侧不变：`has_systemctl` 为真时四个断言退化成原来的语义。
+
+### ③ 还欠着的
+
+1. **G-53「成员列表问答」那一步为什么红**还没归因 —— 它是 §8.121 之前就认识到的老行，
+   本轮预算花在 §8.125 的多进程账上，这条留给 run15 的日志（CI 逐项日志拉 `parity-matrix-log` artifact）。
+2. `smoke_desktop_turn.sh:2158` 那条夹具直接把 `systemd_unit_installed:true, active:true` **写进**
+   `daemon-status.json` 来测消费方的读法 —— 那是显式夹具，可以留着，但它也说明消费方只是信那份文件；
+   真机上要判「装没装」得让 Host 自己探测（`host_ffi.js:15646` 的注释已经承认
+   `systemd_unit_installed alone is insufficient`，它另外要 active）。
+3. macOS 上这份 unit 文件根本没有监督者会跑它 —— 桌面是靠 `main.js:1010` 拉守护兜住的，
+   这条 residual 在 mac 上不可能靠 systemd 关掉，界面上不该给「装好 systemd unit 就行」的暗示。

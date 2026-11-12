@@ -958,10 +958,26 @@ bash "$ROOT/scripts/host_routine_daemon.sh" --sweeps 2 --interval-ms 200
 python3 -c "import json;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is False;assert d.get('sweeps')==2;assert d.get('interval_ms')==200;assert d.get('ok')==2;print('host_routine_daemon interval sweeps ok', d)"
 bash "$ROOT/scripts/host_routine_daemon.sh" --write-systemd-unit
 python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('systemd_unit_path') and os.path.isfile(d['systemd_unit_path']);assert 'bitbot-routine-daemon.service' in d['systemd_unit_path'];print('host_routine_daemon systemd unit scaffold ok', d.get('systemd_unit_path'))"
-bash "$ROOT/scripts/host_routine_daemon.sh" --install-user-unit
-python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('systemd_unit_installed') is True;assert d.get('systemd_scope') in ('user','system');assert d.get('systemd_user_unit_path') and os.path.isfile(d['systemd_user_unit_path']);print('host_routine_daemon user unit install ok', d.get('systemd_scope'), d.get('systemd_user_unit_path'))"
+bash "$ROOT/scripts/host_routine_daemon.sh" --install-user-unit >/tmp/g64-user-unit.out 2>&1
+# 屏幕上那句「installed」和 daemon-status.json 里那个数字必须是同一件事：macOS 没有
+# systemctl，那份 unit 文件只是**写下来了**，既没装也没启用。修复前 stdout 打
+# "OK: installed user systemd unit"、同一个字段写 systemd_unit_installed=False，
+# 而这条断言按 True 判 —— 门在本机恒红，且真机上那句「装好了」本来就是假的（G-64）。
+python3 - <<'PY'
+import json, os, shutil
+d = json.load(open('data/routines/daemon-status.json'))
+out = open('/tmp/g64-user-unit.out').read()
+has = shutil.which('systemctl') is not None
+assert d.get('systemd_unit_has_systemd') is has, (has, d.get('systemd_unit_has_systemd'))
+assert d.get('systemd_unit_file_written') is True and os.path.isfile(d['systemd_user_unit_path']), d.get('systemd_user_unit_path')
+assert (d.get('systemd_unit_installed') is True) == has, d
+assert ('OK: installed' in out) == has, (out[:200], has)
+if has:
+    assert d.get('systemd_scope') in ('user', 'system'), d
+print('host_routine_daemon user unit claim==truth ok', 'has_systemctl=%s' % has, 'installed=%s' % d.get('systemd_unit_installed'), d.get('systemd_user_unit_path'))
+PY
 BITBOT_ROUTINE_MAX_SWEEPS=2 bash "$ROOT/scripts/host_routine_daemon.sh" --long-lived --interval-ms 100
-python3 -c "import json,os;d=json.load(open('data/routines/daemon-status.json'));assert d.get('daemon') is True;assert d.get('long_lived') is True;assert d.get('sweeps')==2;assert d.get('ok')==2;assert d.get('systemd_unit_path') and os.path.isfile(d['systemd_unit_path']);assert d.get('systemd_unit_installed') is True;print('host_routine_daemon long-lived ok', 'sweeps', d.get('sweeps'), 'systemd_installed', d.get('systemd_unit_installed'), 'scope', d.get('systemd_scope'))"
+python3 -c "import json,os,shutil;d=json.load(open('data/routines/daemon-status.json'));has=shutil.which('systemctl') is not None;assert d.get('daemon') is True;assert d.get('long_lived') is True;assert d.get('sweeps')==2;assert d.get('ok')==2;assert d.get('systemd_unit_path') and os.path.isfile(d['systemd_unit_path']);assert (d.get('systemd_unit_installed') is True) == has;assert (not has) or d.get('systemd_scope') in ('user','system');print('host_routine_daemon long-lived ok', 'sweeps', d.get('sweeps'), 'systemd_installed', d.get('systemd_unit_installed'), 'has_systemctl', has, 'scope', d.get('systemd_scope'))"
 # 上面那几遍都不带 BITBOT_KERNEL_RESIDENT —— 而**桌面宿主自己把常驻设成默认**
 # （hosts/desktop/main.js:55-56），它拉起来的 long-lived daemon 继承的正是那份环境
 # （main.js:726-740 `env: {...process.env, BITBOT_ROUTINE_LONG_LIVED:"1"}`）。

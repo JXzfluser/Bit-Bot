@@ -53,6 +53,8 @@ UNIT_SRC="$ROOT/scripts/bitbot-routine-daemon.service.example"
 UNIT_DST="$STATUS_DIR/bitbot-routine-daemon.service"
 USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 USER_UNIT_DST="$USER_UNIT_DIR/bitbot-routine-daemon.service"
+HAS_SYSTEMCTL=0
+command -v systemctl >/dev/null 2>&1 && HAS_SYSTEMCTL=1
 SYSTEMD_UNIT=0
 SYSTEMD_SCOPE=""
 if [[ "$WRITE_UNIT" -eq 1 || "$LONG_LIVED" -eq 1 || "${BITBOT_ROUTINE_LONG_LIVED:-}" == "1" || "$INSTALL_USER" -eq 1 ]]; then
@@ -99,11 +101,11 @@ fi
 if [[ ( "$WRITE_UNIT" -eq 1 || "$INSTALL_USER" -eq 1 ) && "$LONG_LIVED" -eq 0 && "$SWEEPS" -eq 1 && "$INTERVAL_MS" -eq 0 ]]; then
   # Unit-scaffold / user-install only — do not run sweeps.
   # enable-without-start keeps long_lived=false and systemd_unit_active=false.
-  python3 - "$STATUS_DIR" "$SYSTEMD_UNIT" "$UNIT_DST" "$USER_UNIT_DST" "$SYSTEMD_SCOPE" "$INSTALL_USER" "$SYSTEMD_ACTIVE" <<'PY'
+  python3 - "$STATUS_DIR" "$SYSTEMD_UNIT" "$UNIT_DST" "$USER_UNIT_DST" "$SYSTEMD_SCOPE" "$INSTALL_USER" "$SYSTEMD_ACTIVE" "$HAS_SYSTEMCTL" <<'PY'
 import json, os, sys, time
-root, systemd_unit, unit_dst, user_dst, scope, install_user, systemd_active = (
+root, systemd_unit, unit_dst, user_dst, scope, install_user, systemd_active, has_systemctl = (
   sys.argv[1], sys.argv[2] == "1", sys.argv[3], sys.argv[4], sys.argv[5],
-  sys.argv[6] == "1", sys.argv[7] == "1",
+  sys.argv[6] == "1", sys.argv[7] == "1", sys.argv[8] == "1",
 )
 status = {
   "daemon": False,
@@ -111,8 +113,13 @@ status = {
   "systemd_unit": systemd_unit,
   "systemd_unit_path": unit_dst if os.path.isfile(unit_dst) else None,
   "systemd_user_unit_path": user_dst if os.path.isfile(user_dst) else None,
+  # 「装」= 这台机器上真有一个能认这份 unit 的 systemd。macOS 没有 systemctl，
+  # 落到盘上的只是 unit 文件；把那句 "OK: installed" 打出来就是屏幕上说装了、
+  # daemon-status.json 里写没装（G-64 实测的两个数字互相矛盾）。
+  "systemd_unit_has_systemd": has_systemctl,
+  "systemd_unit_file_written": bool(user_dst and os.path.isfile(user_dst)),
   # Scaffold write alone is not an install — keep residual honest.
-  "systemd_unit_installed": bool(install_user and systemd_unit),
+  "systemd_unit_installed": bool(install_user and systemd_unit and has_systemctl),
   # Active (running) is required to close long_lived_cron_residual via unit path.
   "systemd_unit_active": bool(systemd_active),
   "systemd_scope": scope or None,
@@ -125,8 +132,13 @@ status = {
     if systemd_active
     else (
       f"systemd {scope or 'user'} unit installed (not active) — start with --now or --long-lived to close residual"
-      if systemd_unit and install_user
-      else "systemd unit scaffold written — --install-user-unit or /etc install; residual stays until active/long_lived"
+      if systemd_unit and install_user and has_systemctl
+      else (
+        "user unit file written — this host has no systemctl (macOS): nothing is installed or enabled; "
+        "residual stays until a launchd/systemd supervisor actually runs it"
+        if install_user and not has_systemctl
+        else "systemd unit scaffold written — --install-user-unit or /etc install; residual stays until active/long_lived"
+      )
     )
   ),
   "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -137,7 +149,12 @@ with open(path, "w") as f:
 print("daemon-status", path, status)
 PY
   if [[ "$INSTALL_USER" -eq 1 ]]; then
-    echo "OK: installed user systemd unit → $USER_UNIT_DST (systemd_unit=$SYSTEMD_UNIT active=$SYSTEMD_ACTIVE scope=$SYSTEMD_SCOPE)"
+    if [[ "$HAS_SYSTEMCTL" -eq 1 ]]; then
+      echo "OK: installed user systemd unit → $USER_UNIT_DST (systemd_unit=$SYSTEMD_UNIT active=$SYSTEMD_ACTIVE scope=$SYSTEMD_SCOPE)"
+    else
+      # 屏幕上说的必须和 daemon-status.json 里那个数字是同一件事（G-64）。
+      echo "OK: wrote user unit file → $USER_UNIT_DST (systemd_unit_installed=false scope=none: 本机没有 systemctl，未安装也未启用)"
+    fi
   else
     echo "OK: wrote systemd unit scaffold → $UNIT_DST"
   fi
