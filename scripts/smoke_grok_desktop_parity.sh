@@ -1918,9 +1918,24 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     || bad "G-46 quit contract missing"
   grep -q "C-09" /tmp/g46-command_channel.log 2>/dev/null \
     && grep -q "C-10" /tmp/g46-command_channel.log 2>/dev/null \
-    && grep -q "C-11" /tmp/g46-command_channel.log 2>/dev/null \
-    && ok "G-46 命令通道：静默操作不进气泡 / 一句话组队建群 / 回执说人话" \
+    && ok "G-46 命令通道：静默操作不进气泡 / 一句话组队建群" \
     || bad "G-46 command-channel contract missing"
+  # C-11 可感面：只认子门自己打印的 token，不认它的散文（G-40 假红的教训）。
+  # 四条事实同一行：调试行总数、平时按住数、Alt+D 现形数、屏上带内部 id 的可见行数。
+  g46_c11=$(grep -o 'C11_METRICS dbg_total=[0-9][0-9]* hidden=[0-9][0-9]* shown_dev=[0-9][0-9]* vis_hits=[0-9][0-9]*' /tmp/g46-command_channel.log | head -1)
+  g46_dbg=$(printf '%s' "$g46_c11" | grep -o 'dbg_total=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+  g46_hid=$(printf '%s' "$g46_c11" | grep -o ' hidden=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+  g46_dev=$(printf '%s' "$g46_c11" | grep -o 'shown_dev=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+  g46_vis=$(printf '%s' "$g46_c11" | grep -o 'vis_hits=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+  if [ -n "$g46_c11" ] && [ "$g46_dbg" -gt 0 ] && [ "$g46_hid" = "$g46_dbg" ] \
+    && [ "$g46_dev" = "$g46_dbg" ] && [ "$g46_vis" = "0" ]; then
+    ok "G-46 命令通道 C-11：施工说明 $g46_hid/$g46_dbg 条按着、Alt+D 一开 $g46_dev/$g46_dbg 条现形、屏上带内部 id 的可见行 0（回执说人话）"
+  else
+    bad "G-46 C-11 调试行没按住或内部 id 上了屏（token=${g46_c11:-子门没打印}；hidden=$g46_hid/$g46_dbg dev=$g46_dev vis=$g46_vis）"
+  fi
+  echo "  · G-46 C-11 本轮改的是皮肤不是文案：ui_chrome.css 那条 7 类的 grid 选择器特异性压掉了"
+  echo "    index.html 里 3 类的 .msg.debug-only{display:none}，Alt+D 没开时 Host 施工说明/effects 药丸全实名上路；"
+  echo "    补 :not(.debug-only) 后 C-11b 两面同页量（藏 6/6、显 6/6），负向对照=改回旧选择器后 vis_hits>0"
   grep -q "R-02 窄窗" /tmp/g46-sidebar_adapt.log 2>/dev/null \
     && grep -q "R-04 手动收起后" /tmp/g46-sidebar_adapt.log 2>/dev/null \
     && grep -q "R-05 收起态的重开条" /tmp/g46-sidebar_adapt.log 2>/dev/null \

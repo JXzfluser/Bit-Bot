@@ -484,6 +484,78 @@ async function waitFor(fn, ms, step) {
     await idle(win);
     await win.waitForTimeout(1200);
     const t11all = await bubbleTexts(win);
+    /* 泄漏这件事必须说清「哪一行、带什么 class、这一屏有没有开 dev-mode」——
+       只把文本念一遍，下次没人分得清这是产品把内部 id 送上了屏，还是调试行本来就该藏着
+       而这次恰好开着 Alt+D。 */
+    const t11prov = await win.evaluate(() => {
+      const hit = /routine-|@daily|ADR|rt:/;
+      let ruleHits = [];
+      const firstHit = Array.from(document.querySelectorAll("#log .msg")).find((m) =>
+        ((m.querySelector(".body") || {}).textContent || "").match(hit));
+      let win = [];
+      try {
+        for (const sh of Array.from(document.styleSheets)) {
+          let rules = null;
+          try { rules = sh.cssRules; } catch (_) { continue; }
+          for (const r of Array.from(rules || [])) {
+            if (r.selectorText && /debug-only/.test(r.selectorText) && /display/.test(r.style.cssText)) {
+              ruleHits.push((sh.href || "inline") + " || " + r.selectorText + "{ " + r.style.cssText.match(/display:[^;]+/)[0] + " }");
+            }
+            /* 谁把这一行显示出来的：逐条问「这条规则认不认这个节点」，凡声明 display 的都记下来，
+               最后赢的那条一定是其中之一 —— 不用再靠读源码猜特异性。 */
+            if (firstHit && r.selectorText && r.style && r.style.display) {
+              let ok = false;
+              try { ok = firstHit.matches(r.selectorText); } catch (_) { ok = false; }
+              if (ok) win.push((sh.href || "inline") + " || " + r.selectorText + "{ display:" + r.style.display + " }");
+            }
+          }
+        }
+      } catch (_) { /* 拿不到样式表就照实说空 */ }
+      return {
+        bodyClass: document.body.className,
+        sheets: Array.from(document.styleSheets).map((s) => s.href || "inline"),
+        rules: ruleHits,
+        winner: win,
+        rows: Array.from(document.querySelectorAll("#log .msg"))
+          .filter((m) => ((m.querySelector(".body") || {}).textContent || "").match(hit))
+          .map((m) => ({
+            cls: m.className,
+            disp: getComputedStyle(m).display,
+            inline: m.getAttribute("style") || "",
+            vis: getComputedStyle(m).display !== "none",
+            txt: ((m.querySelector(".body") || {}).textContent || "").trim().slice(0, 70),
+          })),
+      };
+    });
+    console.log("C11_PROBE body=" + JSON.stringify(t11prov.bodyClass) +
+      " rules=" + JSON.stringify(t11prov.rules) + " winner=" + JSON.stringify(t11prov.winner) +
+      " rows=" + JSON.stringify(t11prov.rows));
+    /* C-11b 机制正反面：调试行平时按着（display:none），开了 Alt+D 才上路。
+       只断「现在看不见」不够 —— 皮肤那条 7 类的 grid 一压，谁都看不见才是真出事；
+       所以同一页里当场把 debug-json 加上再量一次，两面都必须对。 */
+    const t11mech = await win.evaluate(() => {
+      const dbg = Array.from(document.querySelectorAll("#log .msg.debug-only"));
+      const hiddenNow = dbg.filter((m) => getComputedStyle(m).display === "none").length;
+      document.body.classList.add("debug-json");
+      const shownAfter = dbg.filter((m) => getComputedStyle(m).display !== "none").length;
+      document.body.classList.remove("debug-json");
+      return { total: dbg.length, hiddenNow, shownAfter };
+    });
+    /* 机器可读的一行：矩阵的「可感面」只认这个 token，不认门禁散文 —— G-40/G-114
+       两次教训都是钉句子，改一句人话就把门弄红（或弄成恒真）。
+       vis_hits = **产品自己写的**行里看得见且带内部 id / cron 的行数，门该是 0。
+       用户自己敲进来的那条 create routine … @daily 不算泄漏：那是他打的字回显，
+       拿它计数会让门永远红在一个假泄漏上（实测第一版就被它骗出 vis_hits=1）。 */
+    console.log("C11_METRICS dbg_total=" + t11mech.total +
+      " hidden=" + t11mech.hiddenNow +
+      " shown_dev=" + t11mech.shownAfter +
+      " vis_hits=" + (t11prov.rows || []).filter((r) => r.vis && !/(^| )user( |$)/.test(r.cls)).length);
+    t11mech.total > 0 && t11mech.hiddenNow === t11mech.total
+      ? ok("C-11b 调试行按着：" + t11mech.hiddenNow + "/" + t11mech.total + " 条 display:none（正常用户看不见施工说明）")
+      : bad("C-11b 调试行没按住：" + t11mech.hiddenNow + "/" + t11mech.total, JSON.stringify(t11mech));
+    t11mech.total > 0 && t11mech.shownAfter === t11mech.total
+      ? ok("C-11b Alt+D 一开就全上路：" + t11mech.shownAfter + "/" + t11mech.total + " 条现形 —— 藏与显是同一根开关，不是把调试行删掉了事")
+      : bad("C-11b dev-mode 显形没接上（调试行可能被 CSS 永久压死）", JSON.stringify(t11mech));
     const line11 = t11all.slice().reverse().find((x) => /定时任务|routine/i.test(x)) || "";
     /定时任务已建好/.test(line11)
       ? ok("C-11 回执说人话：" + line11.slice(0, 60))

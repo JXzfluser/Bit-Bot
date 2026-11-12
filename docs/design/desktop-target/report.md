@@ -10794,3 +10794,78 @@ CN-05c/05d 认的是「被用户停止」，不是「回合结束了」。送达
 而 `r.messages` 里没有它）—— 保留半句是另一件事，另立任务；② 「已取消」目前不写库，刷新后不在历史里，
 要不要落一行属产品裁决；③ 群聊那一路（`room_orchestrator`）的取消还没接台账。
 run14 仍欠：全量矩阵复跑（G-114 该档 +6，预期总量 915→921 上下）。
+
+## 8.120 皮肤的一条 7 类选择器把调试行全放上屏：C-11 的泄漏不是文案，是特异性（run13 G-46 那两条红的真账，2026-11-12）
+
+### ① 先量再改：run13 的 G-46 本来就红着两条，而且锚点是恒真的
+
+run13 的 `/tmp/run13-matrix.log:431` 记的是 `e2e_desktop_command_channel: PASS=36 FAIL=2`，两条红都叫 C-11：
+
+```
+✗ C-11 routine receipt still raw — ["routine_schedule: gate-r1|@daily|gate smoke", …]
+✗ C-11 internal routine id or cron leaked — routine_schedule: gate-r1|@daily|gate smoke
+```
+
+也就是说用户敲一句建定时任务的话，屏上除了人话回执，还实名躺着 `rt:schedule:gate-r1/snap/long_lived_cron_residual`
+这种内部行号标签。而矩阵那一边是绿的 —— `scripts/smoke_grok_desktop_parity.sh` 旧锚写的是
+`grep -q "C-11" /tmp/g46-command_channel.log`，✓ 行和 ✗ 行都以「C-11」开头，这一条**永远翻不了红**。
+这和 §8.118 里 G-40 钉散文是同一类尺子账，只是方向相反：那次是措辞一改就假红，这次是产品真红它装看不见。
+
+三轮插桩把来源钉死（`/tmp/g46-probe*.log`）：泄漏那几行的 `class="msg assistant debug-only"`、
+`display:grid`、`style` 属性为空、`body` 只有 `grok-ui force-light`（Alt+D 没开）。既然 `display` 不是行内写的，
+就只可能来自样式表；把渲染端所有声明过 `display` 且 `matches()` 命中该节点的规则逐条列出来，赢的那条是
+
+```
+file:///…/hosts/desktop/ui_chrome.css || body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm)
+                                          :not(.room-error):not(.media) { display: grid }
+```
+
+7 个类选择器（特异性 0-8-1 一类）压掉 `hosts/desktop/index.html:1501` 的 `.msg.debug-only.assistant{display:none}`
+（3 个类）。藏调试行的开关（`body.debug-json`，index.html:1488-1502、Alt+D 在 :23002 附近切换）从来没坏，
+是皮肤把它盖住了 —— 所以这不是「定时任务回执没写成人话」的文案账，产品文案早就改对了（index.html 的
+`addMsg` 只在调试行打 `debug-only`），**受影响的是全体 assistant 调试行**：Host 施工说明（ADR 0002）、
+effects 药丸、`rt:` 标签，任何一次真开机都看得见。
+
+### ② 改的是皮肤，不是文案
+
+`hosts/desktop/ui_chrome.css:2528` 给那条 grid 规则补
+`:not(.debug-only)`，并把「7 类压 3 类」这件事写在规则上方的注释里，免得下一个人当成装饰删掉。
+门 `scripts/e2e_desktop_command_channel.mjs:536-552`
+新增 C-11b：同一页里当场量两面 —— 平时 `display:none` 的调试行数必须等于总数，把 `debug-json` 加上后
+现形数也必须等于总数。只断「现在看不见」不够：皮肤再压一次就是 0/6 都看不见，那才是真出事，
+而这一刀同时证明修复不是「把调试行删掉了事」。C-11 的取证行（`C11_PROBE`）保留，把 `body`、样式表清单、
+全部 debug-only 规则、命中该节点的 `winner` 列表和每行的 `cls/disp/inline/vis` 一并打出来 —— 下次再漏，
+不用重读源码就能指认是哪张表的哪条规则赢的。
+
+实测：修复后 `e2e_desktop_command_channel: PASS=40 FAIL=0 SKIP=0`，token
+`C11_METRICS dbg_total=6 hidden=6 shown_dev=6 vis_hits=0`。
+
+### ③ 锚点登记 + 三个方向的自证
+
+矩阵 G-46 的 C-11 锚（`scripts/smoke_grok_desktop_parity.sh:1919-1936`）
+不再认句子，改认子门自己打印的一行四个数：`dbg_total / hidden / shown_dev / vis_hits`，
+判据是 `dbg_total>0 && hidden==dbg_total && shown_dev==dbg_total && vis_hits==0`。
+`vis_hits` 第一版把「用户自己敲进输入框那句 create routine … @daily」的回显也算成泄漏（实测 `vis_hits=1`
+而门全绿），已按 class 排除 `.user` 行：只数**产品自己写的**可见行。这是量出来的口径修正，不是为了让数字变好看。
+
+三个方向都在真实日志上验过（不是推理）：
+
+| 日志 | 来源 | 锚点判定 |
+| --- | --- | --- |
+| `/tmp/g46-command_channel.log` | 修复后真跑 | ✓ 6/6 按着、6/6 现形、可见行 0 |
+| `/tmp/g46-neg-css.log` | 只把 `:not(.debug-only)` 摘掉后真跑（子门同时 FAIL=3） | ✗ `hidden=0/6 … vis=4` |
+| `/tmp/g46-no-token.log` | 绿日志里删掉 token 行 | ✗ 「子门没打印」 |
+
+`bash -n` 通过；负向对照那一次是**真改产品再真跑**，`hidden=0/6`、`vis_hits=4` 与屏上出现的
+`routine_schedule: gate-r1|@daily|gate smoke` 是同一次观测里的三件事，可见伤害实名点名。
+
+### ④ 动了 / 没动 / 尾账
+
+动了：`hosts/desktop/ui_chrome.css` 一条选择器、`scripts/e2e_desktop_command_channel.mjs`（C-11 取证 + C-11b 两面
++ token）、矩阵 G-46 锚点、本节。没动：内核、渲染端文案、任何用户数据（门照旧快照并还原 `data/desktop`）。
+
+尾账两条：① `e2e_desktop_user_journeys` 现在 `PASS=69 FAIL=1`，那条「成员列表问答」不是本轮弄出来的 ——
+`/tmp/run13-matrix.log:602`（16:21:33）与 `/tmp/g53-rerun.log:36`（15:08:11）早有同一条红，判据读的是内核记录
+（`rowsOf(T1,"bot_reply")`）不是 DOM，所以 200s 内 Bot 一句没答是内核/会话侧的账，另立任务查；
+② 全体 assistant 调试行的可见性只由 C-11b 这一档盯，Alt+D 的开关本身仍归 G-46 之外的门，run14 复跑时
+G-46 该档从 36/2 变 40/0，矩阵总量按锚点净增一条。

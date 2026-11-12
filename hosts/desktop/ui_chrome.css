@@ -2520,8 +2520,12 @@ body.grok-ui .msg.user .msg-status { display: flex; justify-content: flex-end; m
    阶段会把剩余空间全分给第一列，短回复的气泡也会撑到 640（实测 603.4），
    看起来还是「铺满」；fit-content 才是「内容多宽就多宽，最多 640」。
    身份头 / 引用条 / 表情行 / 群身份行都横跨两列（1 / -1）。
-   卡片类不参与（:not 链与上面一致）。 */
-body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) {
+   卡片类不参与（:not 链与上面一致）。
+   :not(.debug-only) 不是装饰：这一条有 7 个类选择器，特异性把 index.html 里
+   `.msg.debug-only.assistant{display:none}`（3 个类）整个压掉 —— Alt+D 没开的时候，
+   Host 施工说明、effects 药丸、rt: 标签这些调试行全都实名上路。G-46 C-11 就是这么撞见的
+   （屏上出现 routine-cn-…/cron 原文）。调试行只该在 dev-mode 里现身。 */
+body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media):not(.debug-only) {
   display: grid;
   grid-template-columns: fit-content(640px) max-content;
   column-gap: 8px;
