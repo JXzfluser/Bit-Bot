@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 "use strict";
-/* KP-09 片1..4：事件面只剩一个写者、读写同源，且多进程写同一张面不许互相抹掉。
+/* KP-09 片1..5：事件面只剩一个写者、读写同源，且多进程写同一张面不许互相抹掉。
  *
  * 先有的红（修复前实测，临时 dataRoot、真代码路径，见 §8.123）：
  *   EVENT_ONLY 下删 Bot 的级联自己 readJson + atomicWrite sessions.json，
@@ -46,6 +46,8 @@
  *   SW-19 自旋出口静态四判据（分辨 EEXIST / 无裸 catch{continue} / 先建面目录 / 有 deadline）+ 踩坑版夹具反向对照
  *   SW-20 把交错钉死在 load 与 save 之间的三方合并尺子：别人删的不复活 / 我的改名不被盖回 /
  *          别人新加的不抹掉；反向夹具 = 同一份模块摘掉合并那层，必须判红 3 条
+ *   SW-21 同一把交错尺子搬到群面（片5）：别人新建的群不抹掉 / 我不动的那行用盘上更新的
+ *          （群名 + 群里那条 transcript 各钉一遍）；反向夹具 = 摘掉群面合并，必须判红 3 条
  *
  * 全部跑在临时目录，绝不碰仓库里的 data/。
  */
@@ -72,7 +74,7 @@ let swStoreWriters = 0;
 let swReaders = 0;
 let xpRows = 0, xpPrefixes = 0, xpStoreRooms = 0, xpTmpSites = 0, xpTmpBad = -1, xpOrderBad = -1, xpKidsOk = false;
 let xpBotsLost = -1, xpBotsOk = -1, xpBotsRooms = -1, xpBotsSynced = false;
-let xpSpinMs = -1, xpSpinOk = false, xpSpinBad = -1, xpSw20 = -1, xpSw20Neg = -1;
+let xpSpinMs = -1, xpSpinOk = false, xpSpinBad = -1, xpSw20 = -1, xpSw20Neg = -1, xpSw21 = -1, xpSw21Neg = -1;
 const ok = (id, msg) => { PASS++; console.log(`  ✓ ${id} ${msg}`); };
 const bad = (id, msg, extra) => { FAIL++; console.log(`  ✗ ${id} ${msg}${extra ? " — " + (typeof extra === "string" ? extra : JSON.stringify(extra)) : ""}`); };
 
@@ -352,7 +354,7 @@ function xpBotsChildSource() {
 }
 
 /**
- * 片4 的锁自己踩过的坑（本轮实测）：withBotsLock 的 mkdir 失败原因不分辨，
+ * 片4 的锁自己踩过的坑（本轮实测）：withFaceLock（当时还叫 withBotsLock）的 mkdir 失败原因不分辨，
  * 「面目录 data/desktop 还不存在」这种 ENOENT 也被当成「别人持着锁」，于是
  * statSync 又抛 → continue → 100% CPU 死循环，botsCreate 永不返回。
  * HEAD 没锁所以没事，加了锁就把首次落盘打死 —— 这把尺子先红过一次才立起来。
@@ -422,10 +424,12 @@ function sw20ChildSource() {
   ].join("\n");
 }
 
-/* 反向对照的夹具：同一份 product_surface，只把 saveBots 里那层合并摘掉（= 修复前的
-   「整份写」形状），其余文件用符号链接指回仓库。这条夹具不成立，SW-20 就是假绿。 */
-function mergeDisabledFarm() {
-  const farm = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-nomerge-"));
+/* 反向对照的夹具：同一份 product_surface，只把落盘那层的合并摘掉（= 修复前的
+   「整份写」形状），其余文件用符号链接指回仓库。face 决定摘哪张面的合并。
+   这条夹具不成立，SW-20 / SW-21 就是假绿。 */
+function mergeDisabledFarm(face) {
+  const key = face === "rooms" ? "rooms" : "bots";
+  const farm = fs.mkdtempSync(path.join(os.tmpdir(), `kp09-nomerge-${key}-`));
   const desk = path.join(farm, "hosts", "desktop");
   fs.mkdirSync(desk, { recursive: true });
   fs.symlinkSync(path.join(REPO, "hosts", "shared"), path.join(farm, "hosts", "shared"));
@@ -434,20 +438,67 @@ function mergeDisabledFarm() {
     fs.symlinkSync(path.join(REPO, "hosts", "desktop", f), path.join(desk, f));
   }
   const src = fs.readFileSync(path.join(REPO, "hosts/desktop/product_surface.js"), "utf8");
-  const patched = src.replace(
-    "atomicWrite(BOTS_PATH, JSON.stringify(mergeBotsAgainstDisk(data), null, 2))",
-    "atomicWrite(BOTS_PATH, JSON.stringify(data, null, 2))");
+  const want = key === "rooms"
+    ? { from: "atomicWrite(ROOMS_PATH, JSON.stringify(mergeRoomsAgainstDisk(data), null, 2))",
+        to: "atomicWrite(ROOMS_PATH, JSON.stringify(data, null, 2))" }
+    : { from: "atomicWrite(BOTS_PATH, JSON.stringify(mergeBotsAgainstDisk(data), null, 2))",
+        to: "atomicWrite(BOTS_PATH, JSON.stringify(data, null, 2))" };
+  const patched = src.replace(want.from, want.to);
   if (patched === src) return null;
   fs.writeFileSync(path.join(desk, "product_surface.js"), patched);
   return farm;
+}
+
+/* SW-21 的群面交错尺子：和 SW-20 同一把技法，面换成 rooms.json。
+   B 读基底的那一刻 = A 的三次写全部落盘的那一刻，然后 B 才把自己那份写回去。
+   三条判据各钉合并的一条规则：
+     ① 别人新建的群不许被我整份写抹掉（disk 有、我这份没有、基底也没有 → 保留）
+     ② 我不动的那行用盘上更新的 —— 群名（A 改的名不许被 B 盖回）
+     ③ 同上但看群里的消息行：A 在窗口里追加的那条 transcript 必须还在
+        （这条是「两个窗口同时聊同一个群，谁的话都不许吞掉」的最小证明）
+   修前（摘掉合并）实测：①②③ 全红，盘上只剩 B 那份快照里的 4 行。 */
+function sw21ChildSource() {
+  return [
+    '"use strict";',
+    "const fs=require('fs'), path=require('path');",
+    "const dataRoot=process.argv[2], R=process.argv[3];",
+    "delete process.env.BITBOT_EVENT_ONLY;",
+    "const ROOMS=path.join(dataRoot,'desktop','rooms.json');",
+    "const {createProductSurface}=require(path.join(R,'hosts/desktop/product_surface.js'));",
+    "const a=createProductSurface(R,{dataRoot});",
+    "const b=createProductSurface(R,{dataRoot});",
+    "const mk=(s,n)=>{const x=s.botsCreate({name:n,model:'m'}).bot;return x.id;};",
+    "const a1=mk(a,'甲A'),a2=mk(a,'甲B'),b1=mk(b,'乙A'),b2=mk(b,'乙B');",
+    "const rA=a.roomCreate(a1+','+a2,'共同群').room;",
+    "const rC=a.roomCreate(a1+','+a2,'甲的第三群').room;",
+    "const rB=b.roomCreate(b1+','+b2,'乙的群').room;",
+    "let armed=true;",
+    "const orig=fs.readFileSync;",
+    "fs.readFileSync=function(p,...rest){",
+    "  const out=orig.call(fs,p,...rest);",
+    "  if(armed&&String(p)===ROOMS){armed=false;a.roomRename({room:rA.id,title:'甲改过名的群'});a.roomCreate(a1+','+a2,'甲插进来的群');a.appendRoomTranscript(rC.id,{kind:'system',speaker:'system',text:'甲在窗口里加的一行'});}",
+    "  return out;",
+    "};",
+    "const rZ=b.roomCreate(b1+','+b2,'乙的新群').room;",
+    "fs.readFileSync=orig;",
+    "const rows=JSON.parse(orig.call(fs,ROOMS,'utf8')).rooms||[];",
+    "const byId=(id)=>rows.find((x)=>x.id===id);",
+    "const v=[];",
+    "if(!byId(rA.id)||byId(rA.id).title!=='甲改过名的群')v.push('A 改的群名被 B 盖回：'+(byId(rA.id)||{}).title);",
+    "if(!rows.some((x)=>x.title==='甲插进来的群'))v.push('A 在交错窗口里新建的群被 B 整份写抹掉了');",
+    "const rc=byId(rC.id);",
+    "if(!rc||!(rc.transcript||[]).some((t)=>String(t.text||'').indexOf('窗口里加的一行')>=0))v.push('A 追加到共同群的那条 transcript 被 B 的陈旧快照吞掉');",
+    "if(!byId(rZ.id))v.push('B 自己新建的群也没了');",
+    "process.stdout.write(JSON.stringify({rows:rows.length,v})+'\\n');",
+  ].join("\n");
 }
 
 /* 静态账：锁的自旋必须有出口。四条各自可核实 ——
    ①mkdir 的失败按 err.code 分辨（只有 EEXIST 才等）；②没有裸 catch{continue} 的空转口；
    ③建锁前先保证面目录在；④等待路径上有 deadline 出口。 */
 function spinLoopViolations(text) {
-  const at = text.indexOf("function withBotsLock");
-  if (at < 0) return ["找不到 withBotsLock（尺子失效）"];
+  const at = text.indexOf("function withFaceLock");
+  if (at < 0) return ["找不到 withFaceLock（尺子失效）"];
   const body = text.slice(at, at + 2600);
   const v = [];
   if (!/EEXIST/.test(body)) v.push("mkdir 失败没分辨原因：不是「有人持锁」也照样进等待路径");
@@ -729,12 +780,14 @@ async function main() {
 
     // store 形状的面（rooms/sessions）跨进程还是多写者：这一条只报数，不判绿也不判红，
     // 因为它测的是「本轮的交错运气」，而 T1-06 的边界目前只收到进程内（见 §8.125⑤）。
+    // 这条仍只报数、不判绿红：它测的是「本轮的交错运气」。交错窗口现在有确定性尺子了 ——
+    // Bot 面见 SW-20（片4），群面见 SW-21（片5）；还剩会话面（片6）。
     console.log(`  · SW-12 残账（本轮实测）：${KID} 进程各建 3 个群，事件 fold 里 ${xpStoreRooms}/9 —— ` +
       "少的那几行不是 diff 删掉的（取证：事件库里 entity_removed 一条都没有），而是那几家进程的 botsCreate " +
       "先把别人写的 Bot 整份覆盖掉，紧接着自己的 roomCreate 就报 names_not_found，群根本没建成。" +
-      "那条已从写侧收口（SW-15..17），收口后连测 5 轮都是 9/9 —— 但这把尺子的交错窗口没测到 store 面的丢行，" +
-      "不等于它不在：默认（非 EVENT_ONLY）模式下会话/群这两张面仍是整份文件写，" +
-      "两个进程读到同一份基底时谁后写谁就把别人刚建的那行抹掉，跨进程还是多写者。");
+      "那条已从写侧收口（SW-15..17），收口后连测 5 轮都是 9/9；群面自己在默认模式下的整份写也已按 id 合并（SW-21），" +
+      "所以「两个进程各建各的群」不再互相抹掉。剩下的跨进程多写者是 sessions.json：store 内部仍是一次写换整份文本" +
+      "（hosts/desktop/sessions.js 的 persist 口，无合并、无锁），两个进程同时改会话列表时谁后写谁赢 —— 那是片6。");
 
     /* 静态账：两处尺子的反向对照在夹具里真跑红，才允许这两条算绿 */
     const hostTexts = listHostJs().map((rel) => ({ name: rel, text: fs.readFileSync(path.join(REPO, rel), "utf8") }));
@@ -848,8 +901,8 @@ async function main() {
     const psText = fs.readFileSync(path.join(REPO, "hosts/desktop/product_surface.js"), "utf8");
     const spinRepo = spinLoopViolations(psText);
     const spinOld = spinLoopViolations([
-      "  function withBotsLock(fn) {",
-      "    const lock = BOTS_PATH + \".lock\";",
+      "  function withFaceLock(facePath, fn) {",
+      "    const lock = facePath + \".lock\";",
       "    const deadline = Date.now() + 5000;",
       "    let held = false;",
       "    while (!held) {",
@@ -901,10 +954,43 @@ async function main() {
       try { fs.rmSync(sw20Base, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
     }
 
+    /* ===== SW-21：同一把交错尺子搬到群面（KP-09 片5） =====
+       SW-12 那行残账此前只能报数，因为它撞的是跨进程的随机窗口；这条把交错钉在
+       B 读基底的那一刻。默认（非 EVENT_ONLY）模式下 rooms.json 仍是文件真源，
+       整份写必然把 A 刚落盘的三件事抹掉 —— 修前实测三条全红。 */
+    {
+      const sw21Base = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-sw21-"));
+      const sw21Path = path.join(sw21Base, "sw21-child.cjs");
+      fs.writeFileSync(sw21Path, sw21ChildSource());
+      const runSw21 = (repoRoot) => new Promise((res) => {
+        const dRoot = fs.mkdtempSync(path.join(sw21Base, "d-"));
+        fs.mkdirSync(path.join(dRoot, "desktop"), { recursive: true });
+        const p = spawn(process.execPath, [sw21Path, dRoot, repoRoot], { stdio: ["ignore", "pipe", "pipe"] });
+        let buf = "", eb = "";
+        p.stdout.on("data", (c) => { buf += String(c); });
+        p.stderr.on("data", (c) => { eb += String(c); });
+        const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch (_) { /* 已经没了 */ } }, 30000);
+        p.on("error", (e) => { clearTimeout(timer); res({ out: "", err: String((e && e.message) || e) }); });
+        p.on("close", (code) => { clearTimeout(timer); res({ code, out: buf, err: eb }); });
+      });
+      const parse21 = (r) => { try { return JSON.parse(String(r.out).trim()); } catch (_) { return null; } };
+      const real21 = parse21(await runSw21(REPO));
+      const farm21 = mergeDisabledFarm("rooms");
+      const neg21 = farm21 ? parse21(await runSw21(farm21)) : null;
+      xpSw21 = real21 && real21.v ? real21.v.length : -1;
+      xpSw21Neg = neg21 && neg21.v ? neg21.v.length : -1;
+      if (real21 && real21.v && real21.v.length === 0 && real21.rows === 5 && neg21 && neg21.v && neg21.v.length === 3)
+        ok("SW-21", `群面的交错窗口里三条语义全守住（别人新建的群不抹掉 / 我不动的那行用盘上更新的：群名 + 群里那条 transcript，盘上 ${real21.rows} 个群）；摘掉群面合并的夹具在同一条尺子上判红 3 条（${neg21.v[0]}）`);
+      else bad("SW-21", real21 && real21.v && real21.v.length ? "群面合并的交错语义有缺口" : "群面交错尺子或反向夹具失效",
+        { real: real21, neg: neg21, farmErr: farm21 ? "" : "夹具建不出来（群面合并那行不在了）", err: String((real21 && real21.err) || "").slice(0, 160) });
+      if (farm21) { try { fs.rmSync(farm21, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ } }
+      try { fs.rmSync(sw21Base, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
+    }
+
     delete process.env.BITBOT_EVENT_ONLY;
   }
 
-  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad} bots_lost=${xpBotsLost} bots_room_ok=${xpBotsOk} bots_rooms=${xpBotsRooms} spin_ms=${xpSpinMs} spin_bad=${xpSpinBad} sw20=${xpSw20} sw20_neg=${xpSw20Neg}`);
+  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad} bots_lost=${xpBotsLost} bots_room_ok=${xpBotsOk} bots_rooms=${xpBotsRooms} spin_ms=${xpSpinMs} spin_bad=${xpSpinBad} sw20=${xpSw20} sw20_neg=${xpSw20Neg} sw21=${xpSw21} sw21_neg=${xpSw21Neg}`);
   console.log("prove_sessions_single_writer: PASS=" + PASS + " FAIL=" + FAIL);
   process.exit(FAIL === 0 ? 0 : 1);
 }

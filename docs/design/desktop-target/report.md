@@ -11449,3 +11449,74 @@ run14 那条红在**隔离重跑**里稳定复现（两次独立运行，同一�
 今天没有任何 responder 开口，所以答案文本是空的、名单自然一个都不在。
 可疑方向是 `mentions_only` 那一路路由（[hosts/shared/host_ffi.js:6930](file:///Users/zfl/Downloads/bitbot/hosts/shared/host_ffi.js#L6930) 起）：
 群消息没人被 @ 时谁该接。修法未定，这条留给下一轮，不和 §8.121 之前那种「归因给环境」混在一起。
+
+## 8.128 KP-09 片5：两个进程各建各的群，谁后写谁就把对方刚建的那批抹掉（SW-21 / G-122 片5，2026-11-13）
+
+### ① 这片不接受「撞运气报数」
+
+§8.127⑥ 留下的那句话是本轮的开工条件：Bot 面收口后 `SW-12` 连测 5 轮都是 9/9，但**这把尺子的交错窗口没测到
+store 面的丢行，不等于它不在**。默认（非 EVENT_ONLY）模式下 `rooms.json` 仍是文件真源，
+`saveRooms` 是「一次写换整份文本」的形状（修前 [hosts/desktop/product_surface.js:1811](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1811)
+就是 `atomicWrite(ROOMS_PATH, JSON.stringify(data))` 一行），所以两个进程读到同一份基底时必然有一方是陈旧的。
+问题是原来的测法测不到它：3 个真进程各自跑各自的时序，能不能撞上那个窗口看当天负载。
+
+这片把窗口**钉死**：拦住写者 B 读基底的那第一口 `readFileSync(rooms.json)`，在 `return` 之前用另一个实例 A
+把三次写全部落盘，然后才让 B 把自己那份写回去。同一条技法在片4 用于 bots 面（`SW-20`），
+这里是 [scripts/prove_sessions_single_writer.mjs:460](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L460) 的 `sw21ChildSource()`。
+先有的红（探针实测，同一份代码、同一对实例）：`{"disk":["乙的群"],"n":1}` —— A 刚建的群在盘上一个字节都不剩。
+
+### ② 用户看得见的那件事
+
+桌面主进程和定时守护共用一份 `data/`：A 建了群「甲的群」，B 同时建了「乙的群」。
+B 后写 → 侧栏只剩「乙的群」，A 那个群在它自己的进程里还活着（事件里、Bot 的会话里都还在），
+但下一次从盘上重读就没了；反过来也一样。屏幕上没有任何失败，因为两边都拿到了 `ok:true`。
+
+### ③ 落地：`saveRooms` 这一个口子改按 id 三方合并 + 群面自己的锁
+
+改的是 [hosts/desktop/product_surface.js:1827](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1827) 的 `saveRooms`
+和 [:1832](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1832) 的 `mergeRoomsAgainstDisk`，规则与片4 逐字同形（基底 = 本次
+[：1801](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1801) `requireWritableRooms()` 交给调用方的那份，见 [：1797](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1797) 的 `roomsBaseText`）：
+
+1. 盘上有、我这份没有：基底里也没有 → 别的进程刚建的，**留着**；基底里有 → 是我删的，才删（群面目前没有删除入口，这条为将来留着）；
+2. 盘上有、我这份也有：我和基底一样 = 我没改 → **用盘上更新的那份**；我和基底不一样 → 用我的；
+3. 我这份带了、盘上没有：基底里没有 → 我这轮新建的，写回；基底里有 → 别人删掉了，**不复活**；
+4. `EVENT_ONLY` 下整条合并跳过 —— 那张面的真源是事件库，`atomicWrite` 走 `eventOnlyWrite`，
+   此时 `rooms.json` 可能是遗留文件，拿它当「盘上当前」合并会凭空造出幽灵群。
+
+锁从 `withBotsLock(fn)` 泛型化成 [hosts/desktop/product_surface.js:259](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L259) 的
+`withFaceLock(facePath, fn)`：锁按面分开（`bots.json.lock` / `rooms.json.lock`），两张面的合并不互相阻塞，
+持锁区间只有「读盘 → 合并 → 落盘」那一小段，没有嵌套持锁。
+
+### ④ 「我不动的那行用盘上更新的」这条为什么值得单独钉
+
+它不只保护群列表，还保护**同一个群里的消息**：A 往「甲的第三群」追加一条 transcript，B 手里那份是追加前的，
+但 B **没动过**这个群 → 按规则 2 用盘上那份，A 那条留下。这就是「两个窗口同时聊同一个群，谁的话都不再被吞掉」
+的最小可证形态，`SW-21` 的第 ③ 条判据钉的正是它（群名那条钉的是同一规则的标量面）。
+
+仍欠的：如果两个进程**都改了同一个群**（各自追加一条），合并只能在两份里选一份 —— 行内 transcript 不做逐条并集，
+那条仍是最后写者赢。这是残账，不是已收口。
+
+### ⑤ 尺子与数字
+
+`SW-21` 跑真模块 + 临时 dataRoot，同时跑摘掉群面合并的夹具（[scripts/prove_sessions_single_writer.mjs:430](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L430)
+`mergeDisabledFarm(face)` 现在按面生成符号链接农场，把合并那一层从 `product_surface.js` 里摘掉）：
+真树必须 0 违规且盘上 5 个群，夹具必须在同一条尺子上判红 3 条 —— 尺子失效时它是 `-1`，不会假装绿。
+本轮实测：`prove_sessions_single_writer: PASS=24 FAIL=0`，
+`SW_METRICS mode=prod … spin_ms=6 spin_bad=0 sw20=0 sw20_neg=3 sw21=0 sw21_neg=3`，
+反向对照 `mode=neg pass=8 fail=0`。矩阵侧 G-122 段：`SECTION PASS=14 FAIL=0`，
+新增两条锚点（[scripts/smoke_grok_desktop_parity.sh:5162](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5162) 钉 `sw21=0 且 sw21_neg=3`、
+[：5167](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5167) 钉 `✓ SW-21`），`g122_pass` 下限从 23 提到 24
+（[：5100](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5100)）。`SW-12` 那行残账的措辞也按这片改口：
+不再写「rooms/sessions 都是多写者」，只留 `sessions.json`（store 的落盘口 [hosts/desktop/sessions.js:69](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L69) 仍是整份文本 `writeFileSync`，无合并无锁）。
+
+### ⑥ 还欠着的（诚实清单）
+
+1. `sessions.json` 的跨进程丢更新（片6）：形状和这片完全一样，`roomsBaseText` 那份基底在 store 内部（每次 `persist` 换整份文本）；
+2. 同一个群被两个进程同时改动 → 行内 transcript 仍二选一（本片只做到按行合并）；
+3. `bots.json` 的真源仍是文件、`primary_id` 这类标量仍最后写者赢（§8.127⑦ 未变）；
+4. 同一进程里 `product_surface` 仍有两个实例（`main.js` 与 `host_ffi.js`），各自的 `lastTextBySurface` 是第二份 prev 缓存；
+5. 全量矩阵还没在含 §8.122..§8.128 这棵树上跑过（run15 待授权）。
+
+可感面：两个进程各自建完自己的群，**侧栏两个群都在**（原来只剩后写那家那批）；A 在群里追加的那句话
+不会因为 B 同时在别处写了一次群面就被吞掉；Bot 面（片4）+ 群面（这片）都收口后，
+「我建好了但看不见」这一类只剩会话面（片6）。

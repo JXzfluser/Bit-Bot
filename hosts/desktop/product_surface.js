@@ -244,7 +244,7 @@ function createProductSurface(repoRoot, opts = {}) {
      别人删掉的我不复活（SW-20 的交错尺子把这三条各钉了一遍）。
      primary_id 仍是单个标量，按调用方落（多进程同时改主 Bot 不在这一片的范围里）。 */
   function saveBots(data) {
-    withBotsLock(() => atomicWrite(BOTS_PATH, JSON.stringify(mergeBotsAgainstDisk(data), null, 2)));
+    withFaceLock(BOTS_PATH, () => atomicWrite(BOTS_PATH, JSON.stringify(mergeBotsAgainstDisk(data), null, 2)));
   }
 
   /* 合并要读盘，读盘和写盘之间不能被别人插进来 —— 否则两个进程读到同一份基底，
@@ -253,12 +253,14 @@ function createProductSurface(repoRoot, opts = {}) {
      拿不到锁的**原因**决定下一步：只有 EEXIST（真有人持着）才等，其它失败
      （面目录还不存在、只读盘、权限）直接退回无锁写 —— 第一版在这里写了个
      `catch { continue; }`，把「data/desktop 目录还没建」的首次落盘变成 100% CPU
-     的死循环，由 SW-18 那把带墙钟的尺子抓出来。 */
-  function withBotsLock(fn) {
-    const lock = BOTS_PATH + ".lock";
+     的死循环，由 SW-18 那把带墙钟的尺子抓出来。
+     锁按面分开（bots.json.lock / rooms.json.lock）：两张面的合并互不阻塞，
+     也不会有嵌套持锁 —— 写侧只在真正落盘那一小段里持锁。 */
+  function withFaceLock(facePath, fn) {
+    const lock = facePath + ".lock";
     const deadline = Date.now() + 5000;
     let held = false;
-    try { fs.mkdirSync(path.dirname(BOTS_PATH), { recursive: true }); } catch (_) { /* 建不出来就让写盘自己报错 */ }
+    try { fs.mkdirSync(path.dirname(facePath), { recursive: true }); } catch (_) { /* 建不出来就让写盘自己报错 */ }
     while (!held) {
       let lockErr = null;
       try { fs.mkdirSync(lock); held = true; } catch (err) { lockErr = err; }
@@ -1790,6 +1792,10 @@ function createProductSurface(repoRoot, opts = {}) {
     if (hit.unreadable) return { ok: false, error: ROOMS_UNREADABLE + ":" + hit.reason };
     return { ok: true, rooms: hit.data };
   }
+  /* rooms.json 的读-改-写基底：本次 requireWritableRooms 交给调用方的那份快照，
+     落盘时用来分辨「我删掉的群」和「别的进程刚建的群」。见 saveRooms / mergeRoomsAgainstDisk。 */
+  let roomsBaseText = null;
+
   // 只给「要落盘」的路径用：文件不存在可以当空目录开（还没有群），坏文件不行。
   // EVENT_ONLY 下写侧的基底必须是事件折叠（遗留文件走自导入路径）。
   function requireWritableRooms() {
@@ -1798,18 +1804,64 @@ function createProductSurface(repoRoot, opts = {}) {
       if (hit.ok && !hit.anomalies.length && hit.count > 0) {
         const text = canonicalTextFor("rooms", hit);
         setLastTextFor(ROOMS_PATH, text);
+        roomsBaseText = text;
         return JSON.parse(text);
       }
     }
-    if (!fs.existsSync(ROOMS_PATH)) return { version: 1, rooms: [] };
+    if (!fs.existsSync(ROOMS_PATH)) { roomsBaseText = null; return { version: 1, rooms: [] }; }
     const hit = parseRoomsRaw();
     if (hit.unreadable) { const err = new Error(ROOMS_UNREADABLE + ":" + hit.reason); err.code = ROOMS_UNREADABLE; throw err; }
+    roomsBaseText = JSON.stringify(hit.data, null, 2);
     if (eventOnlyMode()) setLastTextFor(ROOMS_PATH, JSON.stringify(hit.data, null, 2));
     return hit.data;
   }
 
+  /* KP-09 片5（群面跨进程丢更新）：rooms.json 在默认模式下仍是文件真源，
+     一次写换整份文本 —— 桌面主进程和定时守护同时建群，谁读到的是旧快照，
+     写回去时就把对方刚建的那个群整批抹掉。用户在侧栏看不见那个群，
+     但事件里、Bot 的会话里它还存在过（SW-12 只能撞运气报出「少了几个群」）。
+     判据实测（确定性交错，SW-21）：修前盘上只剩「乙的群」，甲刚建的群一个字节都不在。
+     改法和 bots 面同形：按 id 三方合并 + 跨进程锁。
+     EVENT_ONLY 下不合并 —— 那张面的真源是事件库，atomicWrite 走 eventOnlyWrite，
+     此时 rooms.json 可能是遗留物，拿它当「盘上当前」合并会凭空造出幽灵群。 */
   function saveRooms(data) {
-    atomicWrite(ROOMS_PATH, JSON.stringify(data, null, 2));
+    if (eventOnlyMode()) { atomicWrite(ROOMS_PATH, JSON.stringify(data, null, 2)); return; }
+    withFaceLock(ROOMS_PATH, () => atomicWrite(ROOMS_PATH, JSON.stringify(mergeRoomsAgainstDisk(data), null, 2)));
+  }
+
+  function mergeRoomsAgainstDisk(data) {
+    if (!data || !Array.isArray(data.rooms)) return data;
+    let disk = null;
+    try { disk = JSON.parse(fs.readFileSync(ROOMS_PATH, "utf8")); } catch (_) { return data; }
+    if (!disk || !Array.isArray(disk.rooms)) return data;
+    let baseRooms = new Map();
+    if (roomsBaseText) {
+      let base = null;
+      try { base = JSON.parse(roomsBaseText); } catch (_) { return data; }
+      baseRooms = new Map(((base && base.rooms) || []).filter((r) => r && r.id).map((r) => [r.id, r]));
+    }
+    const mine = new Map(data.rooms.filter((r) => r && r.id).map((r) => [r.id, r]));
+    const merged = [];
+    const seen = new Set();
+    for (const d of disk.rooms) {
+      if (!d || !d.id) continue;
+      seen.add(d.id);
+      const m = mine.get(d.id);
+      if (!m) {
+        // 我没写回去：基底里有 = 我删的（群面目前没有删除入口，这条为将来留）；基底里没有 = 别人刚建的，不归我删。
+        if (!baseRooms.has(d.id)) merged.push(d);
+        continue;
+      }
+      const b = baseRooms.get(d.id);
+      merged.push(b && JSON.stringify(b) === JSON.stringify(m) ? d : m);
+    }
+    for (const m of data.rooms) {
+      if (!m || !m.id || seen.has(m.id)) continue;
+      // 我这轮带了、盘上却没有 = 别的写者删了它；不复活（和 bots 面同一条判据）。
+      if (baseRooms.has(m.id)) continue;
+      merged.push(m);
+    }
+    return { ...data, rooms: merged };
   }
 
   /* G-28 #4「团队详情抽屉 · 成员管理」的 Host 落点。

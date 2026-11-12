@@ -5067,7 +5067,7 @@ echo "    KP-03 的尾账（供应商 HTTP 500 时 Host 的 llm_chat 主路径�
 echo "    于是渲染端只能把原文归一化成兜底 unknown_failure）已在 OP-03c 收掉：Host 现在从同一份"
 echo "    failure_codes.js 产出 error_code，实测台账 code=llm_chat_failed 而不是兜底。"
 
-echo "== G-122 事件面的单写者与读写同源（T1-06 第一~四片 · sessions/rooms 面的读写都归面的持有者 + 多进程写同一张面，KP-09）=="
+echo "== G-122 事件面的单写者与读写同源（T1-06 第一~五片 · sessions/rooms 面的读写都归面的持有者 + 多进程写同一张面，KP-09）=="
 # 这把尺子是先中枪才立起来的：EVENT_ONLY 下删 Bot 的级联绕过 store 自己 readJson + atomicWrite
 # sessions.json，而那张面的真源那时已是事件库 —— 实测（临时 dataRoot、真代码路径）
 # sessions_deleted=0、sessions_cascaded=false：Bot 从列表里没了，它的 DM 会话在侧栏和 fold 里
@@ -5077,7 +5077,7 @@ if timeout 300 node scripts/prove_sessions_single_writer.mjs > /tmp/g122-single-
 else
   bad "G-122 会话面单写者翻红（见 /tmp/g122-single-writer.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g122-single-writer.log | tail -1)）"
 fi
-g122_sw=$(grep -o 'SW_METRICS mode=prod pass=[0-9][0-9]* fail=[0-9][0-9]* writers=[0-9][0-9]* store_writers=[0-9][0-9]* readers=[0-9][0-9]* xp_rows=[0-9][0-9]* xp_prefixes=[0-9][0-9]* xp_store_rooms=[0-9][0-9]* tmp_sites=[0-9][0-9]* tmp_bad=[0-9-][0-9]* order_bad=[0-9-][0-9]* bots_lost=[0-9-][0-9]* bots_room_ok=[0-9-][0-9]* bots_rooms=[0-9-][0-9]* spin_ms=[0-9-][0-9]* spin_bad=[0-9-][0-9]* sw20=[0-9-][0-9]* sw20_neg=[0-9-][0-9]*' /tmp/g122-single-writer.log | head -1)
+g122_sw=$(grep -o 'SW_METRICS mode=prod pass=[0-9][0-9]* fail=[0-9][0-9]* writers=[0-9][0-9]* store_writers=[0-9][0-9]* readers=[0-9][0-9]* xp_rows=[0-9][0-9]* xp_prefixes=[0-9][0-9]* xp_store_rooms=[0-9][0-9]* tmp_sites=[0-9][0-9]* tmp_bad=[0-9-][0-9]* order_bad=[0-9-][0-9]* bots_lost=[0-9-][0-9]* bots_room_ok=[0-9-][0-9]* bots_rooms=[0-9-][0-9]* spin_ms=[0-9-][0-9]* spin_bad=[0-9-][0-9]* sw20=[0-9-][0-9]* sw20_neg=[0-9-][0-9]* sw21=[0-9-][0-9]* sw21_neg=[0-9-][0-9]*' /tmp/g122-single-writer.log | head -1)
 g122_pass=$(printf '%s' "$g122_sw" | grep -o 'pass=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g122_fail=$(printf '%s' "$g122_sw" | grep -o 'fail=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g122_w=$(printf '%s' "$g122_sw" | grep -o '[^_]writers=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
@@ -5094,8 +5094,10 @@ g122_spin=$(printf '%s' "$g122_sw" | grep -o 'spin_ms=[0-9-][0-9]*' | grep -o --
 g122_spinbad=$(printf '%s' "$g122_sw" | grep -o 'spin_bad=[0-9-][0-9]*' | grep -o -- '-\?[0-9][0-9]*')
 # 键名里带数字，不能再拿数字正则二次摘（会把 sw20= 里的 20 当成值），直接按整段 token 尾随定位。
 g122_sw20=$(printf '%s' "$g122_sw" | sed -n 's/.* sw20=\(-\{0,1\}[0-9][0-9]*\) sw20_neg.*/\1/p')
-g122_sw20neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw20_neg=\(-\{0,1\}[0-9][0-9]*\)$/\1/p')
-if [ -n "$g122_sw" ] && [ "$g122_fail" = "0" ] && [ "$g122_pass" -ge 23 ] \
+g122_sw20neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw20_neg=\(-\{0,1\}[0-9][0-9]*\) sw21=.*/\1/p')
+g122_sw21=$(printf '%s' "$g122_sw" | sed -n 's/.* sw21=\(-\{0,1\}[0-9][0-9]*\) sw21_neg.*/\1/p')
+g122_sw21neg=$(printf '%s' "$g122_sw" | sed -n 's/.* sw21_neg=\(-\{0,1\}[0-9][0-9]*\)$/\1/p')
+if [ -n "$g122_sw" ] && [ "$g122_fail" = "0" ] && [ "$g122_pass" -ge 24 ] \
   && [ "$g122_w" = "$g122_sw2" ] && [ "$g122_w" -le 3 ] && [ "$g122_r" = "0" ]; then
   ok "G-122 锚点：sessions.json 的 $g122_w 处写点全在 store 内（store_writers==writers，棘轮只许降），事件面读旁路 $g122_r 处，SW-01..09 绿满 $g122_pass 项"
 else
@@ -5154,6 +5156,18 @@ if grep -q "✓ SW-20" /tmp/g122-single-writer.log; then
 else
   bad "G-122 片4 交错行为锚点缺失（SW-20 没跑绿，见 /tmp/g122-single-writer.log）"
 fi
+# 片5：同一把交错尺子搬到 rooms.json。sw21 = 真模块上的违规条数（必须 0），
+# sw21_neg = 摘掉群面合并的夹具在同一条尺子上的红条数（必须 3；尺子失效时 -1）。
+if [ "$g122_sw21" = "0" ] && [ "$g122_sw21neg" = "3" ]; then
+  ok "G-122 片5 群面交错锚点：rooms.json 的合并钉死交错后 0 违规（别人新建的群不抹掉 / 我不动的那行用盘上更新的：群名 + transcript），摘掉群面合并的夹具判红 $g122_sw21neg 条"
+else
+  bad "G-122 片5 群面交错锚点不成立（sw21=${g122_sw21:-?} 期望 0，sw21_neg=${g122_sw21neg:-?} 期望 3）"
+fi
+if grep -q "✓ SW-21" /tmp/g122-single-writer.log; then
+  ok "G-122 片5 群面行为锚点在：SW-21 三条群面合并语义连同反向夹具在同一次跑里绿"
+else
+  bad "G-122 片5 群面行为锚点缺失（SW-21 没跑绿，见 /tmp/g122-single-writer.log）"
+fi
 # 片2（读写同源）三条锚点：读侧账 + 邮件端到端 + 那条链的前提。钉 id，不钉子门散文。
 if grep -q "✓ SW-06" /tmp/g122-single-writer.log \
   && grep -q "✓ SW-07" /tmp/g122-single-writer.log \
@@ -5211,6 +5225,12 @@ echo "    基底里有的行一律不再写回 —— 交错窗口不是撞运�
 echo "  · G-122 片4 残账（实测到的）：bots 面的真源仍是文件，没进事件词表；primary_id 这类标量仍是最后写者赢；"
 echo "    默认（非 EVENT_ONLY）模式下 rooms/sessions 也是整份文件写，跨进程仍是多写者——SW-12 那行每轮把当天数字打在屏幕上"
 echo "    （修前测到 9/9、9/9、6/9；Bot 面收口后连测 5 轮都是 9/9 —— 这把尺子的交错窗口没测到 store 面丢行，不等于它不在）。"
+echo "  · G-122 片5（本轮新增，SW-21）：上面那句「不等于它不在」现在量得着了 —— 把同一把交错尺子搬到 rooms.json："
+echo "    B 读基底的那一刻恰好是 A 三次写（改群名 / 新建群 / 给群追加一条）全部落盘的那一刻，然后 B 才写回自己那份。"
+echo "    修前实测三条全红（盘上只剩 B 快照里那几个群，A 的群整批不见）；修 = saveRooms 走按 id 三方合并 + 群面自己的锁，"
+echo "    「我不动的那行用盘上更新的」这一条连同一个群里那行 transcript 都不许被陈旧快照吞掉。"
+echo "  · G-122 片5 残账（实测到的）：同一个群被两个进程同时改动仍是最后写者赢（合并按行选份，不合并行内的 transcript），"
+echo "    sessions.json 的 store 落盘口（hosts/desktop/sessions.js）仍是整份文件写、无合并无锁 —— 那是片6。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
