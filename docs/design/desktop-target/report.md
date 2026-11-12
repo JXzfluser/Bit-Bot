@@ -11520,3 +11520,90 @@ B 后写 → 侧栏只剩「乙的群」，A 那个群在它自己的进程里�
 可感面：两个进程各自建完自己的群，**侧栏两个群都在**（原来只剩后写那家那批）；A 在群里追加的那句话
 不会因为 B 同时在别处写了一次群面就被吞掉；Bot 面（片4）+ 群面（这片）都收口后，
 「我建好了但看不见」这一类只剩会话面（片6）。
+
+## 8.129 KP-09 片6：两个进程同时改会话列表，后写那家把对方刚建的会话整批抹掉（SW-22 / G-122 片6，2026-11-13）
+
+### ① 这片收的是 §8.128⑥ 的第一条
+
+那片留下的原话是「`sessions.json` 的 store 落盘口仍是整份文件写、无合并无锁 —— 那是片6」。
+形状和群面完全一样：`load()` 每次都从盘上读回整份状态，`save()` 一次性把整份文本换掉
+（唯一的落盘口子 [hosts/desktop/sessions.js:66](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L66) 的 `writeStore`，
+里面就是 [：69](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L69) 那行 `fs.writeFileSync(storePath, text)`），
+所以两个进程读到同一份基底时，后写的那家必然拿的是陈旧快照。
+`SW-12` 那行残账此前只能报「本轮撞到的数字」；这片把它换成一把钉死时刻的尺子。
+
+会话面比 bots/rooms 两面多一件事：**它真的有删除入口**（侧栏删会话、删 Bot 的级联走 `sessions.remove`），
+所以「别的写者删掉的那一行我还带在手里」这条在会话面不是假想，是最容易中枪的那一条 —— 用户看得见就是
+「刚删掉的会话第二天又回来了」。
+
+### ② 用户看得见的那件事
+
+桌面主进程和定时守护共用一份 `data/desktop/sessions.json`。B 新建一条会话时读到的是 A 落盘**之前**的那份，
+B 写完盘上就只剩 B 手里那份 + B 新建的那条：A 刚新建的会话没了、A 改过的标题被盖回原名、
+A 刚追加的那条消息被吞、而 A 刚删掉的那条会话被 B 的陈旧快照**复活**。两边都拿到 `ok:true`，屏幕上一声不吭。
+
+### ③ 落地：`save()` 这一个口子改按 id 三方合并 + 会话面自己的锁
+
+改的是 [hosts/desktop/sessions.js:316](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L316) 的 `save`
+和 [:271](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L271) 的 `mergeSessionsAgainstDisk`，四条规则与片4/片5 逐字同形：
+
+1. 我这轮带了、盘上没有：基底里也没有 → 我这轮新建的，写回；基底里有 → 别的写者删了它，**不复活**；
+2. 盘上有、我这份也有：我和基底一样 = 我没改 → **用盘上更新的那份**（标题、消息数组都跟着盘上走）；不一样 → 用我的；
+3. 盘上有、我这份没有：基底里也没有 → 别人刚新建的会话，**留着**；基底里有 → 是我删的，才删；
+4. `EVENT_ONLY` 下整条合并跳过（[：317](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L317) 直接走 `saveEventOnly`）——
+   那张面的真源是事件库，此时 `sessions.json` 可能是永不更新的遗留文件，拿它当「盘上当前」合并会凭空造出幽灵会话。
+
+基底从哪来：`load()` 的**每一条读路**开头先把 `mergeBaseText` 清成 `null`
+（[：156](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L156)），只有「从文件读到」那一条把它填回本次读到的那份文本
+（[：228](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L228)）。从事件折叠、播种、坏文件那几条路填出来的「基底」不是这张面的盘上现状，
+拿它合并会把删掉的会话复活 —— 所以那几条路一律留 `null`（此时规则 1 的「基底里有」永不成立，等价于「我删的东西我不带回来」）。
+
+锁 [：245](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L245) 是 `withFaceLock` 在会话面持有者里的**第二份拷贝**（`sessions.js.lock`）。
+没有抽成公共模块是权衡过的决定：抽出去要动打包清单，并给 `product_surface ↔ shared` 之间引入循环 `require` 的风险，
+而这条纪律真正的执行手段是尺子而不是 DRY —— 所以静态判据改成**扫两份**（见 ⑤）。
+
+### ④ 合并的第一版被自家门当场拦住：顺序不是小事
+
+第一版的合并循环是「先走盘上的行，再把我这轮新建的行追加在后面」。单写者也中招：
+`create()` 是新会话**插到最前**，追加到最后就把侧栏顺序改了 —— 于是 [scripts/prove_event_dual_write.mjs](file:///Users/zfl/Downloads/bitbot/scripts/prove_event_dual_write.mjs)
+的 DW-03 报「场景跑完了却没有 `entity_order_changed`」、[scripts/prove_event_only.mjs](file:///Users/zfl/Downloads/bitbot/scripts/prove_event_only.mjs)
+的 EO-02 报两个世界的前两行互换（`sessions.sessions[0].title: "对照甲·改名" ≠ "新对话"`），
+`PASS` 从 31/0 掉到 29/1、7/0 掉到 6/1。改法是**先按我这轮那份的顺序走**，别人新建的行再按它在盘上的位置插进来
+（[：271](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L271) 里 `merged` 的两段循环）。
+改完两个门都回到 31/0 与 7/0。这一枪不是门太严，是「行级合并」这件事天然带顺序语义，
+而事件 fold 把顺序当账本的一部分 —— 顺序变了就必须有 `entity_order_changed` 认领，没有就是错。
+
+### ⑤ 尺子与数字
+
+`SW-22`（[scripts/prove_sessions_single_writer.mjs:516](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L516) `sw22ChildSource()`）
+和 `SW-20`/`SW-21` 同一把技法：拦住 B 读基底的那第一口 `readFileSync(sessions.json)`，在 `return` 之前让实例 A
+把四次写全部落盘（删一条 / 改标题 / 追加一条消息 / 新建一条），然后 B 才写回自己那份。四条判据各钉上面一条规则，
+另两条是控制组（B 自己新建的、B 早已存在没人动的都必须在）。反向夹具是 [：433](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L433)
+的 `mergeDisabledFarm("sessions")`：把 `writeStore(JSON.stringify(mergeSessionsAgainstDisk(state)…` 那层的合并摘掉，
+= 修复前 HEAD 的整份写形状；夹具农场现在按面决定复制并改哪份文件（会话面改 `sessions.js`，另两面改 `product_surface.js`）。
+
+本轮实测：`prove_sessions_single_writer: PASS=25 FAIL=0`，
+`SW_METRICS mode=prod … spin_ms=7 spin_bad=0 sw20=0 sw20_neg=3 sw21=0 sw21_neg=3 sw22=0 sw22_neg=4`，
+`sw22_neg` 那 4 条逐字是「甲删掉的会话被乙的陈旧快照复活 / 甲改的会话名被乙盖回 / 甲追加的那条消息被吞 / 甲新建的会话被抹掉」——
+即修前四条全红。`SW-19` 的静态四判据现在扫两份 `withFaceLock`（`product_surface` + `sessions`），两份都 0 违规、
+踩坑那 15 行仍判 4 条。矩阵侧 G-122 段：`SECTION PASS=16 FAIL=0`，新增两条锚点
+（[scripts/smoke_grok_desktop_parity.sh:5176](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5176) 钉 `sw22=0 且 sw22_neg=4`、
+[：5181](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5181) 钉 `✓ SW-22`），`g122_pass` 下限从 24 提到 25
+（[：5102](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5102)），段标题改到「T1-06 第一~六片」。
+相邻门同轮复跑：`prove_event_dual_write 31/0`、`prove_event_only 7/0`、`prove_event_read_model 10/0`、
+`prove_room_rename 8/0`、`prove_gp164_room_library 8/0`、`prove_room_context pass=15 fail=0`、
+`prove_room_failure_surfaces all green`、`prove_report_history_intact 8/0`。
+
+### ⑥ 还欠着的（诚实清单）
+
+1. 行级合并只到行，不到字段：同一个会话被两个进程**都**改了（各自追加一条消息），仍是整行二选一、最后写者赢；
+2. `active_id` / `primary_id` 这类标量仍是最后写者赢；
+3. `bots.json` 的真源仍是文件、没进事件词表（§8.127⑦ 未变）；
+4. 同一进程里 `product_surface` 仍有两个实例（`main.js` 与 `host_ffi.js`），各自的 `lastTextBySurface` 是第二份 prev 缓存；
+5. `withFaceLock` 有两份拷贝，靠 `SW-19` 扫两份来兜「纪律只有一条」——抽取公共模块的债记在这里；
+6. 真 app 门（G-21 / G-119 那两条起 Electron 的）本轮没跑，全量矩阵 run15 仍待授权；
+7. T1-06 完成定义的另一半「`kill -9` 恢复正确」仍未量。
+
+可感面：两个窗口/两个进程同时改会话列表，**谁建的会话都不再整批消失**；刚删掉的会话不会被另一个进程的陈旧快照
+复活；A 在某个会话里发的那句话不会因为 B 同时在别处写了一次会话面而被吞掉；三张 store 形状的面（bots/rooms/sessions）
+在默认模式下从此都有同一把钉死交错时刻的尺子。

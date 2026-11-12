@@ -150,6 +150,10 @@ function createSessionStore(repoRoot, opts = {}) {
 
   function load() {
     fs.mkdirSync(dir, { recursive: true });
+    // 每条读路都先清掉合并基底：只有「从文件读到」那一条会把它填回来。
+    // 从事件折叠/播种/坏文件那几条路填出来的基底不是这张面的盘上现状，
+    // 拿它做三方合并会把「别人删掉的会话」复活。
+    mergeBaseText = null;
     if (eventOnly()) {
       const hit = eventReadModel.readSurfaces(dataRoot);
       if (hit.ok && !hit.anomalies.length && hit.count > 0) {
@@ -221,10 +225,92 @@ function createSessionStore(repoRoot, opts = {}) {
       }
       if (!raw.active_id) raw.active_id = raw.sessions[0].id;
       lastLoadedText = text;
+      mergeBaseText = text;
       return ensureMessageIds(raw);
     } catch {
       return empty();
     }
+  }
+
+  /* KP-09 片6（会话面跨进程丢更新）：sessions.json 在默认模式下仍是文件真源，
+     save() 一次写换整份文本 —— 桌面主进程和定时守护两个进程读到同一份基底时，
+     后写的那家把对方刚落盘的那批会话整批抹掉（新建的会话没了、改名被盖回、
+     刚删掉的那条被复活），两边都拿到 ok:true，屏幕上一声不吭。
+     判据实测（确定性交错 SW-22）：把交错钉在 B 读基底的那一刻，修前三条全红。
+     改法与 bots/rooms 面逐字同形：按 id 三方合并 + 面自己的跨进程锁；
+     基底 = 本次 load() 从文件读到的那份文本（只有那一条路会填 mergeBaseText）。
+     EVENT_ONLY 下整条合并跳过 —— 那张面的真源是事件库，save 走 saveEventOnly。 */
+  let mergeBaseText = null;
+
+  function withFaceLock(facePath, fn) {
+    const lock = facePath + ".lock";
+    const deadline = Date.now() + 5000;
+    let held = false;
+    try { fs.mkdirSync(path.dirname(facePath), { recursive: true }); } catch (_) { /* 建不出来就让写盘自己报错 */ }
+    while (!held) {
+      let lockErr = null;
+      try { fs.mkdirSync(lock); held = true; } catch (err) { lockErr = err; }
+      if (held) { try { fs.writeFileSync(path.join(lock, "pid"), String(process.pid)); } catch (_) { /* 只是取证信息 */ } break; }
+      if (!lockErr || lockErr.code !== "EEXIST") break;
+      let ageMs = Infinity, owner = 0;
+      try {
+        ageMs = Date.now() - fs.statSync(lock).mtimeMs;
+        owner = Number(fs.readFileSync(path.join(lock, "pid"), "utf8")) || 0;
+      } catch (_) { /* 锁刚被释放：按陈旧算，下一轮重试 mkdir */ }
+      let ownerAlive = true;
+      if (owner && owner !== process.pid) { try { process.kill(owner, 0); } catch (_) { ownerAlive = false; } }
+      if (ageMs > 5000 || !ownerAlive) { try { fs.rmSync(lock, { recursive: true, force: true }); } catch (_) { /* 别人先接管了 */ } continue; }
+      if (Date.now() > deadline) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+    try { return fn(); } finally {
+      if (held) { try { fs.rmSync(lock, { recursive: true, force: true }); } catch (_) { /* 已被陈旧接管清掉 */ } }
+    }
+  }
+
+  function mergeSessionsAgainstDisk(state) {
+    if (!state || !Array.isArray(state.sessions)) return state;
+    let disk = null;
+    try { disk = JSON.parse(fs.readFileSync(storePath, "utf8")); } catch (_) { return state; }
+    if (!disk || !Array.isArray(disk.sessions)) return state;
+    let baseSessions = new Map();
+    if (mergeBaseText) {
+      let base = null;
+      try { base = JSON.parse(mergeBaseText); } catch (_) { return state; }
+      baseSessions = new Map(((base && base.sessions) || []).filter((s) => s && s.id).map((s) => [s.id, s]));
+    }
+    const diskById = new Map(disk.sessions.filter((s) => s && s.id).map((s, i) => [s.id, { s, i }]));
+    /* 顺序按「我这轮的那份」走：create() 是新会话插到最前，侧栏次序由它决定 ——
+       若先走盘上的行再把我的新行追加在后面，单写者（盘上就是上一刻我自己写的）也会被
+       改成「新建的会话排到最后」，事件 fold 与快照就再也对不上（DW-03 少一条 entity_order_changed、
+       EO-02 两个世界的前两行互换，本轮实测到）。别人新建的行按它在盘上的位置插进来。 */
+    const merged = [];
+    const placed = new Set();
+    for (const m of state.sessions) {
+      if (!m || !m.id || placed.has(m.id)) continue;
+      const hit = diskById.get(m.id);
+      if (!hit) {
+        // 盘上没有、基底里有 = 别的写者删了它；基底里也没有 = 我这轮新建的，照常写回。
+        if (baseSessions.has(m.id)) continue;
+        merged.push(m); placed.add(m.id); continue;
+      }
+      const b = baseSessions.get(m.id);
+      merged.push(b && JSON.stringify(b) === JSON.stringify(m) ? hit.s : m);
+      placed.add(m.id);
+    }
+    for (const d of disk.sessions) {
+      if (!d || !d.id || placed.has(d.id)) continue;
+      // 基底里有 = 我删的（不复活）；基底里没有 = 别人刚建的，留在盘上、按盘上的位置归位。
+      if (baseSessions.has(d.id)) continue;
+      const here = diskById.get(d.id).i;
+      const at = merged.findIndex((s) => {
+        const k = diskById.get(s.id);
+        return (k ? k.i : Infinity) > here;
+      });
+      if (at < 0) merged.push(d); else merged.splice(at, 0, d);
+      placed.add(d.id);
+    }
+    return { ...state, sessions: merged };
   }
 
   function save(state) {
@@ -233,7 +319,7 @@ function createSessionStore(repoRoot, opts = {}) {
       return;
     }
     fs.mkdirSync(dir, { recursive: true });
-    writeStore(JSON.stringify(state, null, 2));
+    withFaceLock(storePath, () => writeStore(JSON.stringify(mergeSessionsAgainstDisk(state), null, 2)));
   }
 
   function list() {
