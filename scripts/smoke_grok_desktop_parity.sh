@@ -4872,8 +4872,9 @@ echo "    放回 finally ——CC-25 必须翻红，危害就是发送抛异常�
 echo "  · 已知残账（诚实）：可感面三条的「判据 + 接线」在本节，端到端那一层在下一节 G-121（真 app 两趟：回车 →"
 echo "    那一行立刻在、落库后 data-mid == echo_entry_id == 库里那行 id、关掉采纳必须判 unmatched）——"
 echo "    缺 Electron/playwright 时 G-121 那层是 SKIP，不算本节替它跑绿。"
-echo "    房间/群聊那条发送链（sendRoomTurn）仍走自己的回执形状，没接台账；pending→expired 的死线在渲染端还没人按表调用"
-echo "    expire()（等 T3-06 的断线重连一起定「expired 之后迟到的 durable 要不要改回已送达」）；T3-07 的 checkJs（要装 typescript，未获授权）没落。"
+echo "    房间/群聊那条发送链（sendRoomTurn）仍走自己的回执形状，没接台账；pending→expired 的死线现在有人按表调用了"
+echo "    （渲染端有一张表在按节拍扫台账，上限与节拍都取页面自报值、实测在 G-121 的 OP-07d；证据 = 流式片段 + 进度帧，"
+echo "    迟到的回执可把 expired 纠正成终态并留痕 —— 两条相反结局的实测在 OP-07 / OP-07b）；T3-07 的 checkJs（要装 typescript，未获授权）没落。"
 
 echo
 echo "== G-121 乐观命令端到端：真 app 里回车立刻上屏、落库后 echo 对上、拒绝变红带 KP-03 的码（KP-08 T3-04 可感面）=="
@@ -4887,7 +4888,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   else
     bad "G-121 真 app（见 /tmp/g121-e2e.log；$(grep 'e2e_desktop_optimistic: PASS=' /tmp/g121-e2e.log)）"
   fi
-  for g121_e in "S1 " "OP-00a " "OP-01 " "OP-01b " "OP-01c " "OP-02 " "OP-03 " "OP-03c " "OP-03b " "OP-04 " "OP-05 " "OP-05b " "OP-06 "; do
+  for g121_e in "S1 " "OP-00a " "OP-01 " "OP-01b " "OP-01c " "OP-02 " "OP-03 " "OP-03c " "OP-03b " "OP-04 " "OP-05 " "OP-05b " "OP-06 " "OP-07 " "OP-07b " "OP-07c " "OP-07d "; do
     if grep -q "✓ $g121_e" /tmp/g121-e2e.log; then ok "G-121 真 app 锚点：$g121_e"; else bad "G-121 真 app 锚点没跑绿：$g121_e"; fi
   done
   # 三句可感面各钉一条「实测数字必须在」的判据，防止锚点行在、量到的却是 0 行/空集
@@ -4918,6 +4919,37 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   else
     bad "G-121 可感面④没成立：OP-03c 没跑绿，或 Host 回来的码不在闭集里/仍是兜底（说明渲染端还在猜原文），或那条判据的自证没数到 2/2"
   fi
+  # T3-06 活性死线的可感面：上限与节拍都从页面自报的那行现取（不写死 10000/1000），
+  # 回合时长从 OP-07/07b 的实测值里取，然后只比关系：跑过死线、判在死线之后、纠正更晚。
+  g121_limit=$(grep '✓ OP-07d' /tmp/g121-e2e.log | sed -n 's/.*上限 \([0-9][0-9]*\)ms.*/\1/p' | head -1)
+  g121_tick=$(grep '✓ OP-07d' /tmp/g121-e2e.log | sed -n 's/.*每 \([0-9][0-9]*\)ms 问一次.*/\1/p' | head -1)
+  g121_silent=$(grep '✓ OP-07 ' /tmp/g121-e2e.log | sed -n 's/.*出现→落终态 \([0-9][0-9]*\)ms.*/\1/p' | head -1)
+  g121_hitat=$(grep '✓ OP-07 ' /tmp/g121-e2e.log | sed -n 's/.*第 \([0-9][0-9]*\)ms 判成没回执.*/\1/p' | head -1)
+  g121_trick=$(grep '✓ OP-07b' /tmp/g121-e2e.log | sed -n 's/.*出现→落终态 \([0-9][0-9]*\)ms.*/\1/p' | head -1)
+  g121_isnum() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
+  if g121_isnum "$g121_limit" && g121_isnum "$g121_tick" && g121_isnum "$g121_silent" \
+     && g121_isnum "$g121_hitat" && g121_isnum "$g121_trick"; then
+    g121_nums=1
+  else
+    g121_nums=0
+  fi
+  if [ "$g121_nums" = "1" ] && [ "$g121_limit" -gt 0 ] && [ "$g121_tick" -gt 0 ] \
+     && [ "$g121_silent" -gt "$g121_limit" ] && [ "$g121_hitat" -ge "$g121_limit" ] \
+     && [ "$g121_hitat" -lt "$g121_silent" ] \
+     && grep -q '✓ OP-07 .*纠正记账 有' /tmp/g121-e2e.log \
+     && grep -q "距最后一次证据 [0-9]*ms > ${g121_limit}ms" /tmp/g121-e2e.log; then
+    ok "G-121 可感面⑤：静默那条真跑到 ${g121_silent}ms（> 页面自报死线 ${g121_limit}ms）—— 第 ${g121_hitat}ms 屏上判成没回执，迟到的回执又把它纠正成已送达并留痕；台账那笔异常按「距最后一次证据 > ${g121_limit}ms」记，不是按发出时刻"
+  else
+    bad "G-121 可感面⑤没成立：OP-07 没量出「静默过死线 → 判没回执 → 迟到纠正」这条完整链（页面自报上限 ${g121_limit:-?}ms、回合 ${g121_silent:-?}ms、判在 ${g121_hitat:-?}ms）—— 要么死线没按表跑，要么 expired 不可纠正，要么记账口径回到「距发出」"
+  fi
+  if [ "$g121_nums" = "1" ] && [ "$g121_trick" -gt "$g121_limit" ] \
+     && grep -q '✓ OP-07b .*全程没被判过没回执' /tmp/g121-e2e.log \
+     && grep -q '✓ OP-07c .*四种假时间线全给假' /tmp/g121-e2e.log \
+     && grep -q '✓ OP-07d 按秒的表只在有东西在等时开着 · 开机=false → 长回合中=true → 全部落定后=false' /tmp/g121-e2e.log; then
+    ok "G-121 可感面⑥：一直在吐字的长回合（实测 ${g121_trick}ms > 死线 ${g121_limit}ms）一次都没被判成没回执 —— 证据把 deadline 推后是真的；同两条判据对 4 种假时间线全判假，且那张按秒的表只在有东西在等时开着（开机 false → 回合中 true → 落定 false）"
+  else
+    bad "G-121 可感面⑥没成立：长回合那条没证成「证据把死线推后」（回合 ${g121_trick:-?}ms vs 死线 ${g121_limit:-?}ms），或 OP-07c 的自证空转，或那张表常驻/不自清"
+  fi
 else
   echo "  · skip：缺 playwright-core 或 electron，G-121 真 app 那层没跑（SKIP ≠ PASS；判据本身在 G-120 的 CC-17/24/25/26）"
 fi
@@ -4931,6 +4963,12 @@ echo "    OP-02 拿界面、台账、临时根里的"
 echo "    sessions.json 三方逐字比；OP-03/03b 让 stub 只对带标记那条 500，同一屏同时有 durable 和 rejected，"
 echo "    两行互不污染；OP-04 屏幕每一行的 data-send 都等于台账那条命令的 state（两趟逐行比，不只是回合末尾那一条）；"
 echo "    OP-06 两趟各读自己那份临时根，user 行 id 唯一且采纳趟有 2 条 cm- 形状、关闸趟 0 条。"
+echo "  · G-121 的 T3-06 面（同一屏上两条相反结局，页内 250ms 采样器逐帧记 data-send/勾/小字/alive）："
+echo "    OP-07 静默那条 —— 出现后一直没收据，过死线那一刻屏上判成没回执（勾「!」+ 未确认样式 + 小字），迟到的回执"
+echo "    再把它纠正成已送达，小字换成「迟到了多久」，台账留下 corrected_at_ms 与那笔超时异常；OP-07b 吐字那条 —— 回合"
+echo "    时长跑过死线，但因为每片流式片段都把 deadline 往后推，全程一次都没被判；OP-07c 把这同两条判据喂给 4 种假"
+echo "    时间线（没跑死线 / 判了但屏上没变 / 回合短于死线 / 吐字那条仍被判）要求 4/4 判假，否则锚点是恒真的；"
+echo "    OP-07d 管那张表本身 —— 开机不自转、有东西在等时自转、全部落定后自己停。"
 echo "  · G-121 负向对照（真 app 层的总闸，口径同 KP-07 的 BITBOT_BROADCAST_DIFF）：OP-05 用"
 echo "    BITBOT_ADOPT_CLIENT_ID=0 关掉「Host 采纳渲染端身份」再跑同一句 —— 落库回来的 id 和界面上那条对不上，"
 echo "    那一行必须判 unmatched（不亮绿、勾不变 ✓✓），并把这笔异常记进台账；OP-05b 要求同一条判据在"
@@ -4939,7 +4977,10 @@ echo "    在同一趟会算成「已送达」，门把这个错误取值也一�
 echo "    b 把同一条判据也压在关掉采纳那一趟上（两条独立分支都要成立，谁把画那一行挪进回执处理就一起翻红），"
 echo "    c 把「等回执才画 + ✓✓」和「没有 cm- 身份」两种假形状喂给判据本身，它必须给假 —— 否则那条锚点是恒真的。"
 echo "  · G-121 已知残账（实测到的，不是推测）：房间/群聊链 sendRoomTurn 未接台账、"
-echo "    expire() 无人按表调用（T3-06）、T3-07 checkJs 未授权 —— 同 G-120 残账，逐条可查。"
+echo "    T3-07 checkJs 未授权 —— 同 G-120 残账，逐条可查。原账里那条「expire() 无人按表调用」本片收掉："
+echo "    渲染端现在有按节拍的扫描（OP-07d 证它开机不自转、回合中自转、落定后自停），expired 也可被迟到回执纠正"
+echo "    （OP-07 实测 纠正记账 有）。T3-06 的另一半「重连不重不丢」是事件订阅链的账，在 G-118 以游标续订证明，"
+echo "    物理拔网这一步仍没测。"
 echo "    KP-03 的尾账（供应商 HTTP 500 时 Host 的 llm_chat 主路径只回 error/stderr、不带 error_code，"
 echo "    于是渲染端只能把原文归一化成兜底 unknown_failure）已在 OP-03c 收掉：Host 现在从同一份"
 echo "    failure_codes.js 产出 error_code，实测台账 code=llm_chat_failed 而不是兜底。"

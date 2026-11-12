@@ -5691,6 +5691,10 @@
         st.total > 0 && st.active ? st.index + "/" + st.total : st.doneCount ? "✓ " + st.doneCount : "";
     }
     function applyProgressEvent(ev) {
+      // T3-06：进度帧是「这回合还在往外做事」的证据，要记进送达台账。
+      // 放在 progressStore 判空之前 —— 进度条画不画是一回事，别让那条消息
+      // 因为一个展示层的缺件就被判成没回执。
+      noteSendLiveness();
       if (!progressStore) return;
       progressStore.apply(ev);
       renderProgressRow();
@@ -7979,6 +7983,18 @@
     const SEND_STATE = (window.__bitbotClientCore && window.__bitbotClientCore.CMD_STATE) || {};
     if (sendLedger) window.__bitbotSendLedger = sendLedger;
 
+    /* T3-06 在屏幕上的两只手：
+       一只手记「还活着」的证据（流式片段、进度帧都算），另一只手按秒问台账
+       「有没有等太久还没证据的」。上限量的是**距最后一次证据**，不是距发出 ——
+       首字慢 90s 的长回合一直在吐字，不该在第 10 秒被画成「没等到回执」；
+       真断线时那一行也不能永远绿着。expired 之后回执还能纠正它（见 settleSend）。 */
+    const SEND_LIVENESS_LIMIT_MS = 10000;
+    const SEND_LIVENESS_TICK_MS = 1000;
+    // 这一回合对应的那条乐观命令。证据只记给它，不记给「台账里最后一条」——
+    // 上一回合留下的 pending 不该被这一回合的动静救活。
+    let liveSendCmd = null;
+    let sendLivenessTimer = null;
+
     function sendNote(userEl, text) {
       let n = userEl.querySelector(".msg-send-note");
       if (!n) {
@@ -8033,6 +8049,62 @@
       // pending：还是那条「已发出、等回执」的单勾，和以前一样，但不再由 finally 保证
       chk.textContent = "✓";
     }
+
+    /**
+     * 台账里状态变了 → 找到画它的那一行重画。按 data-client-mid 认身份，
+     * 不按「最后一条 user 消息」猜：猜会在多标签页/历史回填时把勾画到别人身上。
+     * @param {any[]} cmds
+     */
+    function repaintSendRows(cmds) {
+      if (!cmds || !cmds.length) return 0;
+      const want = {};
+      for (const c of cmds) want[String(c.client_msg_id)] = c;
+      const rows = document.querySelectorAll("[data-client-mid]");
+      let painted = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const cmd = want[String(rows[i].dataset.clientMid || "")];
+        if (!cmd) continue;
+        paintSendState(rows[i], cmd);
+        painted++;
+      }
+      return painted;
+    }
+
+    /** 一条「还活着」的证据到了（流式片段 / 进度帧）。@returns {boolean} 记上了吗 */
+    function noteSendLiveness() {
+      if (!sendLedger || !liveSendCmd) return false;
+      return sendLedger.touch(liveSendCmd.client_msg_id).touched === true;
+    }
+
+    /** 问一次台账：有没有等太久还没证据的。有就当场改成屏幕上的「没等到回执」。 */
+    function sweepSendLiveness() {
+      if (!sendLedger) return [];
+      const expired = sendLedger.expire(SEND_LIVENESS_LIMIT_MS);
+      if (expired.length) repaintSendRows(expired);
+      return expired;
+    }
+
+    /** 有东西在等才开这张表；等完了自己关掉，不给空闲页面留一个常驻定时器。 */
+    function armSendLiveness() {
+      if (!sendLedger || sendLivenessTimer) return;
+      sendLivenessTimer = setInterval(() => {
+        sweepSendLiveness();
+        if (!sendLedger.pending().length) {
+          clearInterval(sendLivenessTimer);
+          sendLivenessTimer = null;
+        }
+      }, SEND_LIVENESS_TICK_MS);
+    }
+    // 门要的现场（G-121 OP-07）：这张表开着吗、还在等几条、sweep 一次判掉几条。
+    window.__bitbotSendLiveness = {
+      limit_ms: SEND_LIVENESS_LIMIT_MS,
+      tick_ms: SEND_LIVENESS_TICK_MS,
+      sweep: sweepSendLiveness,
+      note: noteSendLiveness,
+      armed: () => sendLivenessTimer !== null,
+      pending: () => (sendLedger ? sendLedger.pending() : []),
+    };
+
     // 群聊失败原因：durable 行仍保留截断后的原始 reason（可审计），聊天卡默认只说
     // 人话——协议码/上游文案只在 dev-mode 追加，和产品态其它错误卡同一纪律。
     function roomFailReason(raw) {
@@ -11200,6 +11272,9 @@
             idem_key: (opts && opts.idem_key) || "",
           });
           sendCmd = begun.cmd;
+          // T3-06：这一回合的动静都算这条的证据；死线由那张按秒的表来问。
+          liveSendCmd = sendCmd;
+          armSendLiveness();
         }
         userEl = addMsg("user", shown, {
           // GP-14: show what this turn replies to (target id, resolved by Host).
@@ -11220,6 +11295,13 @@
         const settled = sendLedger.settle(sendCmd.client_msg_id, receipt);
         const cmd = settled.cmd || sendCmd;
         paintSendState(userEl, cmd, receipt);
+        /* T3-06：expired 之后回执才到 —— 状态改回 durable/unmatched 的同时，
+           把「迟到了多久」留在屏上。不写这一行，纠正只活在台账里，用户看到的
+           是「它一开始就没超时」，而界面确实先说过「没等到回执」。 */
+        if (settled.corrected) {
+          const lateS = Math.max(0, Math.round((Number(cmd.settled_at_ms) - Number(cmd.sent_at_ms)) / 1000));
+          sendNote(userEl, wavegT("sendLateNote") + " " + lateS + "s");
+        }
         if (cmd.state === SEND_STATE.Durable) attachMessageActions(userEl, "user", text);
         // 落库指针和自己那条对不上时，真 id 仍要挂上（Reply/反应 得有据可指），
         // 但那行的状态标记留在 unmatched —— 不许因为「拿到了一个 id」就当成已送达。
@@ -13684,6 +13766,9 @@
         settingsSay(msg);
       } finally {
         muteLlmStream = false;
+        // T3-06：这一回合结束了，它的证据不能再记给下一条 —— 否则下一条还没发，
+        // 上一条留下的 pending 会被这回合的尾巴救活。
+        liveSendCmd = null;
         sendBtn.disabled = false;
         if (turnCancelBtn) turnCancelBtn.hidden = true;
         input.focus();
@@ -18331,6 +18416,7 @@
         failSendPrefix: "发送失败：",
         sendUnmatchedNote: "落库回来的不是这一条，先别当已送达",
         sendExpiredNote: "等太久没回执，这条还没确认",
+        sendLateNote: "这条其实送到了，回执迟了",
         failProviderUnconfigured: "未配置模型",
         failEmptyText: "消息内容为空",
         failKernelJson: "内核返回无法解析",
@@ -19372,6 +19458,7 @@
         failSendPrefix: "發送失敗：",
         sendUnmatchedNote: "落庫回來的不是這一條，先別當已送達",
         sendExpiredNote: "等太久沒回執，這條還沒確認",
+        sendLateNote: "這條其實送到了，回執遲了",
         failProviderUnconfigured: "未設定模型",
         failEmptyText: "訊息內容為空",
         failKernelJson: "內核返回無法解析",
@@ -20409,6 +20496,7 @@
         failSendPrefix: "Send failed: ",
         sendUnmatchedNote: "The stored row is not this one — not marked delivered",
         sendExpiredNote: "No receipt yet — this message is unconfirmed",
+        sendLateNote: "This one did arrive — the receipt was late by",
         failProviderUnconfigured: "No model configured",
         failEmptyText: "Message is empty",
         failKernelJson: "Kernel returned unparseable output",
@@ -22776,6 +22864,9 @@
         if (window.bitbot.onLlmStream) {
           window.bitbot.onLlmStream((chunk) => {
             if (!chunk) return;
+            // T3-06：流式片段是这回合「还在吐字」的证据，先进台账再谈画不画 ——
+            // 丢弃展示不等于丢弃事实：一直吐字的长回合不该被死线判成没回执。
+            noteSendLiveness();
             // 设置面板发起的操作不该在对话里流出打字效果（见 runUserTurn 的
             // settingsAction）：流式片段一律丢弃，状态只在设置面板回报。
             if (muteLlmStream) return;

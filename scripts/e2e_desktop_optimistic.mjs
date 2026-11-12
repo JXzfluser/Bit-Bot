@@ -21,6 +21,17 @@
  *         同一条判据在开/关两趟给出不同答案（无 vs ≥1），说明它不是恒真；
  *         并把「老判据（拿到一个 id 就算送达）」的取值一并打出来 —— 它这一趟会算错。
  *   OP-06 库里 user 行的 id 唯一（采纳的机制不会把两条消息并成同一条）
+ *   OP-07 T3-06 的死线在真 app 上有两条相反的结局：全程静默那条先在死线之后被屏上判成
+ *         「没等到回执」（勾变 !、带 unknown 类、有小字），迟到的回执再把它纠正成已送达，
+ *         台账记 corrected_at_ms + 一笔「距最后一次证据 Nms > limit」异常，屏上小字换成「迟了多久」
+ *   OP-07b 持续吐字那条（stub 每片间隔 700ms）跑过同一个死线却一次都没被判 ——
+ *         这条自己要求 durMs > limit，否则判据是空的
+ *   OP-07c 【判据自证】四种假时间线（从没判过 / 判了但屏上没换画法 / 长回合没跑过死线 /
+ *         长回合被误判）喂给同两条判据，必须全给假
+ *   OP-07d 那张按秒的表「有东西在等才开、等完自己关」：开机不开、回合中开着、全部落定后关掉
+ *
+ * stub 的三个钩子都只在 BITBOT_STUB_LATENCY_FROM_TEXT=1 下生效：[[lat:NNN]] 首字延迟、
+ *   [[gap:NNN]] 流式每片间隔（造「一直在吐字」的回合）、含 FAIL_MARKER 的请求直接 500。
  *
  * 纪律：isolatedRepoRoot（夹具写进临时根的 data/desktop，绝不碰用户 data/）+
  *       独立 user-data-dir + BITBOT_NO_SECRET_SYNC=1；跑完关进程、清临时根。
@@ -198,8 +209,8 @@ const INSTRUMENT = () => {
   obs.observe(document.getElementById("log"), { childList: true, subtree: true });
 };
 
-/** 发一条并等它进入台账终态；返回 {appear, final, ledger}。 */
-async function sendAndWait(win, text, timeoutMs) {
+/** 点发送并等那一行出现（带 cm- 身份）。T3-06 要的是「出现之后」的时间线，不预设终态。 */
+async function clickAndAppear(win, text) {
   const before = await win.evaluate(() => window.__op.snaps.length);
   await win.evaluate((t) => {
     window.__op.clickAt = Date.now();
@@ -208,10 +219,15 @@ async function sendAndWait(win, text, timeoutMs) {
     inp.dispatchEvent(new Event("input", { bubbles: true }));
   }, text);
   await win.click("#send", { timeout: 20000 });
-  const appear = await waitUntil(async () => {
+  return await waitUntil(async () => {
     const a = await win.evaluate((i) => window.__op.snaps[i] || null, before);
     return a;
   }, 8000, 25);
+}
+
+/** 发一条并等它进入台账终态；返回 {appear, final, ledger}。 */
+async function sendAndWait(win, text, timeoutMs) {
+  const appear = await clickAndAppear(win, text);
   if (!appear) return { error: "回车后 8s 内界面上没有出现带 cm- 身份的那一行" };
   /* 「立刻」的判据不能对着 stub 的配置常量比（那会自证）—— 对着同一页时钟里**这一条
      真正进入终态的时刻**比：出现必须早于回执，差值是量出来的。stub 的 1600ms 首字延迟
@@ -235,8 +251,142 @@ async function sendAndWait(win, text, timeoutMs) {
   return { appear, final: fin.final, ledger: fin.ledger, state: settled.state, settledAt: settled.at, leadMs: settled.at - appear.at };
 }
 
+/** 页内时间线：每 250ms 记一次「那一行现在长什么样 + 台账现在怎么说」。
+ *  结束条件是「过了死线而且已经落回终态」—— 静默那条要连纠正的那一刻一起记下来。 */
+const TIMELINE = (a) =>
+  new Promise((res) => {
+    const limit = window.__bitbotSendLiveness.limit_ms;
+    const t0 = Date.now();
+    const out = [];
+    const iv = setInterval(() => {
+      const el = document.querySelector('#log .msg.user[data-client-mid="' + a.cm + '"]');
+      const c = window.__bitbotSendLedger.get(a.cm);
+      const dt = Date.now() - t0;
+      out.push({
+        dt,
+        send: el ? String(el.dataset.send || "") : "",
+        check: el ? (((el.querySelector(".msg-status .ms-check") || {}).textContent || "").trim()) : "",
+        note: el ? (((el.querySelector(".msg-send-note") || {}).textContent || "").trim()) : "",
+        unknown: el ? el.classList.contains("msg-send-unknown") : false,
+        read: el ? !!el.querySelector(".msg-status .ms-check.read") : false,
+        state: c ? c.state : "",
+        // 证据面：alive 相对发出推后了多少。静默期该是 0，吐字期该一路涨。
+        aliveGap: c ? Math.round(Number(c.alive_at_ms) - Number(c.sent_at_ms)) : -1,
+        armed: window.__bitbotSendLiveness.armed(),
+      });
+      const back = c && (c.state === "durable" || c.state === "rejected" || c.state === "unmatched");
+      if ((dt > limit + 2000 && back) || dt > limit + 45000) {
+        clearInterval(iv);
+        res(out);
+      }
+    }, 250);
+  });
+
+/** 跑一条「过死线」的回合：出现 → 时间线 → 终态。返回门侧要的全部测量。 */
+async function oneLiveTurn(win, text, label) {
+  const appear = await clickAndAppear(win, text);
+  if (!appear) return { label, error: "那一行没出现（" + text.slice(0, 24) + "）" };
+  const timeline = await win.evaluate(TIMELINE, { cm: appear.cm });
+  const dump = await win.evaluate((cm) => {
+    const el = document.querySelector('#log .msg.user[data-client-mid="' + cm + '"]');
+    const c = window.__bitbotSendLedger.get(cm);
+    return {
+      final: el ? window.__op.snap(el, "final", 0) : null,
+      ledger: c
+        ? {
+            state: c.state,
+            entry_id: String(c.entry_id || ""),
+            sent_at_ms: Number(c.sent_at_ms),
+            alive_at_ms: Number(c.alive_at_ms),
+            expired_at_ms: Number(c.expired_at_ms || 0),
+            settled_at_ms: Number(c.settled_at_ms || 0),
+            corrected_at_ms: Number(c.corrected_at_ms || 0),
+            anomalies: (c.anomalies || []).slice(0, 4),
+          }
+        : null,
+    };
+  }, appear.cm);
+  const c = dump.ledger;
+  return {
+    label,
+    appear,
+    timeline,
+    final: dump.final,
+    ledger: c,
+    // 这一条从发出到落终态的真实时长（同一页时钟，两个台账字段之差）——
+    // 「跑过了死线没有」看这个，不看 stub 的配置常量。
+    durMs: c ? Math.round(c.settled_at_ms - c.sent_at_ms) : -1,
+    aliveMax: c ? Math.round(c.alive_at_ms - c.sent_at_ms) : -1,
+  };
+}
+
+/** T3-06 判据①：静默 → 死线后判成没回执 → 迟到的回执把它纠正回来。 */
+function silentThenLateReason(t, limit) {
+  if (!t) return "无数据";
+  if (t.error) return t.error;
+  const tl = t.timeline || [];
+  if (!tl.length) return "没时间线样本";
+  const iExp = tl.findIndex((s) => s.state === "expired");
+  if (iExp < 0) return "静默超过 " + limit + "ms 也没判成 expired（那张按秒的表没问或没判）";
+  if (tl.slice(0, iExp).some((s) => s.state !== "pending"))
+    return "expired 之前先出现过别的状态：" + tl.slice(0, iExp).map((s) => s.state).join("/");
+  if (!(tl[iExp].dt >= limit)) return "expired 出现在死线之前（dt=" + tl[iExp].dt + "ms < " + limit + "ms）";
+  if (!(tl[iExp].dt <= limit + 4000))
+    return "expired 拖到死线后 " + (tl[iExp].dt - limit) + "ms 才上屏（表不是按秒在问）";
+  if (!(tl[iExp].check === "!" && tl[iExp].unknown && tl[iExp].note))
+    return "判成 expired 时屏上没换画法：勾「" + tl[iExp].check + "」unknown=" + tl[iExp].unknown +
+      " 小字=" + JSON.stringify(tl[iExp].note);
+  if (tl.slice(0, iExp).some((s) => s.aliveGap > limit / 2))
+    return "静默期里 alive_at_ms 被推到距发出 " + tl[iExp].aliveGap + "ms 以上：这条一直在收证据，" +
+      "那它判 expired 就不是「没证据」那一种（真正的断线长这样：只有开局那一次派发确认，几十毫秒）";
+  const c = t.ledger;
+  if (!c) return "台账取不到";
+  if (!(c.settled_at_ms - c.alive_at_ms > limit))
+    return "回执并不是「距最后一次证据超过死线」才到的（距最后证据 " +
+      Math.round(c.settled_at_ms - c.alive_at_ms) + "ms ≤ " + limit + "ms）—— 这一条证的不是迟到";
+  if (c.state !== "durable") return "迟到的回执到了却没落回 durable：" + c.state;
+  if (!(c.corrected_at_ms > 0)) return "没有 corrected_at_ms：纠正没记账（屏幕上改了，台账说自己没改过）";
+  const re = new RegExp("距最后一次证据 \\d+ms > " + limit + "ms");
+  if (!c.anomalies.some((x) => re.test(x)))
+    return "异常里没写「距最后一次证据 Nms > " + limit + "ms」：" + JSON.stringify(c.anomalies);
+  if (!(t.final && t.final.send === "durable" && t.final.read && t.final.check === "✓✓"))
+    return "纠正后屏上不是绿色 ✓✓：" + JSON.stringify(t.final && { send: t.final.send, check: t.final.check, read: t.final.read });
+  const expNote = tl[iExp].note;
+  if (!(t.final.note && /\d/.test(t.final.note) && t.final.note !== expNote))
+    return "纠正后那行小字没换成「迟到了多久」：expired 时=" + JSON.stringify(expNote) +
+      "，现在=" + JSON.stringify(t.final.note);
+  if (tl.slice(iExp).some((s) => s.state === "pending"))
+    return "纠正之后又回到 pending：屏幕上那条从「没等到回执」变回了转圈";
+  return "";
+}
+
+/** T3-06 判据②：一直在吐字的长回合 —— 跑过了死线，却一次都没被判成没回执。 */
+function trickleReason(t, limit) {
+  if (!t) return "无数据";
+  if (t.error) return t.error;
+  const tl = t.timeline || [];
+  if (!tl.length) return "没时间线样本";
+  const hit = tl.find((s) => s.state === "expired");
+  if (hit) return "一直在吐字那条仍在 " + hit.dt + "ms 被判 expired（证据没把死线推后）";
+  if (!(t.durMs > limit))
+    return "这一回合只跑了 " + t.durMs + "ms ≤ 死线 " + limit + "ms —— 测不到长回合，断言是空的";
+  if (!tl.some((s) => s.aliveGap > 0))
+    return "整段时间 alive_at_ms 没动过：流式片段没进台账（note 那条线没接上）";
+  const c = t.ledger;
+  if (!c) return "台账取不到";
+  if (c.state !== "durable") return "长回合最终不是 durable：" + c.state;
+  if (c.anomalies.some((x) => /回执超时/.test(x)))
+    return "长回合记了一笔回执超时：" + JSON.stringify(c.anomalies);
+  if (c.corrected_at_ms > 0) return "没判过 expired 却记了纠正：corrected_at_ms=" + c.corrected_at_ms;
+  if (!(t.final && t.final.send === "durable" && t.final.check === "✓✓"))
+    return "长回合屏上不是 ✓✓：" + JSON.stringify(t.final && { send: t.final.send, check: t.final.check });
+  if (t.final.note) return "没被纠正过却留下了小字：" + JSON.stringify(t.final.note);
+  return "";
+}
+
 /** 一趟真 app：adopt=1 跑「成功回合 + 被拒回合」，adopt=0 跑「身份对不上」。 */
-async function pass(tag, adopt) {
+async function pass(tag, adopt, opts) {
+  const o = opts || {};
   const root = rootOf(tag);
   roots.push(root);
   const ud = electronUserDataDir("optimistic-" + tag);
@@ -284,11 +434,37 @@ async function pass(tag, adopt) {
     if (!opened.ok) { out.error = "进不去 OP121 那条私聊（侧栏 Bot 行：" + (opened.names || []).join(" / ") + "）"; return out; }
     await sleep(1200);
     await win.evaluate(INSTRUMENT);
-    out.turns.push({ name: "成功回合", r: await sendAndWait(win, "OP121乐观验收 [[lat:1600]] 请把这句原样回一遍", 90000) });
-    /* 关掉采纳那一趟只跑成功回合：被拒回合会先落入 rejected 终态（终态不可翻回，
-       这是台账的规矩），会把要证的 unmatched 遮住，还会白等一整个回合。 */
-    if (adopt !== "0") {
-      out.turns.push({ name: "被拒回合", r: await sendAndWait(win, "OP121 " + FAIL_MARKER + " 这条要被供应商拒绝", 90000) });
+    if (o.live) {
+      /* T3-06：同一趟里跑两条都过死线的回合 —— 一条全程静默后迟迟到账（必须先在屏上
+         判成没回执、再被纠正回来），一条持续吐字（必须一次都不被判）。 */
+      out.live = {
+        boot: await win.evaluate(() => ({
+          limit: window.__bitbotSendLiveness.limit_ms,
+          tick: window.__bitbotSendLiveness.tick_ms,
+          armedBoot: window.__bitbotSendLiveness.armed(),
+        })),
+        turns: [],
+      };
+      out.live.turns.push(await oneLiveTurn(win, "T306静默迟到 [[lat:14000]] 请把这句原样回一遍", "静默迟到"));
+      /* 持续吐字那条要真的跑过死线：stub 每片之间停 1200ms（事件循环里的定时器，
+         实测片头到达 +23ms / +1224ms / +2426ms…，不是攒到最后一起到），
+         片数 = 回执字数 / 8 —— 正文写长一点，回执才够长（25 片 ≈ 21s > 死线），
+         否则这条测不到长回合。 */
+      out.live.turns.push(await oneLiveTurn(
+        win,
+        "T306持续吐字 [[gap:1200]] 请把下面这段原样回一遍不要停：" + "吐字不停这条就不能被死线判掉".repeat(12),
+        "持续吐字",
+      ));
+      await sleep(1600);
+      out.live.armedEnd = await win.evaluate(() => window.__bitbotSendLiveness.armed());
+      out.live.armedDuring = (out.live.turns[1].timeline || []).some((s) => s.armed);
+    } else {
+      out.turns.push({ name: "成功回合", r: await sendAndWait(win, "OP121乐观验收 [[lat:1600]] 请把这句原样回一遍", 90000) });
+      /* 关掉采纳那一趟只跑成功回合：被拒回合会先落入 rejected 终态（终态不可翻回，
+         这是台账的规矩），会把要证的 unmatched 遮住，还会白等一整个回合。 */
+      if (adopt !== "0") {
+        out.turns.push({ name: "被拒回合", r: await sendAndWait(win, "OP121 " + FAIL_MARKER + " 这条要被供应商拒绝", 90000) });
+      }
     }
     out.rowsOnScreen = await win.evaluate(() =>
       Array.from(document.querySelectorAll("#log .msg.user[data-client-mid]")).map((el) => {
@@ -455,12 +631,76 @@ async function pass(tag, adopt) {
       if (p[1].adopt === "0" && adopted > 0) bad("OP-06 关掉采纳后库里仍有 cm- id（开关没起作用）", ids.join(" / "));
     }
 
-    note("判据自证：真 app 两趟、共 " + ((A.rowsOnScreen || []).length + (B.rowsOnScreen || []).length) + " 行本页发出的消息逐行对台账；" +
+    /* OP-07 T3-06：断线与慢回合同在一台台账上的两条结局，全在真 app 上量 */
+    const C = await pass("liveness", "1", { live: true });
+    if (C.error) bad("OP-00d 第三趟（活性死线）没能进入发送路径", C.error);
+    const L = C.live || {};
+    const limit = L.boot ? Number(L.boot.limit) : 0;
+    const ls = (L.turns || [])[0] || null;
+    const lt = (L.turns || [])[1] || null;
+    const fmt = (t) => {
+      if (!t) return "无数据";
+      const iExp = (t.timeline || []).findIndex((s) => s.state === "expired");
+      return "出现→落终态 " + t.durMs + "ms、证据把 alive 推到距发出 +" + t.aliveMax + "ms、" +
+        (iExp >= 0 ? "第 " + t.timeline[iExp].dt + "ms 判成没回执（小字「" + t.timeline[iExp].note + "」）" : "全程没被判过没回执") +
+        "，纠正记账 " + (t.ledger && t.ledger.corrected_at_ms ? "有" : "无");
+    };
+    if (!(limit > 0)) {
+      bad("OP-07 页面没报出活性死线的上限（limit_ms）", "拿到 " + limit + " —— 判据无从对齐");
+    } else {
+      const why1 = silentThenLateReason(ls, limit);
+      if (why1) bad("OP-07 静默那条没走出「死线判过期 → 迟到回执纠正」", why1 + " ｜ " + fmt(ls));
+      else
+        ok("OP-07 静默 " + limit + "ms 后屏上判成没回执，迟到的回执又把它纠正成已送达并留痕",
+          fmt(ls) + "；异常原文：" + JSON.stringify((ls.ledger.anomalies || []).slice(0, 1)) +
+          "；纠正后那行小字：" + JSON.stringify(ls.final.note) + "（死线取页面自报的 " + limit + "ms，门不抄常量）");
+      const why2 = trickleReason(lt, limit);
+      if (why2) bad("OP-07b 持续吐字的长回合仍被死线判成没回执（或这条压根没跑过死线）", why2 + " ｜ " + fmt(lt));
+      else
+        ok("OP-07b 持续吐字的长回合跑过死线却没被判：证据把 deadline 一路推后",
+          fmt(lt) + "；样本 " + (lt.timeline || []).length + " 个、其中 alive 动过 " +
+          (lt.timeline || []).filter((s) => s.aliveGap > 0).length + " 个");
+      /* OP-07c 判据自证：四种「看起来一样但其实不对」的时间线喂给同两条判据，必须全给假 */
+      const pend = { dt: 200, state: "pending", check: "✓", unknown: false, read: false, note: "", aliveGap: 0 };
+      const fakes = [
+        { nm: "从没判过 expired（那张表没跑）", fn: silentThenLateReason, t: {
+          timeline: [pend, { dt: limit + 3000, state: "durable", check: "✓✓", read: true, note: "", aliveGap: 0 }],
+          ledger: { state: "durable", corrected_at_ms: 0, anomalies: [], sent_at_ms: 0, alive_at_ms: 0, settled_at_ms: limit + 3000 },
+          final: { send: "durable", read: true, check: "✓✓", note: "" }, durMs: limit + 3000 } },
+        { nm: "判成 expired 时屏上画法没变", fn: silentThenLateReason, t: {
+          timeline: [pend, { dt: limit + 800, state: "expired", check: "✓", unknown: false, note: "", aliveGap: 0 }],
+          ledger: { state: "expired", corrected_at_ms: 0, anomalies: [], sent_at_ms: 0, alive_at_ms: 0, settled_at_ms: 0 },
+          final: { send: "expired", read: false, check: "✓", note: "" }, durMs: limit + 800 } },
+        { nm: "长回合其实没跑过死线（自证为空的那种）", fn: trickleReason, t: {
+          timeline: [{ dt: 100, state: "pending", check: "✓", unknown: false, read: false, note: "", aliveGap: 900 }],
+          ledger: { state: "durable", corrected_at_ms: 0, anomalies: [], sent_at_ms: 0, alive_at_ms: 900, settled_at_ms: 500 },
+          final: { send: "durable", read: true, check: "✓✓", note: "" }, durMs: 500 } },
+        { nm: "长回合仍被判了一次 expired", fn: trickleReason, t: {
+          timeline: [pend, { dt: limit + 500, state: "expired", check: "!", unknown: true, note: "等太久", aliveGap: 4000 }],
+          ledger: { state: "durable", corrected_at_ms: 0, anomalies: ["回执超时：距最后一次证据 10500ms > 10000ms"], sent_at_ms: 0, alive_at_ms: 4000, settled_at_ms: limit + 2000 },
+          final: { send: "durable", read: true, check: "✓✓", note: "" }, durMs: limit + 2000 } },
+      ];
+      const loose = fakes.filter((f) => !f.fn(f.t, limit));
+      if (loose.length) bad("OP-07c 判据可能是空的", loose.map((f) => f.nm).join("、") + " 被放过");
+      else ok("OP-07c 【判据自证】同两条判据对四种假时间线全给假",
+        fakes.map((f) => f.nm + "→「" + String(f.fn(f.t, limit)).slice(0, 26) + "」").join(" ｜ "));
+      const disarm = L.boot && L.boot.armedBoot === false && L.armedEnd === false && L.armedDuring === true;
+      if (!disarm)
+        bad("OP-07d 那张按秒的表没做到「有东西在等才开、等完自己关」",
+          "开机时开着=" + (L.boot && L.boot.armedBoot) + "、回合中间开着=" + L.armedDuring + "、结束后开着=" + L.armedEnd);
+      else ok("OP-07d 按秒的表只在有东西在等时开着",
+        "开机=" + L.boot.armedBoot + " → 长回合中=" + L.armedDuring + " → 全部落定后=" + L.armedEnd +
+        "（上限 " + limit + "ms、每 " + L.boot.tick + "ms 问一次）");
+    }
+
+    note("判据自证：真 app 三趟、共 " +
+      ((A.rowsOnScreen || []).length + (B.rowsOnScreen || []).length + (C.rowsOnScreen || []).length) + " 行本页发出的消息逐行对台账；" +
       "OP-01 的「立刻」不是对着 stub 的配置常量说的，是页内同一时钟量出的两个时刻之差：" +
       "点发送 → 该行出现 " + (t1 && t1.appear ? t1.appear.appearMs + "ms" : "未测到") + "，该行出现 → 进入终态 " + (t1 && t1.leadMs ? t1.leadMs + "ms" : "未测到") + "（出现必须早于回执）；" +
       "OP-02 的三方相等是「界面上那条 == 台账那条 == 库里那行」，不是「末尾第 n 条」；" +
-      "OP-03 的码要在 failure_codes.js 的闭集里数到才算；OP-03c 进一步要求那个码是 Host 回执带来的（不是渲染端归一化，也不能落 unknown_failure 兜底），且屏上与台账同源；OP-05 为真 app 负向对照（关掉采纳必须翻红，且开关两趟答案不同）。" +
-      "两趟启动、共 3 个回合全部真发真落库（写进临时根的 data/desktop，不碰用户数据），不是把界面 mock 成期望形状。");
+      "OP-03 的码要在 failure_codes.js 的闭集里数到才算；OP-03c 进一步要求那个码是 Host 回执带来的（不是渲染端归一化，也不能落 unknown_failure 兜底），且屏上与台账同源；OP-05 为真 app 负向对照（关掉采纳必须翻红，且开关两趟答案不同）；" +
+      "OP-07/07b 管 T3-06 的两条相反结局，死线的上限取页面自报的 limit_ms、每条都用台账里量出的 settled−alive / settled−sent 对账，不对着 stub 的配置常量比。" +
+      "三趟启动、共 " + (A.turns.length + B.turns.length + ((C.live && C.live.turns) || []).length) + " 个回合全部真发真落库（写进临时根的 data/desktop，不碰用户数据），不是把界面 mock 成期望形状。");
   } catch (e) {
     bad("门自身异常", (e && e.stack ? String(e.stack).slice(0, 400) : String(e)));
   } finally {

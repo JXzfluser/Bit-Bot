@@ -35,6 +35,9 @@
 4. **客户端没有核心。** 状态与渲染挤在同一个 18,387 行的 `hosts/desktop/index.html` 里（行数实测），
    收到「变了」通知就再走一次 RPC 全量重读——`docs/next-target-requirements.md` §3.1 的第 5 个概念
    **Client Core（schema + reducer + 缓存 + 乐观命令）到今天一个字节都没建**（仓库里没有 `client-core/` 目录）。
+   —— 这条是 2026-11-10 的诊断，现已过期：核心落在 `hosts/shared/client_core/`（schema/reducer/diff_apply/transport
+   四份，Node 与页面同一份源码），进度与实测见交付报告 `docs/design/desktop-target/report.md` 的 §8.113..§8.117；
+   「一个字节都没建」这句保留着，是为了记下当时判定「根因是形状没落地」的起点。
 
 这四条不是「设计漏了」：**§3.1 六个概念、§3.3 七条不变量把这套形状写得比 Grok 还克制**
 （12 个 command / 14 个 event，对照 Grok 的 441 个 RPC）。差别是我们只建成了概念 1 的一半和概念 2 的影子，

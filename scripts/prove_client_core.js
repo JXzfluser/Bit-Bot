@@ -17,18 +17,23 @@
  *         fold 回来必须与快照逐字段相等，三张面各来一遍。
  *   CC-08 负向对照 —— 摘掉 fold 的 history_pruned 分支、往词表塞一个 fold 不认的
  *         kind，判据必须翻红；不翻红说明上面那些断言是空的。
- *   CC-16..CC-23 transport（T3-04 接口 + T3-06 去重）—— 乐观命令的四种结局、
+ *   CC-16..CC-28 transport（T3-04 接口 + T3-06 去重与活性死线）—— 乐观命令的四种结局、
  *         回执字段词表与 schema 逐字一致、同面帧排队/去重/跳号取整份、
- *         `surface.read` 信封只认 .payload。这些判据要 await，挂在收尾之前跑。
- *   CC-24..CC-26 T3-04 **接线**（判据搬进页面之后，门盯的是接线本身）——
+ *         `surface.read` 信封只认 .payload；第 8 秒起 expire 判的是「距最后一次证据」
+ *         而不是「距发出」，expired 之后迟到的回执只纠正、不回到 pending。
+ *         这一组判据要 await，挂在收尾之前跑。
+ *   CC-24..CC-29 T3-04/T3-06 **接线**（判据搬进页面之后，门盯的是接线本身）——
  *         渲染端每块内联脚本要过 JS 解析器（一块语法错 = 整块静默不执行，页面照开）、
  *         送达标记只由台账状态画（身份在请求前铸好、成功/异常两路都回执、finally 不产勾）、
  *         Host 只按 `^cm-[0-9a-z]{16}$` 采纳渲染端 id 并回显 `echo_entry_id`、
- *         存储层撞 id 时另发新 id（让界面判成 unmatched，而不是悄悄覆盖）。
+ *         存储层撞 id 时另发新 id（让界面判成 unmatched，而不是悄悄覆盖）、
+ *         T3-06 的活性死线真接到屏幕（两处证据源在展示层丢弃之前记证据、按秒的表有开有关、
+ *         判成 expired 要按身份重画、纠正要留痕且排在重画之后）。
  *
- * 负向对照 15 条（N1..N15）：每条都是「把产品侧那段判据摘掉，这条必须翻红」，
- * 并且 N11/N12/N13 还要求摘掉之后出现看得见的危害（丢改名 / 半截上屏 / 帧被盖掉），
- * 只让计数变化不算对照。
+ * 负向对照 20 条（N1..N20）：每条都是「把产品侧那段判据摘掉，这条必须翻红」，
+ * 并且 N11/N12/N13/N16..N20 还要求摘掉之后出现看得见的危害（丢改名 / 半截上屏 /
+ * 帧被盖掉 / 一直在吐字那条被误判成没送达 / 迟到的回执纠正不回来 / 断线后永远绿着 /
+ * 判了不画），只让计数变化不算对照。
  *
  * 输出末尾自证覆盖面（规则数 + 目标文件 + 各自命中），这是「绿要能自证」的口径。
  */
@@ -604,6 +609,153 @@ function sendMarkViolations(src) {
         "sessions.js 撞 id 时另发新 id（那条会在界面判成 unmatched，而不是悄悄覆盖）");
 }
 
+/* ---------- CC-29 T3-06 活性死线在渲染端的接线 ---------- */
+/** 取一个 4 空格缩进的顶层函数的函数体（内层闭合都在 6 空格，第一个 \n    } 就是它的尾）。 */
+function fnBody(src, name) {
+  const m = new RegExp("function " + name + "\\([\\s\\S]*?\\n    \\}").exec(src);
+  return m ? m[0] : "";
+}
+function livenessViolations(src) {
+  const code = codeOnly(src);
+  const v = [];
+  /* 三件事各盯一条链：证据要落到**这条回合自己**的命令上、问到超时要把那一行重画、
+     迟到的回执纠正回来要在屏上留痕。少任何一件，T3-06 的核心判据都到不了用户眼睛。 */
+  const note = fnBody(code, "noteSendLiveness");
+  if (!note) v.push("noteSendLiveness 函数体取不到");
+  else if (!/sendLedger\.touch\(liveSendCmd\.client_msg_id\)/.test(note))
+    v.push("证据没落到这条回合自己的命令上：noteSendLiveness 不 touch liveSendCmd，" +
+      "台账的 alive 永远停在发出那一刻，长回合会被判成没回执");
+  const sweep = fnBody(code, "sweepSendLiveness");
+  if (!sweep) v.push("sweepSendLiveness 函数体取不到");
+  else {
+    if (!/sendLedger\.expire\(SEND_LIVENESS_LIMIT_MS\)/.test(sweep))
+      v.push("sweep 没按那个上限问台账（expire 没被叫到或换了别的数）");
+    if (!/repaintSendRows\(expired\)/.test(sweep))
+      v.push("判成 expired 却不重画：台账改了状态，屏幕上那条还挂着单勾");
+  }
+  const repaint = fnBody(code, "repaintSendRows");
+  if (!repaint) v.push("repaintSendRows 函数体取不到");
+  else if (!/querySelectorAll\("\[data-client-mid\]"\)/.test(repaint))
+    v.push("重画不是按 data-client-mid 认行的（按位置猜会把勾画到别人身上）");
+  const arm = fnBody(code, "armSendLiveness");
+  if (!arm) v.push("armSendLiveness 函数体取不到");
+  else if (!/setInterval\(/.test(arm) || !/clearInterval\(/.test(arm))
+    v.push("活性表不是「有东西在等才开、等完自己关」的形状");
+  /* 两个证据源：进度帧和流式片段。都要求「记证据」排在各自展示层的判空/丢弃之前 ——
+     进度条缺件、设置面板静音都不该让台账收不到 Host 的动静。 */
+  for (const site of [
+    { at: "function applyProgressEvent(ev) {", why: "进度帧", guard: "if (!progressStore) return;" },
+    { at: "window.bitbot.onLlmStream((chunk) => {", why: "流式片段", guard: "if (muteLlmStream) return;" },
+  ]) {
+    const i = code.indexOf(site.at);
+    if (i < 0) { v.push(site.why + "的入口找不到（" + site.at + "）"); continue; }
+    const win = code.slice(i, i + 320);
+    const iT = win.indexOf("noteSendLiveness()");
+    const iG = win.indexOf(site.guard);
+    if (iT < 0) v.push(site.why + "没记进台账（入口里不调 noteSendLiveness）");
+    else if (iG >= 0 && iT > iG)
+      v.push(site.why + "的证据排在展示层的丢弃之后：" + site.guard +
+        " 一旦发生，这一回合就再也不算活着，第 10 秒会被画成没等到回执");
+  }
+  const a = code.indexOf("async function runUserTurn(");
+  const b = code.indexOf('approveBtn.addEventListener("click"', a + 1);
+  const body = a >= 0 && b > a ? code.slice(a, b) : "";
+  if (!body) v.push("runUserTurn 函数体取不到");
+  else {
+    const iTurn = body.indexOf("window.bitbot.turn(");
+    const iLive = body.indexOf("liveSendCmd = sendCmd;");
+    const iArm = body.indexOf("armSendLiveness();");
+    if (iLive < 0 || iArm < 0)
+      v.push("发出这一条时没接上活性表（既没把 liveSendCmd 指过去，也没 arm 那张按秒的表）");
+    else if (!(iLive < iTurn && iArm < iTurn))
+      v.push(`liveSendCmd/armSendLiveness 在请求之后才接上（live@${iLive} arm@${iArm} turn@${iTurn}）：` +
+        "开头那几秒的证据落不进台账");
+    const fIdx = body.lastIndexOf("} finally {");
+    if (fIdx < 0) v.push("runUserTurn 里没有 finally 块");
+    else if (body.slice(fIdx).indexOf("liveSendCmd = null;") < 0)
+      v.push("finally 没摘掉 liveSendCmd：下一回合的动静会把上一回合留下的 pending 救活");
+    const iS = body.indexOf("const settleSend = (receipt) => {");
+    const iSE = iS < 0 ? -1 : body.indexOf("\n      };", iS);
+    if (iS < 0 || iSE < 0) v.push("settleSend 函数体取不到");
+    else {
+      const sb = body.slice(iS, iSE);
+      const iP = sb.indexOf("paintSendState(userEl, cmd, receipt);");
+      const iC = sb.indexOf("if (settled.corrected)");
+      const iN = sb.indexOf('sendNote(userEl, wavegT("sendLateNote")');
+      if (iC < 0 || iN < 0)
+        v.push("迟到的回执把 expired 纠正回来时屏上没留痕（corrected 只活在台账里，" +
+          "用户看到的是「它一开始就没超时」）");
+      else if (iN < iP)
+        v.push("纠正的小字画在 paintSendState 之前：那函数第一步就 remove 掉旧的 .msg-send-note，等于没写");
+    }
+  }
+  // 三语键位对齐：新键必须和老键出现在同样多的语言包里，否则切过去看到的是键名本身。
+  const nExpired = (code.match(/sendExpiredNote:/g) || []).length;
+  const nLate = (code.match(/sendLateNote:/g) || []).length;
+  if (nLate !== nExpired)
+    v.push(`sendLateNote 只在 ${nLate} 份语言包里，sendExpiredNote 有 ${nExpired} 份 —— 缺的那份语言会露出键名`);
+  return v;
+}
+{
+  const v = livenessViolations(htmlSrc);
+  v.length
+    ? bad("CC-29", "T3-06 的活性死线在渲染端没接通：" + v.join("、"))
+    : ok("CC-29", "渲染端把死线接到了屏幕上：进度帧与流式片段都在展示层丢弃之前 noteSendLiveness()（它只 touch 这一回合的 " +
+        "liveSendCmd）、发出前设指针并 arm 按秒的表、finally 摘指针；sweep 用 SEND_LIVENESS_LIMIT_MS 问 expire 并按 " +
+        "data-client-mid 重画；corrected 的小字排在 paintSendState 之后（早写会被那次 remove 抹掉）；" +
+        "sendLateNote 与 sendExpiredNote 同份数");
+  // N18/N19/N20：三处各摘一刀，危害分别是「永远绿着」「长回合被误判」「判了不画」。
+  // 每刀都要报告实际摘掉了几处 —— 摘少了（比如两处证据源只删了一处）这条对照就是假的。
+  const cuts = [
+    {
+      id: "CC-29-N18",
+      label: "摘掉发出时的 armSendLiveness()",
+      remove: (s) => s.replace("          liveSendCmd = sendCmd;\n          armSendLiveness();", "          liveSendCmd = sendCmd;"),
+      mine: 1,
+      hit: (vv) => vv.filter((x) => /没接上活性表/.test(x)).length,
+      harm: "expire 永远不会被问到：断线后那一行挂着单勾到天荒地老，屏幕上没有「没等到回执」这一说",
+    },
+    {
+      id: "CC-29-N19",
+      label: "摘掉两处 noteSendLiveness() 证据调用",
+      remove: (s) => s.replace(/^ +noteSendLiveness\(\);\n/gm, ""),
+      mine: 2,
+      hit: (vv) => vv.filter((x) => /没记进台账/.test(x)).length,
+      harm: "alive 退回「距发出」：一直在吐字的长回合到第 10 秒被画成「等太久没回执」，而它明明活着",
+    },
+    {
+      id: "CC-29-N20",
+      label: "摘掉 sweep 里的 repaintSendRows(expired)",
+      remove: (s) => s.replace("      if (expired.length) repaintSendRows(expired);\n", ""),
+      mine: 1,
+      hit: (vv) => vv.filter((x) => /判成 expired 却不重画/.test(x)).length,
+      harm: "台账判了、界面照旧：那一行还是单勾，用户看不出这条到底有没有回执",
+    },
+  ];
+  for (const c of cuts) {
+    const patched = c.remove(htmlSrc);
+    const gone = htmlSrc.length - patched.length;
+    const found = (htmlSrc.match(/^ +noteSendLiveness\(\);$/gm) || []).length;
+    if (patched === htmlSrc) {
+      bad(c.id, `找不到「${c.label}」要摘的那段原文，对照无从做起`);
+      continue;
+    }
+    if (c.id === "CC-29-N19" && found !== c.mine) {
+      bad(c.id, `证据源应有 ${c.mine} 处 noteSendLiveness() 调用，页面上只数到 ${found} 处 —— 对照面不对`);
+      continue;
+    }
+    if (gone <= 0) {
+      bad(c.id, `「${c.label}」这一刀没真的删掉任何字符（length 差 ${gone}）`);
+      continue;
+    }
+    const vv = livenessViolations(patched);
+    const named = c.hit(vv);
+    named >= 1
+      ? ok(c.id, `${c.label}（摘掉 ${gone} 字符）后判据当场翻红，点名 ${named} 处：${vv[0].slice(0, 46)}… —— 危害：${c.harm}`)
+      : bad(c.id, `「${c.label}」摘掉后判据没点名该管的那条（violations=${JSON.stringify(vv.slice(0, 2))}），CC-29 是空的`);
+  }
+}
+
 /* ---------- CC-08 负向对照（不翻红就说明上面是空的） ---------- */
 
 {
@@ -737,6 +889,49 @@ async function runTransportRules() {
   const loadSrc = (src) => {
     const m = { exports: {} };
     return new Function("module", "exports", src + "\nreturn module.exports;")(m, m.exports);
+  };
+  /* T3-06 的两份场景（正向判据和负向对照共用同一份，只是喂不同的实现）：
+     假时钟从 0 起，一步一个明确的时间点，红的时候能指着「第几秒做了什么」。 */
+  const aliveScenario = (mod) => {
+    let t = 0;
+    const lg = mod.createLedger({ rand: randSeq(), now: () => t });
+    const quiet = lg.begin("user_message", { text: "没动静", session_id: "s1" });
+    const slow = lg.begin("user_message", { text: "在吐字", session_id: "s1" });
+    t = 3000;
+    lg.touch(slow.cmd.client_msg_id);
+    t = 8000;
+    const first = lg.expire(5000);
+    t = 14000;
+    const second = lg.expire(5000);
+    return {
+      firstTexts: first.map((c) => c.text),
+      secondTexts: second.map((c) => c.text),
+      slowState: slow.cmd.state,
+      quietState: quiet.cmd.state,
+      anomaly: slow.cmd.anomalies.join(),
+      // 对已经判过期的那条再 touch：证据不能把尘埃落定的东西推回等待
+      touchTerminal: lg.touch(quiet.cmd.client_msg_id).touched,
+      touchUnknown: lg.touch("cm-这条不在台账里").found,
+    };
+  };
+  const lateScenario = (mod) => {
+    let t = 0;
+    const lg = mod.createLedger({ rand: randSeq(), now: () => t });
+    const c = lg.begin("user_message", { text: "迟到 11 秒的落库", session_id: "s1" });
+    t = 9000;
+    lg.expire(5000);
+    t = 11000;
+    const back = lg.settle(c.cmd.client_msg_id, { ok: true, echo_entry_id: c.cmd.client_msg_id });
+    const again = lg.settle(c.cmd.client_msg_id, { ok: false, error_code: "cancelled" });
+    const d = lg.begin("user_message", { text: "迟到又没有 echo", session_id: "s1" });
+    t = 21000;
+    lg.expire(5000);
+    const noEcho = lg.settle(d.cmd.client_msg_id, { ok: true });
+    return {
+      state: c.cmd.state, corrected: back.corrected, late: back.late,
+      anomaly: c.cmd.anomalies.join(), againLate: again.late, againState: c.cmd.state,
+      noEchoState: noEcho.cmd.state, noEchoCorrected: noEcho.corrected,
+    };
   };
   /* 摘掉 transport 里某段判据（负向对照用）。摘不到就红 —— 对照不许因为字符串漂移而假装通过。 */
   const mutate = (id, from, to) => {
@@ -881,6 +1076,62 @@ async function runTransportRules() {
       ? ok("CC-19", "expire 只把还在等的判成 expired（已落库那条不动，异常里写了 8990ms > 5000ms）；" +
           "台账上限 " + transport.LEDGER_MAX + " 条只淘汰终态，还在等的 " + big.pending().length + " 条一条没丢（size=" + big.size() + "）")
       : bad("CC-19", `超时/上限不对：expired=${expired.length}/${expired.map((x) => x.text)} a=${a.cmd.state} b=${b.cmd.state} NaN→${noLimit.length} size=${big.size()} pending=${big.pending().length}`);
+  }
+
+  /* CC-27 T3-06 存活死线：expire 的钟对着「最后一次证据」，不对着「发出」 */
+  {
+    const f = aliveScenario(transport);
+    const ok27 = f.firstTexts.join() === "没动静" && f.secondTexts.join() === "在吐字" &&
+      f.slowState === S.Expired && f.quietState === S.Expired &&
+      /距最后一次证据 11000ms > 5000ms（距发出 14000ms）/.test(f.anomaly) &&
+      f.touchTerminal === false && f.touchUnknown === false;
+    ok27
+      ? ok("CC-27", "touch 把死线推后：第 8 秒那轮 expire(5000) 只判掉没动静的 1 条（距证据 8000ms），" +
+          "一直在吐字那条到第 14 秒才判（异常原文写了「距最后一次证据 11000ms」「距发出 14000ms」两个数）；" +
+          "touch 对终态不再推后（touched=false），对不在台账里的 id 报 found=false")
+      : bad("CC-27", `存活死线不对：第8秒判掉=[${f.firstTexts}] 第14秒判掉=[${f.secondTexts}] 吐字那条=${f.slowState} 异常=${f.anomaly} 终态touch=${f.touchTerminal} 陌生id=${f.touchUnknown}`);
+  }
+  /* N16：把 expire 改回「只看发出」——就是 T3-06 之前的形状，CC-27 必须翻红 */
+  {
+    const brokenSrc = transportSrc.replace(
+      "const last = Number.isFinite(c.alive_at_ms) ? c.alive_at_ms : c.sent_at_ms;",
+      "const last = c.sent_at_ms;",
+    );
+    if (brokenSrc === transportSrc) bad("CC-27-N16", "找不到 expire 里读 alive_at_ms 的那行，对照无从做起");
+    else {
+      const f = aliveScenario(loadSrc(brokenSrc));
+      f.slowState === S.Expired && f.firstTexts.length === 2
+        ? ok("CC-27-N16", `改回只看发出后，第 8 秒一次判掉 ${f.firstTexts.length} 条（在吐字那条也被判成 ${f.slowState}）—— ` +
+            "首字慢的长回合会被画成「没等到回执」，CC-27 有牙")
+        : bad("CC-27-N16", `摘掉 alive 读法后 CC-27 的场景没变坏（第8秒判掉 ${f.firstTexts.length} 条，吐字那条=${f.slowState}），判据是空的`);
+    }
+  }
+  /* CC-28 T3-06 另一半：expired 是「没证据」不是结局，迟到的回执可以纠正它，但绝不回到 pending */
+  {
+    const f = lateScenario(transport);
+    const ok28 = f.state === S.Durable && f.corrected === true && f.late === false &&
+      /expired 纠正成 durable/.test(f.anomaly) && f.againLate === true && f.againState === S.Durable &&
+      f.noEchoState === S.Unmatched && f.noEchoCorrected === true &&
+      f.state !== S.Pending && f.noEchoState !== S.Pending;
+    ok28
+      ? ok("CC-28", "expired 之后回执到了：echo 对上的纠正成 durable（corrected=true，异常写了「距发出 11000ms 才到」），" +
+          "再来的第二份回执只记 late 不再改状态；没有 echo 的迟到回执纠正成 unmatched —— 三条都不回到 pending")
+      : bad("CC-28", `纠正规则不对：state=${f.state} corrected=${f.corrected} late=${f.late} 二次=${f.againLate}/${f.againState} 无echo=${f.noEchoState}/${f.noEchoCorrected} 异常=${f.anomaly}`);
+  }
+  /* N17：把「expired 可被纠正」改回「任何终态都不许回执碰」——屏幕会永远停在「没等到回执」 */
+  {
+    const brokenSrc = transportSrc.replace(
+      "if (from !== CMD_STATE.Pending && from !== CMD_STATE.Expired)",
+      "if (from !== CMD_STATE.Pending)",
+    );
+    if (brokenSrc === transportSrc) bad("CC-28-N17", "找不到 settle 里放行 expired 的那个条件，对照无从做起");
+    else {
+      const f = lateScenario(loadSrc(brokenSrc));
+      f.state === S.Expired && f.corrected !== true && f.late === true
+        ? ok("CC-28-N17", `摘掉纠正通道后，迟到的落库回执只记 late，那条停在 ${f.state}（库里其实已经有这一条了）—— ` +
+            "屏幕说「没等到回执」、库说「有」，CC-28 抓的就是这个矛盾")
+        : bad("CC-28-N17", `摘掉纠正通道后场景仍判成 ${f.state}，CC-28 是空的`);
+    }
   }
 
   /* CC-20 去重发生在核心：不比游标新的帧不改状态、不重画、也不把游标拖回去 */
@@ -1038,13 +1289,17 @@ async function runTransportRules() {
 runTransportRules()
   .catch((e) => bad("CC-16..23", "transport 规则自己炸了：" + String((e && e.stack) || e).split("\n").slice(0, 3).join(" / ")))
   .then(() => {
+    // 负向对照的条数从规则名里现算，不再抄死一个数字（这次加 N16/N17 就差点漏掉自证行）。
+    const negIds = notes.filter((n) => /-N\d+$/.test(n))
+      .map((n) => Number(n.replace(/^.*-N/, "")))
+      .sort((a, b) => a - b);
     console.log(
       "\n== 覆盖面自证 == 规则 " + notes.length + " 条（" + notes.join(",") + "）；" +
       "目标文件：hosts/shared/client_core/{" + CORE_FILES.join(",") + "}、hosts/shared/event_mirror.js、" +
       "hosts/desktop/index.html、hosts/desktop/main.js、hosts/desktop/sessions.js、hosts/desktop/package.json、docs/events.md、ui_protocol/types.mbt；" +
       CORE_FILES.map((f) => f + " " + CORE_SRC[f].split("\n").length + " 行").join(" / ") + "；效果闭集 " + diffCore.EFFECTS.length +
       " 类、结构原因闭集 " + diffCore.REASONS.length + " 类；乐观命令终态 " + Object.keys(transport.CMD_STATE).length +
-      " 种；负向对照 15 条（N1..N15）"
+      " 种；负向对照 " + negIds.length + " 条（N" + negIds.join(",N") + "）"
     );
     console.log("\nprove_client_core: PASS=" + PASS + " FAIL=" + FAIL);
     process.exit(FAIL ? 1 : 0);

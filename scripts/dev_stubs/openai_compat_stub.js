@@ -225,6 +225,16 @@ const server = http.createServer((req, res) => {
     }
 
     if (wantStream) {
+      /* T3-06 e2e 用：[[gap:NNN]] 让每片之间停 NNN ms —— 造一个「一直在吐字」的真回合，
+         活性死线的判据必须盯着这种回合不动。默认关。
+         这里只能用事件循环里的定时器，不能用 execFileSync 压住本进程：
+         实测那样已 res.write 的字节要等整段吐完（+14.7s）才到达客户端，
+         「一直吐字」会被 stub 自己做成「沉默 14s 后一次性交付」。 */
+      let gapMs = 0;
+      if (process.env.BITBOT_STUB_LATENCY_FROM_TEXT === "1") {
+        const gm = /\[\[gap:(\d+)\]\]/.exec(user);
+        if (gm) gapMs = Number(gm[1]) || 0;
+      }
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -232,32 +242,46 @@ const server = http.createServer((req, res) => {
       });
       // Emit a few incremental tokens then done.
       const parts = content.match(/.{1,8}/g) || [content];
-      for (const p of parts) {
-        res.write(sseChunk(p));
+      const writeTail = () => {
+        res.write(
+          "data: " +
+            JSON.stringify({
+              id: "stub-stream",
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            }) +
+            "\n\n",
+        );
+        // GP-130: final usage chunk (stream_options.include_usage shape) so
+        // the Host's weekly usage store is exercised end to end.
+        res.write(
+          "data: " +
+            JSON.stringify({
+              id: "stub-stream",
+              object: "chat.completion.chunk",
+              choices: [],
+              usage: { prompt_tokens: 11, completion_tokens: 7 },
+            }) +
+            "\n\n",
+        );
+        res.write("data: [DONE]\n\n");
+        res.end();
+      };
+      if (gapMs > 0) {
+        let pi = 0;
+        const step = () => {
+          if (pi < parts.length) {
+            res.write(sseChunk(parts[pi++]));
+            setTimeout(step, gapMs);
+            return;
+          }
+          writeTail();
+        };
+        step();
+        return;
       }
-      res.write(
-        "data: " +
-          JSON.stringify({
-            id: "stub-stream",
-            object: "chat.completion.chunk",
-            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-          }) +
-          "\n\n",
-      );
-      // GP-130: final usage chunk (stream_options.include_usage shape) so
-      // the Host's weekly usage store is exercised end to end.
-      res.write(
-        "data: " +
-          JSON.stringify({
-            id: "stub-stream",
-            object: "chat.completion.chunk",
-            choices: [],
-            usage: { prompt_tokens: 11, completion_tokens: 7 },
-          }) +
-          "\n\n",
-      );
-      res.write("data: [DONE]\n\n");
-      res.end();
+      for (const p of parts) res.write(sseChunk(p));
+      writeTail();
       return;
     }
 

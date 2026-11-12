@@ -10564,3 +10564,93 @@ e2e_desktop_optimistic: PASS=14 FAIL=0 SKIP=0   （G-121，新）
 - 矩阵总数本片**未重跑**：`bash -n` 已过，增量口径是 G-116 静态 +2（T2b/N4）、G-121 真 app +2
   （OP-03c 锚点 + 可感面④），run12 复跑后按门逐条回填。
 
+## 8.117 乐观命令的活性死线第一次真的按表在跑：静默那条判成没回执、迟到的回执把它纠正，吐字那条把死线一路推后（KP-08 T3-06 的发送台账那一半，2026-11-12）
+
+### 1) 这一片交付什么
+
+- **核心侧（`hosts/shared/client_core/transport.js`，506 行）**：命令多了一个 `alive_at_ms`
+  ——`begin` 起笔时等于发出时刻，`touch(client_msg_id, atMs)` 把它往后推（只对 pending 有效，
+  终态不再被证据改写，`touched=false` 回给调用方），`expire(limit)` 判的是**「距最后一次证据」**
+  而不是「距发出」，异常原文里两个数都留着（`距最后一次证据 10966ms > 10000ms（距发出 11002ms）`）。
+- **`expired` 是「没证据」，不是结局**：迟到的回执可以纠正它 —— echo 对上就改 `durable`、
+  记 `corrected_at_ms` 并回 `corrected:true`；没有 echo 的迟到回执纠正成 `unmatched`；
+  第二份回执只记 late，不再改状态。三条路都不回到 `pending`（CC-28）。
+- **渲染端接线（`hosts/desktop/index.html`）**：发出时把 `liveSendCmd` 指过去并 `armSendLiveness()`
+  起一张按节拍的表；`onLlmStream` 的**每一帧**和 `applyProgressEvent` 的**每一个进度帧**都在
+  「要不要丢弃展示」之前就 `noteSendLiveness()`（丢弃展示不等于丢弃事实）；`sweep` 拿页面自报的
+  `SEND_LIVENESS_LIMIT_MS` 问 `expire`，判出来的那几条**按 `data-client-mid` 找回那一行**重画
+  （不按位置）；`finally` 摘指针；表在台账没有 pending 时自己停。纠正后那行小字排在
+  `paintSendState` 之后 —— 早写会被那次 `.msg-send-note` 清除抹掉。
+- **用户看得见的新东西**：一条挂了 10s 没回执的消息旁边出现「等太久没回执，这条还没确认」＋
+  勾「!」＋未确认样式；回执迟到真到了，那句话换成「这条其实送到了，回执迟了 14s」。
+
+### 2) 实测值：同一屏上两条相反结局（run C，三趟真 app）
+
+| 量 | 静默迟到那条（`[[lat:14000]]`） | 持续吐字那条（`[[gap:1200]]`） |
+|---|---|---|
+| 出现 → 落终态 | **14048ms** | **21651ms** |
+| 证据把 alive 推到距发出 | **+36ms**（只有派发前那一帧 `provider`） | **+21650ms**（87 个样本、alive 动过 87 个） |
+| 屏上判成没回执 | 第 **11002ms**（勾「!」+ `msg-send-unknown` + 小字） | **全程没被判过** |
+| 纠正记账 | `corrected_at_ms` 有 | 无 |
+| 最终 | `durable`、✓✓（绿）、小字换成「这条其实送到了，回执迟了 14s」 | `durable`、✓✓、无小字 |
+
+同一次跑里乐观面那三句仍然成立：点发送 → 该行出现 **70ms**，出现 → 进入终态 **1800ms**
+（stub 首字延迟 1600ms）；关采纳趟 **50ms / 1805ms**。死线上限与节拍**取页面自报的**
+**10000ms / 1000ms**，门不抄常量（OP-07d 另测那张表：开机 `false` → 长回合中 `true` → 全部落定 `false`）。
+
+| 门 | 改前 | 改后 |
+|---|---|---|
+| G-120 `prove_client_core` | `PASS=44 FAIL=0`（负向对照 17 条） | `PASS=52 FAIL=0`（20 条：+CC-27/28/29 与 N16..N20） |
+| G-121 `e2e_desktop_optimistic` | `PASS=15 FAIL=0 SKIP=0` | `PASS=19 FAIL=0 SKIP=0`（+OP-07/07b/07c/07d） |
+| 矩阵 G-121 锚点 / 可感面 | 13 项 / ①..④ | 17 项 / ①..⑥ |
+
+### 3) 三条尺子与它们的自证
+
+- **CC-27**（核心）：第 8 秒 `expire(5000)` 只判掉没动静的 1 条，在吐字那条到第 14 秒才被判；
+  `touch` 对终态返回 `touched=false`、对不在台账里的 id 返回 `found=false`。
+  **N16** 把判据改回「只看发出」→ 第 8 秒一次判掉 2 条，翻红。
+- **CC-28**（核心）：迟到的 echo 回执纠正成 `durable`、无 echo 的纠正成 `unmatched`、第二份只记 late；
+  **N17** 摘掉纠正通道 → 那条停在 `expired`，而库里其实已经有这一条（屏幕与库矛盾），翻红。
+- **CC-29**（渲染端，扫代码不扫散文）：钉的是**关系** —— 两处证据调用必须排在各自「要不要展示」的
+  guard 之前、`expire(SEND_LIVENESS_LIMIT_MS)` 与 `repaintSendRows(expired)` 成对、重画只按
+  `querySelectorAll("[data-client-mid]")`、指针赋值与 `armSendLiveness()` 排在 `window.bitbot.turn(`
+  之前、`finally` 里摘指针、`corrected` 那段小字排在 `paintSendState` 之后、`sendLateNote` 与
+  `sendExpiredNote` 语言包份数相同。三个假形状各翻一次红并点名处数：N18 摘 arm（29 字符 / 1 处）、
+  N19 摘两处证据调用（58 字符 / 2 处）、N20 摘重画（52 字符 / 1 处）。
+- **矩阵侧可感面⑤/⑥**：上限、节拍、两条回合时长、判成没回执的时刻全部从子门日志里**现取**，
+  再比关系（`silent > limit`、`limit ≤ hitAt < silent`、`trickle > limit`、异常里 `> <limit>ms`）。
+  拿 run C 的真实日志做 4 次变异：抹掉「纠正记账 有」、把自报上限改成 `0ms`、把吐字那条时长压到
+  3000ms、把 OP-07c 的「四种」改成「三种」——**4/4 各翻红恰好一条**，还原后 2/2 绿。
+
+### 4) 两处判据是被实测纠正的，不是我写对了（诚实账）
+
+- **OP-07 第一版假设「静默回合没有任何证据」，红了。** 实际 Host 在 HTTP 派发**之前**就发一帧
+  `phase:"provider"`（`hosts/shared/host_ffi.js:6068-6070`），`alive` 合法地推到 +36ms。
+  改判据不是放宽：静默期要求证据**不连续**（样本里 `aliveGap ≤ limit/2`），并新增一条真关系
+  ——回执距**最后一次证据**必须 > 死线（`settled_at_ms - alive_at_ms > limit`），否则「迟到」这个词不成立。
+- **OP-07b 两次红，各是不同原因。** 第一次回合只有 5020ms ≤ 死线，判据按设计拒绝空断言；
+  拉长正文后仍在 11002ms 被判 expired，查下去洞在**尺子自己**：stub 的 `[[gap]]` 用
+  `execFileSync("sleep")` 压住了本进程事件循环，实测 16 片**全部在 +14715ms 一次性到达**客户端
+  ——「一直在吐字」被 stub 做成了「沉默 14s 后一次交付」。改成事件循环里的 `setTimeout` 后逐片到达
+  （+23 / +1224 / +2426ms…）。这次改的是 `scripts/dev_stubs/openai_compat_stub.js`，
+  产品逻辑一行没动；`gapMs=0` 的路径重构后行为逐字不变（实测无标记时 27ms 内收完）。
+  **这是同一类账的第 N 次**：门不能钉名字与散文，只能钉关系与代码；这次连「stub 说自己在吐字」
+  都得当成待证假设，用到达时间戳验一遍。
+
+### 5) 这一片动了什么、没动什么
+
+- 动：`hosts/shared/client_core/transport.js`（`alive_at_ms` / `touch` / `expire` 改判距证据 /
+  `settle` 开纠正通道）、`hosts/desktop/index.html`（活性表 + 两处证据调用 + 按身份重画 + 纠正小字
+  与三份语言包 `sendLateNote`）、`scripts/prove_client_core.js`（CC-27/28/29 + N16..N20）、
+  `scripts/e2e_desktop_optimistic.mjs`（页内 250ms 采样器、OP-07/07b/07c/07d 与两条判据）、
+  `scripts/dev_stubs/openai_compat_stub.js`（`[[gap:NNN]]` 改成非阻塞）、
+  `scripts/smoke_grok_desktop_parity.sh`（锚点 4 条、可感面⑤⑥、G-120/G-121 残账文案改口）、
+  `docs/grok-desktop-parity/kernel-mechanism-parity.md`（§1 那句「client-core 一个字节都没建」
+  标注为已过期并给出真路径）、本报告。
+- 没动：房间/群聊链 `sendRoomTurn` 仍未接台账；T3-07 `checkJs` 仍待 typescript 安装授权（任务 #56）；
+  按「停止」取消那一回合的台账终态仍未被量过（任务 #64）。**T3-06 的另一半**——「拔网 10s 重连
+  无重复无缺失」是事件订阅链的账，游标续订那部分在 G-118（KP-06）已证，**物理拔网仍未测**。
+- 矩阵总数本片**未重跑**：`bash -n scripts/smoke_grok_desktop_parity.sh` 已过，两个 `node --check` 已过，
+  增量子门逐条复跑绿（CC 52/0、e2e 19/0/0）。增量口径：G-120 静态 +8、G-121 子门 +4、
+  矩阵 G-121 锚点 +4、可感面 +2，run13 复跑后按门逐条回填总量。
+

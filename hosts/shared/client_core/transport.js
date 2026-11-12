@@ -104,7 +104,9 @@ function textOf(receipt) {
 
 /**
  * 乐观命令台账。begin → settle 是一条命令的两端；expire 负责「等太久」这第三种
- * 结局 —— 断线时屏幕上那条不能永远绿着。
+ * 结局 —— 断线时屏幕上那条不能永远绿着。T3-06 补上另一半：touch 是「还活着」的
+ * 证据（流式片段/进度帧都算），expire 的钟从「距发出」改成「距最后一次证据」；
+ * expired 不是结局而是「没证据」，所以迟到的回执可以纠正它（绝不回到 pending）。
  *
  * @param {{rand?: () => string, now?: () => number, idem?: boolean}} hooks
  */
@@ -166,6 +168,7 @@ function createLedger(hooks) {
       }
     }
     const cid = nextClientId();
+    const beganAt = Number(now());
     const cmd = {
       cmd_id: cid,
       client_msg_id: cid,
@@ -173,7 +176,10 @@ function createLedger(hooks) {
       idem_key: idem,
       text: str(a.text),
       session_id: str(a.session_id || a.room_id || ""),
-      sent_at_ms: Number(now()),
+      sent_at_ms: beganAt,
+      // T3-06：expire 看的是「距最后一次证据」，不是「距发出」。begin 时还没有证据，
+      // 所以 alive 就等于 sent；任何一条证据都会把它推后。
+      alive_at_ms: beganAt,
       state: CMD_STATE.Pending,
       entry_id: "",
       code: "",
@@ -195,13 +201,19 @@ function createLedger(hooks) {
    * 一条命令的回执到了。返回的 cmd 就是台账里那份（同一对象），界面按 state 画：
    * durable → 已送达；rejected → 变红 + 码；unmatched → 「落库的不是我发的那条」；
    * 回执没有 echo → unmatched（不许亮成已送达）；终态不被迟到回执改回去（late）。
+   *
+   * T3-06 唯一的例外是 expired：它不是「结局」，只是「到点了还没证据」。所以
+   * 迟到的回执可以纠正它（corrected=true，异常照记），但**任何情况下都不回到
+   * pending** —— 屏幕上那行不能从「没等到回执」再变回转圈。
    * @param {string} clientMsgId
    * @param {any} receipt
    */
   function settle(clientMsgId, receipt) {
     const cmd = byId.get(str(clientMsgId));
     if (!cmd) return { found: false, cmd: null };
-    if (cmd.state !== CMD_STATE.Pending) return { found: true, cmd, late: true };
+    const from = cmd.state;
+    if (from !== CMD_STATE.Pending && from !== CMD_STATE.Expired)
+      return { found: true, cmd, late: true };
     const ok = !!(receipt && receipt.ok === true);
     if (!receipt) {
       cmd.state = CMD_STATE.Unmatched;
@@ -230,13 +242,39 @@ function createLedger(hooks) {
       }
     }
     cmd.settled_at_ms = Number(now());
-    return { found: true, cmd, late: false };
+    const out = { found: true, cmd, late: false };
+    if (from === CMD_STATE.Expired) {
+      cmd.corrected_at_ms = cmd.settled_at_ms;
+      cmd.anomalies.push(
+        `迟到的回执把 expired 纠正成 ${cmd.state}（距发出 ${
+          Math.round(cmd.settled_at_ms - cmd.sent_at_ms)
+        }ms 才到）：expired 只是「没证据」，不是结局`,
+      );
+      out.corrected = true;
+    }
+    return out;
+  }
+
+  /**
+   * 一条「还活着」的证据：流式片段、进度帧、任何来自 Host 的动静都算。
+   * T3-06 的超时看的是「距最后一次证据」而不是「距发出」—— 首字延迟 90s 的
+   * 长回合不该在第 10 秒被画成「没等到回执」，只要它一直在往外吐字。
+   * 只对 pending 有效：已经尘埃落定的那条不会被动静推翻。
+   * @param {string} clientMsgId @param {number} [atMs]
+   */
+  function touch(clientMsgId, atMs) {
+    const cmd = byId.get(str(clientMsgId));
+    if (!cmd) return { found: false, cmd: null };
+    if (cmd.state !== CMD_STATE.Pending) return { found: true, cmd, touched: false };
+    const at = Number(atMs == null ? now() : atMs);
+    cmd.alive_at_ms = Number.isFinite(at) ? at : cmd.sent_at_ms;
+    return { found: true, cmd, touched: true };
   }
 
   /**
    * 把等太久的 pending 判成 expired。断线重连不做这件事的话，屏幕上会留着一条
    * 「永远在送达中」的消息，而它其实早就没人认领了。
-   * @param {number} maxAgeMs
+   * @param {number} maxAgeMs 距最后一次证据的上限
    * @returns {any[]} 被判过期那几条（副本引用，同一对象）
    */
   function expire(maxAgeMs) {
@@ -246,10 +284,18 @@ function createLedger(hooks) {
     const out = [];
     for (const id of seq) {
       const c = byId.get(id);
-      if (c && c.state === CMD_STATE.Pending && at - c.sent_at_ms > limit) {
-        c.state = CMD_STATE.Expired;
-        c.anomalies.push(`回执超时 ${Math.round(at - c.sent_at_ms)}ms > ${limit}ms`);
-        out.push(c);
+      if (c && c.state === CMD_STATE.Pending) {
+        // 老台账（没有 alive_at_ms 的记录）退回按发出算，绝不因缺字段而不超时。
+        const last = Number.isFinite(c.alive_at_ms) ? c.alive_at_ms : c.sent_at_ms;
+        if (at - last > limit) {
+          c.state = CMD_STATE.Expired;
+          c.expired_at_ms = at;
+          c.anomalies.push(
+            `回执超时：距最后一次证据 ${Math.round(at - last)}ms > ${limit}ms` +
+              `（距发出 ${Math.round(at - c.sent_at_ms)}ms）`,
+          );
+          out.push(c);
+        }
       }
     }
     return out;
@@ -269,7 +315,7 @@ function createLedger(hooks) {
     return byId.size;
   }
 
-  return { begin, settle, expire, get, pending, size, LEDGER_MAX, CMD_STATE };
+  return { begin, settle, touch, expire, get, pending, size, LEDGER_MAX, CMD_STATE };
 }
 
 /**
