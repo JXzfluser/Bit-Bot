@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 "use strict";
-/* KP-09 片1：sessions.json 这张面只剩一个写者。
+/* KP-09 片1..3：事件面只剩一个写者、读写同源，且多进程写同一张面不许互相抹掉。
  *
  * 先有的红（修复前实测，临时 dataRoot、真代码路径，见 §8.123）：
  *   EVENT_ONLY 下删 Bot 的级联自己 readJson + atomicWrite sessions.json，
@@ -30,11 +30,22 @@
  *   SW-NEGR 尺子的反向对照：拿修复前 host_ffi 那行原样读法 + voice 诱饵做夹具，
  *          尺子必须点中旁路、且不把 data/voice/sessions.json 误判成面
  *
+ *   —— 片3（多进程写同一张面，先有的红都在临时 dataRoot + 真代码路径）——
+ *   SW-10 3 个真进程同时冷启同一个空事件库、各写 12 条待批准：必须 36 行全折回。
+ *          修前两种红：①事件库开不了（`database is locked`，busy_timeout 排在 WAL 之后 +
+ *          deferred 迁移撞车）→ 那一侧整批动作没了；②审批追加的双读 prev → diff 派出一串
+ *          entity_removed 把**别的进程刚写的行**从唯一真源删掉，子进程零报错、fold 少 1~6 行
+ *   SW-11 同一毫秒里 3 个进程各写 bots.json：不许有 ENOENT rename（tmp 名带 pid 之前的实测）
+ *   SW-12 残账，不判绿红：3 进程各建 3 个群，事件 fold 里剩几个（store 面仍是跨进程多写者）
+ *   SW-13 tmp 命名静态账（棘轮，只许降）+ 旧写法夹具反向对照
+ *   SW-14 开库并发四件事静态账（busy 先于 WAL / IMMEDIATE / 无 deferred / 撞车重读版本）+ 旧顺序夹具
+ *
  * 全部跑在临时目录，绝不碰仓库里的 data/。
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -52,6 +63,7 @@ let FAIL = 0;
 let swWriters = [];
 let swStoreWriters = 0;
 let swReaders = 0;
+let xpRows = 0, xpPrefixes = 0, xpStoreRooms = 0, xpTmpSites = 0, xpTmpBad = -1, xpOrderBad = -1, xpKidsOk = false;
 const ok = (id, msg) => { PASS++; console.log(`  ✓ ${id} ${msg}`); };
 const bad = (id, msg, extra) => { FAIL++; console.log(`  ✗ ${id} ${msg}${extra ? " — " + (typeof extra === "string" ? extra : JSON.stringify(extra)) : ""}`); };
 
@@ -209,6 +221,97 @@ function queuedRoutineMail(dataRoot) {
   const a = hit.approvals;
   const rows = Array.isArray(a) ? a : ((a && a.approvals) || []);
   return rows.filter((e) => e && e.kind === "mail_send" && e.source === "routine");
+}
+
+/* ===== 片3（多进程）的尺子 ===== */
+
+/**
+ * tmp 文件名的构造行必须带 process.pid。
+ * 只带 Date.now() 时，同一毫秒里两个进程（桌面主进程 + 定时守护 run_turn.js）
+ * 给同一张面算出**同一个** tmp 名：先 rename 的那家把文件搬走，后一家
+ * renameSync 直接 ENOENT —— 用户那次「建 Bot / 建群」整个抛错（实测 3 进程冷启 2/3 挂）。
+ * 注释行不算：这把尺子和 SW-02 一样，先把注释剥掉再判。
+ */
+function tmpNameViolations(texts) {
+  const bad = [];
+  for (const t of texts) {
+    t.text.split("\n").forEach((line, i) => {
+      const s = line.trim();
+      if (!s || s.startsWith("//") || s.startsWith("*") || s.startsWith("/*")) return;
+      if (!/\.tmp\./.test(s)) return;
+      if (!/tmp\s*=|tmp=\$\{/.test(s) && !/writeFileSync|renameSync/.test(s)) return;
+      if (/process\.pid/.test(s)) return;
+      bad.push(`${t.name}:${i + 1}`);
+    });
+  }
+  return bad;
+}
+
+/**
+ * openEventLog 的冷启并发四件事，缺一条就是「另一个进程正在建库时我打不开库」：
+ *   1) busy_timeout 必须排在 journal_mode 之前（改 WAL 要拿写锁，顺序反了 SQLITE_BUSY 当场抛）；
+ *   2) 迁移用 BEGIN IMMEDIATE（deferred 的 BEGIN 到 CREATE 才升级，升级失败不排队）；
+ *   3) 不许留 deferred 的 db.exec("BEGIN;")；
+ *   4) 迁移撞「already exists」时重读版本，版本到位就当别人做过了。
+ */
+function openOrderViolations(text) {
+  const at = text.indexOf("function openEventLog");
+  if (at < 0) return ["找不到 openEventLog（尺子失效）"];
+  const body = text.slice(at, at + 4000);
+  const iBusy = body.indexOf("PRAGMA busy_timeout");
+  const iWal = body.indexOf("PRAGMA journal_mode = WAL");
+  const v = [];
+  if (!(iBusy >= 0 && iWal >= 0 && iBusy < iWal)) v.push("busy_timeout 不在 journal_mode 之前");
+  if (!/BEGIN IMMEDIATE;/.test(body)) v.push("迁移不是 BEGIN IMMEDIATE");
+  if (/db\.exec\("BEGIN;"\)/.test(body)) v.push("还留着 deferred 的 BEGIN");
+  if (!(/already exists/i.test(body) && /readLogVersion\(db\)\s*>=\s*m\.id/.test(body)))
+    v.push("迁移撞车后没有「重读版本再认」的容忍路");
+  return v;
+}
+
+/** 子进程要跑的脚本：真代码路径，EVENT_ONLY，往三张面各写一批。 */
+function xpChildSource() {
+  const q = JSON.stringify(REPO);
+  return [
+    '"use strict";',
+    "const path=require('path');",
+    "const dataRoot=process.argv[2];",
+    "const n=Number(process.argv[3]||12);",
+    "process.env.BITBOT_EVENT_ONLY='1';",
+    `const R=${q};`,
+    "const {getSessionStore}=require(path.join(R,'hosts/desktop/sessions.js'));",
+    "const {createProductSurface}=require(path.join(R,'hosts/desktop/product_surface.js'));",
+    "const tag='kid'+process.pid;",
+    "const out={tag,appr:0,bots:0,rooms:0,errs:[]};",
+    "try{",
+    "  const store=getSessionStore(dataRoot,{dataRoot});",
+    "  const s=createProductSurface(dataRoot,{dataRoot,sessions:store});",
+    "  // 每条都换一个**新的 surface 实例**：prev 缓存按实例算，一个实例只有第一条写才走「冷启读」，",
+    "  // 3 进程 × 1 个窗口抓不到什么；换成每进程 n 个窗口才有稳定的红（KP-09 片3 的尺子）。",
+    "  for(let i=0;i<n;i++){const sN=createProductSurface(dataRoot,{dataRoot,sessions:store});sN.appendPendingApproval({source:'chat',kind:'shell',command:tag+'|x'+i});out.appr++;}",
+    "  const b1=s.botsCreate({name:tag+'-甲',model:'m'}).bot;",
+    "  const b2=s.botsCreate({name:tag+'-乙',model:'m'}).bot;",
+    "  out.bots=(b1&&b2)?2:0;",
+    "  for(let i=0;i<3;i++){",
+    "    const r=s.roomCreate([b1.id,b2.id].join(','),tag+'-群'+i);",
+    "    const id=(r&&r.room&&r.room.id)||(r&&r.id);",
+    "    if(id){s.appendRoomTranscript(id,{kind:'final_report',text:tag+' 的成稿',bot_id:b1.id});out.rooms++;}",
+    "  }",
+    "}catch(e){out.errs.push(String((e&&e.message)||e).slice(0,200));}",
+    "process.stdout.write(JSON.stringify(out)+'\\n');",
+  ].join("\n");
+}
+
+function spawnXpChild(childPath, dataRoot, n) {
+  return new Promise((res) => {
+    const p = spawn(process.execPath, [childPath, dataRoot, String(n)], { stdio: ["ignore", "pipe", "pipe"] });
+    let buf = "";
+    let eb = "";
+    p.stdout.on("data", (c) => { buf += String(c); });
+    p.stderr.on("data", (c) => { eb += String(c); });
+    p.on("error", (e) => res({ code: -1, out: "", err: String((e && e.message) || e) }));
+    p.on("close", (code) => res({ code, out: buf, err: eb }));
+  });
 }
 
 async function main() {
@@ -435,7 +538,79 @@ async function main() {
     delete process.env.BITBOT_EVENT_ONLY;
   }
 
-  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders}`);
+  /* ===== SW-10..12：多进程写同一张面（KP-09 片3） ===== */
+  if (process.env.NEG_CONTROL !== "1") {
+    const KID = 3, PER = 12;
+    process.env.BITBOT_EVENT_ONLY = "1";
+    const { root, dataRoot } = freshRoot("xp");
+    const childPath = path.join(root, "xp-child.cjs");
+    fs.writeFileSync(childPath, xpChildSource());
+    const rs = await Promise.all(Array.from({ length: KID }, () => spawnXpChild(childPath, dataRoot, PER)));
+    closeMirrors();
+    const kids = rs.map((r) => {
+      try { return JSON.parse(String(r.out).trim()); }
+      catch { return { tag: "kid?" + r.code, appr: 0, bots: 0, rooms: 0, errs: ["子进程没吐 JSON（exit=" + r.code + "）：" + String(r.err).slice(0, 140)] }; }
+    });
+    const errs = kids.reduce((a, k) => a.concat(k.errs || []), []);
+    const fh = fold(dataRoot);
+    const rows = ((fh.approvals && fh.approvals.approvals) || (Array.isArray(fh.approvals) ? fh.approvals : []));
+    const cmds = rows.map((e) => String(e.command || ""));
+    const prefixes = new Set(cmds.map((c) => c.split("|")[0])).size;
+    const roomsFolded = ((fh.rooms && fh.rooms.rooms) || []).length;
+    xpKidsOk = errs.length === 0;
+    xpRows = cmds.length;
+    xpPrefixes = prefixes;
+    xpStoreRooms = roomsFolded;
+
+    if (xpKidsOk && cmds.length === KID * PER && prefixes === KID && fh.ok && !fh.anomalies.length)
+      ok("SW-10", `${KID} 个真进程同时冷启同一个空事件库：每进程各写 ${PER} 条待批准全部落库（${cmds.length} 行、${prefixes} 个进程前缀、${fh.count} 条事件、无 anomalies）`);
+    else bad("SW-10", "多进程冷启还有人写不进去（事件库开不了 = 那一侧的整批动作丢）",
+      { errs: errs.slice(0, 2), rows: cmds.length, expect: KID * PER, prefixes, ok: fh.ok, anomalies: fh.anomalies });
+
+    const collide = kids.reduce((a, k) => a.concat(k.errs || []), []).filter((e) => /ENOENT|rename/i.test(String(e)));
+    if (collide.length === 0)
+      ok("SW-11", `同一毫秒里 ${KID} 个进程各写 bots.json 没有一个 ENOENT rename（tmp 名带 pid；修前实测 3 家挂 2 家）`);
+    else bad("SW-11", "atomicWrite 的 tmp 名还在跨进程撞车", collide.slice(0, 2));
+
+    // store 形状的面（rooms/sessions）跨进程还是多写者：这一条只报数，不判绿也不判红，
+    // 因为它测的是「本轮的交错运气」，而 T1-06 的边界目前只收到进程内（见 §8.125⑤）。
+    console.log(`  · SW-12 残账（本轮实测）：${KID} 进程各建 3 个群，事件 fold 里 ${xpStoreRooms}/9 —— ` +
+      "少于 9 就是跨进程的 store 面丢行：jsonl 面（审批）按行派事件所以精确（上面 36/36），" +
+      "store 面按 prev→next 整份换，谁的 prev 陈旧谁就把别人刚建的群从自己那次 diff 里漏掉。" +
+      "修前同形状实测过 6/9、7/9。T1-06「一张面一个写者」今天成立的范围是**一个进程内**，跨进程的 store 面仍是多写者。");
+
+    /* 静态账：两处尺子的反向对照在夹具里真跑红，才允许这两条算绿 */
+    const hostTexts = listHostJs().map((rel) => ({ name: rel, text: fs.readFileSync(path.join(REPO, rel), "utf8") }));
+    const tmpBadRepo = tmpNameViolations(hostTexts);
+    const tmpSites = hostTexts.reduce((a, t) => a + t.text.split("\n").filter((l) => /\.tmp\./.test(l) && /tmp\s*=/.test(l.trim())).length, 0);
+    xpTmpBad = tmpBadRepo.length;
+    xpTmpSites = tmpSites;
+    const fixtureBad = tmpNameViolations([
+      { name: "fixture_old.js", text: '  const tmp = filePath + ".tmp." + Date.now();\n    fs.renameSync(tmp, filePath);\n' },
+      { name: "fixture_new.js", text: '  const tmp = filePath + ".tmp." + process.pid + "." + Date.now();\n' },
+    ]);
+    if (tmpSites > 0 && tmpBadRepo.length === 0 && fixtureBad.length === 1)
+      ok("SW-13", `写快照的 ${tmpSites} 处 tmp 名全带 pid（静态账 0 违规），夹具反向对照只把「旧写法」那行判红（1 处）`);
+    else bad("SW-13", "tmp 命名的尺子失效或仓库里还有旧写法", { sites: tmpSites, repoBad: tmpBadRepo, fixtureBad });
+
+    const evText = fs.readFileSync(path.join(REPO, "hosts/shared/event_log.js"), "utf8");
+    const orderRepo = openOrderViolations(evText);
+    const orderOld = openOrderViolations([
+      'function openEventLog(opts) {',
+      '  db.exec("PRAGMA journal_mode = WAL;");',
+      '  db.exec(`PRAGMA busy_timeout = 5000;`);',
+      '  for (const m of MIGRATIONS) { db.exec("BEGIN;"); db.exec(m.sql);',
+      '    } catch (err) { db.close(); throw new Error("迁移失败：" + err.message); } }',
+      '  readLogVersion(db) >= m.id',
+    ].join("\n"));
+    xpOrderBad = orderRepo.length;
+    if (orderRepo.length === 0 && orderOld.length >= 3)
+      ok("SW-14", `开库的并发四件事都在（busy 先于 WAL / IMMEDIATE / 无 deferred BEGIN / 撞车重读版本），旧顺序夹具被判 ${orderOld.length} 条违规`);
+    else bad("SW-14", "开库尺子失效或仓库里还缺并发该有的那几件事", { repo: orderRepo, oldFixture: orderOld.length });
+    delete process.env.BITBOT_EVENT_ONLY;
+  }
+
+  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad}`);
   console.log("prove_sessions_single_writer: PASS=" + PASS + " FAIL=" + FAIL);
   process.exit(FAIL === 0 ? 0 : 1);
 }

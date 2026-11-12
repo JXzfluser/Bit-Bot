@@ -86,7 +86,7 @@ function createRoomBoard(repoRoot, opts = {}) {
   const write = (roomId, data) => {
     fs.mkdirSync(dir, { recursive: true });
     const file = pathOf(roomId);
-    const tmp = `${file}.tmp.${Date.now()}`;
+    const tmp = `${file}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
     fs.renameSync(tmp, file);
     return file;

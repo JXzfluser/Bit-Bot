@@ -11181,3 +11181,90 @@ HEAD 修复前：{"roomsJsonOnDisk":false,"subject":"定时稿件推送 · 2026-
 3. T1-06 完成定义的另两半：跨进程并发压测无覆盖、`kill -9` 恢复只在事件家族（G-61 EL-09）量过。
 4. 级联的 DM 标题匹配约定（Bot 改名 → 旧 DM 会话脱靶）未改。
 5. 全量矩阵 run14 还没在含 §8.122/§8.123/§8.124 三片改动的树上跑过。
+
+## 8.125 三个真进程冷启同一只新事件库：一家开库就崩、一家把别人的行删了（KP-09 第三片，G-122 扩锚，2026-11-12）
+
+### ① 先有的红（临时 dataRoot + 真代码路径 + `spawn` 出来的真进程，不是线程也不是假对象）
+
+拓扑里跨进程写同一张面这件事**今天就存在**：[hosts/desktop/main.js:1010](file:///Users/zfl/Downloads/bitbot/hosts/desktop/main.js#L1010)
+拉起 `scripts/host_routine_daemon.sh`，守护里逐字跑 `node hosts/cli_host/run_turn.js "tick routines"` ——
+它和桌面主进程用同一个 `data/`。三件事各自量到：
+
+1. **冷启开库并发**：3 个进程同时打开一只**新建**的 `desktop-events.sqlite`，9 次里挂 4 次
+   `database is locked`，另一次直接 `table meta already exists`。根因两条：`PRAGMA busy_timeout`
+   排在 `journal_mode = WAL` **之后**（那一下 WAL 升级用的还是 0 超时），以及迁移用 deferred 的
+   `BEGIN` —— SQLite 的 busy handler 不覆盖 deferred 事务的**升级为写**，所以超时设了也不重试。
+   脱离仓库的最小 A/B（同样 3 进程形状）：现状 5/9 成功，busy 提前 + `BEGIN IMMEDIATE` + 撞车后
+   重读版本号 9/9。
+2. **tmp 名跨进程撞车**：`atomicWrite` 的临时名只带 `Date.now()`，同一毫秒两家算出**同一个**名字，
+   先 `renameSync` 的把文件搬走，后一家直接 ENOENT —— 用户那次「建 Bot / 建群」整个抛错。
+   修前实测 3 进程里挂 2 家，而且这条在**默认的 JSON 模式**下就发生（不是 EVENT_ONLY 才有）。
+3. **审批追加的双读 prev（这条最难看见）**：`appendPendingApproval` 的 `next` 是从它那一刻读到的
+   prev 拼出来的，而落库口 `eventOnlyWrite` 又**自己再读一遍** prev —— 读到的是**比 next 更新**的状态。
+   别的进程刚提交 12 条里的那些行于是落在 `prev 有 / next 无`，`diffApprovals` 就派出一串
+   `entity_removed`，**把它们从唯一真源删掉**。32 轮里中 5 轮，丢 1 / 2 / 6 / 12 行；
+   **子进程零报错、`anomalies` 空、`ok:true`** —— 唯一痕迹是事件表里多出没人发起过的删除。
+   把它和 ①分开证的办法：在 HEAD 的 worktree 里只把 `event_log.js` 换成修好的版本再跑同一把尺子，
+   于是 `errs:[]` 而 `rows` 少（21/28/0 三种形状都出现过，其中一次是并发基底导入把 fold 打成
+   「审批被创建了两次」的 anomalies → 宁可不折也不静默错）。
+
+### ② 改了什么
+
+- [hosts/shared/event_log.js:136](file:///Users/zfl/Downloads/bitbot/hosts/shared/event_log.js#L136)
+  `busy_timeout` 提到 `journal_mode` 之前；[:148](file:///Users/zfl/Downloads/bitbot/hosts/shared/event_log.js#L148)
+  WAL 升级带 4 次有界重试（`sleepSync` 用 `Atomics.wait`，和
+  [hosts/shared/machine_presence.js:56](file:///Users/zfl/Downloads/bitbot/hosts/shared/machine_presence.js#L56)
+  同一款，不空转）；[:182](file:///Users/zfl/Downloads/bitbot/hosts/shared/event_log.js#L182)
+  迁移改 `BEGIN IMMEDIATE`；[:207](file:///Users/zfl/Downloads/bitbot/hosts/shared/event_log.js#L207)
+  撞车后先重读 `log_version`，已到位就当成功（另一家已经把迁移跑完）。
+- [hosts/desktop/product_surface.js:142](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L142)、
+  [:2199](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L2199)、
+  [hosts/desktop/room_orchestrator.js:89](file:///Users/zfl/Downloads/bitbot/hosts/desktop/room_orchestrator.js#L89)
+  tmp 名一律 `pid + Date.now() + 随机`。
+- [hosts/desktop/product_surface.js:120](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L120)
+  `eventOnlyWrite` 收一个可选的 `prevText`，给了就**必须**用它；
+  [:169](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L169) 的追加把自己拼 `next` 用的那份 prev 传下去。
+  「prev 和 next 必须来自同一次快照」这句话以前只写在注释里，现在是参数。
+
+### ③ 尺子：SW-10..14 + G-122 扩锚，五个方向都验过
+
+子门从 13 项到 **17 项**：`PASS=17 FAIL=0`，`SW_METRICS ... xp_rows=36 xp_prefixes=3 tmp_bad=0 order_bad=0`。
+
+| 方向 | 结果 |
+| --- | --- |
+| 修后当前树（3 次） | `PASS=17 FAIL=0`，审批 36/36、3 个进程前缀，群面 9/9、9/9、6/9 |
+| 修后脱离门的最小复现（20 轮） | 0/20 丢行（修前同形状 3/20） |
+| HEAD worktree + 新门（全修前） | `PASS=14 FAIL=3`：SW-10 红在 `database is locked` + `rows=12/prefixes=1`，SW-13 点中 3 处旧 tmp 写法，SW-14 点中 4 条开库违规 |
+| HEAD worktree + 只换好 `event_log.js` | SW-10 仍红（`errs:[]` 而 `rows` 少 / anomalies 打红）——证明第 3 件事不是第 1 件的影子 |
+| `NEG_CONTROL=1` | `PASS=8 FAIL=0`，SW-NEG/SW-NEGR 与 `mode=neg` token 都在 |
+
+G-122 在矩阵侧多了两条锚点：数字锚（`xp_rows=36`、`xp_prefixes=3`、`tmp_bad=0`、`order_bad=0` 全部钉死）
+和行为锚（钉 `✓ SW-10/11/13/14` 的 id，不钉子门散文）。同段单独跑：当前树 6 条 ✓；
+把产品代码换回 HEAD 后 4 条 ✗、而片1/片2 的两条锚点仍 ✓ —— 新锚点只对新的这块负责，没有把旧账一起混红。
+回归：`prove_event_log 10/0`、`read_model 10/0`、`dual_write 31/0`、`event_only 7/0`、
+`gp156 9/0`、`gp159 9/0`、`gp162 11/0`、`approve_cli 18/0`、`room_orchestrator 97/0`、
+`gp164 8/0`、`room_context 15/0`（改过 `atomicWrite` 与 `room_orchestrator`，群这几条必须跑）。
+
+### ④ 这把尺子踩的坑（都是「看着绿、其实没测」的形状）
+
+1. 第一版 SW-10 的 `ok()` 里我把「冷启开库失败」和「丢行」混在一条判据上，`errs` 有内容时才红，
+   于是第 3 件事（零报错的静默删行）差点被算成噪声。拆开成 `collide = errs.filter(/ENOENT|rename/)`
+   之后，SW-11 只管 tmp 撞车，SW-10 只管行数。
+2. 双读窗口只有「每个实例的第一条写」那么大 —— 一个进程 × 一个实例 × 12 条 = 1 个窗口，3 进程
+   一轮就 3 个窗口，20 轮中 3 轮，门会**大部分时候假绿**。改成每条换一个
+   `createProductSurface` 实例（缓存就是按实例算的），一轮 36 个窗口，pre-fix 3 轮里红 2 轮。
+3. 我一度把「36 条事件、fold 只剩 24 行」读成 fold 的 bug。真正的证据是事件表里那 12 条
+   `entity_removed` —— 先确认**谁写的**（`actor` 是删人的那家、被删的是别人的 id），再回代码找
+   prev 的第二次阅读。只看 fold 的结果会去改读模型，那就是「用改被测行为换绿」。
+
+### ⑤ 量到、但本片没收的（写在这里，别当已交付）
+
+1. **跨进程的 store 面还是多写者**：审批面按行派事件所以 36/36 精确；`rooms`/`sessions` 一次写换
+   整份文本，谁的快照陈旧谁就把别人刚建的群从自己那次 diff 里漏掉。子门 SW-12 每轮把当天数字打在
+   屏上（本轮实测 9/9、9/9、6/9），**不判绿也不判红**。
+2. `bots.json` / `settings.json` / `routines` 不是事件面，跨进程是 last-writer-wins，tmp 撞车修掉了、
+   丢整份没修。
+3. 同进程里 `product_surface` 仍有两个实例（`main.js` 与 `host_ffi.js` 各一个），各自的
+   `lastTextBySurface` 是第二份 prev 缓存 —— §8.124 ⑤ 那条还欠着。
+4. T1-06 完成定义的「`kill -9` 恢复」这半没动；并发这半今天只收了审批面。
+5. 全量矩阵还没在含 §8.122/§8.123/§8.124/§8.125 四片改动的树上跑过（run14 的那 2 条红另账）。

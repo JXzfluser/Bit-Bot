@@ -5067,7 +5067,7 @@ echo "    KP-03 的尾账（供应商 HTTP 500 时 Host 的 llm_chat 主路径�
 echo "    于是渲染端只能把原文归一化成兜底 unknown_failure）已在 OP-03c 收掉：Host 现在从同一份"
 echo "    failure_codes.js 产出 error_code，实测台账 code=llm_chat_failed 而不是兜底。"
 
-echo "== G-122 事件面的单写者与读写同源（T1-06 第一、二片 · sessions/rooms 面的读写都归面的持有者，KP-09）=="
+echo "== G-122 事件面的单写者与读写同源（T1-06 第一、二、三片 · sessions/rooms 面的读写都归面的持有者 + 多进程写同一张面，KP-09）=="
 # 这把尺子是先中枪才立起来的：EVENT_ONLY 下删 Bot 的级联绕过 store 自己 readJson + atomicWrite
 # sessions.json，而那张面的真源那时已是事件库 —— 实测（临时 dataRoot、真代码路径）
 # sessions_deleted=0、sessions_cascaded=false：Bot 从列表里没了，它的 DM 会话在侧栏和 fold 里
@@ -5077,17 +5077,36 @@ if timeout 300 node scripts/prove_sessions_single_writer.mjs > /tmp/g122-single-
 else
   bad "G-122 会话面单写者翻红（见 /tmp/g122-single-writer.log；$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g122-single-writer.log | tail -1)）"
 fi
-g122_sw=$(grep -o 'SW_METRICS mode=prod pass=[0-9][0-9]* fail=[0-9][0-9]* writers=[0-9][0-9]* store_writers=[0-9][0-9]* readers=[0-9][0-9]*' /tmp/g122-single-writer.log | head -1)
+g122_sw=$(grep -o 'SW_METRICS mode=prod pass=[0-9][0-9]* fail=[0-9][0-9]* writers=[0-9][0-9]* store_writers=[0-9][0-9]* readers=[0-9][0-9]* xp_rows=[0-9][0-9]* xp_prefixes=[0-9][0-9]* xp_store_rooms=[0-9][0-9]* tmp_sites=[0-9][0-9]* tmp_bad=[0-9-][0-9]* order_bad=[0-9-][0-9]*' /tmp/g122-single-writer.log | head -1)
 g122_pass=$(printf '%s' "$g122_sw" | grep -o 'pass=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g122_fail=$(printf '%s' "$g122_sw" | grep -o 'fail=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g122_w=$(printf '%s' "$g122_sw" | grep -o '[^_]writers=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g122_sw2=$(printf '%s' "$g122_sw" | grep -o 'store_writers=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g122_r=$(printf '%s' "$g122_sw" | grep -o 'readers=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
-if [ -n "$g122_sw" ] && [ "$g122_fail" = "0" ] && [ "$g122_pass" -ge 13 ] \
+g122_rows=$(printf '%s' "$g122_sw" | grep -o ' xp_rows=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+g122_pfx=$(printf '%s' "$g122_sw" | grep -o 'xp_prefixes=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+g122_tmpbad=$(printf '%s' "$g122_sw" | grep -o 'tmp_bad=[0-9-][0-9]*' | grep -o '[0-9][0-9]*')
+g122_ordbad=$(printf '%s' "$g122_sw" | grep -o 'order_bad=[0-9-][0-9]*' | grep -o '[0-9][0-9]*')
+if [ -n "$g122_sw" ] && [ "$g122_fail" = "0" ] && [ "$g122_pass" -ge 17 ] \
   && [ "$g122_w" = "$g122_sw2" ] && [ "$g122_w" -le 3 ] && [ "$g122_r" = "0" ]; then
   ok "G-122 锚点：sessions.json 的 $g122_w 处写点全在 store 内（store_writers==writers，棘轮只许降），事件面读旁路 $g122_r 处，SW-01..09 绿满 $g122_pass 项"
 else
   bad "G-122 锚点不成立（token=${g122_sw:-子门没打印}；fail=${g122_fail:-?} writers=${g122_w:-?}/store=${g122_sw2:-?} readers=${g122_r:-?}）"
+fi
+# 片3（多进程写同一张面）的数字锚点：3 个真进程 × 12 条审批必须折回 36 行、3 个进程前缀，
+# 且两把静态尺子在仓库上都是 0 违规（tmp_bad / order_bad）。钉的是度量字段，不是子门散文。
+if [ "$g122_rows" = "36" ] && [ "$g122_pfx" = "3" ] && [ "$g122_tmpbad" = "0" ] && [ "$g122_ordbad" = "0" ]; then
+  ok "G-122 片3 锚点：跨进程审批 $g122_rows/36 行、$g122_pfx 个进程前缀全折回；tmp 命名违规 $g122_tmpbad 处、开库顺序违规 $g122_ordbad 处"
+else
+  bad "G-122 片3 锚点不成立（rows=${g122_rows:-?} 期望 36，prefixes=${g122_pfx:-?} 期望 3，tmp_bad=${g122_tmpbad:-?} order_bad=${g122_ordbad:-?}）"
+fi
+if grep -q "✓ SW-10" /tmp/g122-single-writer.log \
+  && grep -q "✓ SW-11" /tmp/g122-single-writer.log \
+  && grep -q "✓ SW-13" /tmp/g122-single-writer.log \
+  && grep -q "✓ SW-14" /tmp/g122-single-writer.log; then
+  ok "G-122 片3 行为锚点：3 进程冷启同一只新库各自 12 条审批全落库（无 locked、无删除事件）、同一毫秒写 bots.json 无 ENOENT、两把静态尺子都点中了旧写法夹具"
+else
+  bad "G-122 片3 行为锚点缺失（SW-10/11/13/14 有一条没跑绿，见 /tmp/g122-single-writer.log）"
 fi
 # 片2（读写同源）三条锚点：读侧账 + 邮件端到端 + 那条链的前提。钉 id，不钉子门散文。
 if grep -q "✓ SW-06" /tmp/g122-single-writer.log \
@@ -5114,10 +5133,24 @@ echo "    grok_import.js 与 run_moon_turn.js 里的 sessions.json 是读点/迁
 echo "  · G-122 读侧口径（本轮新增）：SW-06 是 path-aware 的 —— 它把 path.join 链按常量展开，"
 echo "    只有 <桌面根>/<面文件名> 才算这张面；data/desktop/voice/sessions.json 是录音面，不算会话面"
 echo "    （按文件名扫的第一版就误判过它一次）。扫描范围 hosts/{desktop,shared,cli_host,mobile_host}/*.js。"
+echo "  · G-122 片3 口径（本轮新增，两条静态尺子）：SW-13 只判「拼 .tmp. 的名字里有没有 process.pid」，"
+echo "    判之前先剥注释——不剥会把「解释旧写法」那行当成旧写法本身（SW-02 第一版踩过同一个坑）；"
+echo "    SW-14 判 event_log.js 开库的四件事（busy_timeout 早于 journal_mode / 迁移 BEGIN IMMEDIATE / "
+echo "    不留 deferred 的 BEGIN / 迁移撞车后重读版本号再认），两条都配了旧写法夹具做反向对照，"
+echo "    夹具不红就说明尺子恒真、当场翻红。"
+echo "  · G-122 片3 修的是三件事：①冷启并发开库（busy_timeout 排在 WAL 之后 + deferred 迁移，"
+echo "    3 进程同开一只新库实测 9 次挂 4 次，改完 9/9）；②atomicWrite 的 tmp 名只带 Date.now()，"
+echo "    同一毫秒两家算出同一个名字，先 rename 的把文件搬走、后一家 ENOENT（修前 3 家挂 2 家）；"
+echo "    ③审批追加的双读 prev：next 由调用方那一刻的 prev 拼出来，落库口又自己读了一遍**更新**的 prev，"
+echo "    于是别人的行落在 prev 有、next 无，diff 派出一串 entity_removed 把它们从唯一真源删掉——"
+echo "    子进程零报错、fold 少 1~6 行（20 轮实测中 3 轮），把 event_log 单独换成修好的版本再跑就把它和①分开了。"
 echo "  · G-122 残账（实测到的）：T1-06 的完成定义还有「并发压测无覆盖、kill -9 恢复正确」两半 —— 这两片只收了"
 echo "    「谁都能读写」这一半；bots/settings/routines 等其余 data/ 直写点还没进 actor；"
 echo "    同一进程里 product_surface 目前仍被 host_ffi 与 main.js 各建一个实例（各自的 lastTextBySurface 是第二份 prev 缓存），"
 echo "    这条本轮实测到、还没收。"
+echo "  · G-122 片3 残账（本轮实测）：跨进程的 **store 面**（rooms/sessions）还是多写者——审批面按行派事件，"
+echo "    所以 3 进程 36/36 精确；store 面一次写换整份文本，谁的 prev 陈旧谁就把别人刚建的群从自己那次 diff 里漏掉，"
+echo "    同一形状实测过 9/9、6/9（子门 SW-12 每轮都把当天的数字打在屏幕上，不判绿也不判红）。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo

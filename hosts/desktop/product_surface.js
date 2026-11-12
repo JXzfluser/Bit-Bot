@@ -111,10 +111,15 @@ function createProductSurface(repoRoot, opts = {}) {
     return JSON.stringify(hit[surface]) === JSON.stringify(baseline);
   }
 
-  /** EVENT_ONLY 的统一落库口：基底（需要时从 BASELINE 导入）+ delta，全程不碰文件。 */
-  function eventOnlyWrite(filePath, def, nextText) {
+  /** EVENT_ONLY 的统一落库口：基底（需要时从 BASELINE 导入）+ delta，全程不碰文件。
+      prevText 由调用方给用时**必须**用它，不能再自己读一遍：next 是从调用方那一刻的
+      prev 拼出来的，这里重读会读到**比 next 更新**的状态——别的进程刚提交的行在 prev
+      里有、在 next 里没有，diff 就派一串 entity_removed 把别人的行从唯一真源里删掉。
+      实测（3 进程 × 12 条审批冷启同一个新库）：20 轮里 3 轮丢 1~6 行，子进程零报错，
+      events 表里多出没人发起过的删除。KP-09 片3。 */
+  function eventOnlyWrite(filePath, def, nextText, prevText) {
     const m = mirror();
-    let prev = lastTextBySurface.get(path.resolve(filePath));
+    let prev = prevText === undefined ? lastTextBySurface.get(path.resolve(filePath)) : prevText;
     if (prev == null) prev = prevTextFor(filePath, def);
     if (prev != null && surfaceEmptyInDb(eventReadModel.readSurfaces(DATA_ROOT), def.surface)) {
       m.commitText(def, null, prev); // 基底导入（与导入脚本同一语义）
@@ -130,7 +135,11 @@ function createProductSurface(repoRoot, opts = {}) {
       return;
     }
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const tmp = filePath + ".tmp." + Date.now();
+    // tmp 名必须**进程内也唯一**（KP-09 片3）：只带 Date.now() 时，同一毫秒里两个
+    // 进程（桌面主进程 + 定时守护 run_turn.js）给同一张面算出同一个 tmp 名，
+    // 先 rename 的那家把文件搬走，后一家 renameSync 就 ENOENT —— 用户那次
+    // 「建 Bot / 建群」整个抛错。实测 3 进程冷启：2/3 挂。
+    const tmp = filePath + ".tmp." + process.pid + "." + Date.now() + "." + Math.random().toString(36).slice(2, 8);
     const m = mirror();
     const token = m.capture(filePath);
     fs.writeFileSync(tmp, data);
@@ -157,7 +166,7 @@ function createProductSurface(repoRoot, opts = {}) {
         prev = hit.ok && !hit.anomalies.length && hit.count > 0 ? canonicalTextFor("approvals", hit) : "";
       }
       const next = (prev || "") + JSON.stringify(entry) + "\n";
-      eventOnlyWrite(filePath, def, next);
+      eventOnlyWrite(filePath, def, next, prev);
       return;
     }
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -2187,7 +2196,7 @@ function createProductSurface(repoRoot, opts = {}) {
     const file = path.join(dir, name);
     try {
       fs.mkdirSync(dir, { recursive: true });
-      const tmp = file + ".tmp." + Date.now();
+      const tmp = file + ".tmp." + process.pid + "." + Date.now() + "." + Math.random().toString(36).slice(2, 8);
       fs.writeFileSync(tmp, markdown, "utf8");
       fs.renameSync(tmp, file);
       return { ok: true, name, path: file, bytes: Buffer.byteLength(markdown, "utf8") };

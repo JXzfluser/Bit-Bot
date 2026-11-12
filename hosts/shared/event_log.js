@@ -91,8 +91,17 @@ function isUniqueViolation(err) {
   return /UNIQUE constraint failed/i.test(String(err && err.message));
 }
 
-function readLogVersion(db) {
+/** 同步等一小会儿（开库重试之间用）。Atomics.wait 是 Node 里唯一不空转的睡法。 */
+function sleepSync(ms) {
   try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(ms) || 0);
+  } catch (_e) {
+    const until = Date.now() + Number(ms);
+    while (Date.now() < until) { /* SharedArrayBuffer 不可用时的兜底：极短自旋 */ }
+  }
+}
+
+function readLogVersion(db) {  try {
     const row = db.prepare("SELECT value FROM meta WHERE key = 'log_version'").get();
     return row ? Number(row.value) : 0;
   } catch (_e) {
@@ -118,14 +127,36 @@ function openEventLog(opts = {}) {
   fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   const db = new DatabaseSync(file);
 
+  // busy_timeout 必须排在 journal_mode **之前**（KP-09 片3，实测）：
+  // 「另一个进程正在建这只库」时，改 WAL 需要拿一次写锁，而 SQLite 的 busy handler
+  // 只对已经设好 busy_timeout 的语句生效 —— 顺序反了就是 SQLITE_BUSY 当场抛，
+  // 调用点连库都没打开。三进程同时冷启一只新库实测 9 次里挂 4 次，
+  // 把这个 PRAGMA 提到最前就是 9/9（脚本 /tmp/cold-open-ab.js 的同一形状）。
+  const busyMs = Number(opts.busyTimeoutMs) > 0 ? Number(opts.busyTimeoutMs) : 5000;
+  db.exec(`PRAGMA busy_timeout = ${busyMs};`);
+
   // WAL：读不阻塞写，崩溃后 -wal 里的已提交事务在下次打开时自动回放。
   // synchronous=NORMAL 是 WAL 下的推荐档：提交不每次 fsync，但崩溃不丢已提交数据。
-  // busy_timeout 必须给：常驻内核（T1-07）与 Host 会在同一库上并发，
-  // 没有它，SQLITE_BUSY 直接抛进调用点。
-  db.exec("PRAGMA journal_mode = WAL;");
+  //
+  // 改 journal_mode 这一步是「冷启并发」里唯一 busy_timeout 接不住的地方：它要拿
+  // 一次写锁，而对端进程正好在建库时返回的是 SQLITE_BUSY（不排队）。busy_timeout
+  // 提前只能把大部分撞车变成排队（实测 3 进程冷启：9 次里挂 4 次 → 挂 1 次），
+  // 剩下的那一次靠有界重试接住 —— 与 machine_presence.js:56 的锁重试同一形状。
+  let lastWalErr = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      db.exec("PRAGMA journal_mode = WAL;");
+      lastWalErr = null;
+      break;
+    } catch (err) {
+      lastWalErr = err;
+      if (!/locked|busy/i.test(String((err && err.message) || err))) break;
+      sleepSync(50 * (attempt + 1));
+    }
+  }
+  if (lastWalErr) throw lastWalErr;
   db.exec("PRAGMA synchronous = NORMAL;");
   db.exec("PRAGMA foreign_keys = ON;");
-  db.exec(`PRAGMA busy_timeout = ${Number(opts.busyTimeoutMs) > 0 ? Number(opts.busyTimeoutMs) : 5000};`);
 
   const journalMode = String(db.prepare("PRAGMA journal_mode").get().journal_mode);
   if (journalMode.toLowerCase() !== "wal") {
@@ -145,7 +176,10 @@ function openEventLog(opts = {}) {
 
   for (const m of MIGRATIONS) {
     if (m.id <= version) continue;
-    db.exec("BEGIN;");
+    // IMMEDIATE 而不是 deferred：deferred 的 BEGIN 只是读事务，等到第一条 CREATE
+    // 才升级为写，而 SQLite 对「升级失败」不走 busy handler —— 直接 SQLITE_BUSY/
+    // 建表撞车。IMMEDIATE 一进门就拿写锁，拿不到就按 busy_timeout 排队。
+    db.exec("BEGIN IMMEDIATE;");
     try {
       db.exec(m.sql);
       db
@@ -166,6 +200,12 @@ function openEventLog(opts = {}) {
       db.exec("COMMIT;");
     } catch (err) {
       try { db.exec("ROLLBACK;"); } catch (_r) { /* 事务已断 */ }
+      /* 冷启并发时，另一只进程可能已经把这版迁移建好并提交了：上面读到的版本号
+         是它提交之前的旧值，于是我们的 CREATE 撞上「表已存在」。这不是损坏 ——
+         重读一次，版本已经到位就当这次迁移是别人做的，继续开库。
+         版本没到位才是真失败，照旧抛（不拿「看起来能用」当成功）。 */
+      const raced = /already exists/i.test(String((err && err.message) || err));
+      if (raced && readLogVersion(db) >= m.id) continue;
       db.close();
       throw new Error(`openEventLog: 迁移 ${m.name} 失败：${err && err.message ? err.message : err}`);
     }

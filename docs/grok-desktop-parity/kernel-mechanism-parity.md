@@ -158,11 +158,18 @@ renderer 只渲染。可感面：输入框回车后**立刻**出现自己那条�
 §8.124 补上**读侧那本账**（SW-06，path-aware：`data/desktop/voice/sessions.json` 是录音面、不算会话面）：
 群面曾有 1 处读旁路（`host_ffi.js` 的 `roomLatestReport()` 自己 `readFileSync(rooms.json)`，
 EVENT_ONLY 下那张面根本不落盘 → 定时任务的邮件正文退回任务原话），现在 `readers=0`。
-还剩：`bots.json` / `settings.json` / `routines` 等面没进 actor；**同一进程里 `product_surface` 仍有两个实例**
+§8.125 把尺子伸出进程外（SW-10..14：真 `spawn` 的 3 个进程写同一只新库），量到并修掉三件事——
+冷启开库并发（`busy_timeout` 排在 WAL 之后 + deferred 迁移，9 次挂 4 次）、`atomicWrite` 的 tmp 名
+只带毫秒（同一毫秒两家同名，先 rename 的后 ENOENT）、审批追加的**双读 prev**（落库口重读一遍比 next
+更新的 prev，于是把**别的进程刚写的行**当删除派出去；子进程零报错，32 轮里中 5 轮丢 1~12 行）。
+还剩：`bots.json` / `settings.json` / `routines` 等面没进 actor；**跨进程的 store 面（rooms/sessions）
+仍是多写者**——一次写换整份文本，谁的快照陈旧谁就把别人刚建的群漏掉，SW-12 每轮把当天数字打在屏上
+（实测 9/9、9/9、6/9），不判绿也不判红；**同一进程里 `product_surface` 仍有两个实例**
 （`main.js:757` 与 `host_ffi.js:201`），各自的 `lastTextBySurface` 是第二份 prev 缓存 —— 这是 §8.123 那笔债的内存版。
-完成定义仍沿用原句「并发压测无覆盖；`kill -9` 恢复正确」。
+完成定义仍沿用原句「并发压测无覆盖；`kill -9` 恢复正确」（并发这半今天只收了审批面）。
 可感面：两个窗口同时改同一个会话标题，**不再互相吞掉**；删掉的 Bot 不会在侧栏留下自己的 DM 会话；
-群里过了稿，定时任务的邮件发的就是那份稿子而不是任务原话。规模 1–2d。
+群里过了稿，定时任务的邮件发的就是那份稿子而不是任务原话；桌面主进程和定时守护同时建 Bot / 提审批，
+**谁的动作都不再整批消失、也不再默默删掉对方那一条**。规模 1–2d。
 
 ### 第三批：扩展层与授权（价值确定，但可以等）
 
