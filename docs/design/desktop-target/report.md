@@ -10464,14 +10464,103 @@ e2e_desktop_optimistic: PASS=14 FAIL=0 SKIP=0   （G-121，新）
 
 ### 5) 实测到的尾账（写清楚来源，不是推测）
 
-- **OP-03 的码是兜底码 `unknown_failure`，不是 `llm_chat_failed`**：供应商 HTTP 500 时
-  `hosts/shared/host_ffi.js` 那一个 `kind:"llm_chat"` 的 return（`:6273` 附近）只回 `error`/`stderr`，
-  不带 `error_code`，Host 侧也没有任何模块 require `failure_codes.js`（只有渲染端和脚本在用它），
+- **OP-03 的码是兜底码 `unknown_failure`，不是 `llm_chat_failed`**：供应商 HTTP 500 走到
+  `hosts/shared/host_ffi.js:6273` 那个 `kind:"llm_chat"` 的 return 时只带 `error`/`stderr`，没有 `error_code`。
+  同一个文件在别的失败线上是会发码的（`:5855`/`:5870` 的 `empty_user_text`、`:5883` 的 `api_key_not_configured`、
+  `:5896`/`:5907` 直接抄 artifact 里的码），所以缺的不是机制而是**上游 HTTP 那一条线没接进机制**；
+  Host 侧也没有任何模块 require `failure_codes.js`（grep 只命中 `turn_latency.js` 注释里的一句提及），
   于是渲染端只能把原文归一化成兜底码。这是 KP-03 的尾账：上游状态线要在 Host 侧映射成码，
-  屏上才数得到 `llm_chat_failed`。已另开任务，G-121 的残账文案里点名。
+  屏上才数得到 `llm_chat_failed`。**这一条已在 §8.116 收口**（Host 侧 `llmFailureCode()` 产码 +
+  回执带 `error_code`，G-121 新增 OP-03c 与矩阵可感面④实测 `code=llm_chat_failed`）；
+  收口过程中还牵出尺子自己的一个洞（producer 面把注释当产出路径），同见 §8.116。
 - `sendRoomTurn`（房间/群聊链）仍走自己的回执形状，未接台账；`expire()` 在渲染端还没人按表调用
   （等 T3-06 断线重连一起定「expired 之后迟到的 durable 要不要改回已送达」）；
   T3-07 的 `checkJs` 需要装 typescript，未获授权，没落。
-- 全量矩阵本轮没重跑（这一片改的都是门禁与渲染端源码，跑矩阵期间不动仓）：**总量待 run11 回填**，
-  在此之前不宣称 FAIL=0。已知增量来源是 G-120 由 42 ✓ 涨到 47 ✓（CC-24/25/26 + N14/N15）
-  与新门 G-121 的 14 ✓ + 矩阵侧 12 条锚点 + 3 条可感面数字核对。
+- 全量矩阵本轮之后重跑过一次（run11，`/tmp/matrix-run11.log`）：**`smoke_grok_desktop_parity: PASS=907 FAIL=7`**。
+  相对 run10（886/7）的 +21 条逐门对得上，且**两条「7」不是同一批红**（这点必须写清，否则数字看着像没变）：
+  - 增量：G-120 由 42 ✓ 涨到 47 ✓（CC-24/25/26 三条 + N14/N15 两条负向对照），新门 G-121 贡献 16 ✓
+    （子门 14 条 + 矩阵侧 2 条可感面数字核对；锚点循环保住 OP-00a/01/01b/01c/02/03/03b/04/05/05b/06 的名字）。
+    5 + 16 = 21，与总量差逐字吻合，没有第三条门被顺手改动。
+  - G-47 由 5 ✓/3 ✗ 回到 8 ✓/0 ✗：run10 那 3 条是 `/tmp/g47-roster.log` 停在 `read ECONNRESET` 的连接抖动
+    （run11 实测 `e2e_android_roster.v2: PASS=18 FAIL=0 SKIP=0`），这条账清了。
+  - **G-33 由 9 ✓ 掉到 7 ✓/2 ✗ —— 这是本片动出来的尺子账，不是外观退化**：`prove_m33_grokchrome.js` 的
+    送达状态那条钉的是 `st.classList.add("read")`，也就是**一个局部变量的名字**。T3-04 把 ✓/✓✓ 的画法
+    收进 `paintSendState`（勾只由台账状态换，不再由 finally 保证）之后变量改名成 `chk`，那条就翻了红，
+    而屏幕上那一串（`textContent = "✓✓"` 紧跟同一个元素的 `classList.add("read")`、`.msg-status .ms-check.read`
+    的 `#22c55e`）一个字没变。尺子改钉「关系」不钉「名字」后实测 `prove_m33_grokchrome: PASS=8 FAIL=0`；
+    非恒真三面自查：原样命中、摘掉 `add("read")` 那句即假、把它挪出配对窗口（>160 字符）也假，
+    原有那条「砍掉 `.read` 颜色规则 → 断言翻假」的负向对照照旧生效。详见 §8.116。
+  - G-53 由 1 条红变成 2 条：run11 里该子门停在 `PASS=28 FAIL=5`（run10 是 68/2），前 4 条红的原文都是
+    `Target page, context or browser has been closed` —— 浏览器在 J2 末（14:50:26 → 14:50:27）整份关掉，
+    J3/J4 与两条语言/provider 旅程是被连带打死的，第二条「journeys anchors missing」是同一件事的下游。
+    这属于本轮实测到的门自身现场，单门复跑结果记在 §8.116，不混进这一片的绿。
+  - 其余 3 条红（G-40 负向对照、G-46 R-02/R-03 测已不存在的设计、G-64 旧 turn smoke 的 Terminated 尾音）
+    run8/run9/run10 就在，属 §8.112 记过的老账。
+
+## 8.116 KP-03 尾账收口：上游 HTTP 那一条线的码改由 Host 产出，以及尺子为此补的两刀（2026-11-12）
+
+### 1) 这一片交付什么
+
+- **Host 侧产码**：`hosts/shared/host_ffi.js` 新增 `llmFailureCode(ok, errText)`，并在
+  `kind:"llm_chat"` 那条回执（供应商 HTTP 失败线）里补 `error_code` 字段。它 require 的是
+  **同一份** `hosts/desktop/failure_codes.js`（三层 require 兜路径），所以 Host 产的码、
+  桌面显示的码、手机契约里的码仍然是一张表；原文照旧留着（可审计），屏上那一行读的是码。
+- **认不出不落兜底**：`normalizeFailure` 判不出具体码时，这条线给 `llm_chat_failed`
+  ——「这是一次 llm_chat 失败」是已知事实，不是猜出来的。于是 `unknown_failure` 在发送面上
+  只剩一个来源：上游原文真的认不出（docs/events.md §5.5 规则 3）。
+- **链路已逐字核过**（不是推测）：回执 `error_code` → `agent_loop_product_wire.js:644` 存进
+  `state.llmErrorCode` → `run_moon_turn.js:511-512` 在 `ok=false` 那段写回 `parsed.error_code`
+  → 渲染层 `index.html:11263-11267` 的成功/失败两路 `settleSend` 都带 `error_code` 进台账。
+
+### 2) 实测值：同一条线，改前改后各一次
+
+| 量 | 改前（run11 / §8.115 记的账） | 改后（本片实测） |
+|---|---|---|
+| 台账里的码 | `unknown_failure`（渲染端归一化出来的兜底） | `llm_chat_failed`（Host 回执带的） |
+| 屏上那一行 | 「发送失败（unknown_failure）…」 | 「发送失败：模型或服务返回失败（llm_chat_failed），重试一次」 |
+| G-121 子门 | `PASS=14 FAIL=0 SKIP=0` | `PASS=15 FAIL=0 SKIP=0`（新增 OP-03c） |
+| G-116 真渲染 | `PASS=6 FAIL=0` | `PASS=6 FAIL=0`（未退化） |
+| G-116 静态码表 | `prove_failure_codes: PASS=9 FAIL=0` | `PASS=11 FAIL=0`（+T2b +N4） |
+| G-120 静态 | `PASS=44 FAIL=0` | `PASS=44 FAIL=0` |
+| KP-04 计时 | `PASS=11 FAIL=0` | `PASS=11 FAIL=0` |
+
+乐观上屏那两句仍然成立（同一次跑里量的）：点发送 → 该行出现 **53ms**，出现 → 进入终态 **1806ms**
+（stub 首字延迟 1600ms）；OP-04/05/06 未受本次改动影响。
+
+### 3) 尺子补的两刀（都是本片自己踩出来的洞）
+
+- **G-121 加 OP-03c**：判据 `hostFailureCode(码, 屏上那行话, 闭集)` 要求 ① 台账非空码、
+  ② 在闭集里、③ **不是** `unknown_failure`、④ 屏上括号里的码与台账同一个。
+  门内自证把两种「Host 没发码」的假形状（兜底码 / 空码）喂给同一条判据，实测 **2/2 判假**。
+  矩阵侧新增「可感面④」，闭集项数从 `failure_codes.js` 现算，**不写死 34**。
+- **`prove_failure_codes.js` 补 T2b / N4**：本片接线时在 Host 加了句注释，注释里写着
+  `api_key_not_configured → provider_unconfigured` —— 于是 T2 的 producer 面**靠一句散文**
+  把这个码算成「有产出路径」，N1（抹掉真产出串）当场空转：`PASS=8 FAIL=1`。
+  修的是尺子不是产品：T2 现在对「带整行注释」和「剥掉整行注释」两份 blob 各算一次覆盖，
+  差集必须为空（实测剥前剥后都是 34/34，没有任何码只活在注释里），N4 再拿「只剩注释」这个
+  假形状钉住 T2b 本身不是装饰。改完 `prove_failure_codes: PASS=11 FAIL=0`，N1 照旧翻假得住。
+  这和 §8.115 那条 M33 的账是同一类：**尺子不能钉名字、不能钉散文，只能钉关系与代码**。
+
+### 4) run11 那两条挂着要复跑的账
+
+- **G-33**：钉变量名的那条锚点已改成钉「`textContent = "✓✓"` 之后 160 字符内对同一元素加
+  green `read`」这对关系，实测 `prove_m33_grokchrome: PASS=8 FAIL=0`；三面非恒真自查
+  （原样命中 / 摘掉 `add("read")` 即假 / 挪出配对窗口即假）+ 原有的颜色规则负向对照都过。
+- **G-53（真 app 用户旅程）**：单门复跑回到 `PASS=68 FAIL=2 SKIP=0`，与 run10 同一批；
+  run11 的 `PASS=28 FAIL=5` 是浏览器在 J2 末整份关闭后的连带打死，不是新的产品退化。
+  剩下的 2 条红本片未修，逐字与 run10 相同：① 群里问「这个群有哪些成员？」没有回复；
+  ② zh-TW 界面仍显示 General / Computer / Usage / Updates 四个英文页签名（已排除
+  `SETTINGS_TAB_ANCHORS` —— 该常量声明后从未被引用，来源仍未定位）。
+
+### 5) 这一片动了什么、没动什么
+
+- 动：`hosts/shared/host_ffi.js`（+36 行：require 码表 + `llmFailureCode` + 回执补 `error_code`）、
+  `scripts/e2e_desktop_optimistic.mjs`（OP-03c + 判据 + 自证）、`scripts/prove_failure_codes.js`
+  （T2b / N4 / producer 面剥散文）、`scripts/smoke_grok_desktop_parity.sh`（G-116 锚点表加 T2b/N4，
+  G-121 锚点表加 OP-03c、新增可感面④、残账文案改口）、`docs/events.md` §5.5、本报告。
+- 没动：产品界面与渲染逻辑一行没改（改前改后屏上文案的差别只来自 Host 带的码）；
+  `sendRoomTurn`（房间/群聊链）仍未接台账；`expire()` 仍无人按表调用（T3-06，任务 #60）；
+  T3-07 `checkJs` 仍待 typescript 安装授权（任务 #56）；取消那一路的台账终态仍未被量过（任务 #64）。
+- 矩阵总数本片**未重跑**：`bash -n` 已过，增量口径是 G-116 静态 +2（T2b/N4）、G-121 真 app +2
+  （OP-03c 锚点 + 可感面④），run12 复跑后按门逐条回填。
+

@@ -8,12 +8,14 @@
  *   T1 唯一码表是 dual-load：Host require()、渲染层 <script src>，同一份。
  *   T2 穷举：每个 canonical code 都有**真实产出路径**（在 producer 文件里能 grep 到
  *      该码或其别名/前缀）。unknown_failure 例外——它由归一化兜底产生，由 T4 证明。
+ *   T2b 穷举的口径是代码：剥掉整行注释后覆盖不变，没有任何码只活在注释里。
  *   T3 收编：现有散装串确实收敛到 canonical（api_key_not_configured→provider_unconfigured…）。
  *   T4 反向对照：认不出的串落 unknown_failure 且**不抛错**（null/undefined/{}/number/怪串）。
  *   T5 接线：Host 带 error_code 到流/回执、私聊面按码渲染、approve.js --last-failure、打包。
  *
  * 负向对照（证明以上判据不是恒真）：
  *   N1 抹掉 provider_unconfigured 的产出串 → 它的 T2 穷举必须翻假。
+ *   N4 抹掉代码产出、只在注释里提这个码 → T2b 必须翻假（散文不算产出）。
  *   N2 把兜底改成「原样当码」→ T4 必须翻假（未知串不再落 unknown_failure）。
  *   N3 让归一化对怪串抛错 → T4 的「不崩溃」必须翻假。
  */
@@ -48,7 +50,16 @@ const mod = require(path.join(REPO, SRC_PATH));
 /* producer 面：KP-03 关心的发送/群回合失败都产在这些文件里。
  * 关键：不并入模块自身——模块声明了每个码，若拿它当 producer 会让穷举恒真。
  * provider_unconfigured 这类收敛名只存在于模块/UI，其产出靠 alias（api_key_not_configured）。 */
-const PRODUCER_BLOB = [HOST_FFI, RUN_MOON, WIRE, DISPATCH, RUNTIME, SURFACE, MAIN, ORCH].join("\n");
+const PRODUCER_FILES = [HOST_FFI, RUN_MOON, WIRE, DISPATCH, RUNTIME, SURFACE, MAIN, ORCH];
+/** 剥掉整行注释：注释里写一句「api_key_not_configured → provider_unconfigured」不是一条产出路径。
+ *  T2 的口径是「代码里真在产这个串」，散文不能替它凑数 —— 本会话里 KP-03 尾账接线时，
+ *  Host 新增注释恰好把 provider_unconfigured 这个名字带进 producer 面，N1 抹掉真产出串后
+ *  T2 仍说全覆盖，就是这个口径漏的。 */
+const stripProse = (src) => String(src).split("\n").filter((l) => {
+  const t = l.trim();
+  return !(t.startsWith("//") || t.startsWith("/*") || t.startsWith("*"));
+}).join("\n");
+const PRODUCER_BLOB = PRODUCER_FILES.map(stripProse).join("\n");
 
 /** 一个 code 的所有可 grep token：码本身 + 映射到它的精确别名 + 前缀别名。 */
 function tokensFor(code) {
@@ -64,6 +75,14 @@ function codesMissingProducer(blob) {
     if (c === "unknown_failure") return false; // 兜底码，产出路径是 normalize 本身（T4 证明）
     return !tokensFor(c).some((t) => blob.includes(t));
   });
+}
+
+/** 「只在注释里被提到」的码：对同一组文件，比带注释 / 剥掉注释两份 blob 的缺产清单。
+ *  剥注释后多出来的那些码 = 它们的产出路径其实是一句散文。 */
+function proseOnlyCodes(files) {
+  const withProse = codesMissingProducer(files.join("\n"));
+  const codeOnly = codesMissingProducer(files.map(stripProse).join("\n"));
+  return codeOnly.filter((c) => withProse.indexOf(c) < 0);
 }
 
 /** 临时加载一份模块（负向对照用），跑完删掉。 */
@@ -92,6 +111,15 @@ function loadFrom(src) {
   missing.length === 0
     ? ok("T2 穷举：" + covered + "/" + mod.CODES.length + " 个码都能在 producer 文件里找到产出串（unknown_failure 由归一化兜底）")
     : bad("T2 穷举：" + missing.length + " 个码没有任何产出路径", missing.join(", "));
+}
+
+{
+  // T2b：产出路径必须是代码，不能只是注释 —— 逐字比同一组文件的带注释/剥注释两份 blob。
+  const proseOnly = proseOnlyCodes(PRODUCER_FILES);
+  const codeCov = mod.CODES.length - codesMissingProducer(PRODUCER_BLOB).length;
+  proseOnly.length === 0
+    ? ok("T2b 穷举的口径是代码：剥掉整行注释后覆盖不变（" + codeCov + "/" + mod.CODES.length + "），没有任何码只活在注释里")
+    : bad("T2b 有码只被注释提到，代码里并不产", proseOnly.join(", "));
 }
 
 {
@@ -182,5 +210,15 @@ function loadFrom(src) {
     : bad("N3 负向对照失效：注入的抛错没有被 normalizeFailure({}) 触发");
 }
 
-console.log("\nprove_failure_codes: PASS=" + pass + " FAIL=" + fail);
-process.exit(fail ? 1 : 0);
+{
+  // N4 假形状：把 provider_unconfigured 的代码产出全抹掉，只留一行注释提到它 → T2b 必须翻假。
+  // 这正是本会话接线 KP-03 尾账时踩到的形状（Host 注释里写了码名，N1 因此失效）。
+  const filesFake = PRODUCER_FILES.map((s) => String(s).replace(/api_key_not_configured|provider_unconfigured/g, "__removed__"));
+  filesFake[0] += "\n// 注释里提一句 provider_unconfigured 不算产出路径\n";
+  const flagged = proseOnlyCodes(filesFake);
+  flagged.includes("provider_unconfigured")
+    ? ok("N4 负向对照：抹掉代码产出、只剩注释提到 provider_unconfigured → T2b 判它「活在散文里」（这条不是装饰）")
+    : bad("N4 负向对照恒真：只剩注释时 T2b 没抓到", JSON.stringify(flagged));
+}
+
+console.log("\nprove_failure_codes: PASS=" + pass + " FAIL=" + fail);process.exit(fail ? 1 : 0);

@@ -149,6 +149,23 @@ function optimisticPaint(a, leadMs) {
   if (!(leadMs > 0)) return "进入终态不比出现晚（leadMs=" + leadMs + "）";
   return "";
 }
+/** KP-03 尾账（OP-03c）：码得是 Host 回执里带来的，不是渲染端拿上游原文猜出来的。
+ *  「Host 没发码」有两种长相：台账里没有码（屏上那个是归一化现读的），或码落进兜底
+ *   unknown_failure（说明那条上游串没被收编）。两种都算不过。 */
+function hostFailureCode(code, note, codes) {
+  const list = codes || [];
+  if (!code) return "台账里没有码，屏上那个是渲染端从原文归一化出来的（Host 没发码）";
+  if (list.indexOf(code) < 0) return "台账 code=" + code + " 不在 KP-03 闭集里";
+  if (code === "unknown_failure") return "台账 code=unknown_failure，Host 落进兜底，那条上游串没被收编";
+  const found = [];
+  const re = /（([a-z0-9_]+)）/g;
+  let m;
+  while ((m = re.exec(String(note || "")))) found.push(m[1]);
+  const canonical = found.filter((c) => list.indexOf(c) >= 0);
+  if (!canonical.length) return "屏上那行话没带闭集里的码：" + JSON.stringify(String(note || "").slice(0, 60));
+  if (canonical.some((c) => c !== code)) return "屏上码 " + canonical.join(",") + " ≠ 台账码 " + code + "（两个来源不同源）";
+  return "";
+}
 
 /** 页内观察器：记每一行本页发出过的用户消息「出现时」和「现在」的状态。 */
 const INSTRUMENT = () => {
@@ -360,6 +377,25 @@ async function pass(tag, adopt) {
         bad("OP-03 拒绝面不成立", JSON.stringify({ state: t2.ledger.state, code: t2.ledger.code, red, note: t2.final.note, found }));
     }
 
+    /* OP-03c KP-03 尾账：上游 500 的码要由 Host 产出，不能让渲染端拿原文猜出兜底码 */
+    {
+      const ledCode = t2 && t2.ledger ? t2.ledger.code : "";
+      const noteText = t2 && t2.final ? t2.final.note : "";
+      const why = hostFailureCode(ledCode, noteText, A.codes);
+      /* 自证：两种「Host 没发码」的假形状必须都被这判据判假，否则这条是恒真。 */
+      const passed = [
+        { code: "unknown_failure", note: "发送失败（unknown_failure）" },
+        { code: "", note: "发送失败：上游 HTTP 500，没有码" },
+      ].filter((f) => !hostFailureCode(f.code, f.note, A.codes));
+      if (!t2 || !t2.ledger || !t2.final) bad("OP-03c Host 侧把上游 HTTP 失败映射成闭集里的码（不再落兜底）", "缺前置数据（OP-03 那一趟没跑成）");
+      else if (why) bad("OP-03c 上游失败的码不是 Host 产出的", why + " · 台账 code=" + JSON.stringify(ledCode));
+      else if (passed.length) bad("OP-03c 的判据是空的", passed.length + "/2 个「Host 没发码」的假形状被放过：" + passed.map((f) => f.code || "（空码）").join("、"));
+      else
+        ok("OP-03c Host 侧把上游 HTTP 失败映射成闭集里的码（不再落兜底）",
+          "台账 code=" + ledCode + "（Host 回执带的）；屏上那行话：" + noteText.slice(0, 60) +
+          "；判据自证：把码换成兜底 / 换成空串，2/2 都给判假");
+    }
+
     /* OP-03b 同屏两个结局互不污染 */
     if (!t1 || !t1.final || !t2 || !t2.final) bad("OP-03b 同一屏上「已送达」不因后一条被拒而翻红", "缺前置数据");
     else {
@@ -423,7 +459,7 @@ async function pass(tag, adopt) {
       "OP-01 的「立刻」不是对着 stub 的配置常量说的，是页内同一时钟量出的两个时刻之差：" +
       "点发送 → 该行出现 " + (t1 && t1.appear ? t1.appear.appearMs + "ms" : "未测到") + "，该行出现 → 进入终态 " + (t1 && t1.leadMs ? t1.leadMs + "ms" : "未测到") + "（出现必须早于回执）；" +
       "OP-02 的三方相等是「界面上那条 == 台账那条 == 库里那行」，不是「末尾第 n 条」；" +
-      "OP-03 的码要在 failure_codes.js 的闭集里数到才算；OP-05 为真 app 负向对照（关掉采纳必须翻红，且开关两趟答案不同）。" +
+      "OP-03 的码要在 failure_codes.js 的闭集里数到才算；OP-03c 进一步要求那个码是 Host 回执带来的（不是渲染端归一化，也不能落 unknown_failure 兜底），且屏上与台账同源；OP-05 为真 app 负向对照（关掉采纳必须翻红，且开关两趟答案不同）。" +
       "两趟启动、共 3 个回合全部真发真落库（写进临时根的 data/desktop，不碰用户数据），不是把界面 mock 成期望形状。");
   } catch (e) {
     bad("门自身异常", (e && e.stack ? String(e.stack).slice(0, 400) : String(e)));

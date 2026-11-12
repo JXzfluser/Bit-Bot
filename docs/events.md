@@ -257,10 +257,21 @@ token 增量既大又无长期价值（评审 §8-5「不持久化 token 增量�
 「发送失败：未配置模型（`provider_unconfigured`），去设置 > 模型」而非一行 `invalid JSON from MoonBit`。
 **终端可证**：`node scripts/approve.js --last-failure` 打印同一码。
 
+**上游失败线的码由 Host 产出**（不是渲染端拿原文猜）：`hosts/shared/host_ffi.js` 的
+`llmFailureCode(ok, errText)` 用同一份表归一化 `kind:"llm_chat"` 回执的错误原文，认得出的串
+照表给码（`cancelled`、`api_key_not_configured`→`provider_unconfigured`…），认不出时按
+「这一条确实是 llm_chat 失败」这一已知事实给 `llm_chat_failed`，**不落 `unknown_failure` 兜底**，
+并把结果写进回执的 `error_code` 字段。于是 `unknown_failure` 只剩一个来源：上游原文之外
+真的认不出（规则 3），而不是「Host 忘了带码」。可感面对账：stub 只对带标记那条回 500，
+屏上是「发送失败：模型或服务返回失败（`llm_chat_failed`），重试一次」，台账里
+`state=rejected code=llm_chat_failed`（G-121 的 OP-03c 钉住「码在闭集里、不是兜底、屏上与台账同源」）。
+
 **验收门**：`scripts/prove_failure_codes.js`（码表穷举 T2「每个码至少一条产出路径」+
-收编 T3 + 反向对照 T4/N1/N2/N3 + dual-load T1 + 接线闭环 T6）；界面渲染由真 Electron 门
+T2b「产出路径必须是代码，剥掉整行注释后覆盖不变」+
+收编 T3 + 反向对照 T4/N1/N2/N3/N4 + dual-load T1 + 接线闭环 T6）；界面渲染由真 Electron 门
 `scripts/e2e_desktop_failure_code.mjs`（`BITBOT_MOBILE_HOST=1` 走真实「本机不持有 key」分支）；
-三层一起挂矩阵 **G-116**。
+真 app 的拒绝线（Host 带码 → 台账 → 屏上红行）由 `scripts/e2e_desktop_optimistic.mjs` 的 OP-03/OP-03c
+钉；三层一起挂矩阵 **G-116**，端到端那一层在 **G-121**。
 
 ### 5.6 回合计时（KP-04：把延迟从「待测」变成有基线）
 

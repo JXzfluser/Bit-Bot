@@ -4602,7 +4602,7 @@ if timeout 120 node scripts/prove_failure_codes.js > /tmp/g116-static.log 2>&1; 
 else
   bad "G-116 静态码表（见 /tmp/g116-static.log；$(grep 'prove_failure_codes: PASS=' /tmp/g116-static.log)）"
 fi
-for g116_t in "T1 " "T2 " "T3 " "T4 " "T5 " "T6 " "N1 " "N2 " "N3 "; do
+for g116_t in "T1 " "T2 " "T2b " "T3 " "T4 " "T5 " "T6 " "N1 " "N2 " "N3 " "N4 "; do
   if grep -q "✓ $g116_t" /tmp/g116-static.log; then ok "G-116 静态锚点：$g116_t"; else bad "G-116 静态锚点没跑绿：$g116_t"; fi
 done
 # ② 终端可证：approve.js --last-failure 读临时根里的失败 artifact，打 canonical 码。
@@ -4647,8 +4647,9 @@ echo "  · G-116 为什么长出来：对标 Grok 失败按类型处理。此前
 echo "    私聊发送失败屏上一行「invalid JSON from MoonBit」（kernel-mechanism-parity §4 KP-03）。"
 echo "    现在 Host→UI→手机共用 hosts/desktop/failure_codes.js 一份表；词表写进 docs/events.md §5.5。"
 echo "  · G-116 判据：静态 T1 dual-load、T2 穷举（34 码每个都有产出路径，unknown_failure 由兜底产生）、"
-echo "    T3 收编（api_key_not_configured→provider_unconfigured 等 9 条）、T4 反向对照（怪串/null/{}/数字"
-echo "    一律 unknown 且不抛）、T5 label 齐、T6 接线闭环；N1/N2/N3 三条源码负向对照。终端 approve.js"
+echo "    T2b 穷举口径是代码不是散文（剥掉整行注释后覆盖不变）、T3 收编（api_key_not_configured→provider_unconfigured 等 9 条）、T4 反向对照（怪串/null/{}/数字"
+echo "    一律 unknown 且不抛）、T5 label 齐、T6 接线闭环；N1/N2/N3 三条源码负向对照，N4 把产出抹到只剩注释"
+echo "    → T2b 必须翻假（本会话 KP-03 尾账接线时，Host 新注释里的码名曾让 N1 空转，这条就是补那个洞）。终端 approve.js"
 echo "    --last-failure 打同一码 + 垃圾串落 unknown（证码非写死）。真渲染 P2 key_configured=false、"
 echo "    P4 屏上出现带 provider_unconfigured 的失败、P5 文案三要素齐、P6 裸自由文本不再泄漏。三层各管一段。"
 
@@ -4886,7 +4887,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   else
     bad "G-121 真 app（见 /tmp/g121-e2e.log；$(grep 'e2e_desktop_optimistic: PASS=' /tmp/g121-e2e.log)）"
   fi
-  for g121_e in "S1 " "OP-00a " "OP-01 " "OP-01b " "OP-01c " "OP-02 " "OP-03 " "OP-03b " "OP-04 " "OP-05 " "OP-05b " "OP-06 "; do
+  for g121_e in "S1 " "OP-00a " "OP-01 " "OP-01b " "OP-01c " "OP-02 " "OP-03 " "OP-03c " "OP-03b " "OP-04 " "OP-05 " "OP-05b " "OP-06 "; do
     if grep -q "✓ $g121_e" /tmp/g121-e2e.log; then ok "G-121 真 app 锚点：$g121_e"; else bad "G-121 真 app 锚点没跑绿：$g121_e"; fi
   done
   # 三句可感面各钉一条「实测数字必须在」的判据，防止锚点行在、量到的却是 0 行/空集
@@ -4906,6 +4907,16 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
     ok "G-121 可感面③：拒绝那行旁边的小字带的码在 KP-03 闭集里，且页面的闭集与 failure_codes.js 同为 ${g121_ncode} 项（不是自由文本）"
   else
     bad "G-121 可感面③没成立：拒绝的提示里没有闭集内的 KP-03 码，或页面闭集项数不等于源文件（源文件 ${g121_ncode} 项，见 OP-03 那行实测值）"
+  fi
+  # KP-03 尾账：那个码得是 Host 回执带来的，不是渲染端拿上游原文归一化出来的兜底。
+  # 不写死 llm_chat_failed：项数与成员都在运行时从 failure_codes.js 现算，闭集改了门跟着改。
+  g121_hcode=$(grep '✓ OP-03c' /tmp/g121-e2e.log | sed -n 's/.*台账 code=\([a-z_0-9]*\).*/\1/p' | head -1)
+  if [ -n "$g121_hcode" ] && [ "$g121_hcode" != "unknown_failure" ] \
+     && node -e 'var c=require("./hosts/desktop/failure_codes.js").CODES;var k=process.argv[1];process.exit(k!=="unknown_failure"&&c.indexOf(k)>=0?0:1)' "$g121_hcode" 2>/dev/null \
+     && grep -q '✓ OP-03c .*判据自证：把码换成兜底 / 换成空串，2/2 都给判假' /tmp/g121-e2e.log; then
+    ok "G-121 可感面④：拒绝那一行的码 ${g121_hcode} 由 Host 回执带来（在 failure_codes.js 的 ${g121_ncode} 项闭集里、不是兜底 unknown_failure），且 OP-03c 的判据对 2 个「Host 没发码」的假形状各判一次假"
+  else
+    bad "G-121 可感面④没成立：OP-03c 没跑绿，或 Host 回来的码不在闭集里/仍是兜底（说明渲染端还在猜原文），或那条判据的自证没数到 2/2"
   fi
 else
   echo "  · skip：缺 playwright-core 或 electron，G-121 真 app 那层没跑（SKIP ≠ PASS；判据本身在 G-120 的 CC-17/24/25/26）"
@@ -4927,11 +4938,11 @@ echo "    开/关两趟给出不同答案（durable / unmatched），否则这�
 echo "    在同一趟会算成「已送达」，门把这个错误取值也一并打出来。OP-01b/OP-01c 管「立刻」这一条判据自己："
 echo "    b 把同一条判据也压在关掉采纳那一趟上（两条独立分支都要成立，谁把画那一行挪进回执处理就一起翻红），"
 echo "    c 把「等回执才画 + ✓✓」和「没有 cm- 身份」两种假形状喂给判据本身，它必须给假 —— 否则那条锚点是恒真的。"
-echo "  · G-121 已知残账（实测到的，不是推测）：OP-03 的码是 unknown_failure —— 供应商 HTTP 500 时 Host 的"
-echo "    llm_chat 主路径（hosts/shared/host_ffi.js 那一个 return）只回 error/stderr，不带 error_code，"
-echo "    于是渲染端只能把原文归一化成兜底码；KP-03 的 llm_chat_failed 要在 Host 侧把上游状态线映射成码之后才数得到，"
-echo "    这是 KP-03 的尾账（另开任务），不是本门的绿掩盖的东西。房间/群聊链 sendRoomTurn 未接台账、"
+echo "  · G-121 已知残账（实测到的，不是推测）：房间/群聊链 sendRoomTurn 未接台账、"
 echo "    expire() 无人按表调用（T3-06）、T3-07 checkJs 未授权 —— 同 G-120 残账，逐条可查。"
+echo "    KP-03 的尾账（供应商 HTTP 500 时 Host 的 llm_chat 主路径只回 error/stderr、不带 error_code，"
+echo "    于是渲染端只能把原文归一化成兜底 unknown_failure）已在 OP-03c 收掉：Host 现在从同一份"
+echo "    failure_codes.js 产出 error_code，实测台账 code=llm_chat_failed 而不是兜底。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo

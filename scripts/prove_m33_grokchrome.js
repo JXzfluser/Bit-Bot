@@ -75,8 +75,11 @@ if (/<div id="account-bar">/.test(html)
 if (/className = "msg-status"/.test(html)
   && /ms-check/.test(html)
   && /\.msg-status \.ms-check\.read \{[^}]*color:\s*#22c55e/.test(html)
-  && /textContent = "✓✓"/.test(html)
-  && /st\.classList\.add\("read"\)/.test(html)) {
+  /* 这条以前钉的是 `st.classList.add("read")` —— 一个局部变量的名字。
+     T3-04 把送达标记搬进 paintSendState（勾只由台账状态画，不再由 finally 保证）之后，
+     变量改名就翻红，可屏幕上那一串并没有变。现在钉的是「✓✓ 之后紧跟着给同一个元素
+     加 green read」这对关系，不认变量名；砍掉 .read 的颜色规则仍会把这条判假。 */
+  && /textContent = "✓✓"[\s\S]{0,160}\.classList\.add\("read"\)/.test(html)) {
   ok("用户气泡右下角送达状态：存储 → ✓、回合收尾 → ✓✓ 绿色");
 } else {
   bad("delivery status", "✓/✓✓ affordance missing");

@@ -39,6 +39,39 @@ if (!_secretProtocol) {
   catch { /* 诊断通道本身坏了就算了,不能因此拦住主流程 */ }
 }
 
+/* KP-03 的码表和渲染层是同一份文件（那份文件的头部纪律：两份副本会让界面看着对、
+   Host 发的其实是别的东西）。三路查找照上面的 secret_protocol：开发态在
+   hosts/desktop/，打包态在应用根目录。码表不在场时 llmFailureCode 仍然发得出
+   llm_chat_failed —— 那个事实来自「这条 return 的 kind 就是 llm_chat 且 ok=false」，
+   不依赖码表。 */
+let _failureCodes = null;
+try { _failureCodes = require("../desktop/failure_codes.js"); }
+catch {
+  try { _failureCodes = require("../../hosts/desktop/failure_codes.js"); }
+  catch {
+    try { _failureCodes = require("../failure_codes.js"); }
+    catch { _failureCodes = null; }
+  }
+}
+
+/**
+ * 一次模型调用失败 → 界面数得到的码。KP-03 尾账：这条线以前只回原文，渲染端
+ * 归一化后只剩兜底码 unknown_failure，屏上永远看不见「模型调用失败」。
+ * @param {boolean} ok @param {string} errText
+ * @returns {string} 成功时为空串
+ */
+function llmFailureCode(ok, errText) {
+  if (ok) return "";
+  const s = String(errText || "");
+  if (_failureCodes) {
+    const code = _failureCodes.normalizeFailure({ error: s }).code;
+    // 码表认得出的串（cancelled / api_key_not_configured → provider_unconfigured …）照它说；
+    // 认不出时不许落兜底码 —— 「这是 llm_chat 失败」是已知事实，不是猜出来的。
+    if (code && code !== "unknown_failure") return code;
+  }
+  return "llm_chat_failed";
+}
+
 /** 模式级 + 环境值级双重脱敏。 */
 function scrubTokenShapes(text) {
   let out = String(text == null ? "" : text);
@@ -6276,6 +6309,9 @@ function createHostFfi(repoRoot, opts = {}) {
       stdout: ok ? safeText : "",
       stderr: ok ? "" : safeError,
       error: safeError,
+      // KP-03：失败线的码在这里产，不在界面上猜原文。原文照旧留着（可审计），
+      // 但屏上那一行读的是这个码。
+      error_code: llmFailureCode(ok, safeError),
       artifact_path: artifactPath,
       provider_id: cfg.provider_id,
       model: cfg.model,
