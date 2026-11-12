@@ -11341,12 +11341,20 @@
         // GP-14: after the Host stored the rows, attach their durable ids so
         // Reply on this message points at a real message (survives reload).
         const storedIds = (r && r.stored_ids) || null;
+        /* 两轴分开（KP-08 尾账 #64）：「用户按了停止」改的是这一轮的结局，不是
+           这条消息有没有落库。以前这里把 r.ok 一根轴同时当两件事用 —— 一停就把已经
+           存进会话的那行画成红色「发送失败」，而库里明明有它，刷新后又变成正常的一行。
+           所以取消时送达那侧只看落库证据；真没落库才回 rejected，且带 cancelled 码，
+           屏上说的是「已取消」，不是让界面去猜。 */
+        const cancelledTurn =
+          !!(r && r.cancelled === true) || String((r && r.error_code) || "") === "cancelled";
         if (sendLedger && sendCmd) {
+          const delivered = !!(r && r.echo_entry_id) || !!(storedIds && storedIds.user);
           settleSend({
-            ok: !(r && r.ok === false),
+            ok: cancelledTurn ? delivered : !(r && r.ok === false),
             echo_entry_id: r ? r.echo_entry_id : "",
             stored_user_id: storedIds ? storedIds.user : "",
-            error_code: r ? r.error_code : "",
+            error_code: (r && r.error_code) || (cancelledTurn ? "cancelled" : ""),
             error: r ? r.error : "",
           });
         } else if (storedIds && userEl && storedIds.user) {
@@ -11391,6 +11399,10 @@
         } else if (r && r.error) {
           addMsg("assistant", "error: " + r.error);
         }
+        /* 另一根轴落到屏上：这一轮是被用户停下来的。文案用现成码表（cancelled →
+           「已取消」，三个语言包都有），不再让「回合结束」和「答完了」共用同一个形状。
+           这条只活在本次回合的界面上 —— 它不是模型说的话，也不落库，所以不挂 speaker。 */
+        if (cancelledTurn) addMsg("assistant", wavegT("failCancelled"));
         if (r && Array.isArray(r.effects)) renderEffects(r.effects);
         if (r && r.channel_delivery) {
           const delMeta = document.getElementById("delivery-meta");

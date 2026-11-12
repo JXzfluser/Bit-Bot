@@ -4495,7 +4495,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g114_xvfb=(xvfb-run -a)
   fi
-  if timeout 300 ${g114_xvfb[@]+"${g114_xvfb[@]}"} node scripts/e2e_desktop_turn_cancel.mjs > /tmp/g114-e2e.log 2>&1; then
+  if timeout 420 ${g114_xvfb[@]+"${g114_xvfb[@]}"} node scripts/e2e_desktop_turn_cancel.mjs > /tmp/g114-e2e.log 2>&1; then
     ok "G-114 真渲染 e2e_desktop_turn_cancel（$(grep 'e2e_desktop_turn_cancel: PASS=' /tmp/g114-e2e.log)）"
   else
     bad "G-114 真渲染（见 /tmp/g114-e2e.log；$(grep 'e2e_desktop_turn_cancel: PASS=' /tmp/g114-e2e.log)）"
@@ -4503,6 +4503,22 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   for g114_e in "停止按钮显形且有真实尺寸" "顶掉了麦克风的位置" "按下停止后回合结算" "没有在执行的回合"; do
     if grep -q "$g114_e" /tmp/g114-e2e.log; then ok "G-114 渲染锚点：$g114_e"; else bad "G-114 渲染锚点没跑绿：$g114_e"; fi
   done
+  # CN-05（KP-08 尾账 #64）：按「停止」之后，屏幕、台账、Host 回执各怎么说，钉 id 不钉散文。
+  for g114_c in "CN-05a " "CN-05b " "CN-05c " "CN-05d " "CN-05-NC "; do
+    if grep -c "✓ $g114_c" /tmp/g114-e2e.log | grep -qE '[1-9]'; then
+      ok "G-114 渲染锚点：$g114_c（$(grep -c "✓ $g114_c" /tmp/g114-e2e.log) 条）"
+    else
+      bad "G-114 渲染锚点没跑绿：$g114_c"
+    fi
+  done
+  # 可感面：两个数从 CN05_METRICS 这行读（token 稳定，不钉散文），量自真回合。
+  g114_lead=$(grep -o 'lead_ms=[0-9][0-9]*' /tmp/g114-e2e.log | grep -o '[0-9][0-9]*' | head -1)
+  g114_stop=$(grep -o 'stop_ms=[0-9][0-9]*' /tmp/g114-e2e.log | grep -o '[0-9][0-9]*' | head -1)
+  if [ -n "$g114_lead" ] && [ -n "$g114_stop" ] && grep -q "✓ CN-05c" /tmp/g114-e2e.log; then
+    ok "G-114 可感面：按下停止实测「发出→上屏 ${g114_lead}ms、按下→落终态 ${g114_stop}ms」，且那一行按落库证据定终态、屏上多出「已取消」"
+  else
+    bad "G-114 可感面没量到数（见 /tmp/g114-e2e.log）"
+  fi
 else
   echo "  · skip：缺 playwright-core 或 electron，G-114 真渲染门未跑（SKIP ≠ PASS；静态+行为门已在上面跑过）"
 fi
@@ -4515,6 +4531,12 @@ echo "    显隐由信号驱动），T6a..d 四条源码负向对照；行为 C1
 echo "    （runner 的 ctx.cancelPromise 被 resolve）、C3 转录落 cancelled 那行、C4 收尾自摘、C5 回执"
 echo "    非写死，注入假回执 C2/C3 必须翻红；真渲染钉按钮空闲藏→忙显形顶掉麦克风→点完收起→空按"
 echo "    如实说「没有在执行的回合」。三层各管一段，缺一条都可能是假绿。"
+echo "  · G-114 CN-05（KP-08 尾账 #64）钉的是「停止之后四个来源各怎么说」：走输入框的真链路起一条"
+echo "    乐观命令，回合在跑时按停止，同时读 那一行的 data-send / 台账 state / 回执里有没有 cancelled /"
+echo "    屏上有没有一行说停了。判据钉关系不钉名字：送达那根轴只认落库证据（echo 与自己铸的 id 相等才"
+echo "    算 durable），「被用户停止」必须是回执里的一件事实并由界面说出来。跑之前实测到的是相反形状 —"
+echo "    回执一个 cancel 键都没有、那一行被判 rejected（库里明明存着这条）。负向对照用真场景做：让它"
+echo "    正常答完不按停止，CN-05c/05d 必须说不出停止这件事，否则那两条恒真。"
 
 echo "== G-115 群进度死线要接活：@Bot 干活时名字旁立刻出现当前步（KP-01）=="
 # 对标 Grok 的「实时显示 Bot 工作进度」。翻代码发现一条死线：main.js 的 roomRuntime.onProgress

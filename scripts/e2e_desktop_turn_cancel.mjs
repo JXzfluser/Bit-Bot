@@ -192,6 +192,169 @@ function startStub(port) {
       ? ok("界面说「没有在执行的回合」，没有假装停下了什么")
       : bad("空按没有回执", JSON.stringify(receipt));
 
+    /* ---------- 5) CN-05 从输入框走的那一次「停止」：四个来源各怎么说（KP-08 尾账 #64）
+       上面 2) 直接调 window.bitbot.turn，绕过了 runUserTurn —— 也就是它从来没起过乐观命令，
+       台账里根本没有这一笔，「按了停止之后屏幕怎么说」这件事到今天没被量过。
+       这一条走真链路：填输入框 → 点发送（渲染端 begin 出一条 cm- 命令、那一行立刻上屏）
+       → 回合在跑时按停止 → 同时读 ①那一行的 data-send ②台账里那条的 state
+       ③回执 JSON 里有没有「这次是被用户停下来的」这件事 ④assistant 侧有没有一行说停了。
+       判据钉的是关系：停止不能改「送达」的口径（那一行仍按送达证据判），
+       但「停止」本身必须是屏幕上看得到的一件事，不能和「模型答完了」共用同一个形状。 */
+    const cm5 = await win.evaluate(async () => {
+      const inp = document.getElementById("text");
+      inp.value = "停止验证：说满八秒再停";
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+      const before = document.querySelectorAll("#log .msg.user[data-client-mid]").length;
+      window.__cn5 = { sendAt: Date.now() };
+      document.getElementById("send").click();
+      for (let i = 0; i < 240; i++) {
+        const rows = document.querySelectorAll("#log .msg.user[data-client-mid]");
+        if (rows.length > before) {
+          window.__cn5.rowAt = Date.now();
+          return rows[rows.length - 1].dataset.clientMid;
+        }
+        await new Promise((x) => setTimeout(x, 25));
+      }
+      return "";
+    });
+    if (!cm5) {
+      bad("CN-05a 输入框那条没能在台账里起出乐观命令（后面的观察全部无从谈起）");
+    } else {
+      const shown = await win
+        .waitForFunction(() => !document.getElementById("turn-cancel").hidden, null, { timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+      shown ? ok("CN-05a 走输入框的回合也在跑，停止按钮同样显形（不是只有 bitbot.turn 那条路）")
+        : bad("CN-05a 走输入框的回合没有可按的停止按钮");
+      const stopAt = Date.now();
+      if (shown) await win.click("#turn-cancel");
+      const settled = await win
+        .waitForFunction(
+          (cm) => {
+            const c = window.__bitbotSendLedger && window.__bitbotSendLedger.get(cm);
+            return !!c && c.state !== "pending";
+          },
+          cm5,
+          { timeout: 60000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!settled) {
+        bad("CN-05b 按下停止后台账那条一直停在 pending", JSON.stringify(cm5));
+      } else {
+        const m = await win.evaluate((cm) => {
+          const el = document.querySelector('#log .msg.user[data-client-mid="' + cm + '"]');
+          const c = window.__bitbotSendLedger.get(cm);
+          let rj = null;
+          try { rj = JSON.parse(document.getElementById("json-out").textContent || "null"); } catch (_) { rj = null; }
+          const texts = Array.from(document.querySelectorAll("#log .msg.assistant"))
+            .filter((x) => getComputedStyle(x).display !== "none")
+            .map((x) => ((x.querySelector(".body") || {}).textContent || "").trim());
+          return {
+            rowSend: el ? el.dataset.send || "" : "（界面上没有那一行）",
+            rowMid: el ? el.dataset.mid || "" : "",
+            ledger: c ? { state: c.state, entry_id: c.entry_id || "", code: c.code || "" } : null,
+            receipt: rj && typeof rj === "object"
+              ? {
+                  keys: Object.keys(rj).filter((k) => /cancel/i.test(k)).map((k) => k + "=" + String(rj[k])),
+                  has: Object.keys(rj).some((k) => /cancel/i.test(k)),
+                  ok: rj.ok,
+                  errCode: rj.error_code || "",
+                  echo: rj.echo_entry_id || "",
+                  stored_user: (rj.stored_ids || {}).user || "",
+                }
+              : { keys: [], has: false, ok: null, echo: "", stored_user: "" },
+            stopLine: texts.filter((t) => /已停止|已取消|Cancelled|canceled|cancelled/i.test(t)).slice(-1)[0] || "",
+            lastAssistant: texts.filter((t) => t && !/已停止|已取消/.test(t)).slice(-1)[0] || "",
+            rowLead: window.__cn5 && window.__cn5.rowAt ? window.__cn5.rowAt - window.__cn5.sendAt : 0,
+          };
+        }, cm5);
+        const stopToFinalMs = Date.now() - stopAt;
+        // 机器可读的一行：矩阵的「可感面」只认这个 token，不认散文（G-40 那次假红的教训）。
+        console.log("CN05_METRICS lead_ms=" + m.rowLead + " stop_ms=" + stopToFinalMs);
+        /* ①+② 停止不改送达口径：那一行说什么，必须和台账说的一样，且台账仍按送达证据判。 */
+        m.ledger && m.rowSend === m.ledger.state
+          ? ok("CN-05b 屏幕那一行的 data-send（" + m.rowSend + "）= 台账 state（" + m.ledger.state +
+              "）—— 停止没把两轴拧成一轴【量出来：发出→上屏 " + m.rowLead +
+              "ms，按下停止→落终态 " + stopToFinalMs + "ms（含 250ms 轮询粒度）】")
+          : bad("CN-05b 屏幕与台账不一致", JSON.stringify(m));
+        m.ledger && (m.ledger.state === "durable" || m.ledger.state === "unmatched")
+          && m.receipt.echo && m.rowMid && m.receipt.echo === m.rowMid
+          ? ok("CN-05b 台账按送达证据判（回执 echo=" + m.receipt.echo + " 与界面上那条 " + m.rowMid + " 对得上）")
+          : bad("CN-05b 停止那次的终态不是从送达证据来的", JSON.stringify({ ledger: m.ledger, receipt: m.receipt, rowMid: m.rowMid }));
+        /* ③ 「被用户停止」必须是回执里的一件事实，而不是让渲染端去猜。 */
+        m.receipt.has
+          ? ok("CN-05c Host 回执带了停止这件事：" + JSON.stringify(m.receipt.keys))
+          : bad("CN-05c Host 回执里没有任何「这次是被用户停下来的」标记（界面只能靠猜，用户看不出这是停了还是答完了）",
+              JSON.stringify({ 回执键: m.receipt.keys, ok: m.receipt.ok, 错误码: m.receipt.errCode, 那一行: m.rowSend, 台账: m.ledger && m.ledger.state, 屏上最后一行非停止文案: m.lastAssistant.slice(0, 60) }));
+        /* ④ 屏幕上必须看得见「停了」这件事。 */
+        m.stopLine
+          ? ok("CN-05d 界面看得见停止这件事：" + m.stopLine.slice(0, 60))
+          : bad("CN-05d 按了停止，屏幕上没有任何一行说它停了（用户看到的是回合凭空结束）",
+              JSON.stringify({ 屏上最后一行: m.lastAssistant.slice(0, 60), 那一行: m.rowSend, 台账: m.ledger && m.ledger.state }));
+        await win.screenshot({ path: path.join(os.tmpdir(), "bb-turn-cancel-ledger.png") });
+
+        /* ---------- 6) CN-05-NC 负向对照：不按停止、让它自己答完的那一次 ----------
+           先说清这一刀切在哪：想复刻「Host 不带 cancelled」的旧形状，得从页面里截住
+           window.bitbot.turn —— 实测截不住（Proxy 覆盖后 __ncRan=0：contextBridge 递进来的
+           那个对象在页面上不可写）。所以这里用**同一套判据跑第二种真场景**做对照：
+           一次正常答完的回合。CN-05c/CN-05d 认的是「被用户停止」这件事，不是「回合结束了」；
+           正常那一次必须当场说不出 cancelled、也画不出「已取消」，否则那两条就是恒真。
+           送达那根轴不靠这条对照 —— 它由 G-121 的 OP-01..05 带负向对照守着。 */
+        const nc = await win.evaluate(async (first) => {
+          const saidStop = () =>
+            Array.from(document.querySelectorAll("#log .msg.assistant"))
+              .filter((x) => getComputedStyle(x).display !== "none")
+              .map((x) => ((x.querySelector(".body") || {}).textContent || "").trim())
+              .filter((t) => /已停止|已取消|cancelled/i.test(t)).length;
+          const inp = document.getElementById("text");
+          inp.value = "对照：这一条不按停止，等它答完";
+          inp.dispatchEvent(new Event("input", { bubbles: true }));
+          const before = document.querySelectorAll("#log .msg.user[data-client-mid]").length;
+          const saidBefore = saidStop();
+          document.getElementById("send").click();
+          let cm = "";
+          for (let i = 0; i < 240; i++) {
+            const rows = document.querySelectorAll("#log .msg.user[data-client-mid]");
+            if (rows.length > before) { cm = rows[rows.length - 1].dataset.clientMid; break; }
+            await new Promise((x) => setTimeout(x, 25));
+          }
+          if (!cm || cm === first) return { skipped: "没起出对照那条乐观命令" };
+          const settled = await new Promise(async (res) => {
+            for (let i = 0; i < 240; i++) {
+              const c = window.__bitbotSendLedger.get(cm);
+              if (c && c.state !== "pending") return res(true);
+              await new Promise((x) => setTimeout(x, 250));
+            }
+            res(false);
+          });
+          if (!settled) return { skipped: "对照那条一直停在 pending" };
+          let rj = null;
+          try { rj = JSON.parse(document.getElementById("json-out").textContent || "null"); } catch (_) { rj = null; }
+          const el = document.querySelector('#log .msg.user[data-client-mid="' + cm + '"]');
+          const c = window.__bitbotSendLedger.get(cm);
+          return {
+            rowSend: el ? el.dataset.send || "" : "",
+            state: c ? c.state : "",
+            hasCancel: !!(rj && Object.keys(rj).some((k) => /cancel/i.test(k) && rj[k] === true)),
+            newStopLines: saidStop() - saidBefore,
+          };
+        }, cm5);
+        if (nc.skipped) {
+          bad("CN-05-NC 负向对照没跑起来：" + nc.skipped);
+        } else {
+          !nc.hasCancel && nc.newStopLines === 0
+            ? ok("CN-05-NC 正常答完那一次：回执里没有 cancelled、屏上没多「已取消」行（" +
+                 nc.newStopLines + "）—— CN-05c/05d 认的是停止这件事，不是任何一次回合结束")
+            : bad("CN-05-NC 对照没翻假：不按停止也报出了停止这件事", JSON.stringify(nc));
+          nc.state === "durable" && nc.rowSend === nc.state
+            ? ok("CN-05-NC 同一条判据在正常回合上仍然成立（那一行 " + nc.rowSend + " = 台账 " + nc.state +
+                 "）—— 两轴拆开后没有把成功的那一路弄坏")
+            : bad("CN-05-NC 正常回合被改坏了", JSON.stringify(nc));
+        }
+      }
+    }
+
     await win.screenshot({ path: path.join(os.tmpdir(), "bb-turn-cancel-idle.png") });
   } finally {
     if (app) await app.close();

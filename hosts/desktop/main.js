@@ -4367,6 +4367,16 @@ ipcMain.handle("bitbot:turn", async (_event, text, opts = {}) => {
       }
       broadcastSurface("sessions", sessions.list());
     }
+    /* KP-08 尾账：「这一轮是被用户停下来的」必须是回执里的一件事实。
+       内核取消时只说这轮没成功（ok:false），不说为什么没成功，渲染端只能把它当成
+       「发送失败」画；码表里的 cancelled 因此一直是死码。这里补上来源，并让没有别的
+       失败码时就用 cancelled —— 手机/桌面两侧读的是同一个闭集，不用新增口径。 */
+    if (result && typeof result === "object") {
+      result.cancelled = cancelState.requested === true;
+      if (result.cancelled && !String(result.error_code || "").trim()) {
+        result.error_code = "cancelled";
+      }
+    }
     if (result && typeof result === "object") result.progress = progressRows;
     // GP-117 (§2.1): a turn that belongs to a Bot is real activity, so the
     // sidebar can order Bots by when they were last used. Unknown ids are

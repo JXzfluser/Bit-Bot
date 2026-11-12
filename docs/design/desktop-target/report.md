@@ -10735,3 +10735,62 @@ id（`A11Y-01..07` + `A11Y-NC`，✓/✗ 两条分支都带），矩阵那档改
 - 矩阵总量本片**未重跑**：`bash -n` 已过，`prove_box_pack_closure` 8/0、
   `prove_box_routine_sweep` 18/0（两次）、`prove_m40_a11y` 8/0 三条单门复跑绿，
   增量口径是 G-57 五条红转绿 + G-40 该档 +4 条锚点，下次复跑按门回填。
+
+## 8.119 停止那一路的两根轴拆开：按下「停止」不该把已落库的那条画成发送失败（KP-08 尾账 #64，2026-11-12）
+
+### ① 跑之前：这一路从来没被量过
+
+G-114 三层门（静态 T1..T6 / 行为 C1..C5 / 真渲染）守的是「按得动、停得下、回执说没停到东西」。
+但真渲染那段是 `2)` 直接调 `window.bitbot.turn` —— 它绕开 `runUserTurn`，台账里根本没起这一笔，
+所以「停止之后屏幕怎么说」到今天没有任何一条判据看过。补上 CN-05 段（走真链路：填输入框 →
+点发送 → 回合在跑时按停止 → 同时读四个来源），对 HEAD 的实测是 `PASS=9 FAIL=3`：
+
+- Host 回执里 `cancel` 键**一个都没有**（`回执键 []`）；
+- 那一行 `data-send=rejected`、台账 `state=rejected`、`code=""`；
+- 屏幕上 `0` 行说它停了 —— 用户看到的是回合凭空结束。
+
+伤害比「看不出是停了」更具体：回执的 `echo_entry_id` 就是界面那条 `cm-…`（消息**已经落库**），
+界面却把它画成红色「发送失败」；刷新后库里那条还在，读出来是正常一行。机制三处：
+`hosts/desktop/main.js:4147` 的 `cancelState` 只喂 `isCancelled`、从不写进 `result`；
+`hosts/desktop/index.html:11346` 拿 `!(r.ok===false)` 当送达判据；
+`hosts/shared/client_core/transport.js:221` 一见 `!ok` 立刻 `Rejected`，`echo` 压根不看。
+`hosts/desktop/failure_codes.js:84` 那条 `cancelled → failCancelled`（「已取消」）从 KP-03 落地那天起就是死码
+—— 不是文案没写，是没人产出这个码。
+
+### ② 改了什么：两根轴各归各家
+
+- Host（`hosts/desktop/main.js:4370-4379`）：`result.cancelled = cancelState.requested === true`；
+  内核没给更具体的码时补 `error_code = "cancelled"`（闭集 34 条里现成的第 24 条，手机/桌面同一张表，
+  不新增口径）。取消这件事只有 Host 的 `cancelState` 知道，内核侧不需要动。
+- 送达那根轴（`hosts/desktop/index.html:11343-11360`）：取消时不再用 `r.ok` 判送达，只看落库证据
+  （有 `echo_entry_id` / `stored_ids.user` 才 `ok:true`，剩下 durable / unmatched 由台账按 id 对账判）；
+  真没落库才 `rejected`，且带 `cancelled` 码，屏上说的是「已取消」而不是猜。
+  内核已经给出的更具体的码（timeout 等）不覆盖。
+- 回合结局那根轴（`hosts/desktop/index.html:11405`）：assistant 侧多一行「已取消」，复用现成 key
+  （三个语言包都有），不挂 speaker —— 它不是模型说的话。
+
+### ③ 门、可感面与一次诚实的对照
+
+改后 `node scripts/e2e_desktop_turn_cancel.mjs`：`PASS=14 FAIL=0`。CN-05b 绿的同时把量到的数说出来：
+`CN05_METRICS lead_ms=8 stop_ms=54`（发出→上屏、按下停止→落终态，含 250ms 轮询粒度）。矩阵侧只读
+`CN05_METRICS` 这个 token，不读散文 —— 这正是 run13 里 G-40 假红欠的那笔账。G-114 新增 5 条 id 锚点
++ 1 条可感面，尺子正反各验一次：把 `✓ CN-05c` 那行从日志里抹掉，锚点与可感面**同时**变红。
+
+负向对照本来想做「从页面截住 `window.bitbot.turn`、抹掉 `cancelled` 复刻旧形状」—— 实测截不住：
+Proxy 覆盖后 `__ncRan=0`，contextBridge 递进来的对象在页面上不可写。门把这件事写成一条会红的判据
+（「这一刀没落进产品…对照无效，不能拿它证明判据非恒真」），而不是让它偷偷绿。于是换成**真场景对照**：
+再跑一条不按停止、让它自己答完的回合，同一批判据当场说不出 `cancelled`、屏上新增「已取消」`0` 行 ——
+CN-05c/05d 认的是「被用户停止」，不是「回合结束了」。送达那根轴不靠这条对照，由 G-121 的 OP-01..05
+（带自己的负向对照）守着。回归：`e2e_desktop_optimistic`（真收发）`PASS=19 FAIL=0 SKIP=0`，
+两轴拆开后成功路没被弄坏。
+
+### ④ 动了 / 没动 / 尾账
+
+动了：`main.js`、`index.html` 各一片，门 `scripts/e2e_desktop_turn_cancel.mjs` 加 CN-05 + CN-05-NC，
+矩阵 G-114 登记，本节。没动：内核 `turn_json.mbt`、Box 打包清单（无新增 require）、任何用户数据
+（门自己快照并还原 `data/desktop/sessions.json`）。
+
+尾账三条：① 停止时那条被截断的半成品回答仍会从屏幕上消失（`index.html:11336` 移除 `streamEl`，
+而 `r.messages` 里没有它）—— 保留半句是另一件事，另立任务；② 「已取消」目前不写库，刷新后不在历史里，
+要不要落一行属产品裁决；③ 群聊那一路（`room_orchestrator`）的取消还没接台账。
+run14 仍欠：全量矩阵复跑（G-114 该档 +6，预期总量 915→921 上下）。
