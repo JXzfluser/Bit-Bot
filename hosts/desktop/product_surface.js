@@ -1661,6 +1661,29 @@ function createProductSurface(repoRoot, opts = {}) {
     }
     return { data, unreadable: false, reason: "" };
   }
+  /* KP-09 片2（读写同源，群面）：这条以前长在 host_ffi 里，自己 readFileSync
+     rooms.json。EVENT_ONLY 下这张面的真源是事件库、JSON 一个字节都不再写，
+     于是定时任务的邮件正文永远退回「本群暂无可读到的成稿回执 + 任务原话」——
+     群里明明有 final_report，用户收到的是猜测。面的读法归面的持有者。 */
+  function roomLatestReport(roomId) {
+    const want = String(roomId || "");
+    if (!want) return "";
+    try {
+      const j = loadRooms();
+      const list = Array.isArray(j) ? j : ((j && j.rooms) || []);
+      const hit = list.find((r) => r && String(r.id) === want);
+      const tx = (hit && hit.transcript) || [];
+      for (let i = tx.length - 1; i >= 0; i -= 1) {
+        const e = tx[i];
+        if (e && e.kind === "final_report") {
+          const t = String(e.text || e.content || "").trim();
+          if (t) return t;
+        }
+      }
+    } catch (_) { /* 读不到就退回原话，不把猜测当稿件 */ }
+    return "";
+  }
+
   function roomsStoreStatus() {
     // EVENT_ONLY：JSON 文件不再是真源（可能是遗留物），健康度以事件折叠为准。
     if (eventOnlyMode()) {
@@ -4147,6 +4170,7 @@ function createProductSurface(repoRoot, opts = {}) {
     appendRoomTranscript,
     loadRooms,
     roomsStoreStatus,
+    roomLatestReport,
     roomLibraryList,
     roomLibraryAdd,
     roomMembersUpdate,

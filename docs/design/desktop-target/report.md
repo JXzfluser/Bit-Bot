@@ -11093,3 +11093,91 @@ G-61 那句「T1-04 读切换、T1-06 单写者还没接上」同步更正为「
    今天进程内是同步读改写，跨进程还得有锁或 actor；「`kill -9` 恢复正确」只在事件家族（G-61 EL-09）量过。
 2. 其余 `data/` 直写点（rooms/bots/settings/routines…）还没进 actor —— SW-02 那把尺子按面复制即可。
 3. 级联的匹配口径仍是「标题 == `<Bot 名> · DM`」这个渲染端约定，Bot 改名后旧 DM 会话会脱靶（今天的既有行为，未改）。
+
+## 8.124 定时任务发出的邮件只剩任务原话：群面的「读」也收回面的持有者（KP-09 第二片，G-122 扩锚，2026-11-12）
+
+### ① 先有的红（同一场景跑两遍，只有 host_ffi 那一处不同）
+
+`BITBOT_EVENT_ONLY=1`、临时 dataRoot、真代码路径：两个 Bot 建群 → 群里落一条 `final_report` →
+排一条「每天 9 点把审核通过的稿子发到 news@example.com」并把它的 `room_id` 指到这个群 → 触发。
+读的是待批准队列里那条 `mail_send` 的四字段命令（`split("|")` 的第 3、4 段）。
+
+```
+HEAD 修复前：{"roomsJsonOnDisk":false,"subject":"定时稿件推送 · 2026-11-12",
+              "body":"（本群暂无可读到的成稿回执，以下为定时任务原话）\n每天9点把审核通过的稿子发到 news@example.com"}
+当前修复后：{"roomsJsonOnDisk":false,"subject":"群里的成稿：模型上下文又降价了 · 2026-11-12",
+              "body":"群里的成稿：模型上下文又降价了"}
+```
+
+因果链是完整闭合的：`roomLatestReport()` 以前在 [hosts/shared/host_ffi.js:9210](file:///Users/zfl/Downloads/bitbot/hosts/shared/host_ffi.js#L9210)
+里自己 `fs.readFileSync(path.join(DATA_ROOT, "desktop", "rooms.json"))`；而这张面在 EVENT_ONLY 下
+**一个字节都不再往那个文件写**（`roomsJsonOnDisk:false` 就是这次实测出来的），于是它读到的永远是空 →
+`reportBody=""` → 正文走 fallback、连主题都退化成「定时稿件推送」。用户看到的不是"群里的稿子"，
+是对"没有稿子"的猜测。JSON 模式下这条路看着正常，所以这缺陷只在真源切到事件库后出现 —— 和 §8.123
+那条级联空操作是同一件事的另一半：**写侧收进 store 之后，读侧还散在外面。**
+
+### ② 修法：读归面的持有者，不留第二份读法
+
+- [hosts/desktop/product_surface.js:1668](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L1668)
+  新增 `roomLatestReport(roomId)`，倒着扫 `transcript` 取最近一条非空 `final_report`；它走 `loadRooms()` ——
+  这个函数本来就 EVENT_ONLY 感知（有事件先折事件、库里空才认遗留文件）。面持有者读自己的面，不碰文件。
+- [hosts/shared/host_ffi.js:9208](file:///Users/zfl/Downloads/bitbot/hosts/shared/host_ffi.js#L9208) 的同名函数只剩委派
+  （`surface && typeof surface.roomLatestReport === "function"` 才转），拿不到就返回空串，
+  保持"读不到就退回任务原话、不把猜测当稿件"这条既有口径。
+- `roomLatestReport` 进 product_surface 的导出对象（和 `loadRooms` / `roomsStoreStatus` 并排）。
+
+### ③ 门：SW-06..09 接进 G-122，写侧读侧现在是两本账
+
+`scripts/prove_sessions_single_writer.mjs`（实测）：`SW_METRICS mode=prod pass=13 fail=0 writers=3 store_writers=3 readers=0`、
+`NEG_CONTROL=1` → `mode=neg pass=8 fail=0`（SKIP≠PASS，两个 mode 都真跑过）。
+
+- **SW-06 读侧静态账（path-aware）**：`hosts/{desktop,shared,cli_host,mobile_host}/*.js` 57 个文件里，
+  直接读事件面文件（`readFileSync`/`readJson`/`existsSync`）且调用点不在面的持有者里的，**0 处**。
+  面的持有者表：`sessions.json` → `sessions.js`，`rooms.json` 与 `pending-approvals.jsonl` → `product_surface.js`。
+- **SW-07 行为端到端**：就是 ① 那个场景，断言待批准邮件正文含事件里的成稿、且不含 fallback 字样。
+- **SW-08 前提自证**：断言此刻 `data/desktop/rooms.json` 确实不存在 —— 没有这条，SW-07 什么都没证明
+  （文件在的话旧读法也能读到，绿的就不是读源了）。
+- **SW-09 反向对照（行为）**：往那个路径塞一份**写着另一种稿子**的遗留 `rooms.json`，再触发一次 ——
+  正文仍取事件成稿，假稿没污染邮件。修复前这份文件是唯一来源，这一下就同时证明了"读的是事件面"和"盘上副本会骗人"。
+- **SW-NEGR 尺子自己的反向对照**：夹具里放三样东西 —— 修复前 host_ffi 那行原样读法、`data/desktop/voice/sessions.json`
+  诱饵、以及面持有者自己的合法读法。尺子必须点中第 1 个、放过后 2 个（`flagged==1 && face==rooms.json && ownerClean==0 && voiceClean`）。
+
+矩阵锚点（`scripts/smoke_grok_desktop_parity.sh` 的 G-122 块，`bash -n` 过）：token 等式加 `readers=0`、
+下限从 8 抬到 13，另加一条钉 `SW-06/07/08/09` 四个 id 的读侧锚点；反向对照那步现在同时要求 `SW-NEG` 和 `SW-NEGR`。
+锚点五方向复跑（`/tmp/g122-anchor-replay.sh`，直接从 smoke 里 awk 出锚点原文再喂不同日志）：
+
+| 日志 | 结果 |
+| --- | --- |
+| 真跑的绿日志 | ok=2 bad=0 |
+| `readers=1`（篡改 token） | bad：锚点不成立 |
+| `pass=12`（下限抬到 13） | bad：锚点不成立 |
+| 删掉 `✓ SW-07` 那行 | bad：读侧锚点缺失 |
+| 没有 `SW_METRICS` 行 | bad：子门没打印 |
+
+回归（都在本轮真跑，取子门自己打印的总数）：`prove_gp156_routine_approval` 9/0、
+`prove_gp161_routine_remove` 13/0、`prove_event_dual_write` 31/0、`prove_room_single_routine` 14/14、
+`prove_room_failure_surfaces` all green；真 app `e2e_desktop_optimistic` **PASS=19 FAIL=0 SKIP=0**（host_ffi 改过，所以这趟必须跑）。
+
+### ④ 这把尺子踩过的三个坑（都是"看着绿、其实没测"的形状）
+
+1. 第一版按文件名扫，把 `hosts/shared/host_ffi.js:465` 的 `data/desktop/voice/sessions.json` 判成会话面旁路 ——
+   那是录音面。**判据必须是路径，不是文件名**，所以 SW-06 把 `path.join` 链按常量展开，
+   只有 `<桌面根>/<面文件名>` 才算这张面；多一层目录的不算。
+2. 第二版用正则抓 `path.join(...)` 的参数，`fs.readFileSync(path.join(A, "desktop", "rooms.json"), "utf8")`
+   这种**行内写法**一条都没抓到（尾巴上的 `)` 和 `,"utf8"` 把参数切坏了），于是 HEAD 上测出 0 处旁路 ——
+   一把扫不出已知缺陷的尺子当时就废掉了。改成括号配平扫描后：HEAD 树点中 `host_ffi.js:9210` 1 处、当前树 0 处。
+3. 夹具的负向对照自己先崩了一次：只 `mkdir` 了 `hosts/shared`，没建 `hosts/desktop`，写第二个夹具文件时 ENOENT，
+   于是那轮 SW-NEGR 根本没跑 —— 崩溃被 fatal 吞掉、`grep` 也就无从判绿。**门崩了不等于门红**，看 exit code 和 fatal 行。
+
+### ⑤ 实测到、但本片没收的（写在这里，别当已交付）
+
+1. **同进程里 `product_surface` 仍有两个实例**：[hosts/desktop/main.js:757](file:///Users/zfl/Downloads/bitbot/hosts/desktop/main.js#L757)
+   建一个（还注入了 sessions store），[hosts/shared/host_ffi.js:201](file:///Users/zfl/Downloads/bitbot/hosts/shared/host_ffi.js#L201)
+   又建一个。`lastTextBySurface`（[hosts/desktop/product_surface.js:72](file:///Users/zfl/Downloads/bitbot/hosts/desktop/product_surface.js#L72)）
+   是**每个实例一份 Map** —— 这正是 §8.123 里 sessions store 收掉的那个形状的"内存版"：两份 prev 缓存意味着
+   EVENT_ONLY 的 diff 起点可能不同步。读写同源这次收的是"文件"，多实例收的是"内存"，还欠着；
+   本片的两条实例读到的都是同一份事件库，所以 SW-07 绿，但棘轮不该被读成"多实例已解决"。
+2. `bots.json` / `settings.json` / `routines` 这几张面还没进 actor（SW-06 的表里它们还不是事件面，所以不计账）。
+3. T1-06 完成定义的另两半：跨进程并发压测无覆盖、`kill -9` 恢复只在事件家族（G-61 EL-09）量过。
+4. 级联的 DM 标题匹配约定（Bot 改名 → 旧 DM 会话脱靶）未改。
+5. 全量矩阵 run14 还没在含 §8.122/§8.123/§8.124 三片改动的树上跑过。

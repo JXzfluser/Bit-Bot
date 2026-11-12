@@ -9202,24 +9202,13 @@ function createHostFfi(repoRoot, opts = {}) {
     return m ? m[0] : "";
   }
 
+  /* KP-09 片2：群面的读法收回 product_surface（见 §8.124）。
+     这里以前自己 readFileSync rooms.json —— EVENT_ONLY 下那份 JSON 不再被写，
+     于是定时任务取不到本群的 final_report，邮件正文只剩任务原话。 */
   function roomLatestReport(roomId) {
-    const want = String(roomId || "");
-    if (!want) return "";
-    try {
-      const j = JSON.parse(
-        fs.readFileSync(path.join(DATA_ROOT, "desktop", "rooms.json"), "utf8"),
-      );
-      const list = Array.isArray(j) ? j : (j.rooms || []);
-      const hit = list.find((r) => r && String(r.id) === want);
-      const tx = (hit && hit.transcript) || [];
-      for (let i = tx.length - 1; i >= 0; i -= 1) {
-        const e = tx[i];
-        if (e && e.kind === "final_report") {
-          const t = String(e.text || e.content || "").trim();
-          if (t) return t;
-        }
-      }
-    } catch (_) { /* 读不到就退回原话，不把猜测当稿件 */ }
+    if (surface && typeof surface.roomLatestReport === "function") {
+      return surface.roomLatestReport(roomId);
+    }
     return "";
   }
 
