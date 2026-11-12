@@ -50,6 +50,8 @@
  *   SW-21 同一把交错尺子搬到群面（片5）：别人新建的群不抹掉 / 我不动的那行用盘上更新的
  *          （群名 + 群里那条 transcript 各钉一遍）；反向夹具 = 摘掉群面合并，必须判红 3 条
  *   SW-22 同一把交错尺子搬到会话面（片6）：甲删的不复活 / 甲改的名不被盖回 /
+ *   SW-23 撕裂写（片7）：写一半失败时面逐字不变；已经是半截 JSON 时字节先留成证据 + 说一句
+ *   SW-24 撕裂写的静态账（片7）：落盘口必须是唯一 tmp + rename，坏面必须先留证据
  *          甲追加的那条消息不被吞掉 / 甲新建的不被抹掉；反向夹具 = 摘掉会话面合并，必须判红 4 条
  *
  * 全部跑在临时目录，绝不碰仓库里的 data/。
@@ -77,7 +79,7 @@ let swStoreWriters = 0;
 let swReaders = 0;
 let xpRows = 0, xpPrefixes = 0, xpStoreRooms = 0, xpTmpSites = 0, xpTmpBad = -1, xpOrderBad = -1, xpKidsOk = false;
 let xpBotsLost = -1, xpBotsOk = -1, xpBotsRooms = -1, xpBotsSynced = false;
-let xpSpinMs = -1, xpSpinOk = false, xpSpinBad = -1, xpSw20 = -1, xpSw20Neg = -1, xpSw21 = -1, xpSw21Neg = -1, xpSw22 = -1, xpSw22Neg = -1;
+let xpSpinMs = -1, xpSpinOk = false, xpSpinBad = -1, xpSw20 = -1, xpSw20Neg = -1, xpSw21 = -1, xpSw21Neg = -1, xpSw22 = -1, xpSw22Neg = -1, xpSw23 = -1, xpSw23Neg = -1, xpSw24 = -1, xpSw24Neg = -1;
 const ok = (id, msg) => { PASS++; console.log(`  ✓ ${id} ${msg}`); };
 const bad = (id, msg, extra) => { FAIL++; console.log(`  ✗ ${id} ${msg}${extra ? " — " + (typeof extra === "string" ? extra : JSON.stringify(extra)) : ""}`); };
 
@@ -549,6 +551,119 @@ function sw22ChildSource() {
     "if(!byId(s4.id))v.push('乙早已存在的那条会话被自己这次写抹掉了');",
     "process.stdout.write(JSON.stringify({rows:rows.length,v})+'\\n');",
   ].join("\n");
+}
+
+/* SW-23（KP-09 片7）撕裂写的确定性尺子。
+   为什么不拿「真 SIGKILL 杀出几次撕裂」当门：实测 8MB 面就地写 10 次杀中 2 次撕裂、
+   tmp+rename 0 次 —— 差别是有的，但那个数取决于杀在哪一毫秒，门不能建在运气上（§8.130②）。
+   所以这里把同一件事换成确定性的：在落盘那一步注入失败，并且像进程真被杀那样
+   只写进去一半字节再抛 —— 这就是 kill -9 落在 write 中间留下的形状。
+     ① 面在这一步之后仍是崩前那份逐字相同的完整 JSON（就地写必红：面变成半截）
+     ② 错误必须上抛给调用方（吞掉＝静默丢数据）
+     ③ 控制组：失败的写不许在面旁边留下一截没人清的 tmp
+     ④ 已经存在的半截 JSON 必须先被留成 .corrupt- 证据（字节逐字相同）
+     ⑤ 屏幕上必须有一句响的说明，不是静默的「你没有会话」
+     ⑥ 崩后重建的第一次写不许销毁那份证据，且写出的面自己必须是合法 JSON */
+function sw23ChildSource() {
+  return [
+    '"use strict";',
+    "const fs=require('fs'), path=require('path'), os=require('os');",
+    "const dataRoot=process.argv[2], R=process.argv[3];",
+    "delete process.env.BITBOT_EVENT_ONLY;",
+    "const SESS=path.join(dataRoot,'desktop','sessions.json');",
+    "const {getSessionStore}=require(path.join(R,'hosts/desktop/sessions.js'));",
+    "const v=[];",
+    "const a=getSessionStore(R,{dataRoot});",
+    "a.create('甲的会话');",
+    "a.appendMessages(a.list().sessions[0].id,[{role:'user',text:'x'.repeat(6000)}]);",
+    "const before=fs.readFileSync(SESS,'utf8');",
+    "const ow=fs.writeFileSync;",
+    "let injected=0;",
+    "fs.writeFileSync=function(p,...rest){",
+    "  const s=String(p);",
+    "  if(s===SESS||s.indexOf(SESS+'.tmp.')===0){",
+    "    injected++;",
+    "    const text=typeof rest[0]==='string'?rest[0]:String(rest[0]);",
+    "    const fd=fs.openSync(s,'w');",
+    "    try{ fs.writeSync(fd,text.slice(0,Math.floor(text.length/2))); } finally { fs.closeSync(fd); }",
+    "    const e=new Error('injected ENOSPC'); e.code='ENOSPC'; throw e;",
+    "  }",
+    "  return ow.call(fs,p,...rest);",
+    "};",
+    "let threw='';",
+    "try{ a.rename(a.list().sessions[0].id,'改名应当失败'); }catch(e){ threw=String((e&&e.code)||e.message); }",
+    "fs.writeFileSync=ow;",
+    "if(injected!==1)v.push('注入没落在这次写上（injected='+injected+'）：尺子失效');",
+    "if(threw!=='ENOSPC')v.push('写失败被吞掉了，调用方拿到的是正常回执：'+threw);",
+    "if(fs.readFileSync(SESS,'utf8')!==before)v.push('写失败把整份会话面变成半截 JSON（就地写的形状）');",
+    "const tmpLeft=fs.readdirSync(path.dirname(SESS)).filter((f)=>f.indexOf('sessions.json.tmp.')===0);",
+    "if(tmpLeft.length)v.push('失败的写留下一截没人清的 tmp：'+tmpLeft.length);",
+    "a.rename(a.list().sessions[0].id,'改名试试');",
+    "if(fs.readFileSync(SESS,'utf8')===before)v.push('注入之后这张面再也写不回去了');",
+    "const dir2=fs.mkdtempSync(path.join(os.tmpdir(),'kp09-sw23b-'));",
+    "const d2=path.join(dir2,'desktop');",
+    "fs.mkdirSync(d2,{recursive:true});",
+    "const torn=before.slice(0,Math.floor(before.length/2));",
+    "const SESS2=path.join(d2,'sessions.json');",
+    "ow.call(fs,SESS2,torn);",
+    "let said='';",
+    "const oerr=process.stderr.write;",
+    "process.stderr.write=function(c,...r){ said+=String(c); return oerr.call(process.stderr,c,...r); };",
+    "const b=getSessionStore(R,{dataRoot:dir2});",
+    "const lst=b.list();",
+    "process.stderr.write=oerr;",
+    "if(!lst||!Array.isArray(lst.sessions))v.push('坏面把读路径整个打死（不是降级，是抛错）');",
+    "const keep=fs.readdirSync(d2).filter((f)=>f.indexOf('sessions.json.corrupt-')===0);",
+    "if(keep.length!==1)v.push('半截 JSON 没被留成证据文件（就地覆盖的形状）');",
+    "else{ try{ if(fs.readFileSync(path.join(d2,keep[0]),'utf8')!==torn)v.push('证据文件的字节和坏面不一样'); }catch(_){ v.push('证据文件读不出来'); } }",
+    "if(said.indexOf('不是合法的会话面 JSON')<0)v.push('坏面被静默当成「你没有会话」，屏幕上一个字都没有');",
+    "b.create('崩后重建');",
+    "if(keep.length){ try{ if(fs.readFileSync(path.join(d2,keep[0]),'utf8')!==torn)v.push('崩后第一次写把证据覆盖了'); }catch(_){ v.push('证据文件在下一次写之后没了'); } }",
+    "let parsed=false; try{ parsed=Array.isArray(JSON.parse(fs.readFileSync(SESS2,'utf8')).sessions); }catch(_){}",
+    "if(!parsed)v.push('崩后重建写出的面不是合法 JSON');",
+    "process.stdout.write(JSON.stringify({v,injected})+'\\n');",
+  ].join("\n");
+}
+
+/* 反向夹具（片7）：同一份 sessions.js，只把「先写 tmp 再 rename」换回就地写，并把坏面的
+   证据留存摘掉 —— 就是修复前的形状。这条夹具不成立，SW-23 / SW-24 就是假绿。 */
+function crashSafetyDisabledFarm() {
+  const farm = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-nocrash-"));
+  const desk = path.join(farm, "hosts", "desktop");
+  fs.mkdirSync(desk, { recursive: true });
+  fs.symlinkSync(path.join(REPO, "hosts", "shared"), path.join(farm, "hosts", "shared"));
+  for (const f of fs.readdirSync(path.join(REPO, "hosts", "desktop"))) {
+    if (f === "sessions.js") continue;
+    fs.symlinkSync(path.join(REPO, "hosts", "desktop", f), path.join(desk, f));
+  }
+  const src = fs.readFileSync(path.join(REPO, "hosts/desktop", "sessions.js"), "utf8");
+  const patched = src
+    .replace("      fs.writeFileSync(tmp, text);\n      fs.renameSync(tmp, storePath);", "      fs.writeFileSync(storePath, text);")
+    .replace("      quarantineCorrupt();\n      return empty();", "      return empty();");
+  if (patched === src || /fs\.renameSync\(tmp, storePath\)/.test(patched) || /quarantineCorrupt\(\);/.test(patched)) return null;
+  fs.writeFileSync(path.join(desk, "sessions.js"), patched);
+  return farm;
+}
+
+/* SW-24 的静态账：会话面的落盘口必须是「唯一 tmp + rename 换面」，失败要清 tmp 并把错
+   抛出去；坏面必须先留证据再空态起步。七条各自可核实，反向夹具必须判红 3 条。 */
+function tornWriteViolations(text) {
+  const at = text.indexOf("function writeStore");
+  const lt = text.indexOf("function load(");
+  if (at < 0 || lt < 0) return ["找不到 writeStore / load（尺子失效）"];
+  const wEnd = text.indexOf("\n  }\n", at);
+  const body = text.slice(at, wEnd < 0 ? at + 1800 : wEnd);
+  const qAt = text.indexOf("function quarantineCorrupt", lt);
+  const loadWin = text.slice(lt, qAt < 0 ? lt + 2600 : qAt);
+  const v = [];
+  if (!/renameSync\(\s*tmp\s*,\s*storePath\s*\)/.test(body)) v.push("落盘口没有 rename 换面：写一半失败就是把整份历史变成半截 JSON");
+  if (/writeFileSync\(\s*storePath\s*,/.test(body)) v.push("落盘口直接往面上写（就地写）：崩在 write 中间就撕裂");
+  if (!/\.tmp\."\s*\+\s*process\.pid/.test(body)) v.push("tmp 名没带 pid：同一毫秒两家进程撞同一个 tmp（片3 的账）");
+  if (!/rmSync\(\s*tmp/.test(body)) v.push("失败的写没清掉那截 tmp");
+  if (!/throw err;/.test(body)) v.push("写失败的错被吞了：调用方拿到正常回执，盘上却是坏面");
+  if (!/quarantineCorrupt\(\);/.test(loadWin)) v.push("坏面没有「先把字节留住」这一步：静默当空面，下一次写还把证据覆盖掉");
+  if (!/function pruneOrphanTmp/.test(text)) v.push("崩在 write 与 rename 之间的孤儿 tmp 没人清");
+  return v;
 }
 
 /* 静态账：锁的自旋必须有出口。四条各自可核实 ——
@@ -1083,10 +1198,64 @@ async function main() {
       try { fs.rmSync(sw22Base, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
     }
 
+    /* ===== SW-23：撕裂写（KP-09 片7，「kill -9 恢复正确」那半） =====
+       会话面以前是就地写：写一半失败（磁盘满是真实现场）就把整份历史变成半截 JSON，
+       而半截 JSON 在旧 load() 眼里等于「一个会话都没有」——41 条会话静默没了，
+       紧接着的第一次写还把坏文件的字节覆盖掉，连手工救的余地都没有。
+       门用确定性注入（把「杀在 write 中间」留下的字节形状原样造出来），
+       不用撞运气的 kill 计时；真 kill 的实测数字进 §8.130② 的账。 */
+    {
+      const sw23Base = fs.mkdtempSync(path.join(os.tmpdir(), "kp09-sw23-"));
+      const sw23Path = path.join(sw23Base, "sw23-child.cjs");
+      fs.writeFileSync(sw23Path, sw23ChildSource());
+      const runSw23 = (repoRoot) => new Promise((res) => {
+        const dRoot = fs.mkdtempSync(path.join(sw23Base, "d-"));
+        fs.mkdirSync(path.join(dRoot, "desktop"), { recursive: true });
+        const p = spawn(process.execPath, [sw23Path, dRoot, repoRoot], { stdio: ["ignore", "pipe", "pipe"] });
+        let buf = "", eb = "";
+        p.stdout.on("data", (c) => { buf += String(c); });
+        p.stderr.on("data", (c) => { eb += String(c); });
+        const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch (_) { /* 已经没了 */ } }, 30000);
+        p.on("error", (e) => { clearTimeout(timer); res({ out: "", err: String((e && e.message) || e) }); });
+        p.on("close", () => { clearTimeout(timer); res({ out: buf, err: eb }); });
+      });
+      const parse23 = (r) => { try { return JSON.parse(String(r.out).trim().split("\n").pop()); } catch (_) { return null; } };
+      const real23 = parse23(await runSw23(REPO));
+      const farm23 = crashSafetyDisabledFarm();
+      const neg23 = farm23 ? parse23(await runSw23(farm23)) : null;
+      xpSw23 = real23 && real23.v ? real23.v.length : -1;
+      xpSw23Neg = neg23 && neg23.v ? neg23.v.length : -1;
+      if (real23 && real23.v && real23.v.length === 0 && neg23 && neg23.v && neg23.v.length === 3)
+        ok("SW-23", `写一半失败时这张面一个字都没变（面字节逐字相同 + 错上抛 + 不留孤儿 tmp），已经存在的半截 JSON 先被留成 .corrupt- 证据再说一句、崩后重建也不销毁它；将 tmp+rename 与证据留存一起摘掉的夹具在同一条尺子上判红 3 条（${neg23.v[0]} / ${neg23.v[2]}）——第 4 条「证据被下一次写覆盖」在夹具上判不出来，因为它连证据文件都没有，那条只能由真模块自己证（keep.length===1 才查）`);
+      else bad("SW-23", real23 && real23.v && real23.v.length ? "撕裂写仍有缺口" : "撕裂写尺子或反向夹具失效",
+        { real: real23, neg: neg23, farmErr: farm23 ? "" : "夹具建不出来（tmp+rename 或证据留存那两处文本不在）", err: String((real23 && real23.err) || "").slice(0, 160) });
+      if (farm23) { try { fs.rmSync(farm23, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ } }
+      try { fs.rmSync(sw23Base, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
+    }
+
+    /* ===== SW-24：撕裂写的静态账（形状不许悄悄退回就地写） =====
+       SW-23 是行为尺子；这一条钉的是「落盘口的形状」本身 —— 以后有人把 rename 换回
+       就地写、或把证据留存那步删掉，不需要等到磁盘真的满一次就能红。 */
+    {
+      const sessText = fs.readFileSync(path.join(REPO, "hosts/desktop/sessions.js"), "utf8");
+      const real24 = tornWriteViolations(sessText);
+      xpSw24 = real24.length;
+      const farm24 = crashSafetyDisabledFarm();
+      let neg24 = ["夹具建不出来（落盘口文本漂移，SW-24 的负对照失效）"];
+      if (farm24) {
+        neg24 = tornWriteViolations(fs.readFileSync(path.join(farm24, "hosts/desktop/sessions.js"), "utf8"));
+        try { fs.rmSync(farm24, { recursive: true, force: true }); } catch (_) { /* 清不掉不影响判定 */ }
+      }
+      xpSw24Neg = farm24 ? neg24.length : -1;
+      if (real24.length === 0 && neg24.length === 3)
+        ok("SW-24", `会话面落盘口的形状七条全在（rename 换面 / 不往面上直写 / tmp 带 pid / 失败清 tmp / 错上抛 / 坏面先留证据 / 孤儿 tmp 有人清），摘掉修复的夹具判红 3 条（${neg24[0]}）`);
+      else bad("SW-24", real24.length ? "落盘口形状退回就地写" : "SW-24 反向夹具没判红（尺子失效）", { real: real24, neg: neg24 });
+    }
+
     delete process.env.BITBOT_EVENT_ONLY;
   }
 
-  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad} bots_lost=${xpBotsLost} bots_room_ok=${xpBotsOk} bots_rooms=${xpBotsRooms} spin_ms=${xpSpinMs} spin_bad=${xpSpinBad} sw20=${xpSw20} sw20_neg=${xpSw20Neg} sw21=${xpSw21} sw21_neg=${xpSw21Neg} sw22=${xpSw22} sw22_neg=${xpSw22Neg}`);
+  console.log(`\nSW_METRICS mode=${process.env.NEG_CONTROL === "1" ? "neg" : "prod"} pass=${PASS} fail=${FAIL} writers=${swWriters.length} store_writers=${swStoreWriters} readers=${swReaders} xp_rows=${xpRows} xp_prefixes=${xpPrefixes} xp_store_rooms=${xpStoreRooms} tmp_sites=${xpTmpSites} tmp_bad=${xpTmpBad} order_bad=${xpOrderBad} bots_lost=${xpBotsLost} bots_room_ok=${xpBotsOk} bots_rooms=${xpBotsRooms} spin_ms=${xpSpinMs} spin_bad=${xpSpinBad} sw20=${xpSw20} sw20_neg=${xpSw20Neg} sw21=${xpSw21} sw21_neg=${xpSw21Neg} sw22=${xpSw22} sw22_neg=${xpSw22Neg} sw23=${xpSw23} sw23_neg=${xpSw23Neg} sw24=${xpSw24} sw24_neg=${xpSw24Neg}`);
   console.log("prove_sessions_single_writer: PASS=" + PASS + " FAIL=" + FAIL);
   process.exit(FAIL === 0 ? 0 : 1);
 }

@@ -66,7 +66,21 @@ function createSessionStore(repoRoot, opts = {}) {
   function writeStore(text) {
     const m = mirror();
     const token = m.capture(storePath);
-    fs.writeFileSync(storePath, text);
+    /* KP-09 片7（撕裂写）：这张面以前是「就地写」—— open(O_TRUNC) 先把旧内容清空，
+       再往里写；写一半失败（磁盘满是真实现场，不是假想）就把整份历史变成半截 JSON，
+       而半截 JSON 在 load() 眼里等于「一个会话都没有」：40 条会话静默没了，
+       紧接着的下一次写还把坏文件的字节覆盖掉，连手工救的余地都没了（实测见 §8.130①）。
+       tmp + rename 之后，目标文件要么还是上一刻的完整内容，要么就是这次的完整内容。
+       tmp 名必须带 pid（片3 的账：同一毫秒两家用同名 tmp，先 rename 的后一家 ENOENT）。 */
+    fs.mkdirSync(dir, { recursive: true });
+    const tmp = storePath + ".tmp." + process.pid + "." + Date.now() + "." + Math.random().toString(36).slice(2, 8);
+    try {
+      fs.writeFileSync(tmp, text);
+      fs.renameSync(tmp, storePath);
+    } catch (err) {
+      try { fs.rmSync(tmp, { force: true }); } catch (_) { /* 清不掉不比把旧内容保住更要紧 */ }
+      throw err;
+    }
     m.commit(storePath, token, text);
   }
 
@@ -216,20 +230,87 @@ function createSessionStore(repoRoot, opts = {}) {
         );
       }
     }
+    let text = null;
     try {
-      const text = fs.readFileSync(storePath, "utf8");
-      const raw = JSON.parse(text);
-      if (!raw || !Array.isArray(raw.sessions) || !raw.sessions.length) {
-        lastLoadedText = text;
-        return empty();
-      }
-      if (!raw.active_id) raw.active_id = raw.sessions[0].id;
-      lastLoadedText = text;
-      mergeBaseText = text;
-      return ensureMessageIds(raw);
+      text = fs.readFileSync(storePath, "utf8");
     } catch {
       return empty();
     }
+    let raw = null;
+    try {
+      const parsed = JSON.parse(text);
+      raw = parsed && Array.isArray(parsed.sessions) ? parsed : null;
+    } catch (_) {
+      raw = null;
+    }
+    if (!raw) {
+      /* 半截 JSON 不等于「一个会话都没有」：先把字节留住，再空态起步。
+         以前这里是 `catch { return empty(); }` —— 一句都没有说，而且下一次落盘
+         直接把坏文件覆盖掉，40 条会话连手工救的余地都没了（§8.130① 实测）。 */
+      quarantineCorrupt();
+      return empty();
+    }
+    if (!raw.sessions.length) {
+      lastLoadedText = text;
+      return empty();
+    }
+    if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+    lastLoadedText = text;
+    mergeBaseText = text;
+    pruneOrphanTmp();
+    return ensureMessageIds(raw);
+  }
+
+  /* 崩在 write 与 rename 之间的进程来不及执行上面的 catch，半截 tmp 就留在面旁边
+     （实测：8MB 面被 SIGKILL 10 次，面本身 0 次撕裂，但最多攒下 7 个孤儿 tmp）。
+     只清「pid 已经不在了 + 老于 60s」的那些：别人的进程可能正在写自己的 tmp。 */
+  function pruneOrphanTmp() {
+    let names = [];
+    try {
+      names = fs.readdirSync(dir).filter((f) => f.startsWith(path.basename(storePath) + ".tmp."));
+    } catch (_) {
+      return;
+    }
+    const now = Date.now();
+    for (const f of names) {
+      const pid = Number(String(f).split(".")[3]);
+      if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) continue;
+      if (isPidAlive(pid)) continue;
+      const full = path.join(dir, f);
+      try {
+        if (now - fs.statSync(full).mtimeMs < 60000) continue;
+        fs.rmSync(full, { force: true });
+      } catch (_) { /* 清不掉只是磁盘上多一个垃圾，不影响这次开面 */ }
+    }
+  }
+
+  function isPidAlive(pid) {
+    try { process.kill(pid, 0); return true; } catch (e) { return String((e && e.code) || "") === "EPERM"; }
+  }
+
+  /* 坏文件不许就地覆盖：整份历史之所以还能救，全靠这些字节还在。
+     改名（同目录内 rename 不会失败到需要跨盘）而不是删除 —— 既保住证据，
+     又不会让下一次读又撞在同一份坏内容上反复报同一句。
+     改不动就退化成复制；两条都不行才继续往下走，但这句话必须先说。 */
+  function quarantineCorrupt() {
+    const at = new Date().toISOString().replace(/[:.]/g, "-");
+    const keep = storePath + ".corrupt-" + at;
+    let how = "";
+    try {
+      fs.renameSync(storePath, keep);
+      how = "已改名留成 " + keep;
+    } catch (_) {
+      try {
+        fs.copyFileSync(storePath, keep);
+        how = "已另存一份到 " + keep;
+      } catch (_) {
+        how = "没能另存（原文件仍在那里，但这次读不出来）";
+      }
+    }
+    sayOnce("corrupt-" + keep,
+      `[sessions] ${storePath} 不是合法的会话面 JSON（多半是写一半失败留下的）——原始字节${how}；` +
+      "本次从空列表开始，这不是「你没有会话」，请手工检查那份文件。\n");
+    return keep;
   }
 
   /* KP-09 片6（会话面跨进程丢更新）：sessions.json 在默认模式下仍是文件真源，

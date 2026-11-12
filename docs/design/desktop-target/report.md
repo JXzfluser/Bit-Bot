@@ -11607,3 +11607,86 @@ A 刚追加的那条消息被吞、而 A 刚删掉的那条会话被 B 的陈旧
 可感面：两个窗口/两个进程同时改会话列表，**谁建的会话都不再整批消失**；刚删掉的会话不会被另一个进程的陈旧快照
 复活；A 在某个会话里发的那句话不会因为 B 同时在别处写了一次会话面而被吞掉；三张 store 形状的面（bots/rooms/sessions）
 在默认模式下从此都有同一把钉死交错时刻的尺子。
+
+## 8.130 KP-09 片7：写一半失败把整份会话历史静默清空，坏文件的字节又被紧接着那一次写覆盖掉（SW-23/SW-24 / G-122 片7，2026-11-13）
+
+§8.129⑥ 第 7 条「T1-06 完成定义的另一半『`kill -9` 恢复正确』仍未量」到这里收。这片收的是**撕裂写**：
+一次没写完的落盘把整份历史变成半截 JSON，而旧代码对半截 JSON 的处理是「当作一个会话都没有」。
+
+### ① 先量，再改（取证都在临时 dataRoot，没碰用户数据）
+
+- 用户数据根里那张面的实际形状：**41 条会话、99,687 字节**。
+- 把它逐字截掉后一半，喂给真 `getSessionStore`：`list()` 回执 `ok:true`、只有 **1** 条会话（首次起步的占位），
+  stderr **一个字都没有**；紧接着一次 `create()` 落盘 → 盘上 **2** 条。**40 条没了**，
+  而且盘上既没有 `.tmp` 也没有 `.bak` —— 坏文件的字节被这次写直接覆盖，连手工救的余地都没了。
+- 机制就两句：`writeStore` 是**就地写**（`open(O_TRUNC)` 先把旧内容清空再往里写），
+  `load()` 的 JSON 路是 `catch { return empty(); }`。写失败 = 面变成半截，读半截 = 空面，
+  两步之间没有任何一道把字节留下的手。
+
+### ② 「拿真 SIGKILL 数撕裂次数」这把尺子为什么不当门（两轮实测，含第一轮自己的错）
+
+- **第一轮**探针：子进程每次循环都重新 `JSON.stringify` 一份 4MB 面再写。就地写杀 12 次、tmp+rename 杀 12 次
+  → **两边都 12/12 可解析、撕裂 0、孤儿 tmp 0**。这一轮什么都没测出来，因为时间几乎全花在 JS 建字符串上，
+  kill 极难落在 write 系统调用里 —— 记在这儿，是因为「尺子看着严丝合缝、其实一场空」就是这轮的形状。
+- **第二轮**修正：同一份 8MB 文本只建一次，循环里只剩写。实测 **就地写 8/10 可解析、2/10 撕裂**；
+  **tmp+rename 10/10 可解析、0 次撕裂，但最多攒下 7 个孤儿 `.tmp`**（进程被杀，来不及跑那个清 tmp 的 catch）。
+- 结论有两条：① 撕裂是**结构**问题，不是运气问题 —— rename 是原子的，目标文件要么还是上一刻的完整内容，
+  要么就是这次的完整内容，中间态不存在；② 但「杀中几次」那个数取决于杀在哪一毫秒，
+  按仓里的老规矩（不接受撞运气报数），它不能当门。所以 SW-23 用**确定性写失败注入**：在落盘那一步
+  只写进一半字节再抛 `ENOSPC` —— 这就是 kill 落在 write 中间留下的**字节形状**，一模一样，但每轮必中。
+- 第二轮顺手量到的孤儿 `.tmp` 变成这片的第三条判据 `pruneOrphanTmp`（[hosts/desktop/sessions.js:267](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L267)）：
+  只清「文件名里的 pid 已不在 + mtime 老于 60s」的那几个 —— 别人家的进程可能正在写它自己的 tmp。
+
+### ③ 落地三处，都在会话面的持有者里
+
+1. `writeStore`（[hosts/desktop/sessions.js:66](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L66)）换成**唯一 tmp + rename**，
+   tmp 名带 pid（片3 的账：同一毫秒两家进程撞同一个 tmp 名，先 rename 的后一家 ENOENT）；
+   失败先清 tmp、再把错**原样抛出去**（吞掉就是静默丢数据 —— 调用方拿到 ok、盘上是坏面）。
+2. `load()`（[hosts/desktop/sessions.js:165](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L165)）把「读不到」和「读出来不是合法形状」
+   分成两条路：文件不在 = 正常首次起步；文件在但 parse 不成（或 `sessions` 不是数组）= 先隔离再说一句；
+   合法但是空数组 = 原样保留（这条是 `DW`/`EO` 那几把尺子依赖的既有行为，没动）。
+3. `quarantineCorrupt()`（[hosts/desktop/sessions.js:295](file:///Users/zfl/Downloads/bitbot/hosts/desktop/sessions.js#L295)）：
+   rename 成 `sessions.json.corrupt-<UTC>`（改不动退化成 copy；两条都不行也**必须先把那句话说出来**），
+   然后才从空列表起步。**顺序是这片的关键**：证据留存在任何一次写之前，所以「下一次写把证据覆盖掉」
+   这条路被物理堵死 —— 实测崩后第一次 `create()` 之后，证据文件的字节仍与坏面**逐字相同**。
+   屏幕上那句是 `[sessions] … 不是合法的会话面 JSON（多半是写一半失败留下的）——原始字节已改名留成 …；
+   本次从空列表开始，这不是「你没有会话」，请手工检查那份文件。`
+
+### ④ 门：SW-23（行为）+ SW-24（形状）+ 一台夹具，外加一条「数错」的诚实记录
+
+- **SW-23**（[scripts/prove_sessions_single_writer.mjs:567](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L567)）六条判据：面字节逐字不变 / 错上抛 /
+  不留孤儿 tmp（控制组）/ 坏面先留证据（字节逐字相同）/ 屏幕上有那句 / 崩后重建不销毁证据且写出的面是合法 JSON。
+  真模块 **0 违规**；夹具（把 tmp+rename 换回就地写、并把 `quarantineCorrupt()` 摘掉，
+  [scripts/prove_sessions_single_writer.mjs:630](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L630)）判红 **3 条**，逐字是
+  「写失败把整份会话面变成半截 JSON（就地写的形状）」/「半截 JSON 没被留成证据文件（就地覆盖的形状）」/
+  「坏面被静默当成「你没有会话」，屏幕上一个字都没有」。
+- **我把期望写成 4、跑出来是 3**：第 4 条「证据被下一次写覆盖」在没有证据文件的夹具上根本触发不了
+  （那条判据有 `keep.length` 守卫）。这是**尺子的形状**，不是产品的缺口 —— 处理办法是把期望改成 3 并把原因写进
+  `ok()` 里（[scripts/prove_sessions_single_writer.mjs:1229](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L1229)），
+  而不是给夹具再造一份证据文件凑数。
+- **SW-24**（静态七条，[scripts/prove_sessions_single_writer.mjs:650](file:///Users/zfl/Downloads/bitbot/scripts/prove_sessions_single_writer.mjs#L650)）：钉的是**落盘口的形状**本身
+  （rename 换面 / 不许往面上直写 / tmp 带 pid / 失败清 tmp / 错上抛 / 坏面先留证据 / 孤儿 tmp 有人清），
+  这样以后有人把它换回就地写，不用等磁盘真满一次就能红。仓库 **0 违规**，同一台夹具判红 **3 条**。
+- 今天全绿：尺子 `PASS=27 FAIL=0`（`sw23=0 sw23_neg=3 sw24=0 sw24_neg=3`；`tmp_sites` 从 3 涨到 4 是会话面新增那行
+  tmp 赋值，棘轮 `tmp_bad=0` 仍成立）、G-122 段 `SECTION PASS=18 FAIL=0`（16→18）。
+  矩阵侧新锚点：数值锚在 [scripts/smoke_grok_desktop_parity.sh:5194](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5194)、
+  行为锚在 [scripts/smoke_grok_desktop_parity.sh:5200](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5200)，
+  `g122_pass` 下限 25→27（[scripts/smoke_grok_desktop_parity.sh:5106](file:///Users/zfl/Downloads/bitbot/scripts/smoke_grok_desktop_parity.sh#L5106)）。
+- 相邻门同轮复跑（因为这片动的正是每条消息追加都要走的那个落盘口）：`prove_event_dual_write 31/0`、
+  `prove_event_only 7/0`、`prove_event_read_model 10/0`、`prove_room_rename 8/0`、`prove_gp164_room_library 8/0`、
+  `prove_room_context pass=15 fail=0`、`prove_room_failure_surfaces all green`、`prove_report_history_intact 8/0`。
+
+### ⑤ 还欠着的（诚实清单）
+
+1. 就地写只收了会话面这一处：`readJson` 的 `catch { return fallback }` 在别的文件上仍是「坏文件当空面」，
+   而且那些面的坏文件同样没有证据留存这一步 —— 之所以先收会话面，因为只有它把「读不出来」直接变成用户的历史没了；
+2. `rooms/<id>.json` 这类每群一份的 transcript 文件没有证据留存，坏了就是空群；
+3. EVENT_ONLY 下这张面的真源是事件库，撕裂的账在库那侧（WAL），本片的尺子只覆盖默认模式；
+4. 注入是「只写一半再抛」，没量真磁盘满（要填满卷，本机不做）；
+5. §8.129⑥ 第 1..5 条（行级合并不到字段、标量最后写者赢、bots 面文件真源、同进程两份 `product_surface`、两份 `withFaceLock`）未变；
+6. 真 app 门（G-21 / G-119）本轮没跑，全量矩阵仍待授权。
+
+可感面：进程被强杀、磁盘写满、断电之后重开桌面 ——**会话列表要么还是崩前那一份，要么就是这次写完整的那一份**，
+不再出现「打开来一个会话都没有、历史静默清零」；万一那张面已经坏了（本机修之前就撕裂过的用户会撞上），
+现在会**在屏幕上说一句**并把原始字节改名留在旁边（`sessions.json.corrupt-<时刻>`），
+下一次发消息也不会把那份证据覆盖掉 —— 手工救得回来了；崩在写与改名之间的半截 tmp 也会被清掉，不在数据目录里堆垃圾。
