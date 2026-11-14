@@ -11952,3 +11952,39 @@ G-123 段单独跑：`SECTION PASS=2 FAIL=0`，锚点下限 11→16。
 `disable_model_invocation` 那条标着「不自动进模型；用户点名时进」，而**在对话里点它的名字，它这次真的生效**；
 写坏 `environments` 或名字/描述超限的技能，从这一刻起在清单上有原因，在终端上有一句解释，
 在请求体里一个字都没有。
+
+## 8.135 KP-10 第三片：屏上那句技能数由 Host 一次拼好，「能点名几条」和「这回合模型看见几条」第一次并排显示（SK-01..18 / G-123 扩锚，2026-11-14）
+
+现象：片2 把界面上每个字段收到同一个分类器以后，屏幕上仍然只有一个数。交付元信息那行写的是
+`list_skills×N`，N 取自 `count` = **可点名条数**（本轮实测 8）；模型这一回合真正看见的是 2 条。
+两个数不是互相矛盾（8 条都在清单上，2 条进了请求体），而是**界面上读不出「为什么只有 2 条」**——
+用户要判断「我这条技能到底生不生效」，还得去开终端看 stderr。
+
+改动（一次拼串，两处显示，都不再自己数）：
+1. `hosts/shared/host_ffi.js` 新增 `skillSummaryText(invocableCount, modelCount, notInModelCount)`，
+   `list_skills` 的 artifact 多一个成品字段 `summary_text`：
+   `可点名 8 · 本回合进模型 2 · 另 4 条进不了模型`。三个数分别取 `invocable.length`、注入那一次调用的
+   `seeds.length`、`skillInventory()` 里 `model_ok === false` 的条数（`modelSkipCount`）——
+   **没有另起一次统计**。
+2. `hosts/desktop/index.html` 两处只显示这个串：`/` 菜单头部（`skillsCache.raw.summary_text`）
+   与交付行/交付元信息（`p.summary_text` 优先，取不到才退回老的 `list_skills×N`）。
+3. `hosts/desktop/preload.js:88` 是原样透传，处理器 `main.js:2440` 早已把整份 payload 放进 `raw`，
+   所以这片没动 IPC 合同。
+
+证据（`node scripts/prove_skill_reaches_model.mjs`，隔离 data root + echo-all stub）：**PASS=18 FAIL=0**。
+- SK-17 钉那句里的三个数与 `invocable_count / model_count / skillInventory(model_ok=false)` 逐一相等，
+  形状本身也被正则钉住（多写或少写一段都会红）。
+- SK-18 是它的反向夹具：把 `summary_text` 改回「界面自己数」（`skillSummaryText(invocable, invocable, 0)`），
+  实测那句变成「本回合进模型 8」，与注入条数 2 分家 ⇒ 判红，SK-17 不是恒真断言。
+- 矩阵侧 G-123 锚点从 `PASS>=16` 提到 `>=18`（钉的是 `prove_skill_reaches_model: PASS=.. FAIL=..` 那行的数字，
+  不钉散文，见 §8.134 里 G-40 的教训）。
+
+⑤ 诚实清单（这一片没收到的）
+1. **没在真开机的应用里截图看过**：菜单头部那行与交付行小字的样式（字号 10px、`--muted`）还没过一次设计对齐，
+   §8.134⑤-4 那半句「`list_skills×N` 没把 `model_count` 一起显示」由这片收掉，但显示效果本身仍欠一次真机验证。
+2. `另 K 条进不了模型` 只数**磁盘 SKILL.md** 那一份（`skillInventory()`）；managed/plugin 的技能走另一套来源，
+   它们不进模型的原因（`not_on_disk`）不在这个 K 里。
+3. 那句是中文成品串、由 Host 拼，renderer 侧没做 i18n；若要把这句翻成英文，得把 `summary_text` 改成
+   结构化字段 + 渲染端模板，那会把「不让渲染端自己数」这条纪律再拆一遍，先不动。
+4. 片2 遗留不变：点名叫的是名字/目录名子串；`environments` 只校形状；legacy effects 路径拿不到技能；
+   行为只证到 HTTP 请求体这一层。
