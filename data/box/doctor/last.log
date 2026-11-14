@@ -1,0 +1,6 @@
+PASS disk
+PASS workspace
+PASS date
+PASS display
+PASS dockerenv
+SUMMARY: 5 checks, 0 failed (fixture box-doctor-mock)

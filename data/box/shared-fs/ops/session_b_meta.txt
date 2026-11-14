@@ -1,0 +1,4 @@
+agent_id=product-agent-b
+display=:41
+pid=40049
+shared_path=/Users/zfl/Downloads/bitbot/h3-cross-agent-shared.txt

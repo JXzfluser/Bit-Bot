@@ -49,8 +49,12 @@ const MARK = "KP10-BODY-" + RUN;
 const HIDDEN = "KP10-HIDDEN-" + RUN;
 const TOOLONG = "KP10-TOOLONG-" + RUN;
 const BADNAME = "KP10-BADNAME-" + RUN;
+const NOUSER = "KP10-NOUSER-" + RUN;
+const BADENV = "KP10-BADENV-" + RUN;
 const STUB_PORT = Number(process.env.BITBOT_KP10_STUB_PORT || 8811);
 const SKILL_TEXT = "KP10 点名做一次：按刚才那条技能回答";
+// 片2：用户明确点名某条技能时，连 disable_model_invocation 的那条也要进这一回合。
+const NAME_HIDDEN_TEXT = "用 kp10-hidden 这条技能做一次";
 
 /* ---- 内核二进制：env 优先；否则**每次**增量 build --------------------------
    第一版这里写的是「已存在就直接用」，结果拿到一个不含本次内核改动的陈旧
@@ -136,6 +140,33 @@ function writeSkills(skillsRoot) {
       "",
     ].join("\n"),
   );
+  // 片2 的两条新形状：用户不能点名（但照样自动进模型）、environments 写法不合格。
+  fs.mkdirSync(path.join(skillsRoot, "kp10-nouser"), { recursive: true });
+  fs.writeFileSync(
+    path.join(skillsRoot, "kp10-nouser", "SKILL.md"),
+    [
+      "---",
+      "name: kp10-nouser",
+      "description: 只能自动进模型、不许用户点名",
+      "disable_user_invocation: true",
+      "---",
+      "这条不许被点名：" + NOUSER + "。",
+      "",
+    ].join("\n"),
+  );
+  fs.mkdirSync(path.join(skillsRoot, "kp10-badenv"), { recursive: true });
+  fs.writeFileSync(
+    path.join(skillsRoot, "kp10-badenv", "SKILL.md"),
+    [
+      "---",
+      "name: kp10-badenv",
+      "description: environments 写成空列表",
+      "environments: []",
+      "---",
+      "写法不合格的 environments，正文不该进模型：" + BADENV + "。",
+      "",
+    ].join("\n"),
+  );
 }
 
 /* ---- 反向夹具：hosts/shared 全软链，只把「入口文件 + 被打补丁的那份」落成文件 ----
@@ -171,22 +202,62 @@ function sharedFarm(patches) {
   return farm;
 }
 
-const CONTROL_PATCHES = {
-  // 摘掉 Host 拼装那一步：技能照样进内核，但请求里一个字都不出现
-  "host_ffi.js": [
-    {
-      from: "  function llmSkillBlock(skills) {\n    const rows = Array.isArray(skills) ? skills : [];",
-      to: "  function llmSkillBlock(skills) {\n    const rows = []; // 夹具：注入点摘掉",
-    },
-  ],
-  // 摘掉 argv 通道：内核根本收不到技能
-  "run_moon_turn.js": [
-    {
-      from: "[...ffi.memorySeedArgs(ctx.botId), ...ffi.skillSeedArgs()]",
-      to: "[...ffi.memorySeedArgs(ctx.botId)]",
-    },
-  ],
-};
+/* 四把反向夹具，每把都摘掉链路上的一步，断言「那一步承重」。
+   file 必须是 hosts/shared 下的真文件名 —— 夹具按文件物化，键名写错就等于没打补丁。 */
+const CONTROLS = [
+  {
+    // 摘掉 Host 拼装：技能照样进内核，但请求里一个字都不出现
+    label: "SK-10 摘掉 Host 拼装",
+    file: "host_ffi.js",
+    patches: [
+      {
+        from: "  function llmSkillBlock(skills) {\n    const rows = Array.isArray(skills) ? skills : [];",
+        to: "  function llmSkillBlock(skills) {\n    const rows = []; // 夹具：注入点摘掉",
+      },
+    ],
+    kind: "turn",
+    marker: MARK,
+  },
+  {
+    // 摘掉 argv 通道：内核根本收不到技能
+    label: "SK-11 摘掉 argv 通道",
+    file: "run_moon_turn.js",
+    patches: [
+      {
+        from: "[...ffi.memorySeedArgs(ctx.botId), ...ffi.skillSeedArgs(text)]",
+        to: "[...ffi.memorySeedArgs(ctx.botId)]",
+      },
+    ],
+    kind: "turn",
+    marker: MARK,
+  },
+  {
+    // 摘掉「点名」那半：用户点名也不起作用，disable_model_invocation 就变成「装了但永远执行不了」
+    label: "SK-15 摘掉点名通道",
+    file: "host_ffi.js",
+    patches: [
+      {
+        from: "    for (const s of namedSkillSeeds(userText)) push(s);",
+        to: "    for (const s of []) push(s); // 夹具：点名通道摘掉",
+      },
+    ],
+    kind: "named",
+    marker: HIDDEN,
+  },
+  {
+    // 让界面自己数一遍（片2 之前的形状）：屏幕上那个「进模型的条数」不再和注入同源
+    label: "SK-15 界面自己数条数",
+    file: "host_ffi.js",
+    patches: [
+      {
+        from: "        model_count: seeds.length,",
+        to: "        model_count: inventory.length, // 夹具：界面自己数",
+      },
+    ],
+    kind: "listing",
+    marker: "",
+  },
+];
 
 function startStub() {
   const stub = spawn(process.execPath, [path.join(ROOT, "scripts/dev_stubs/openai_compat_stub.js")], {
@@ -230,7 +301,7 @@ async function main() {
   const SKILLS = path.join(ROOTDIR, "data", "agent-tools", "skills");
   fs.mkdirSync(DATA, { recursive: true });
   writeSkills(SKILLS);
-  ok("SK-01 技能夹具", SKILLS + "（1 条合格 + 3 条该被挡在外面）");
+  ok("SK-01 技能夹具", SKILLS + "（2 条自动进模型 + 4 条各有毛病）");
 
   const { stub, up } = startStub();
   if (!(await up)) {
@@ -253,8 +324,8 @@ async function main() {
   const { createTurnRunner } = require(path.join(ROOT, "hosts/shared/run_moon_turn.js"));
 
   /** 跑一个真回合，返回「喂给 provider 的整条 message 栈」（stub 逐字回显）。 */
-  async function probe(runner, sessionId) {
-    const r = await runner.runTurn(SKILL_TEXT, {
+  async function probe(runner, sessionId, text) {
+    const r = await runner.runTurn(text || SKILL_TEXT, {
       botId: "kp10-bot",
       sessionId,
       turnId: "kp10-" + sessionId,
@@ -271,9 +342,9 @@ async function main() {
   /* ---- SK-03：Host 读盘那侧的校验与过滤（不靠模型，纯函数判） ---- */
   const seeds = runner.ffi.collectSkillSeeds();
   const seedNames = (Array.isArray(seeds) ? seeds : []).map((s) => s && s.name).sort();
-  JSON.stringify(seedNames) === JSON.stringify(["kp10-demo"])
-    ? ok("SK-03 collectSkillSeeds", "只收进 1 条：" + JSON.stringify(seedNames) + "（关掉/超限的 3 条被挡在外面）")
-    : bad("SK-03 collectSkillSeeds", "期望只有 kp10-demo，实测 " + JSON.stringify(seedNames));
+  JSON.stringify(seedNames) === JSON.stringify(["kp10-demo", "kp10-nouser"])
+    ? ok("SK-03 collectSkillSeeds", "只收进 2 条：" + JSON.stringify(seedNames) + "（关掉/超限/写法不合格的 4 条被挡在外面）")
+    : bad("SK-03 collectSkillSeeds", "期望 kp10-demo + kp10-nouser，实测 " + JSON.stringify(seedNames));
 
   /* ---- SK-04：正文真进 provider 请求体（内核收到 + 内核交回 + Host 拼进 system） ---- */
   {
@@ -288,11 +359,16 @@ async function main() {
       ? ok("SK-06 技能块形状", "system 里有「【技能 · kp10-demo」，且标了这是数据不是指令")
       : bad("SK-06 技能块形状", echoed.slice(0, 300));
 
-    /* ---- SK-07：三种该被挡在外面的一条都不许出现 ---- */
-    const leaked = [HIDDEN, TOOLONG, BADNAME].filter((m) => echoed.includes(m));
+    /* ---- SK-07：该被挡在外面的（关掉 / 超限 / 写法不合格）一条都不许出现 ---- */
+    const leaked = [HIDDEN, TOOLONG, BADNAME, BADENV].filter((m) => echoed.includes(m));
     leaked.length === 0
-      ? ok("SK-07 过滤", "disable_model_invocation / description>1024 / name>64 的正文都不在请求里")
+      ? ok("SK-07 过滤", "disable_model_invocation / description>1024 / name>64 / environments 空列表的正文都不在请求里")
       : bad("SK-07 过滤", "泄漏：" + leaked.join(","));
+
+    /* ---- SK-12：disable_user_invocation 只挡「用户点名」，不挡自动进模型 ---- */
+    echoed.includes(NOUSER) && echoed.includes("【技能 · kp10-nouser")
+      ? ok("SK-12 不许点名 ≠ 不许进模型", "kp10-nouser 的正文自动进了请求体")
+      : bad("SK-12 不许点名 ≠ 不许进模型", echoed.slice(0, 300));
 
     /* ---- SK-08：flag 字节不许混进用户原文 ---- */
     const userRow = (r.messages || []).find((m) => m.role === "user");

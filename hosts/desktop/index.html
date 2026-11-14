@@ -23791,7 +23791,18 @@
             const b = document.createElement("button");
             b.type = "button";
             const tag = src === "plugin" && s.plugin_id ? " [" + s.plugin_id + "]" : "";
-            b.textContent = "/" + (s.name || s.id) + tag + (s.description ? " — " + String(s.description).slice(0, 40) : "");
+            // KP-10 片2：这句话由 Host 的分类器算出来（和进模型那一步同一个来源），
+            // 渲染端只负责显示，不再自己判一遍 —— 否则同一屏会有两套说法。
+            const modelTag =
+              s.model_ok === false
+                ? " · " + (s.model_note || "不进模型")
+                : "";
+            b.textContent =
+              "/" +
+              (s.name || s.id) +
+              tag +
+              (s.description ? " — " + String(s.description).slice(0, 40) : "") +
+              modelTag;
             b.addEventListener("click", () => {
               input.value = "use skill " + (s.name || s.id) + " ";
               menuEl.hidden = true;

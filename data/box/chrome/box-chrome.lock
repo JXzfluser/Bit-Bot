@@ -1,0 +1,5 @@
+pid=host-box-chrome-probe
+path=/usr/local/bin/box-chrome
+status=probed
+private_cdp_port=54427
+shared_cdp_untouched=true

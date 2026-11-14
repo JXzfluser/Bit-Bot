@@ -1,0 +1,6 @@
+dockerenv_path=/.dockerenv
+dockerenv_present=no
+equiv_probe=none
+hosted=no
+runtime=unknown
+summary=runtime=unknown dockerenv=no hosted=no equiv=none

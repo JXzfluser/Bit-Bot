@@ -370,7 +370,9 @@ function createTurnRunner(repoRoot, opts = {}) {
       return { ok: false, error: "empty text" };
     }
     // GP-112: seeds (and --bot-id) come from this Bot's slot only.
-    const kernelArgs = [...ffi.memorySeedArgs(ctx.botId), ...ffi.skillSeedArgs()];
+    // KP-10 片2：技能那边要把本回合的用户原文交给 Host —— 用户点名某条技能时，
+    // 连 disable_model_invocation 的那条也要随这一回合进模型。
+    const kernelArgs = [...ffi.memorySeedArgs(ctx.botId), ...ffi.skillSeedArgs(text)];
     if (ctx.sessionId) {
       kernelArgs.push("--session-id", String(ctx.sessionId));
     }

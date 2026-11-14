@@ -1,30 +1,30 @@
 {
   "sidebar": {
     "w": 280,
-    "rows": 25,
+    "rows": 96,
     "toolbar": {
       "top": 0,
       "h": 48
     },
     "botSection": {
       "top": 54,
-      "h": 203
+      "h": 2542
     },
     "botList": {
       "top": 87,
-      "h": 170
+      "h": 2194
     },
     "roomList": {
-      "top": 0,
-      "h": 0
+      "top": 2310,
+      "h": 286
     },
-    "roomEmptyShown": true,
+    "roomEmptyShown": false,
     "roomListPrev": {
       "tag": "DIV",
       "cls": "panel-title panel-head spaced",
-      "display": "none",
-      "h": 0,
-      "top": 0
+      "display": "flex",
+      "h": 19,
+      "top": 2289
     },
     "sessionTitleTop": null,
     "sessionListTop": 0,
@@ -42,20 +42,26 @@
       "size": "13px",
       "weight": "420",
       "lh": "18px",
-      "color": "rgba(28, 28, 28, 0.68)"
+      "color": "rgba(245, 245, 245, 0.66)"
     },
-    "groupHead": null,
+    "groupHead": {
+      "h": 30,
+      "size": "12px",
+      "weight": "420",
+      "color": "rgba(245, 245, 245, 0.66)"
+    },
     "avW": 36,
-    "avRadius": "46% 54% 48% 52% / 52% 46% 54% 48%",
+    "avRadius": "50%",
     "labels": [
-      "今天",
+      "自媒体内容团队10",
+      "ok2",
       "昨天",
       "更早"
     ]
   },
   "sessPopup": {
     "shown": true,
-    "rows": 22,
+    "rows": 54,
     "inAccountBar": true,
     "leftStandaloneSection": false
   },
@@ -103,19 +109,19 @@
     "rects": {
       "msg": [
         496,
-        681,
+        706,
         728
       ],
       "head": [
         496,
-        681,
-        728,
+        706,
+        97,
         22
       ],
       "body": [
         496,
-        709,
-        558,
+        734,
+        62,
         34
       ]
     },
@@ -127,7 +133,7 @@
       "boxShadow": "none",
       "radius": 18,
       "bg": "rgba(28, 28, 28, 0.06)",
-      "w": 558,
+      "w": 62,
       "size": "14px",
       "weight": "420",
       "lh": "20px"

@@ -762,7 +762,31 @@ function createHostFfi(repoRoot, opts = {}) {
     return String(s || "").replace(/::/g, "∶").replace(/[\r\n]+/g, " ").trim();
   }
 
-  function collectSkillSeeds() {
+  /* environments[] 现在只校形状（不匹配语义）：写了就必须是非空字符串列表，
+     单项 ≤64 字。没写 = 不限环境。形状不对就把这条技能整条挡在模型外并说一句，
+     而不是把它当成「没限制」放过去 —— 后者会让一份写坏的清单看起来一切正常。 */
+  function skillEnvironmentsCheck(front) {
+    const line = /^environments:[ \t]*(.*)$/m.exec(front);
+    if (!line) return { ok: true, items: null };
+    let v = String(line[1] || "").trim();
+    if (v === "" || v === "[]") return { ok: false, items: [] };
+    if (v.startsWith("[")) v = v.replace(/^\[/, "").replace(/\]$/, "");
+    const items = v
+      .split(",")
+      .map((x) => x.trim().replace(/^["']|["']$/g, ""))
+      .filter((x) => x.length > 0);
+    if (!items.length) return { ok: false, items: [] };
+    if (items.some((x) => x.length > 64)) return { ok: false, items };
+    return { ok: true, items };
+  }
+
+  /**
+   * KP-10 片2：读盘的那一份**唯一**分类器。
+   * 模型注入（collectSkillSeeds）和界面清单（list_skills）都从它拿数 ——
+   * 两处各自解析的话，同一屏上会出现两个互相对不上的技能数（§8.133 的残账）。
+   * 每条给出两个独立答案：能不能进模型（modelSkip）、能不能被用户点名（userSkip）。
+   */
+  function skillInventory() {
     const skillsRoot = path.join(AGENT_TOOLS_ROOT, "skills");
     let names = [];
     try {
@@ -774,49 +798,126 @@ function createHostFfi(repoRoot, opts = {}) {
     } catch (_) {
       return [];
     }
-    const maxSkills = Math.max(0, Number(process.env.BITBOT_SKILL_SEED_MAX || 8));
-    const maxBody = Math.max(80, Number(process.env.BITBOT_SKILL_BODY_MAX || 1200));
-    const out = [];
+    const rows = [];
     for (const dirName of names) {
-      if (out.length >= maxSkills) break;
-      const raw = readSkillMarkdown(path.join(skillsRoot, dirName));
-      if (!raw) continue;
+      const dirPath = path.join(skillsRoot, dirName);
+      const raw = readSkillMarkdown(dirPath);
       const { front, body } = splitSkillMarkdown(raw);
-      if (skillFlag(front, "disable_model_invocation")) continue;
       const name = skillFieldSafe(skillField(front, "name") || dirName);
       const description = skillFieldSafe(skillField(front, "description"));
-      if (!name || name.length > 64) {
+      const env = skillEnvironmentsCheck(front);
+      let modelSkip = "";
+      if (!raw) {
+        modelSkip = "no_skill_md";
+      } else if (skillFlag(front, "disable_model_invocation")) {
+        modelSkip = "disable_model_invocation";
+      } else if (!name || name.length > 64) {
+        modelSkip = "name";
         skillSkipOnce(
           `skill-name-${dirName}`,
           `[skills] ${dirName} 的 name 不合格（空或超过 64 字）——本回合不进模型。\n`,
         );
-        continue;
-      }
-      if (!description || description.length > 1024) {
+      } else if (!description || description.length > 1024) {
+        modelSkip = "description";
         skillSkipOnce(
           `skill-desc-${dirName}`,
           `[skills] ${dirName} 的 description 不合格（空或超过 1024 字）——本回合不进模型。\n`,
         );
-        continue;
+      } else if (!env.ok) {
+        modelSkip = "environments";
+        skillSkipOnce(
+          `skill-env-${dirName}`,
+          `[skills] ${dirName} 的 environments 写法不合格（空列表或单项超过 64 字）——本回合不进模型。\n`,
+        );
       }
-      out.push({
+      const userSkip = skillFlag(front, "disable_user_invocation")
+        ? "disable_user_invocation"
+        : "";
+      // 界面上要说得出「这条为什么不在模型里」，而且要说得和注入那一步一致 ——
+      // 所以这句话在这里算，不在渲染端另拼一套。
+      const modelNote =
+        modelSkip === ""
+          ? "本回合自动进模型"
+          : modelSkip === "disable_model_invocation"
+            ? "不自动进模型；用户点名时进"
+            : modelSkip === "not_on_disk"
+              ? "不在磁盘 SKILL.md 上，进不了模型"
+              : "写法不合格，进不了模型";
+      rows.push({
+        dir: dirName,
+        path: dirPath,
+        has_skill_md: !!raw,
         name,
         description,
-        body: body.slice(0, maxBody),
+        body,
+        environments: env.items,
+        model_ok: modelSkip === "",
+        model_skip: modelSkip,
+        model_note: modelNote,
+        user_ok: userSkip === "",
+        user_skip: userSkip,
       });
     }
-    return out;
+    return rows;
   }
 
-  function skillSeedArgs() {
+  function collectSkillSeeds() {
+    const maxSkills = Math.max(0, Number(process.env.BITBOT_SKILL_SEED_MAX || 8));
+    const maxBody = Math.max(80, Number(process.env.BITBOT_SKILL_BODY_MAX || 1200));
+    return skillInventory()
+      .filter((s) => s.model_ok)
+      .slice(0, maxSkills)
+      .map((s) => ({
+        name: s.name,
+        description: s.description,
+        body: s.body.slice(0, maxBody),
+      }));
+  }
+
+  function skillSeedArgs(userText) {
+    const maxSkills = Math.max(0, Number(process.env.BITBOT_SKILL_SEED_MAX || 8));
+    const seen = new Set();
     const args = [];
-    for (const s of collectSkillSeeds()) {
+    const push = (s) => {
+      if (args.length / 2 >= maxSkills || seen.has(s.name)) return;
+      seen.add(s.name);
       args.push(
         "--seed-skill",
         encodeHostArg(`${s.name}::${s.description}::${s.body}`),
       );
-    }
+    };
+    // 用户这一回合点名的技能排在自动注入前面：明确要的东西不该被上限挤掉。
+    for (const s of namedSkillSeeds(userText)) push(s);
+    for (const s of collectSkillSeeds()) push(s);
     return args;
+  }
+
+  /* 「在对话里点名让它做一次」那条可感面的另一半：`disable_model_invocation: true` 挡的是
+     「模型自己想起来用它」，挡不住用户在本回合明确点名 —— 那才是这条旗子的语义，
+     也才让这条旗子在我们的产品里不是「装了但永远执行不了」。
+     认名字：SKILL.md 的 name 或目录名，大小写不敏感、至少 3 字，免得一个常用短词就命中。 */
+  function namedSkillSeeds(userText) {
+    const t = String(userText || "").toLowerCase();
+    if (!t.trim()) return [];
+    const maxBody = Math.max(80, Number(process.env.BITBOT_SKILL_BODY_MAX || 1200));
+    const out = [];
+    for (const s of skillInventory()) {
+      if (!s.user_ok) continue;
+      if (!s.body) continue;
+      // name/description/environments 不合格的技能连自动注入都进不去，点名也不该绕过去。
+      if (s.model_skip && s.model_skip !== "disable_model_invocation") continue;
+      const cand = [s.name, s.dir]
+        .filter((x) => x && x.length >= 3)
+        .map((x) => x.toLowerCase());
+      if (cand.some((c) => t.includes(c))) {
+        out.push({
+          name: s.name,
+          description: s.description,
+          body: s.body.slice(0, maxBody),
+        });
+      }
+    }
+    return out;
   }
 
   function loadConnectorState(name) {
@@ -19196,6 +19297,7 @@ function createHostFfi(repoRoot, opts = {}) {
       "--session-id",
       String(sessionId || "worker"),
       ...memorySeedArgs(botId),
+      ...skillSeedArgs(prompt),
       String(prompt || "").slice(0, 800),
     ];
     try {
@@ -21158,16 +21260,12 @@ function createHostFfi(repoRoot, opts = {}) {
       }
       const skillsRoot = path.join(AGENT_TOOLS_ROOT, "skills");
       fs.mkdirSync(skillsRoot, { recursive: true });
-      let names = [];
-      try {
-        names = fs
-          .readdirSync(skillsRoot, { withFileTypes: true })
-          .filter((d) => d.isDirectory())
-          .map((d) => d.name)
-          .sort();
-      } catch {
-        names = [];
-      }
+      // KP-10 片2：用户装的那一份不再由这里自己 readdir + 自己解析 ——
+      // 走 skillInventory()，和进模型用的是同一个分类器，所以「屏幕上的清单」和
+      // 「模型真看到的条数」不可能各说各话。
+      const inventory = skillInventory();
+      const seeds = collectSkillSeeds();
+      const seedNames = new Set(seeds.map((s) => s.name));
       const byName = new Map();
       const consider = (entry) => {
         const prev = byName.get(entry.name);
@@ -21189,6 +21287,13 @@ function createHostFfi(repoRoot, opts = {}) {
           description: m.description,
           source: "managed",
           priority: SKILL_SOURCE_PRIORITY.managed,
+          // 内核里硬编码的那 3 条不在磁盘上，SKILL.md 无从读起 —— 它们能被点名，
+          // 但本回合不会随 --seed-skill 进模型（界面上要说得出这个区别）。
+          model_ok: false,
+          model_skip: "not_on_disk",
+          model_note: "不在磁盘 SKILL.md 上，进不了模型",
+          user_ok: true,
+          user_skip: "",
         });
       }
       let installedPlugins = [];
@@ -21219,36 +21324,44 @@ function createHostFfi(repoRoot, opts = {}) {
             source: "plugin",
             priority: SKILL_SOURCE_PRIORITY.plugin,
             plugin_id: pid,
+            // 插件技能走 MCP 命名空间，不走磁盘 SKILL.md —— 同样不会进本回合的模型上下文。
+            model_ok: false,
+            model_skip: "not_on_disk",
+            model_note: "不在磁盘 SKILL.md 上，进不了模型",
+            user_ok: true,
+            user_skip: "",
           });
         }
       }
-      for (const n of names) {
-        const skillMd = path.join(skillsRoot, n, "SKILL.md");
-        const hasMd = fs.existsSync(skillMd);
-        let desc = "";
-        if (hasMd) {
-          try {
-            const md = fs.readFileSync(skillMd, "utf8");
-            const dm = md.match(/^---[\s\S]*?\ndescription:\s*(.+)$/m);
-            if (dm) desc = String(dm[1] || "").trim();
-          } catch (_) {
-            desc = "";
-          }
-        }
+      for (const row of inventory) {
         consider({
-          id: n,
-          name: n,
-          path: path.join(skillsRoot, n),
-          has_skill_md: hasMd,
-          description: desc,
+          id: row.dir,
+          name: row.dir,
+          skill_name: row.name,
+          path: row.path,
+          has_skill_md: row.has_skill_md,
+          description: row.description,
           source: "user",
           priority: SKILL_SOURCE_PRIORITY.user,
+          // 下面四个字段与进模型那条路是同一个分类器算出来的，不是这里再判一遍。
+          model_ok: row.model_ok,
+          model_skip: row.model_skip,
+          model_note: row.model_note,
+          user_ok: row.user_ok,
+          user_skip: row.user_skip,
+          in_model: seedNames.has(row.name),
         });
       }
       const all = Array.from(byName.values()).sort((a, b) =>
         String(a.name).localeCompare(String(b.name)),
       );
-      const skills = all.filter((s) => {
+      // disable_user_invocation 的技能不进「可点名」那份名单（它是这条旗子的意思），
+      // 但不能因此从屏幕上消失得无声无息 —— 它进 uninvocable，带原因。
+      const invocable = all.filter((s) => s.user_ok !== false);
+      const uninvocable = all
+        .filter((s) => s.user_ok === false)
+        .map((s) => ({ name: s.name, source: s.source, reason: s.user_skip }));
+      const skills = invocable.filter((s) => {
         if (!query) return true;
         return (
           String(s.name || "").toLowerCase().includes(query) ||
@@ -21273,6 +21386,11 @@ function createHostFfi(repoRoot, opts = {}) {
         sources: ["managed", "user", "plugin"],
         source_counts: sourceCounts,
         skills,
+        // KP-10 片2：屏幕上这几个数必须能互相对上，而且都由同一次分类算出来。
+        invocable_count: invocable.length,
+        uninvocable,
+        model_count: seeds.length,
+        model_names: seeds.map((s) => s.name),
         at,
       };
       fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
@@ -26194,6 +26312,8 @@ function createHostFfi(repoRoot, opts = {}) {
     memorySeedArgs,
     skillSeedArgs,
     collectSkillSeeds,
+    skillInventory,
+    namedSkillSeeds,
     dropBotMemory,
     dropBotProfileVault,
     DATA_ROOT,
