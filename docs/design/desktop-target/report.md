@@ -11988,3 +11988,33 @@ G-123 段单独跑：`SECTION PASS=2 FAIL=0`，锚点下限 11→16。
    结构化字段 + 渲染端模板，那会把「不让渲染端自己数」这条纪律再拆一遍，先不动。
 4. 片2 遗留不变：点名叫的是名字/目录名子串；`environments` 只校形状；legacy effects 路径拿不到技能；
    行为只证到 HTTP 请求体这一层。
+
+## 8.136 推上去那一版在 CI 上的四条红：G-123 绿，G-24/G-47/G-53 指向环境，G-71 是本仓欠的门禁卫生账（run 43588486766，2026-11-14）
+
+推的是 `1b0025b`（片1~片2）。GitHub Actions 两个 workflow：`Capability Matrix Gate`（run 43588486886）**success**；
+`Desktop Parity Matrix`（run 43588486766）**failure**。逐条取证（`gh run view --log-failed` + artifact
+`parity-matrix-log`），不猜：
+
+1. **G-123（本片自己那条）在 CI 上绿**：`✓ G-123 技能进模型全绿（PASS=16 FAIL=0）` + `✓ G-123 锚点：SK-01..16 绿满 16 项`。
+   注入链在 ubuntu runner 上和本机一致，没出现「只在一边坏」。
+2. **G-24 `prove_m24_window.js` 在 CI 红，本机同命令刚复跑是绿的**：本机 `timeout 900 node scripts/prove_m24_window.js`
+   → `PASS=29 FAIL=0`（exit=0，没吃掉 900s 预算）。CI 那块打出的红只有 `✗ G-24 主窗口结构契约（见 /tmp/g24-probe.log）`
+   一句，而 artifact 里**没有 g24-probe.log**（上传清单没含它），所以红原文拿不到 —— 这是可观测性账，不是产品红。
+3. **G-47 `prove_android_build` `PASS=0 FAIL=1`，红行自带原因**：`✗ AB-01 assembleUniversalDebug + testUniversalDebugUnitTest 跑通 — exit=143`。
+   143 = SIGTERM，也就是 gradle 是被门的 timeout 杀的，不是编译失败（同块其余 11 项 + roster 18 项在 CI 上全绿）。
+4. **G-53 `e2e_desktop_user_journeys` `PASS=71 FAIL=1`**：红的那条是「成员列表问答」，回执
+   `{"answeredMembers":false,"allNames":false,"txt":""}` —— 那一回合在 CI 上根本没拿到回答。
+   本机未复现，且同轮 71 条绿；在重跑之前它记为**未定性**，不算产品绿。
+5. **G-71 是真实的门禁卫生缺陷**（不是环境问题）：它报「有已跟踪文件被本轮门禁改动了」，清单是
+   `data/box/chrome/box-chrome.lock`、`data/box/clock/last_date.txt`、`data/box/shared-fs/ops/agent_a_read.txt` /
+   `agent_b_write.txt` / `session_a_meta.txt` / `session_b_meta.txt`、`data/routines/webhooks/last_wake.txt`
+   （以上被改写），以及 `data/chart-desktop-1.png`、`data/gen-image-desktop-1.png`、
+   `data/gen-video-desktop-1.mp4`、`data/watch-frame-desktop-1.png`（以上被**删掉**）。
+   判据本身是对的（门只该往 /tmp 或自己造的夹具里写），红的原因是这些运行期产物**至今是被跟踪文件**，
+   而且删图/删视频那几类门没有「这是夹具」的边界 —— 和本仓更早记下的「门禁会写进用户看得见的数据」是同一笔账，
+   片面上已收的是 Smoke Bot 夹具自清，Box 运行态与生成物那两类没收。
+
+结论：这次 CI 的四条红里，**没有一条落在 KP-10 的改动面上**（G-123 自己绿；G-24 本机复跑绿；G-47 是被超时杀；
+G-53 单条未定性）。欠的三件事按性价比排：① 收 G-71 —— 把 Box 运行态与生成物从被跟踪状态移出，或让那几类门只在
+夹具目录里跑；② 把 `g24-probe.log` 这类红原文加进 artifact 上传清单，否则「CI 红、本机绿」永远只能靠重跑猜；
+③ 重跑一次矩阵给 G-53 定性（flake 还是真回归）。
