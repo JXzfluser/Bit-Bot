@@ -2542,28 +2542,28 @@
       <span class="sub"><span id="hotkey-hint">Ctrl+Shift+Space</span> <span data-i18n="invoke">呼出</span></span>
     </div>
     <!-- Grok-parity: active Bot identity pill, centered in the chat column -->
-    <div id="bot-pill" title="当前 Bot">
+    <div id="bot-pill" title="当前 Bot" data-i18n-title="railCurrentBot">
       <span class="bot-pill-avatar"></span>
       <span class="bot-pill-name">Bit Bot</span>
     </div>
     <span id="devmode-badge" data-i18n="devBadge">开发模式</span>
       <div id="header-actions">
-      <div id="model-picker" title="国产多模型配置" aria-label="模型">
+      <div id="model-picker" title="国产多模型配置" aria-label="模型" data-i18n-title="railModelsTitle" data-i18n-aria="modelLabel">
         <button type="button" id="model-entry" class="mp-btn"><span class="mp-label">模型</span></button>
       </div>
-      <button type="button" id="tools-toggle-btn" data-lab title="机器 / 渠道 / 能力面板" data-i18n="headerSkills">能力</button>
-      <button type="button" id="gp-panel-btn" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer">电脑</button>
+      <button type="button" id="tools-toggle-btn" data-lab title="机器 / 渠道 / 能力面板" data-i18n="headerSkills" data-i18n-title="railToolsTitle">能力</button>
+      <button type="button" id="gp-panel-btn" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer" data-i18n-title="railGpPanelTitle">电脑</button>
     </div>
   </header>
-  <button type="button" id="sidebar-reopen-tab" title="展开侧栏" aria-label="展开侧栏"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  <button type="button" id="sidebar-reopen-tab" title="展开侧栏" aria-label="展开侧栏" data-i18n-title="railActionExpand" data-i18n-aria="railActionExpand"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   <aside id="agents">
     <!-- Grok parity: two 32px circular ghost buttons, right-aligned. Search is
          an icon, not a full-width field — the real input row (#session-search)
          is revealed below when the icon is pressed. -->
     <div id="sidebar-toolbar">
-      <button type="button" id="sidebar-toggle-btn" title="收起侧栏" aria-label="收起或展开侧栏" aria-expanded="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
-      <button type="button" id="sidebar-search-toggle" title="搜索 Bot / 群组 (Ctrl/Cmd+K)" aria-label="搜索 Bot 或群组" data-i18n-aria="searchAria"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
-      <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话">+</button>
+      <button type="button" id="sidebar-toggle-btn" title="收起侧栏" aria-label="收起或展开侧栏" aria-expanded="true" data-i18n-title="railActionCollapse" data-i18n-aria="railActionToggleSidebar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+      <button type="button" id="sidebar-search-toggle" title="搜索 Bot / 群组 (Ctrl/Cmd+K)" aria-label="搜索 Bot 或群组" data-i18n-aria="searchAria" data-i18n-title="railActionSearch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
+      <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话" data-i18n-title="railActionNewChat" data-i18n-aria="railActionNewChatAria">+</button>
     </div>
     <!-- 侧栏搜索：搜的是「Bot」和「群组」。产品模型就是 Bot + 群 Bot——会话
          属于某个 Bot、收在账户条弹层里，不在这颗放大镜的搜索范围里。
@@ -2571,7 +2571,7 @@
     <div id="sb-search-row" hidden>
       <input id="sb-search" class="bb-field" type="search" autocomplete="off"
              placeholder="搜索 Bot / 群组" data-i18n-ph="sbSearchPh"
-             aria-label="搜索 Bot 或群组" />
+             aria-label="搜索 Bot 或群组"  data-i18n-aria="searchAria"/>
       <div id="sb-search-empty" class="sess-empty" hidden data-i18n="sbSearchEmpty">没有匹配的 Bot 或群组</div>
     </div>
     <!-- GP-60: sidebar in-call indicator -->
@@ -2585,16 +2585,16 @@
            summary 保留 details 语义但阻止折叠——Grok 的 workspace 名不可点。 -->
       <summary class="panel-head sb-adv-sum" onclick="event.preventDefault()">
         <span id="sb-ws-name">BitBot</span>
-        <button type="button" id="bot-collapse-btn" class="sb-caret-btn" aria-label="折叠或展开 Bot 列表" title="折叠/展开">▾</button>
+        <button type="button" id="bot-collapse-btn" class="sb-caret-btn" aria-label="折叠或展开 Bot 列表" title="折叠/展开" data-i18n-title="railActionToggleBotList" data-i18n-aria="railActionToggleBotListAria">▾</button>
       </summary>
-      <div id="bot-list" aria-label="Bot 列表"></div>
-      <div class="bot-strip" id="bot-strip" aria-label="Bot 头像条"></div>
+      <div id="bot-list" aria-label="Bot 列表" data-i18n-aria="bots"></div>
+      <div class="bot-strip" id="bot-strip" aria-label="Bot 头像条" data-i18n-aria="railAriaBotStrip"></div>
       <div class="panel-title panel-head spaced">
         <span data-i18n="rooms">群组</span>
       </div>
       <!-- GP-116 (§2.1): group list lives in the sidebar next to the Bot list,
            sourced from rooms.json — not a separate window. -->
-      <div id="room-list" aria-label="群组会话"></div>
+      <div id="room-list" aria-label="群组会话" data-i18n-aria="railAriaRoomSessions"></div>
     </details>
     <details class="lab" data-lab id="agents-lab">
       <summary data-i18n="advanced">高级 · 代理 / 队友</summary>
@@ -2637,8 +2637,8 @@
       <details class="sb-adv" id="sb-more">
         <summary class="sb-adv-sum">更多<span class="sb-adv-caret" aria-hidden="true">▸</span></summary>
         <div class="bb-split" style="margin-top:8px">
-          <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" data-i18n="connectApps">连接应用</button>
-          <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板" data-i18n="marketplace">模板市场</button>
+          <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" data-i18n="connectApps" data-i18n-title="railActionConnectApps">连接应用</button>
+          <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板" data-i18n="marketplace" data-i18n-title="railActionMarketplace">模板市场</button>
         </div>
       </details>
       <!-- G-28 · 侧栏对齐 Grok Bot：Grok 左侧只有「Bot」和「群 Bot」，
@@ -2646,11 +2646,11 @@
            所以会话列表不再占侧栏主体，收进账户条右侧图标弹出的面板
            （#sessions-popup）。功能不丢，位置与 Grok 一致。 -->
       <div class="bb-split">
-        <button type="button" id="sidebar-settings-btn" class="bb-btn bb-btn-block" title="设置" data-i18n="settings">设置</button>
+        <button type="button" id="sidebar-settings-btn" class="bb-btn bb-btn-block" title="设置" data-i18n="settings" data-i18n-title="settings">设置</button>
       </div>
       <!-- Grok-style user account row with popup menu -->
       <div id="account-bar">
-        <button type="button" id="account-avatar-btn" title="账户" aria-label="Account" data-i18n-aria="accountAria" aria-expanded="false" aria-controls="account-popup">
+        <button type="button" id="account-avatar-btn" title="账户" aria-label="Account" data-i18n-aria="accountAria" aria-expanded="false" aria-controls="account-popup" data-i18n-title="headerAccount">
           <span id="account-avatar-circle">B</span>
           <span id="account-name-label">Bit Bot</span>
         </button>
@@ -2658,15 +2658,15 @@
              会话入口（Grok 的会话属于 Bot、不占侧栏）；第二颗原来是「更新」，
              但版本更新只保留「设置 → 更新」这一处入口，所以这里只剩一颗圆钮，
              不再和设置里的更新重复。 -->
-        <button type="button" id="ab-sessions-btn" class="ab-icon-btn" title="会话" aria-label="会话" aria-expanded="false" aria-controls="sessions-popup">
+        <button type="button" id="ab-sessions-btn" class="ab-icon-btn" title="会话" aria-label="会话" aria-expanded="false" aria-controls="sessions-popup" data-i18n-title="chats" data-i18n-aria="chats">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-8.5 8.5H8L3.5 23l1.3-4.6A8.5 8.5 0 1 1 20.5 12z"/></svg>
         </button>
         <div id="sessions-popup" hidden>
           <!-- P1-6：未读汇总。列表本身收在弹层里（G-28），所以「列表顶部」就是
                弹层顶部；只有存在未读时才出现，点一下跳到最早那条未读会话。 -->
           <button type="button" id="unread-summary" class="unread-summary" hidden></button>
-          <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden />
-          <div id="session-list" aria-label="会话列表"></div>
+          <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden  data-i18n-aria="sessSearchPh"/>
+          <div id="session-list" aria-label="会话列表" data-i18n-aria="railAriaSessionList"></div>
         </div>
         <div id="account-popup" hidden role="menu">
           <!-- 行序与真源基本一致：每周用量 → 移动端远程控制 → 支持 → 设置 ── 0.5px 分隔 ──
@@ -2943,7 +2943,7 @@
           <div class="st-card-title">更新源</div>
           <label class="st-field"><span class="st-field-name">更新源 URL</span>
             <div style="display:flex;gap:8px;align-items:center">
-              <input id="sec-ota" type="text" placeholder="目录下需 latest.yml" class="bb-field bb-field-grow" />
+              <input id="sec-ota" type="text" placeholder="目录下需 latest.yml" class="bb-field bb-field-grow"  data-i18n-ph="settingsOtaPlaceholder"/>
               <button type="button" id="sec-ota-check" class="bb-btn bb-btn-sm" style="white-space:nowrap">查更新</button>
             </div>
           </label>
@@ -3053,7 +3053,7 @@
 
               <label class="st-form-label" for="sec-qwen-key">通义千问</label>
               <div class="st-form-ctl">
-                <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+                <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field"  data-i18n-ph="settingsFieldOptional"/>
                 <span id="sec-qwen-mask" class="st-field-hint"></span>
                 <span id="sec-qwen-key-err" class="st-field-error" hidden></span>
                 <div id="sec-qwen-key-note" class="st-note" hidden></div>
@@ -3061,7 +3061,7 @@
 
               <label class="st-form-label" for="sec-moon-key">Moonshot / Kimi</label>
               <div class="st-form-ctl">
-                <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field" />
+                <input id="sec-moon-key" type="password" autocomplete="off" placeholder="可选" class="bb-field"  data-i18n-ph="settingsFieldOptional"/>
                 <span id="sec-moon-mask" class="st-field-hint"></span>
                 <span id="sec-moon-key-err" class="st-field-error" hidden></span>
                 <div id="sec-moon-key-note" class="st-note" hidden></div>
@@ -3086,7 +3086,7 @@
 
             <label class="st-form-label" for="sec-search-key">API Key</label>
             <div class="st-form-ctl">
-              <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field" />
+              <input id="sec-search-key" type="password" autocomplete="off" placeholder="tvly-… 或 Brave subscription token" class="bb-field"  data-i18n-ph="settingsSearchPlaceholderToken"/>
               <span id="sec-search-mask" class="st-field-hint"></span>
               <span id="sec-search-key-err" class="st-field-error" hidden></span>
               <div id="sec-search-key-note" class="st-note" hidden></div>
@@ -3094,7 +3094,7 @@
 
             <label class="st-form-label" for="sec-search-base">API Base</label>
             <div class="st-form-ctl">
-              <input id="sec-search-base" type="text" placeholder="留空走官方" class="bb-field" />
+              <input id="sec-search-base" type="text" placeholder="留空走官方" class="bb-field"  data-i18n-ph="settingsSearchPlaceholderOfficial"/>
               <span class="st-field-hint" data-i18n="credSearchBaseHint">自建或走代理时填；留空就用官方地址。</span>
             </div>
           </div>
@@ -3147,14 +3147,14 @@
                   </label>
                   <label class="st-field"><span class="st-field-name">Encrypt Key<span>（事件订阅「加密」用，可选）</span></span>
                     <div class="ca-cn-line">
-                      <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow" />
+                      <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow"  data-i18n-ph="settingsFeishuPlaceholderEncrypt"/>
                       <button type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
                       <span id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
                     </div>
                   </label>
                   <label class="st-field"><span class="st-field-name">Verification Token<span>（事件订阅「验签」用，可选）</span></span>
                     <div class="ca-cn-line">
-                      <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow" />
+                      <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow"  data-i18n-ph="settingsFeishuPlaceholderVerify"/>
                       <button type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
                       <span id="sec-feishu-verify-state" class="cn-hint">未配置</span>
                     </div>
@@ -3172,7 +3172,7 @@
                   </label>
                   <label class="st-field"><span class="st-field-name">回调 Token<span>（接收事件服务器用，可选）</span></span>
                     <div class="ca-cn-line">
-                      <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow" />
+                      <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow"  data-i18n-ph="settingsWecomPlaceholderCallback"/>
                       <button type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
                       <span id="sec-wecom-callback-state" class="cn-hint">未配置</span>
                     </div>
@@ -3378,7 +3378,7 @@
               <div class="mc-subtitle" id="mc-hint" data-i18n="mcHint">扫码或在手机上打开链接，即可远程控制当前工作区；6 位配对码仅作备用。</div>
             </div>
           </div>
-          <button type="button" id="mc-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose">×</button>
+          <button type="button" id="mc-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose" data-i18n-aria="modalActionClose">×</button>
         </div>
 
         <div class="mc-grid">
@@ -3488,7 +3488,7 @@
               <div class="mc-subtitle" data-i18n="bmSubtitle">把聊天工具接成机器人。扫一下码，凭据在手机上填，桌面不用粘任何字段。</div>
             </div>
           </div>
-          <button type="button" id="bm-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose">×</button>
+          <button type="button" id="bm-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose" data-i18n-aria="modalActionClose">×</button>
         </div>
 
         <div class="bm-layout">
@@ -3520,7 +3520,7 @@
               <p class="bm-card-note" id="bm-bind-note" data-i18n="bmBindNote">扫码后自动保存凭据。</p>
               <div class="bm-bind">
                 <div class="bm-qr-wrap" id="bm-qr-wrap">
-                  <div id="bm-qr" class="bm-qr" role="img" aria-label="关联二维码"></div>
+                  <div id="bm-qr" class="bm-qr" role="img" aria-label="关联二维码" data-i18n-aria="qrAriaLinked"></div>
                   <div id="bm-qr-empty" class="mc-qr-empty" data-i18n="bmQrEmpty">点「生成二维码」，这里才会出现码。</div>
                 </div>
                 <div class="bm-bind-side">
@@ -3573,7 +3573,7 @@
               <div class="bb-sheet-note" id="gi-sub" data-i18n="giSub">读本机已安装的 Grok Bot，把 Bot、群和对话搬进来。不联网、不登录，数据不出这台机器。</div>
             </div>
           </div>
-          <button type="button" id="gi-close" class="bb-btn bb-close" aria-label="关闭" data-i18n="settingsClose">×</button>
+          <button type="button" id="gi-close" class="bb-btn bb-close" aria-label="关闭" data-i18n="settingsClose" data-i18n-aria="modalActionClose">×</button>
         </div>
 
         <div id="gi-loading" class="gi-loading" hidden data-i18n="giLoading">正在读本机 Grok Bot 的数据…</div>
@@ -3609,7 +3609,7 @@
               <div class="mc-subtitle" data-i18n="mc2Subtitle">手机不在同一个 Wi-Fi 时用这里；同网直连不需要动它。</div>
             </div>
           </div>
-          <button type="button" id="mc-relay-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose">×</button>
+          <button type="button" id="mc-relay-close" class="bb-btn bb-close mc-x" aria-label="关闭" data-i18n="settingsClose" data-i18n-aria="modalActionClose">×</button>
         </div>
 
         <div class="mc2-layout">
@@ -3736,7 +3736,7 @@
     <!-- 画布（Grok 真机的 Canvas / Artifacts）：把**这个对话**里的产物铺成一面墙。
          只读 + 打开：不在画布上改文件（那要另一条写入路径）。
          数据来自消息行上的 artifacts[]（M52b 落库），不是扫描目录猜出来的。 -->
-    <div id="canvas-panel" class="bb-modal" role="dialog" aria-modal="true" aria-label="画布" hidden>
+    <div id="canvas-panel" class="bb-modal" role="dialog" aria-modal="true" aria-label="画布" hidden data-i18n-aria="canvasTitle">
       <div class="bb-sheet cv-sheet">
         <div class="bb-sheet-head">
           <div class="bb-sheet-title" data-i18n="canvasTitle">画布</div>
@@ -3862,7 +3862,7 @@
       </div>
     </div>
     <div class="panel-title" style="margin-top:16px">Webhook 回调</div>
-    <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook 触发面板">
+    <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook 触发面板" data-i18n-aria="webhookAriaPanel">
       <div class="name">定时任务触发 (CM-0411)</div>
       <div class="meta" id="webhook-meta">打开面板 · 用户复制 URL/密钥 · 工具不可见密钥</div>
       <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
@@ -3879,7 +3879,7 @@
     <div class="machine-item">
       <div class="name">发给用户</div>
       <div class="meta" id="delivery-meta">文本 · 小组件 · 附件 · 语音 · 反应 · 讨论串 · 光标代理 · 密钥请求</div>
-      <div id="reaction-tray" aria-label="消息反应"></div>
+      <div id="reaction-tray" aria-label="消息反应" data-i18n-aria="reactionAriaTray"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <button type="button" id="del-react" class="bb-btn bb-btn-sm bb-btn-primary">消息表态</button>
         <button type="button" id="del-inbound-react" class="bb-btn bb-btn-sm">接收方表态</button>
@@ -4116,7 +4116,7 @@
   </aside>
   <!-- GP-154 群资料面板（对标 Grok 群信息）：成员 → 人数上限说明 → 定时任务。
        成员与定时任务都只渲染真实 store 数据；读不到就说读不到，不填空壳。 -->
-  <aside id="room-rail" aria-label="群资料">
+  <aside id="room-rail" aria-label="群资料" data-i18n-aria="roomInfo">
     <div class="ri-head">
       <div class="cv-title" id="ri-title"></div>
       <button type="button" id="ri-close" class="bb-btn bb-btn-sm" data-i18n="gpClose">关闭</button>
@@ -4125,7 +4125,7 @@
          稿子三段是 详情/资料库/成员；真产品这里的内容是 成员/定时任务/资料库，
          「详情」的内容就是上面的 ri-head（群名 + 关闭），所以 tab 取这三段，
          顺序沿用稿子（资料库第三）也沿用现有 rail 的自上而下顺序。 -->
-    <div class="ri-tabs" role="tablist" aria-label="群资料分区">
+    <div class="ri-tabs" role="tablist" aria-label="群资料分区" data-i18n-aria="roomAriaInfoSection">
       <button type="button" class="ri-tab" id="ri-tab-members" role="tab" data-tab="members" aria-controls="ri-panel-members" aria-selected="true" data-i18n="riMembers">成员</button>
       <button type="button" class="ri-tab" id="ri-tab-routines" role="tab" data-tab="routines" aria-controls="ri-panel-routines" aria-selected="false" data-i18n="riRoutines">定时任务</button>
       <button type="button" class="ri-tab" id="ri-tab-library" role="tab" data-tab="library" aria-controls="ri-panel-library" aria-selected="false" data-i18n="riLibrary">资料库</button>
@@ -4173,7 +4173,7 @@
   </aside>
   <form id="composer">
     <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
-    <div id="attachment-strip" class="attach-strip" aria-label="待发送附件"></div>
+    <div id="attachment-strip" class="attach-strip" aria-label="待发送附件" data-i18n-aria="composerAriaPendingAttachments"></div>
     <!-- GP-60: in-call control (composer 为空时启动；结束留 Voice chat 卡) -->
     <div id="voicechat-bar" class="bb-banner" style="display:none;align-items:stretch;flex-direction:column">
       <div style="display:flex;align-items:center;gap:10px">
@@ -4202,7 +4202,7 @@
       <span id="reply-bar-text" class="rb-text"></span>
       <button type="button" id="reply-cancel" class="rb-x" data-i18n="replyCancel">取消</button>
     </div>
-    <div id="mention-pop" class="mention-pop" role="listbox" aria-label="提及成员" style="display:none"></div>
+    <div id="mention-pop" class="mention-pop" role="listbox" aria-label="提及成员" style="display:none" data-i18n-aria="composerAriaMentionMembers"></div>
     <div id="loop-approval" class="loop-approval" hidden data-approval-id="" data-turn-id="" data-action="">
       <div id="loop-approval-detail"></div>
       <button type="button" id="loop-approval-allow">Allow</button>
@@ -4215,7 +4215,7 @@
          它原来是 composer 的第一个子元素，一旦有进度行 / 回复条插到它和
          输入框中间，「群资料 / 退出群聊」就飘在对话中间，离输入框一屏远。 -->
     <div id="composer-grip" role="separator" aria-orientation="horizontal" tabindex="0"
-         title="拖拽调整输入框高度（双击复位）" aria-label="拖拽调整输入框高度：上下拖拽改变高度，双击复位"></div>
+         title="拖拽调整输入框高度（双击复位）" aria-label="拖拽调整输入框高度：上下拖拽改变高度，双击复位" data-i18n-aria="composerAriaResize" data-i18n-title="composerTitleResizeHint"></div>
     <div id="room-banner" class="bb-banner">
       <span id="room-banner-title" style="font-weight:700;font-size:var(--text-md)"></span>
       <span id="room-banner-meta" class="bb-note"></span>
@@ -4228,12 +4228,12 @@
            不占流 —— 输入卡不会因为它多出一行高度。 -->
       <button type="button" id="to-bottom" hidden data-i18n-title="toBottom" data-i18n-aria="toBottom"
               title="回到底部" aria-label="回到底部"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 4.5V19"/><path d="M5.8 12.8 12 19l6.2-6.2"/></svg></button>
-      <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…" title="Enter 发送 · Shift+Enter 换行 · ↑ 调出上一条" autocomplete="off" autofocus></textarea>
-      <button type="button" id="attach-btn" title="更多：附件 / 联网搜索 / 模型 / 语音对话"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-      <button type="button" id="shot-btn" title="截图（框选区域 · Esc 取消）" aria-label="截图并作为附件"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2l1-1.6A1.4 1.4 0 0 1 8.9 3.7h6.2c.5 0 .9.2 1.2.7l1 1.6h1.2A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="12" cy="12.5" r="3.4"/></svg></button>
-      <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/><path d="M8 22h8"/></svg></button>
-      <button type="button" id="turn-cancel" class="bb-btn" hidden aria-label="取消">取消</button>
-      <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 19.5V5"/><path d="M5.8 11.2 12 5l6.2 6.2"/></svg></button>
+      <textarea id="text" rows="1" placeholder="给 Bit Bot 发消息…" title="Enter 发送 · Shift+Enter 换行 · ↑ 调出上一条" autocomplete="off" autofocus data-i18n-title="composerTitleSendHint" data-i18n-ph="placeholder"></textarea>
+      <button type="button" id="attach-btn" title="更多：附件 / 联网搜索 / 模型 / 语音对话" data-i18n-title="composerTitleMore"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button type="button" id="shot-btn" title="截图（框选区域 · Esc 取消）" aria-label="截图并作为附件" data-i18n-title="composerTitleScreenshot" data-i18n-aria="composerAriaScreenshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2l1-1.6A1.4 1.4 0 0 1 8.9 3.7h6.2c.5 0 .9.2 1.2.7l1 1.6h1.2A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="12" cy="12.5" r="3.4"/></svg></button>
+      <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）" data-i18n-title="composerTitleVoice"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/><path d="M8 22h8"/></svg></button>
+      <button type="button" id="turn-cancel" class="bb-btn" hidden aria-label="取消" data-i18n-aria="commonCancel">取消</button>
+      <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send" data-i18n-title="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 19.5V5"/><path d="M5.8 11.2 12 5l6.2 6.2"/></svg></button>
     </div>
     <!-- G-28: Grok 极简 composer —— 联网搜索 / 模型 / 语音对话收进左侧「＋」弹层，
          composer 表面只剩 [＋][输入][麦][↑]，对齐 replica/screens/grok-composer-controls.png。
@@ -4242,10 +4242,10 @@
       <button type="button" id="add-attachment-btn">📎 添加附件</button>
       <button type="button" id="shot-more-btn">📷 截图（框选）</button>
       <button type="button" id="shot-screen-btn">🖥 整屏截图</button>
-      <button type="button" class="bb-chip bb-chip--toggle" id="web-search-toggle" aria-pressed="false" title="联网搜索（本轮是否会真的检索网页）"><span data-i18n="webSearch">联网搜索</span></button>
-      <button type="button" class="bb-chip" id="model-switch-chip" aria-haspopup="listbox" title="切换模型" aria-label="切换模型"><span id="active-model-label">默认</span></button>
-      <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn">🎧 语音对话</button>
-      <button type="button" id="canvas-open-btn" title="把本对话的产物铺开（只读）" data-i18n="canvasOpenBtn">🖼 画布</button>
+      <button type="button" class="bb-chip bb-chip--toggle" id="web-search-toggle" aria-pressed="false" title="联网搜索（本轮是否会真的检索网页）" data-i18n-title="composerTitleWebSearch"><span data-i18n="webSearch">联网搜索</span></button>
+      <button type="button" class="bb-chip" id="model-switch-chip" aria-haspopup="listbox" title="切换模型" aria-label="切换模型" data-i18n-title="composerTitleSwitchModel" data-i18n-aria="composerAriaSwitchModel"><span id="active-model-label">默认</span></button>
+      <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn" data-i18n-title="composerTitleVoiceChat">🎧 语音对话</button>
+      <button type="button" id="canvas-open-btn" title="把本对话的产物铺开（只读）" data-i18n="canvasOpenBtn" data-i18n-title="composerTitleCanvas">🖼 画布</button>
     </div>
     <div id="composer-menu" class="composer-menu" hidden></div>
   </form>
@@ -5164,7 +5164,7 @@
       if (!panel || !sectionsEl || !meta) return;
       const agentId = (payload && payload.agent_id) || "agent-bit";
       pendingDeleteAgentId = agentId;
-      if (title) title.textContent = "代理 · " + agentId;
+      if (title) title.textContent = t("agentMetaProxy", { id: agentId });
       sectionsEl.innerHTML = "";
       const sections =
         (payload && payload.sections) || [
@@ -6819,7 +6819,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "open-artifact";
-      btn.textContent = "用系统程序打开";
+      btn.textContent = t("artifactActionOpenSystem");
       btn.addEventListener("click", async () => {
         try {
           const r = await window.bitbot.openArtifact(filePath);
@@ -6918,7 +6918,7 @@
       if (/password|2fa|passkey|captcha|验证码|支付/i.test(parsed.summary)) {
         const hint = document.createElement("div");
         hint.className = "secret-hint";
-        hint.textContent = "密码/验证码请在本机输入，不要贴进对话（官方安全提醒）。";
+        hint.textContent = t("securityHintPasswordLocalOnly");
         approvalDetail.appendChild(hint);
       }
       approval.classList.add("visible");
@@ -7007,7 +7007,7 @@
         a.href = card.open_url;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
-        a.textContent = "打开云端代理";
+        a.textContent = t("agentActionOpenCloudProxy");
         a.style.cssText = "display:inline-block;margin-top:6px;color:var(--accent)";
         body.appendChild(document.createElement("br"));
         body.appendChild(a);
@@ -9551,7 +9551,7 @@
             det.style.cssText = "font-size:11px;color:var(--muted)";
             const sm = document.createElement("summary");
             sm.style.cssText = "cursor:pointer;margin-top:2px";
-            sm.textContent = "查看完整岗位 Prompt";
+            sm.textContent = t("jobActionViewFullPrompt");
             det.appendChild(sm);
             const pre = document.createElement("pre");
             pre.style.cssText =
@@ -11158,7 +11158,7 @@
         "padding:18px;width:min(560px,92vw);display:flex;flex-direction:column;gap:9px;";
 
       const title = document.createElement("div");
-      title.textContent = "没能读取这个链接的内容";
+      title.textContent = t("linkErrorUnreadable");
       title.style.cssText = "font-weight:600;font-size:14px;color:var(--ink,#18191c);";
 
       const why = document.createElement("div");
@@ -11183,13 +11183,13 @@
       foot.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-top:2px;";
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "取消";
+      cancel.textContent = t("commonCancel");
       cancel.style.cssText =
         "padding:6px 14px;border-radius:var(--radius-md,8px);border:1px solid var(--line,#e5e5e5);" +
         "background:transparent;color:var(--ink,#18191c);cursor:pointer;font:inherit;";
       const ok = document.createElement("button");
       ok.type = "button";
-      ok.textContent = "开始搭建";
+      ok.textContent = t("builderActionStart");
       ok.style.cssText =
         "padding:6px 14px;border-radius:var(--radius-md,8px);border:1px solid var(--accent,#1c1c1c);" +
         "background:var(--accent,#1c1c1c);color:var(--accent-ink,#fcfcfc);" +
@@ -12338,7 +12338,7 @@
                   types.push("attachment");
                   const chMeta = document.getElementById("channels-meta");
                   if (chMeta) {
-                    chMeta.textContent = "工作流 · " + (p.count || 0);
+                    chMeta.textContent = t("workflowMetaCount", { count: p.count || 0 });
                   }
                 } else if (h.kind === "x_search") {
                   label =
@@ -12905,7 +12905,7 @@
                   types.push("attachment");
                   const boxMeta = document.getElementById("box-meta");
                   if (boxMeta) {
-                    boxMeta.textContent = "运行环境 · " + (p.runtime || "?");
+                    boxMeta.textContent = t("pluginMetaRuntime", { runtime: p.runtime || "?" });
                   }
                 } else if (h.kind === "box_clock") {
                   label =
@@ -12965,10 +12965,9 @@
                       "open · opaque_to_tools=" +
                       String(p.opaque_to_tools !== false);
                   }
-                  if (urlEl) urlEl.textContent = "回调地址：" + (p.url || "");
+                  if (urlEl) urlEl.textContent = t("connectorMetaCallbackUrl", { url: p.url || "" });
                   if (keyEl) {
-                    keyEl.textContent =
-                      "密钥（仅用户可见）：" + (p.key || p.key_masked || "");
+                    keyEl.textContent = t("connectorMetaSecretOnly", { key: p.key || p.key_masked || "" });
                   }
                 } else if (h.kind === "webhook_copy") {
                   label =
@@ -12977,7 +12976,7 @@
                     (p.path ? "/snap" : "");
                   types.push("attachment");
                   const meta = document.getElementById("webhook-meta");
-                  if (meta) meta.textContent = "已复制 " + (p.what || "");
+                  if (meta) meta.textContent = t("commonFeedbackCopied", { what: p.what || "" });
                 } else if (h.kind === "webhook_tool_read_key") {
                   label =
                     "webhook_tool_read:" +
@@ -13727,7 +13726,7 @@
             }
             const dmeta = document.getElementById("delivery-meta");
             if (dmeta && types.length) {
-              dmeta.textContent = "最近： " + [...new Set(types)].join(" · ");
+              dmeta.textContent = t("memoryMetaRecentTypes", { types: [...new Set(types)].join(" · ") });
             }
             log.appendChild(el);
             log.scrollTop = log.scrollHeight;
@@ -13875,8 +13874,7 @@
           strip.style.display = "block";
           const t = document.getElementById("cfg-strip-text");
           if (t) {
-            t.textContent =
-              "尚未配置大脑 key — 点「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）";
+            t.textContent = t("settingsMissingLlmKey");
           }
         } else {
           /* round 7: brain key is configured — CN-channel draft state is not a
@@ -15441,17 +15439,14 @@
     if (secOtaCheck) {
       secOtaCheck.addEventListener("click", async () => {
         const secStatus = document.getElementById("sec-status");
-        if (secStatus) secStatus.textContent = "查 OTA…";
+        if (secStatus) secStatus.textContent = t("settingsOtaChecking");
         try {
           const r = await window.bitbot.ota.check();
           if (secStatus) {
             if (r && r.ok && r.update_available) {
-              secStatus.textContent =
-                "有更新 · " +
-                ((r.info && r.info.version) || "?") +
-                "（不自动假装已升级）";
+              secStatus.textContent = t("settingsOtaHasUpdate", { version: (r.info && r.info.version) || "?" });
             } else if (r && r.ok) {
-              secStatus.textContent = "已是最新 / 无新版本元数据";
+              secStatus.textContent = t("settingsOtaUpToDate");
             } else {
               secStatus.textContent =
                 "OTA residual · " +
@@ -15461,8 +15456,7 @@
           }
         } catch (e) {
           if (secStatus) {
-            secStatus.textContent =
-              "OTA 异常 · " + String(e && e.message ? e.message : e);
+            secStatus.textContent = t("settingsOtaError", { message: String(e && e.message ? e.message : e) });
           }
         }
       });
@@ -15472,7 +15466,7 @@
       secGate.addEventListener("click", async () => {
         const secStatus = document.getElementById("sec-status");
         const out = document.getElementById("sec-gate-out");
-        if (secStatus) secStatus.textContent = "跑验收门禁…";
+        if (secStatus) secStatus.textContent = t("settingsGateRunning");
         if (out) {
           out.style.display = "block";
           out.textContent = "…";
@@ -15494,8 +15488,7 @@
           }
         } catch (e) {
           if (secStatus) {
-            secStatus.textContent =
-              "门禁异常 · " + String(e && e.message ? e.message : e);
+            secStatus.textContent = t("settingsGateError", { message: String(e && e.message ? e.message : e) });
           }
         }
       });
@@ -18345,6 +18338,77 @@
     let wavegLang = "zh-CN";
     const WAVEG_I18N = {
       "zh-CN": {
+        agentActionOpenCloudProxy: "打开云端代理",
+        agentMetaProxy: "代理 · {{id}}",
+        artifactActionOpenSystem: "用系统程序打开",
+        builderActionStart: "开始搭建",
+        commonFeedbackCopied: "已复制 {{what}}",
+        composerAriaMentionMembers: "提及成员",
+        composerAriaPendingAttachments: "待发送附件",
+        composerAriaResize: "拖拽调整输入框高度：上下拖拽改变高度，双击复位",
+        composerAriaScreenshot: "截图并作为附件",
+        composerAriaSwitchModel: "切换模型",
+        composerTitleCanvas: "把本对话的产物铺开（只读）",
+        composerTitleMore: "更多：附件 / 联网搜索 / 模型 / 语音对话",
+        composerTitleResizeHint: "拖拽调整输入框高度（双击复位）",
+        composerTitleScreenshot: "截图（框选区域 · Esc 取消）",
+        composerTitleSendHint: "Enter 发送 · Shift+Enter 换行 · ↑ 调出上一条",
+        composerTitleSwitchModel: "切换模型",
+        composerTitleVoice: "语音输入（Ctrl/Cmd+D）",
+        composerTitleVoiceChat: "开始语音对话",
+        composerTitleWebSearch: "联网搜索（本轮是否会真的检索网页）",
+        computerUseMetaFrame: "Host 真实帧 · {{file}} · {{at}}",
+        computerUseMetaFramePolling: "帧轮询：3s（当前无可用帧）",
+        connectorMetaCallbackUrl: "回调地址：{{url}}",
+        connectorMetaSecretOnly: "密钥（仅用户可见）：{{key}}",
+        groupEmptyHint: "暂无群组",
+        groupFormHint: "选择群组并输入消息",
+        groupFormNeedTwoBots: "至少选择 2 个 Bot（GP-50：2–6）",
+        groupStatusDiscarded: "已丢弃（无出站；草稿保留在 Host 供审计）",
+        groupStatusSent: "已发送 → RoomTurn 路由（@Name 定向 / @everyone 全体 / 无 @ 按内容派给一个成员）",
+        groupStatusSubmitted: "已提交 · 进入内核闸门",
+        jobActionViewFullPrompt: "查看完整岗位 Prompt",
+        linkErrorUnreadable: "没能读取这个链接的内容",
+        memoryMetaRecentTypes: "最近：{{types}}",
+        modalActionClose: "关闭",
+        pluginMetaRuntime: "运行环境 · {{runtime}}",
+        qrAriaLinked: "关联二维码",
+        railActionCollapse: "收起侧栏",
+        railActionConnectApps: "连接应用 · 插件（Cmd/Ctrl+Shift+M）",
+        railActionExpand: "展开侧栏",
+        railActionMarketplace: "模板市场 · Bot 模板",
+        railActionNewChat: "新对话 (Ctrl/Cmd+N)",
+        railActionNewChatAria: "新对话",
+        railActionSearch: "搜索 Bot / 群组 (Ctrl/Cmd+K)",
+        railActionToggleBotList: "折叠/展开",
+        railActionToggleBotListAria: "折叠或展开 Bot 列表",
+        railActionToggleSidebar: "折叠或展开侧栏",
+        railAriaBotStrip: "Bot 头像条",
+        railAriaRoomSessions: "群组会话",
+        railAriaSessionList: "会话列表",
+        railCurrentBot: "当前 Bot",
+        railGpPanelTitle: "电脑预览（右侧面板）/ 群组 / 后台审批",
+        railModelsTitle: "国产多模型配置",
+        railToolsTitle: "机器 / 渠道 / 能力面板",
+        reactionAriaTray: "消息反应",
+        roomAriaInfoSection: "群资料分区",
+        securityHintPasswordLocalOnly: "密码/验证码请在本机输入，不要贴进对话（官方安全提醒）。",
+        settingsFeishuPlaceholderEncrypt: "事件订阅请求加密密钥",
+        settingsFeishuPlaceholderVerify: "事件订阅校验令牌",
+        settingsFieldOptional: "可选",
+        settingsGateError: "门禁异常 · {{message}}",
+        settingsGateRunning: "跑验收门禁…",
+        settingsMissingLlmKey: "尚未配置大脑 key — 点「凭证」填写 BITBOT_LLM_API_KEY（开放配置，不写死）",
+        settingsOtaChecking: "查 OTA…",
+        settingsOtaError: "OTA 异常 · {{message}}",
+        settingsOtaHasUpdate: "有更新 · {{version}}（不自动假装已升级）",
+        settingsOtaPlaceholder: "目录下需 latest.yml",
+        settingsOtaUpToDate: "已是最新 / 无新版本元数据",
+        settingsSearchPlaceholderOfficial: "留空走官方",
+        settingsSearchPlaceholderToken: "tvly-… 或 Brave subscription token",
+        settingsWecomPlaceholderCallback: "回调令牌",
+        webhookAriaPanel: "Webhook 触发面板",
+        workflowMetaCount: "工作流 · {{count}}",
         bmChDingtalk: "钉钉",
         bmChFeishu: "飞书",
         bmChWecom: "企业微信",
@@ -19387,6 +19451,77 @@
         chatCreatedHint: "新会话已创建 · 输入消息开始",
       },
       "zh-TW": {
+        agentActionOpenCloudProxy: "開啟雲端代理",
+        agentMetaProxy: "代理 · {{id}}",
+        artifactActionOpenSystem: "用系統程式開啟",
+        builderActionStart: "開始搭建",
+        commonFeedbackCopied: "已複製 {{what}}",
+        composerAriaMentionMembers: "提及成員",
+        composerAriaPendingAttachments: "待送出附件",
+        composerAriaResize: "拖曳調整輸入框高度：上下拖曳改變高度，雙擊復位",
+        composerAriaScreenshot: "截圖並作為附件",
+        composerAriaSwitchModel: "切換模型",
+        composerTitleCanvas: "把本對話的產物鋪開（唯讀）",
+        composerTitleMore: "更多：附件 / 聯網搜尋 / 模型 / 語音對話",
+        composerTitleResizeHint: "拖曳調整輸入框高度（雙擊復位）",
+        composerTitleScreenshot: "截圖（框選區域 · Esc 取消）",
+        composerTitleSendHint: "Enter 送出 · Shift+Enter 換行 · ↑ 叫出上一則",
+        composerTitleSwitchModel: "切換模型",
+        composerTitleVoice: "語音輸入（Ctrl/Cmd+D）",
+        composerTitleVoiceChat: "開始語音對話",
+        composerTitleWebSearch: "聯網搜尋（本回合是否會真的檢索網頁）",
+        computerUseMetaFrame: "Host 真實影格 · {{file}} · {{at}}",
+        computerUseMetaFramePolling: "影格輪詢：3s（目前無可用影格）",
+        connectorMetaCallbackUrl: "回調網址：{{url}}",
+        connectorMetaSecretOnly: "金鑰（僅使用者可見）：{{key}}",
+        groupEmptyHint: "暫無群組",
+        groupFormHint: "選擇群組並輸入訊息",
+        groupFormNeedTwoBots: "至少選擇 2 個 Bot（GP-50：2–6）",
+        groupStatusDiscarded: "已捨棄（無出站；草稿保留在 Host 供稽核）",
+        groupStatusSent: "已送出 → RoomTurn 路由（@Name 指定 / @everyone 全員 / 無 @ 依內容派給一個成員）",
+        groupStatusSubmitted: "已送出 · 進入內核閘門",
+        jobActionViewFullPrompt: "查看完整職位 Prompt",
+        linkErrorUnreadable: "沒能讀取這個連結的內容",
+        memoryMetaRecentTypes: "最近：{{types}}",
+        modalActionClose: "關閉",
+        pluginMetaRuntime: "執行環境 · {{runtime}}",
+        qrAriaLinked: "關聯二維碼",
+        railActionCollapse: "收起側欄",
+        railActionConnectApps: "連接應用程式 · 外掛（Cmd/Ctrl+Shift+M）",
+        railActionExpand: "展開側欄",
+        railActionMarketplace: "模板市集 · Bot 模板",
+        railActionNewChat: "新對話 (Ctrl/Cmd+N)",
+        railActionNewChatAria: "新對話",
+        railActionSearch: "搜尋 Bot / 群組 (Ctrl/Cmd+K)",
+        railActionToggleBotList: "摺疊/展開",
+        railActionToggleBotListAria: "摺疊或展開 Bot 清單",
+        railActionToggleSidebar: "摺疊或展開側欄",
+        railAriaBotStrip: "Bot 頭像條",
+        railAriaRoomSessions: "群組對話",
+        railAriaSessionList: "對話列表",
+        railCurrentBot: "目前 Bot",
+        railGpPanelTitle: "電腦預覽（右側面板）/ 群組 / 背景審批",
+        railModelsTitle: "國產多模型設定",
+        railToolsTitle: "機器 / 頻道 / 能力面板",
+        reactionAriaTray: "訊息反應",
+        roomAriaInfoSection: "群組資料分區",
+        securityHintPasswordLocalOnly: "密碼/驗證碼請在本機輸入，不要貼進對話（官方安全提醒）。",
+        settingsFeishuPlaceholderEncrypt: "事件訂閱請求加密金鑰",
+        settingsFeishuPlaceholderVerify: "事件訂閱校驗權杖",
+        settingsFieldOptional: "選填",
+        settingsGateError: "門禁異常 · {{message}}",
+        settingsGateRunning: "跑驗收門禁…",
+        settingsMissingLlmKey: "尚未設定大腦 key — 點「憑證」填寫 BITBOT_LLM_API_KEY（開放設定，不寫死）",
+        settingsOtaChecking: "查 OTA…",
+        settingsOtaError: "OTA 異常 · {{message}}",
+        settingsOtaHasUpdate: "有更新 · {{version}}（不自動假裝已升級）",
+        settingsOtaPlaceholder: "目錄下需 latest.yml",
+        settingsOtaUpToDate: "已是最新 / 無新版本中繼資料",
+        settingsSearchPlaceholderOfficial: "留空走官方",
+        settingsSearchPlaceholderToken: "tvly-… 或 Brave 訂閱 token",
+        settingsWecomPlaceholderCallback: "回調權杖",
+        webhookAriaPanel: "Webhook 觸發面板",
+        workflowMetaCount: "工作流 · {{count}}",
         bmChDingtalk: "釘釘",
         bmChFeishu: "飛書",
         bmChWecom: "企業微信",
@@ -20425,6 +20560,77 @@
         chatCreatedHint: "新工作已建立 · 輸入訊息開始",
       },
       en: {
+        agentActionOpenCloudProxy: "Open the cloud proxy",
+        agentMetaProxy: "Proxy · {{id}}",
+        artifactActionOpenSystem: "Open with the system app",
+        builderActionStart: "Start building",
+        commonFeedbackCopied: "Copied {{what}}",
+        composerAriaMentionMembers: "Mentioned members",
+        composerAriaPendingAttachments: "Attachments to send",
+        composerAriaResize: "Drag to resize the input (drag vertically; double-click to reset)",
+        composerAriaScreenshot: "Screenshot as an attachment",
+        composerAriaSwitchModel: "Switch model",
+        composerTitleCanvas: "Lay out this conversation's artifacts (read-only)",
+        composerTitleMore: "More: attachments · web search · model · voice chat",
+        composerTitleResizeHint: "Drag to resize the input (double-click to reset)",
+        composerTitleScreenshot: "Screenshot (drag a region · Esc to cancel)",
+        composerTitleSendHint: "Enter to send · Shift+Enter for a new line · ↑ for the previous message",
+        composerTitleSwitchModel: "Switch model",
+        composerTitleVoice: "Voice input (Ctrl/Cmd+D)",
+        composerTitleVoiceChat: "Start a voice chat",
+        composerTitleWebSearch: "Web search (whether this turn actually searches the web)",
+        computerUseMetaFrame: "Host real frame · {{file}} · {{at}}",
+        computerUseMetaFramePolling: "Frame polling: 3s (no frame available yet)",
+        connectorMetaCallbackUrl: "Callback URL: {{url}}",
+        connectorMetaSecretOnly: "Secret (visible to you only): {{key}}",
+        groupEmptyHint: "No groups yet",
+        groupFormHint: "Choose a group and type a message",
+        groupFormNeedTwoBots: "Pick at least 2 bots (GP-50: 2–6)",
+        groupStatusDiscarded: "Discarded (no outbound channel; the draft is kept on the Host for audit)",
+        groupStatusSent: "Sent → routed as a RoomTurn (@Name targets one · @everyone targets all · no @ hands it to one member)",
+        groupStatusSubmitted: "Submitted · entering the kernel gate",
+        jobActionViewFullPrompt: "View the full job prompt",
+        linkErrorUnreadable: "Couldn't read the content of this link",
+        memoryMetaRecentTypes: "Recent: {{types}}",
+        modalActionClose: "Close",
+        pluginMetaRuntime: "Runtime · {{runtime}}",
+        qrAriaLinked: "Linked QR code",
+        railActionCollapse: "Collapse the sidebar",
+        railActionConnectApps: "Connect apps · plugins (Cmd/Ctrl+Shift+M)",
+        railActionExpand: "Expand the sidebar",
+        railActionMarketplace: "Template market · bot templates",
+        railActionNewChat: "New chat (Ctrl/Cmd+N)",
+        railActionNewChatAria: "New chat",
+        railActionSearch: "Search bots and groups (Ctrl/Cmd+K)",
+        railActionToggleBotList: "Collapse/expand",
+        railActionToggleBotListAria: "Collapse or expand the bot list",
+        railActionToggleSidebar: "Collapse or expand the sidebar",
+        railAriaBotStrip: "Bot avatar strip",
+        railAriaRoomSessions: "Group conversations",
+        railAriaSessionList: "Conversation list",
+        railCurrentBot: "Current bot",
+        railGpPanelTitle: "Computer preview (right panel) · Groups · Background approvals",
+        railModelsTitle: "Domestic model setup",
+        railToolsTitle: "Machines · Channels · Capabilities",
+        reactionAriaTray: "Message reactions",
+        roomAriaInfoSection: "Group info sections",
+        securityHintPasswordLocalOnly: "Enter passwords and verification codes on this machine — never paste them into the chat (official security advisory).",
+        settingsFeishuPlaceholderEncrypt: "Event-subscription request encryption key",
+        settingsFeishuPlaceholderVerify: "Event-subscription verification token",
+        settingsFieldOptional: "Optional",
+        settingsGateError: "Gate error · {{message}}",
+        settingsGateRunning: "Running the acceptance gates…",
+        settingsMissingLlmKey: "No brain key yet — set BITBOT_LLM_API_KEY under Credentials (open setting, never hard-coded)",
+        settingsOtaChecking: "Checking for updates…",
+        settingsOtaError: "OTA error · {{message}}",
+        settingsOtaHasUpdate: "Update available · {{version}} (it will not pretend it already upgraded)",
+        settingsOtaPlaceholder: "Needs latest.yml in this directory",
+        settingsOtaUpToDate: "Up to date / no update metadata",
+        settingsSearchPlaceholderOfficial: "Leave blank for the official endpoint",
+        settingsSearchPlaceholderToken: "tvly-… or a Brave subscription token",
+        settingsWecomPlaceholderCallback: "Callback token",
+        webhookAriaPanel: "Webhook trigger panel",
+        workflowMetaCount: "Workflow · {{count}}",
         bmChDingtalk: "DingTalk",
         bmChFeishu: "Feishu (Lark)",
         bmChWecom: "WeCom",
@@ -22005,7 +22211,7 @@
             img.src = res.data_url;
             box.appendChild(img);
           }
-          if (meta) meta.textContent = "Host 真实帧 · " + String(res.frame_path || "").split("/").slice(-1)[0] + " · " + (res.at || "");
+          if (meta) meta.textContent = t("computerUseMetaFrame", { file: String(res.frame_path || "").split("/").slice(-1)[0], at: res.at || "" });
         } else {
           const txt =
             res && res.residual
@@ -22013,7 +22219,7 @@
               : "无帧（residual：" + (res && res.error ? res.error : "unknown") + "）";
           if (box) box.textContent = txt;
           if (railBox) railBox.textContent = txt;
-          if (meta) meta.textContent = "帧轮询：3s（当前无可用帧）";
+          if (meta) meta.textContent = t("computerUseMetaFramePolling");
         }
       } catch (_) {
         /* ignore */
@@ -22102,12 +22308,12 @@
           provider === "slack"
             ? "reply via " + t + " :: " + b
             : "send mail provider=" + (provider || "gmail") + " to=" + t + " subject=" + s + " body=" + b;
-        status.textContent = "已提交 · 进入内核闸门";
+        status.textContent = t("groupStatusSubmitted");
         hideApproval();
         runUserTurn(phrase, { approved: true });
       });
       el.querySelector(".discard-btn").addEventListener("click", () => {
-        status.textContent = "已丢弃（无出站；草稿保留在 Host 供审计）";
+        status.textContent = t("groupStatusDiscarded");
         el.querySelectorAll("input,textarea,button").forEach((n) => (n.disabled = true));
         hideApproval();
       });
@@ -22162,7 +22368,7 @@
         if (!gpRooms.length) {
           const o = document.createElement("option");
           o.value = "";
-          o.textContent = "暂无群组";
+          o.textContent = t("groupEmptyHint");
           pick.appendChild(o);
         }
       }
@@ -22172,7 +22378,7 @@
     async function createRoomFromUi() {
       const status = document.getElementById("gp-group-status");
       if (gpRoomSelected.size < 2) {
-        if (status) status.textContent = "至少选择 2 个 Bot（GP-50：2–6）";
+        if (status) status.textContent = t("groupFormNeedTwoBots");
         return;
       }
       const csv = Array.from(gpRoomSelected).join(",");
@@ -22195,12 +22401,12 @@
       const roomId = pick.value;
       const body = txt.value.trim();
       if (!roomId || !body) {
-        if (status) status.textContent = "选择群组并输入消息";
+        if (status) status.textContent = t("groupFormHint");
         return;
       }
       runUserTurn("room " + roomId + " :: " + body, {});
       txt.value = "";
-      if (status) status.textContent = "已发送 → RoomTurn 路由（@Name 定向 / @everyone 全体 / 无 @ 按内容派给一个成员）";
+      if (status) status.textContent = t("groupStatusSent");
     }
 
     // ----- GP-80/81/82 notifications + unread + badge -----
