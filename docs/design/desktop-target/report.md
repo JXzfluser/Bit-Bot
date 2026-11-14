@@ -11886,3 +11886,69 @@ Host 的磁盘发现只有 `fs.readdirSync(skillsRoot)`（`hosts/shared/host_ffi
 那句话现在真的随回合走到模型面前（此前它在侧栏「技能」里看得见，模型却不知道有这东西）；
 `disable_model_invocation: true`、`name` 超 64 字、`description` 超 1024 字的技能不再被悄悄带进模型，
 后者还会在终端说一句为什么没带；磁盘上没有技能时回合照常成功，system 里也不会冒出一段空壳。
+
+## 8.134 KP-10 第二片：界面上的技能清单和「真进模型的那一份」收成一个分类器，点名那条第一次能生效（SK-01..16 / G-123 扩锚，2026-11-14）
+
+片1 收的是「一个字都没进过模型」，收下之后立刻露出下一格：**同一屏上有了两个技能数**。
+`list_skills` 那一路（`hosts/shared/host_ffi.js:21216` 起，喂 `/` 菜单和交付元信息里的 `list_skills×N`）
+自己 `readdirSync` + 自己一条正则提 description，它既不知道 `disable_model_invocation`，
+也不知道 name/description 的上限；而进模型那一路（片1 的 `collectSkillSeeds`）按这些规则挡人。
+于是「屏幕上有 6 条技能」和「模型这一回合看见 2 条」同时成立，谁都不解释谁 —— 这正是 §8.133⑤ 记下的那条残账。
+
+① 落地的形状（一次分类，两处读数）
+1. `skillInventory()`（`host_ffi.js:765`）成为**唯一**读盘判定器：每条磁盘技能给出
+   `{model_ok, model_skip, model_note, user_ok, user_skip, environments}`。`model_skip` 的取值是
+   `disable_model_invocation` / `name` / `description` / `environments` / `no_skill_md`，
+   `user_skip` 只有 `disable_user_invocation`。不合格仍在 stderr 说一句（沿用片1 那三条措辞，新增 environments 一条）。
+2. `collectSkillSeeds()` 变成 `skillInventory().filter(model_ok)` 的一个切片 —— 片1 的行为逐字不变，
+   只是不再自己解析一遍。`environments[]` 这次按对标要求补的是**形状校验**（写了就必须是非空列表、单项 ≤64 字；
+   不写 = 不限环境）。**没有**按环境过滤：本仓库还没有「这一回合发生在哪个环境」这个数，硬造一个匹配语义是假的。
+3. `list_skills` 的用户那一路改成消费同一个 `skillInventory()`（`host_ffi.js:21337`），artifact 多出
+   `invocable_count` / `uninvocable[{name,source,reason}]` / `model_count` / `model_names`，
+   其中后两个直接取自 `collectSkillSeeds()` 这一次调用的返回值 —— 不是「另外算一遍看是否相等」。
+4. 点名生效：`skillSeedArgs(userText)` 先走 `namedSkillSeeds(userText)` 再走自动注入。
+   `disable_model_invocation: true` 只挡「模型自己想起来用它」，用户在本回合原文里点名（名字或目录名，
+   ≥3 字、大小写不敏感）时它的正文照样随这一回合进模型 —— 这让那条旗子不再是「装了但永远执行不了」。
+   `disable_user_invocation: true` 反过来：不进 `/` 菜单（进 `uninvocable`，带原因），但自动进模型。
+   两个调用点都把本回合原文交出去（`run_moon_turn.js:373`、嵌套 worker 的 `host_ffi.js:19299`）。
+5. 渲染端只显示、不判定：`/` 菜单那行尾巴上的「不进模型」小字直接用 Host 算好的 `model_note`
+   （`hosts/desktop/index.html:23793`）。渲染端再判一遍就会长出第三套说法。
+
+② 门（`scripts/prove_skill_reaches_model.mjs`，`PASS=16 FAIL=0`）
+夹具从 4 条加到 6 条：新增 `kp10-nouser`（`disable_user_invocation`）和 `kp10-badenv`（`environments: []`）。
+SK-03 现在期望恰好 `["kp10-demo","kp10-nouser"]`；SK-07 要求 `disable_model_invocation` / 超 1024 字描述 /
+超 64 字名字 / 空 environments 四种正文一个都不在请求体里；**SK-12** 断言 `disable_user_invocation` 那条
+仍自动进了模型（两个旗子不许互相串）；**SK-13** 断言点名 `kp10-hidden` 后它的正文出现在请求体里
+（这条就是可感面本身，量在 HTTP 那一层）；**SK-14** 断言界面上的 `model_count` / `model_names`
+逐字等于注入那一步的数、四条技能的 `model_skip` 各归各位、`kp10-nouser` 从可点名名单里挪进 `uninvocable` 且
+`count == invocable_count`。反向夹具从两把加到四把：SK-10 摘 Host 拼装、SK-11 摘 argv 通道、
+**SK-15** 摘点名通道（SK-13 的标记随即消失）、**SK-16** 把 `model_count` 改回界面自己数（6 ≠ 2，SK-14 立刻分家）。
+四把都实测判红过，不是「摘了也看不出来」的恒真断言。
+
+③ 尺子自己的一次失效（记下来）
+片1 的 SK-11 反向夹具钉的是 `run_moon_turn.js` 那行的**原文**。本片把 `skillSeedArgs()` 改成
+`skillSeedArgs(text)` 之后，锚点没命中，门直接报「夹具建不出来（锚点没命中）——这条门的对照失效」而不是默默变绿。
+这是设计好的行为（锚点失配＝对照失效＝不许绿），但它提醒一件事：**改被对照的那行代码，必须同时改夹具的锚点**，
+否则整条门从那一刻起其实没在测任何东西。
+
+④ 同轮复跑的相邻门
+`prove_gp135_skill_sources: PASS=15 FAIL=0`（三来源计数、`also_in` 去重、`/` 菜单按来源分组、
+「面板里不再有独立技能列表」那条负向锚全部不动 —— 新字段是纯增量，`count` 在它的夹具上仍是 6）；
+`prove_m29_roomchat: PASS=45 FAIL=0`（改了 `run_moon_turn.js` 那一行 argv 构造，群聊那一路必须没被带坏）；
+`index.html` 五段内联脚本逐段 `node --check` 全过（那 86 万字符的主脚本一旦括号不配对，是整个 composer 死掉）。
+G-123 段单独跑：`SECTION PASS=2 FAIL=0`，锚点下限 11→16。
+
+⑤ 诚实清单（这一片没收到的）
+1. 「点名」认的是原文里出现技能名或目录名（≥3 字、大小写不敏感的子串）。别名、`description` 里的说法、
+   「用那个倒着说的技能」这类意会，都不算点名。
+2. `environments[]` 只校形状，不按环境过滤 —— 需要先有「本回合在哪个环境」这个数，它属于 KP-11 的按设备那一格。
+3. legacy effects 路径（`--legacy-chat-effect`）仍拿不到技能，同片1。
+4. 界面那条「不进模型」的小字与 `uninvocable` 的展示是静态断言 + 单元级断言，**没在真开机的应用里截图看过**；
+   交付元信息那行的 `list_skills×N` 仍只报可点名条数，没把 `model_count` 一起显示（显示样式要过一次设计对齐再动）。
+5. `model_count` 是「列出这一刻自动注入的条数」；两次调用之间若改了 `BITBOT_SKILL_SEED_MAX` 之类的环境量，
+   这个数会随下一刻的注入变，不缓存。
+
+可感面：技能装好后打开 `/` 菜单，**能看到哪几条这一回合真会进模型**（不带说明的那几条）、
+`disable_model_invocation` 那条标着「不自动进模型；用户点名时进」，而**在对话里点它的名字，它这次真的生效**；
+写坏 `environments` 或名字/描述超限的技能，从这一刻起在清单上有原因，在终端上有一句解释，
+在请求体里一个字都没有。

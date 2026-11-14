@@ -285,9 +285,21 @@ Bot 详情面板的群数与侧栏数到的是**同一个数**（EVENT_ONLY 下�
   SK-09 空目录仍绿），两个注入点各有一把反向夹具且**都真的翻红**（摘 `llmSkillBlock` → SK-05/06 红，
   摘 `skillSeedArgs` → SK-05/06 红）。矩阵侧新增 **G-123** 段，锚 `PASS>=11 / FAIL=0`。
   这片**没**收的：`--legacy-chat-effect` 那条 effects 路径仍然拿不到技能（改它的 `DesktopTurnResult` 形状要动
-  JSON 合同，代价大于收益，先记账）；`environments[]` 与 `disable_user_invocation` 没做；
-  行为只证到 HTTP 请求体这一层，「输出按该规则变」还欠一次真供应商 + 真应用的肉眼验；
-  UI 上也还看不见「这一回合进了哪几条技能」。
+  JSON 合同，代价大于收益，先记账）；行为只证到 HTTP 请求体这一层，「输出按该规则变」还欠一次真供应商 +
+  真应用的肉眼验。
+- **落地（片2，2026-11-14，§8.134）**：片1 收下后露出的下一格是**同一屏两个技能数** ——
+  `list_skills`（`/` 菜单与 `list_skills×N`）自己 readdir + 自己一条正则，既不知道 `disable_model_invocation`
+  也不知道上限，于是「屏幕上 6 条」和「模型这回合看见 2 条」同时成立、互不解释。
+  现在 `skillInventory()` 是**唯一**判定器（`model_ok/model_skip/model_note/user_ok/user_skip/environments`），
+  `collectSkillSeeds` 与 `list_skills` 都从它拿数，artifact 多出 `model_count/model_names/uninvocable/invocable_count`，
+  前两个直接取自注入那一次调用而不是另算一遍；`environments[]` 补上形状校验（写了就必须是非空列表，不写=不限），
+  `disable_user_invocation` 落地为「不进 `/` 菜单、进 `uninvocable` 并带原因，但仍自动进模型」；
+  **点名第一次生效**：原文里点出技能名（或目录名）时，连 `disable_model_invocation: true` 的那条也随本回合进模型
+  （`skillSeedArgs(userText)`，两个调用点都交出原文）。渲染端只显示 Host 算好的 `model_note`，不另判一套。
+  门扩到 `PASS=16 FAIL=0`（SK-12 两个旗子不许互串 / SK-13 点名那条真进请求体 / SK-14 界面数 == 注入数逐字，
+  反向夹具四把：摘拼装、摘 argv、摘点名、把 `model_count` 改回界面自己数 —— 四把都实测判红）。
+  仍未收：点名叫的是名字子串（别名与意会不算）；`environments` 只校形状不按环境过滤（要先有「本回合在哪个环境」这个数，
+  那是 KP-11 的按设备那一格）；`/` 菜单那条小字没在真应用里截图看过；`list_skills×N` 仍只报可点名条数。
 
 **KP-11 = `T2-04/T2-06` 的授权升级：按设备 + 三态 + 可作废**
 - 现状：一次性授权键 `(turnId, "Tool:{排序后参数}")` 用完即焚（`host_approval_gate.js:37` 造规范串、`:52-60` 的 `record({turnId, action, source})`），长期规则**整机**作用域

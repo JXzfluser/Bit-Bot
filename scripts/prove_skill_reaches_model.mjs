@@ -246,7 +246,7 @@ const CONTROLS = [
   },
   {
     // 让界面自己数一遍（片2 之前的形状）：屏幕上那个「进模型的条数」不再和注入同源
-    label: "SK-15 界面自己数条数",
+    label: "SK-16 界面自己数条数",
     file: "host_ffi.js",
     patches: [
       {
@@ -339,6 +339,17 @@ async function main() {
 
   const runner = createTurnRunner(ROOT, { dataRoot: DATA, kernelBin: BIN });
 
+  /** 走界面那一路（Host 的 list_skills effect），拿回它落盘的那份 artifact。 */
+  async function listSkillsVia(ffi) {
+    const res = await ffi.executeHostEffects([{ kind: "list_skills", command: "q=" }]);
+    const hit = (res || []).find((r) => r && r.kind === "list_skills");
+    try {
+      return JSON.parse((hit && hit.stdout) || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+
   /* ---- SK-03：Host 读盘那侧的校验与过滤（不靠模型，纯函数判） ---- */
   const seeds = runner.ffi.collectSkillSeeds();
   const seedNames = (Array.isArray(seeds) ? seeds : []).map((s) => s && s.name).sort();
@@ -390,14 +401,48 @@ async function main() {
       : bad("SK-09 无技能时", JSON.stringify({ ok: r && r.ok, error: r && r.error, has: echoed.includes("【技能") }).slice(0, 260));
   }
 
-  /* ---- SK-10 / SK-11：反向夹具必须判红（否则这条门是恒真的） ---- */
-  for (const [label, file] of [
-    ["SK-10 摘掉 Host 拼装", "host_ffi.js"],
-    ["SK-11 摘掉 argv 通道", "run_moon_turn.js"],
-  ]) {
-    const farm = sharedFarm({ [file]: CONTROL_PATCHES[file] });
+  /* ---- SK-13：用户点名 —— disable_model_invocation 的那条也随这一回合进模型 ---- */
+  {
+    const { echoed } = await probe(runner, "sess-kp10-named-" + RUN, NAME_HIDDEN_TEXT);
+    echoed.includes(HIDDEN) && echoed.includes("【技能 · kp10-hidden")
+      ? ok("SK-13 点名做一次", "点名「kp10-hidden」后它的正文进了请求体（可感面：对话里点名让它做一次）")
+      : bad("SK-13 点名做一次", "点名后请求体里没有它的正文：" + echoed.slice(0, 300));
+  }
+
+  /* ---- SK-14：界面那份清单和注入用的是同一次分类（同屏两个数不许互相矛盾） ---- */
+  {
+    const payload = await listSkillsVia(runner.ffi);
+    const row = (n) => (payload.skills || []).concat(payload.uninvocable || []).find((s) => s.name === n) || {};
+    const want = {
+      "kp10-demo": { model_ok: true, model_skip: "" },
+      "kp10-hidden": { model_skip: "disable_model_invocation" },
+      "kp10-toolong": { model_skip: "description" },
+      "kp10-badname": { model_skip: "name" },
+      "kp10-badenv": { model_skip: "environments" },
+    };
+    const wrong = [];
+    for (const [n, exp] of Object.entries(want)) {
+      const r = row(n);
+      if (exp.model_ok !== undefined && r.model_ok !== exp.model_ok) wrong.push(n + ".model_ok=" + r.model_ok);
+      if (r.model_skip !== exp.model_skip) wrong.push(n + ".model_skip=" + r.model_skip);
+    }
+    if (payload.model_count !== seeds.length) wrong.push("model_count=" + payload.model_count);
+    if (JSON.stringify((payload.model_names || []).slice().sort()) !== JSON.stringify(seedNames))
+      wrong.push("model_names=" + JSON.stringify(payload.model_names));
+    if ((payload.skills || []).some((s) => s.name === "kp10-nouser")) wrong.push("kp10-nouser 仍可点名");
+    if (!(payload.uninvocable || []).some((s) => s.name === "kp10-nouser" && s.reason === "disable_user_invocation"))
+      wrong.push("kp10-nouser 没进 uninvocable");
+    if (payload.count !== payload.invocable_count) wrong.push("count=" + payload.count + " invocable_count=" + payload.invocable_count);
+    wrong.length === 0
+      ? ok("SK-14 清单与注入同源", "界面上的 model_count/model_names 就是注入那一步的数（" + seeds.length + " 条），每条技能的 model_skip 与原因同源")
+      : bad("SK-14 清单与注入同源", wrong.join(" / ") + " " + JSON.stringify({ count: payload.count, model_count: payload.model_count }).slice(0, 200));
+  }
+
+  /* ---- SK-10 / SK-11 / SK-15 / SK-16：反向夹具必须判红（否则这条门是恒真的） ---- */
+  for (const ctl of CONTROLS) {
+    const farm = sharedFarm({ [ctl.file]: ctl.patches });
     if (!farm) {
-      bad(label, "夹具建不出来（锚点没命中）——这条门的对照失效");
+      bad(ctl.label, "夹具建不出来（锚点没命中）——这条门的对照失效");
       continue;
     }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kp10-ctl-"));
@@ -406,10 +451,22 @@ async function main() {
     fs.cpSync(SKILLS, path.join(dir, "data", "agent-tools", "skills"), { recursive: true });
     const { createTurnRunner: makeFromFarm } = require(path.join(farm, "hosts", "shared", "run_moon_turn.js"));
     const control = makeFromFarm(ROOT, { dataRoot: data, kernelBin: BIN });
-    const { echoed } = await probe(control, "sess-kp10-ctl-" + file + "-" + RUN);
-    !echoed.includes(MARK)
-      ? ok(label, "请求体里正文标记消失（判红 1 条）——" + file + " 那一步是承重的")
-      : bad(label, "摘掉那一步请求体里仍有正文标记 ⇒ 这条断言是恒真的，不能当门");
+    if (ctl.kind === "listing") {
+      const p = await listSkillsVia(control.ffi);
+      const injected = control.ffi.collectSkillSeeds().length;
+      p.model_count !== injected
+        ? ok(ctl.label, "界面上的 model_count（" + p.model_count + "）与注入条数（" + injected + "）分家 ⇒ SK-14 那条是承重的")
+        : bad(ctl.label, "界面自己数之后仍与注入相等 ⇒ SK-14 是恒真断言，不能当门");
+      continue;
+    }
+    const { echoed } = await probe(
+      control,
+      "sess-kp10-ctl-" + ctl.file + "-" + RUN + "-" + pass,
+      ctl.kind === "named" ? NAME_HIDDEN_TEXT : SKILL_TEXT,
+    );
+    !echoed.includes(ctl.marker)
+      ? ok(ctl.label, "请求体里「" + ctl.marker + "」消失（判红 1 条）——" + ctl.file + " 那一步是承重的")
+      : bad(ctl.label, "摘掉那一步请求体里仍有标记 ⇒ 这条断言是恒真的，不能当门");
   }
 
   stub.kill("SIGTERM");
