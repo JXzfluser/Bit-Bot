@@ -928,5 +928,15 @@
     "text": "Chief",
     "where": "marketplace template description prefix (host_ffi.js BOT_TEMPLATE_SEED)",
     "reason": "Kernel/marketplace data-level template catalog"
+  },
+  {
+    "text": "简体中文",
+    "where": "settings → 语言下拉",
+    "reason": "语言选择器按惯例显示母语名:用户可能读不懂当前界面语言,得能按自己的母语认出来"
+  },
+  {
+    "text": "繁體中文",
+    "where": "settings → 语言下拉",
+    "reason": "同上"
   }
 ]

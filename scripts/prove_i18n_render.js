@@ -103,7 +103,19 @@ function findChromium(pw) {
   await page.goto("file://" + HTML, { waitUntil: "load" });
   await page.waitForTimeout(1200);
 
-  const collect = () => page.evaluate(() => {
+  // 合同 §4 的豁免:allowlist 内条目(逐项)。语言下拉显示母语名就在里面 ——
+  // 用户可能读不懂当前界面语言,那两个字必须保持原样,不能被 en 覆盖。
+  let ALLOW = [];
+  try {
+    const alPath = path.join(REPO, "docs/design/desktop-target/i18n-allowlist.json");
+    for (const it of JSON.parse(fs.readFileSync(alPath, "utf8"))) {
+      if (it && typeof it.text === "string") ALLOW.push(it.text.trim());
+    }
+  } catch (e) { /* 没有 allowlist 就当没有豁免 */ }
+  const allowSet = new Set(ALLOW);
+
+  const collect = () => page.evaluate((allow) => {
+    const ALLOW = new Set(allow || []);
     const skipTags = new Set(["SCRIPT", "STYLE", "NOSCRIPT"]);
     const hits = [];
     const seen = new Set();
@@ -111,6 +123,7 @@ function findChromium(pw) {
       const s = String(v == null ? "" : v).trim();
       if (!s) return;
       if (!/[一-鿿㐀-䶿]/.test(s)) return;
+      if (ALLOW.has(s)) return;          // allowlist 豁免(逐项)
       const key = kind + "|" + (el.id || "") + "|" + (el.className || "") + "|" + s;
       if (seen.has(key)) return;
       seen.add(key);
@@ -127,9 +140,9 @@ function findChromium(pw) {
       }
     });
     const title = document.title;
-    if (/[一-鿿㐀-䶿]/.test(title)) hits.unshift("title " + title);
+    if (/[一-鿿㐀-䶿]/.test(title) && !ALLOW.has(title.trim())) hits.unshift("title " + title);
     return hits;
-  });
+  }, Array.from(allowSet));
 
   /* ── 切英文 ── */
   const switched = await page.evaluate(() => {
@@ -143,7 +156,7 @@ function findChromium(pw) {
     bad("能切到 en（wavegLangApply 存在）");
   } else {
     const enHits = await collect();
-    if (!enHits.length) ok("IR-01 en 模式下渲染后 DOM 里 0 个汉字（合同 §4 的口径）");
+    if (!enHits.length) ok(`IR-01 en 模式下渲染后 DOM 里 0 个汉字（合同 §4 的口径；allowlist 豁免 ${allowSet.size} 条）`);
     else bad("IR-01 en 模式下渲染后 DOM 里 0 个汉字", enHits.slice(0, 6).join(" | "));
   }
 

@@ -335,17 +335,38 @@ function staticTextWithoutI18n(src) {
   }
   return leaks;
 }
-const staticLeaks = staticTextWithoutI18n(staticHtml);
-if (!staticLeaks.length) ok("CC-10 静态区每段中文可见文本都挂在 data-i18n 的元素里");
+/* 合同 §4 的豁免:allowlist 内条目(逐项:text + where + reason)。
+   「语言下拉显示母语名」就是典型 —— 用户可能读不懂当前界面语言,
+   得能按自己的母语认出那一项,所以那两个字**必须保持原样**。 */
+let ALLOW = new Set();
+try {
+  const alPath = path.join(REPO, "docs/design/desktop-target/i18n-allowlist.json");
+  for (const it of JSON.parse(fs.readFileSync(alPath, "utf8"))) {
+    if (it && typeof it.text === "string") ALLOW.add(it.text.trim());
+  }
+} catch (e) { /* 没有 allowlist 就当没有豁免 */ }
+
+const staticLeaks = staticTextWithoutI18n(staticHtml).filter((x) => {
+  const t = (x.split("←")[1] || "").trim();
+  return !ALLOW.has(t);
+});
+if (!staticLeaks.length) ok(`CC-10 静态区每段中文可见文本都挂在 data-i18n 的元素里（allowlist 豁免 ${ALLOW.size} 条）`);
 else bad("CC-10 静态区每段中文可见文本都挂在 data-i18n 的元素里", staticLeaks.slice(0, 6).join(" | "));
 
 /* ── CC-11 负向对照:摘掉一个 data-i18n ⇒ CC-10 必须翻红(判据不是恒绿) ── */
 /* 注意:样本的正则**不能**把闭合标签的 '<' 一起吃掉 —— 否则替换后 HTML 畸形,
    判据会因「解析不出来」而假绿。用前瞻只取到闭合标签之前。 */
-const mCjk = staticHtml.match(/<[^>]*data-i18n="[^"]*"[^>]*>[^<]*[一-鿿][^<]*(?=<)/);
+/* 样本要挑一个**不在 allowlist 里**的,否则摘掉属性也不会翻红(豁免把它盖住了)。 */
+let mCjk = null;
+for (const cand of staticHtml.matchAll(/<[^>]*data-i18n="[^"]*"[^>]*>([^<]*[一-鿿][^<]*)(?=<)/g)) {
+  if (!ALLOW.has(cand[1].trim())) { mCjk = cand; break; }
+}
 if (mCjk) {
   const brokenStatic = staticHtml.replace(mCjk[0], mCjk[0].replace(/\s*data-i18n="[^"]*"/, ""));
-  const brokenLeaks = staticTextWithoutI18n(brokenStatic);
+  const brokenLeaks = staticTextWithoutI18n(brokenStatic).filter((x) => {
+    const t = (x.split("←")[1] || "").trim();
+    return !ALLOW.has(t);
+  });
   if (brokenLeaks.length > staticLeaks.length) {
     ok("CC-11 负向对照：摘掉一个 data-i18n ⇒ CC-10 翻红（判据不是恒绿）");
   } else {
