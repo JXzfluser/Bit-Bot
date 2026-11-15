@@ -4024,6 +4024,10 @@ function createProductSurface(repoRoot, opts = {}) {
       active: active
         ? {
             label: active.label,
+            // 「我的邮箱」:用户在这个 profile 上登记的收件地址。
+            // 有了它,「发我邮箱」这种话才解析得出收件人 —— 以前账户档案里
+            // 只有名字,于是定时任务里的"发我邮箱"连审批都排不出来。
+            email: active.email || "",
             created_at: active.created_at,
             last_used_at: active.last_used_at,
             backed_by: active.backed_by || [],
@@ -4031,6 +4035,7 @@ function createProductSurface(repoRoot, opts = {}) {
         : null,
       accounts: (data.accounts || []).map(a => ({
         label: a.label,
+        email: a.email || "",
         created_at: a.created_at,
         last_used_at: a.last_used_at,
       })),
@@ -4042,6 +4047,40 @@ function createProductSurface(repoRoot, opts = {}) {
           : "local profile «" + active.label + "» has NO configured credentials — features needing them stay off"
         : "not signed in (no local profile); configure credentials under Settings · Credentials",
       at: nowIso()
+    };
+  }
+
+  /* 登记/改「我的邮箱」。
+   *
+   * 账户档案以前只有名字(label),没有地址 ⇒ 用户说"发我邮箱"时,
+   * 收件人只从原话里找字面邮箱地址;找不到就不外发(绝不编地址)——
+   * 于是"发我邮箱"这句话永远落不了地。
+   * 这里让用户自己登记一个地址:登记了,定时任务的外发才有收件人。
+   *
+   * 地址只做**形状**校验,不验证可达性(那要联网、要发信,不该在保存时做)。
+   * 空串 = 清除。 */
+  function accountSetEmail(label, email) {
+    const name = String(label || "").trim();
+    if (!name) return { ok: false, error: "account_needs_label", mode: "host_account_set_email" };
+    const raw = String(email || "").trim();
+    if (raw && !/^[^@\s]{1,64}@[^@\s]{1,190}$/.test(raw)) {
+      return { ok: false, error: "account_email_invalid", mode: "host_account_set_email" };
+    }
+    const data = loadAccountProfile();
+    const hit = (data.accounts || []).find(a => a.label === name);
+    if (!hit) {
+      return { ok: false, error: "account_not_found", mode: "host_account_set_email" };
+    }
+    hit.email = raw;
+    hit.email_updated_at = raw ? nowIso() : null;
+    saveAccountProfile(data);
+    return {
+      ok: true,
+      mode: "host_account_set_email",
+      label: name,
+      email: raw,
+      cleared: !raw,
+      at: nowIso(),
     };
   }
 
@@ -4528,6 +4567,7 @@ function createProductSurface(repoRoot, opts = {}) {
     // Account (GP-74) — local profile semantics only
     accountStatus,
     accountSignIn,
+    accountSetEmail,
     accountSignOut,
     accountSwitch,
     

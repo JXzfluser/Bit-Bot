@@ -9447,7 +9447,19 @@ function createHostFfi(repoRoot, opts = {}) {
    * 正文优先取本群最近一次成稿回执（final_report），取不到就退回任务原话本身。 */
   function pickMailRecipient(text) {
     const m = String(text || "").match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/);
-    return m ? m[0] : "";
+    if (m) return m[0];
+    // 「发我邮箱」——用户没写地址,地址在**账户档案**里(本地 profile 登记过
+    // 「我的邮箱」)。以前账户档案只有名字,于是这句话永远解析不出收件人,
+    // 连审批都排不出来 —— 用户看到的就是"我明明说了发我邮箱"。
+    // 登记过就用它;没登记就**不外发**(绝不编地址)。
+    try {
+      if (surface && typeof surface.accountStatus === "function") {
+        const st = surface.accountStatus();
+        const email = String((st && st.active && st.active.email) || "").trim();
+        if (email) return email;
+      }
+    } catch (_) { /* 读不到档案就当没有,外发这一步如实停住 */ }
+    return "";
   }
 
   /* KP-09 片2：群面的读法收回 product_surface（见 §8.124）。

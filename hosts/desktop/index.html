@@ -2821,6 +2821,10 @@
           <button type="button" class="bb-btn bb-btn-sm" id="gp-account-signout" data-i18n="accountSignOutBtn">退出登录</button>
           <select id="gp-account-switch" class="gp-select" style="max-width:180px"></select>
         </div>
+        <div class="gp-row" style="align-items:center;margin-top:6px">
+          <input class="bb-control" id="gp-account-email" type="email" data-i18n-ph="accountEmailPlaceholder" placeholder="我的邮箱（定时任务外发用）" />
+          <button type="button" class="bb-btn bb-btn-sm" id="gp-account-email-save" data-i18n="accountEmailSaveBtn">保存邮箱</button>
+        </div>
         <div id="gp-account-state" style="margin-top:6px"></div>
         <!-- 隐私模式属于**账户**，不属于本机设置：开关在账户侧，这里只能如实说
              状态和原因。原来它自己占一个分组、解释只塞在 title 里（悬停才看得
@@ -4683,6 +4687,13 @@
         state.textContent = wavegT("accountNotSigned") +
           (on.length ? " · " + wavegT("accountCredOn") + "：" + on.join(", ") : "");
       }
+      // 「我的邮箱」回填:让用户看得见自己登记的是哪个地址。
+      const emailInput = document.getElementById("gp-account-email");
+      if (emailInput) {
+        const cur = p.active && p.active.email ? String(p.active.email) : "";
+        if (document.activeElement !== emailInput) emailInput.value = cur;
+        emailInput.dataset.accountLabel = p.active && p.active.label ? String(p.active.label) : "";
+      }
       const accounts = p.accounts || [];
       sel.innerHTML = "";
       const placeholder = document.createElement("option");
@@ -4718,6 +4729,33 @@
             if (st) st.textContent = wavegT("accountFail").replace("{e}", (r && r.error) || "?");
             return;
           }
+          refreshAccountPanel().catch(() => {});
+        }).catch(() => {});
+      });
+    }
+    /* 「我的邮箱」保存:登记到当前 profile。地址形状由 Host 校验,
+       这里只负责把结果说人话。 */
+    const gpAccountEmailSaveBtn = document.getElementById("gp-account-email-save");
+    if (gpAccountEmailSaveBtn) {
+      gpAccountEmailSaveBtn.addEventListener("click", () => {
+        const inp = document.getElementById("gp-account-email");
+        const label = String((inp && inp.dataset.accountLabel) || "").trim();
+        const email = String((inp && inp.value) || "").trim();
+        const st = document.getElementById("gp-account-state");
+        if (!label) {
+          if (st) st.textContent = wavegT("accountNeedsLabel");
+          return;
+        }
+        Promise.resolve(window.bitbot.account.setEmail(label, email)).then((r) => {
+          if (!r || !r.ok) {
+            if (st) {
+              st.textContent = (r && r.error) === "account_email_invalid"
+                ? wavegT("accountEmailInvalid")
+                : wavegT("accountFail").replace("{e}", (r && r.error) || "?");
+            }
+            return;
+          }
+          if (st) st.textContent = email ? wavegT("accountEmailSaved") : wavegT("accountEmailCleared");
           refreshAccountPanel().catch(() => {});
         }).catch(() => {});
       });
@@ -11015,6 +11053,26 @@
         // 回执显示**真实落库的** cron,不是我们以为的那个。
         realCron = String((ro && ro.routine && ro.routine.cron) || brief.cron || "");
       }
+      /* 没排程 ⇒ 立刻把这件事派进群,让成员真的开工。
+       * 以前这里建完 Bot、建完群就结束了 —— 群里空着,成员回合一次都没被
+       * 触发,用户看到的是"队伍建好了",然后什么也没发生。
+       * 排程的情况相反:到点由 routine 派活(见 host_ffi 的 dispatchRoutineToRoom),
+       * 这里**不重复**派一次,否则一天做两遍。 */
+      let started = false;
+      if (roomId && !brief.scheduled) {
+        const taskText = String(brief.task || "").trim();
+        if (taskText && window.bitbot && window.bitbot.rooms) {
+          try {
+            const res = await window.bitbot.rooms.orchestrate({
+              room_id: roomId,
+              text: taskText,
+            });
+            started = !!(res && res.ok);
+          } catch (_) {
+            started = false;
+          }
+        }
+      }
       await refreshBots().catch(() => {});
       await refreshSidebarRooms().catch(() => {});
       flashMoved(made[0].id, title);
@@ -11040,6 +11098,9 @@
       }
       if (brief.autoRoles) {
         msg += " · " + wavegT("teamAutoRoles").replace(/\{r\}/g, brief.roles.join("、"));
+      }
+      if (started) {
+        msg += " · " + wavegT("teamStartedNow");
       }
       cmdToast(msg);
       return true;
@@ -18439,6 +18500,18 @@
     const WAVEG_I18N = {
       "zh-CN": {
 
+        teamStartedNow: "已开工：成员正在群里接手这件事",
+
+        accountEmailPlaceholder: "我的邮箱（定时任务外发用）",
+
+        accountEmailSaveBtn: "保存邮箱",
+
+        accountEmailSaved: "邮箱已登记。定时任务外发会用这个地址。",
+
+        accountEmailCleared: "邮箱已清除。",
+
+        accountEmailInvalid: "这个地址不像邮箱地址。",
+
         appTitle: "Bit Bot 桌面版",
         agentActionOpenCloudProxy: "打开云端代理",
         agentMetaProxy: "代理 · {{id}}",
@@ -19903,6 +19976,18 @@
       },
       "zh-TW": {
 
+        teamStartedNow: "已開工：成員正在群裡接手這件事",
+
+        accountEmailPlaceholder: "我的信箱（定時任務外發用）",
+
+        accountEmailSaveBtn: "儲存信箱",
+
+        accountEmailSaved: "信箱已登記。定時任務外發會用這個地址。",
+
+        accountEmailCleared: "信箱已清除。",
+
+        accountEmailInvalid: "這個地址不像信箱地址。",
+
         appTitle: "Bit Bot 桌面版",
         agentActionOpenCloudProxy: "開啟雲端代理",
         agentMetaProxy: "代理 · {{id}}",
@@ -21362,6 +21447,18 @@
         providerOpenRouterLabel: "OpenRouter",
       },
       en: {
+
+        teamStartedNow: "Started: members are picking this up in the group",
+
+        accountEmailPlaceholder: "my mailbox (used for scheduled mail)",
+
+        accountEmailSaveBtn: "Save mailbox",
+
+        accountEmailSaved: "Mailbox saved. Scheduled mail will use this address.",
+
+        accountEmailCleared: "Mailbox cleared.",
+
+        accountEmailInvalid: "That does not look like an email address.",
 
         appTitle: "Bit Bot Desktop",
         agentActionOpenCloudProxy: "Open the cloud proxy",
