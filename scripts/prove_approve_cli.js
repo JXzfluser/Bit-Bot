@@ -76,7 +76,9 @@ function runCli(args, opts) {
       expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
       status: "pending",
     });
-  fs.writeFileSync(pendPath, mk("approval-a1", "send_mail", "me@example.com|日报|三条热点") + "\n");
+  // effect kind 是 mail_send(不是工具名 send_mail);command 的真形状是
+  // provider|收件人|主题|正文 —— 「总是允许」按**收件人**收窄,不落正文。
+  fs.writeFileSync(pendPath, mk("approval-a1", "mail_send", "gmail|me@example.com|日报|三条热点") + "\n");
 
   const server = createCnInboundServer({
     repoRoot: tmp,
@@ -93,7 +95,7 @@ function runCli(args, opts) {
     const list = await runCli(["--box", boxUrl, "--credential", credPath, "list"]);
     check(list.code === 0, "AP-1 list 退出码 0", list.code + " " + list.err);
     check(list.out.includes("approval-a1"), "AP-1 清单里有那一条", list.out.slice(0, 300));
-    check(list.out.includes("send_mail"), "AP-1 清单显示了类型", list.out.slice(0, 300));
+    check(list.out.includes("mail_send"), "AP-1 清单显示了类型", list.out.slice(0, 300));
     check(list.out.includes("allow"), "AP-1 清单给出了怎么批", list.out.slice(0, 400));
 
     // ---- AP-2 负例: always 不带 --yes 会被拒 ---------------------------
@@ -105,21 +107,29 @@ function runCli(args, opts) {
     let rules = null;
     try { rules = JSON.parse(fs.readFileSync(rulesAfterNo, "utf8")); } catch (_) {}
     check(
-      !rules || !(rules.rules || []).some((r) => r && r.pattern === "send_mail:*"),
-      "AP-2 被拒之后没有写下任何规则",
+      !rules || !(rules.rules || []).length,
+      "AP-2 被拒之后**一条规则都没写**(不是「没有这一条」,是「一条都没有」)",
       JSON.stringify(rules || {}).slice(0, 200),
     );
 
     // ---- AP-3: always --yes 真的写下规则 -------------------------------
     const alwaysYes = await runCli(["--box", boxUrl, "--credential", credPath, "--yes", "always", "approval-a1"]);
     check(alwaysYes.code === 0, "AP-3 always --yes 成功", alwaysYes.code + " " + alwaysYes.err);
-    check(alwaysYes.out.includes("send_mail:*"), "AP-3 回执说明了写下的规则", alwaysYes.out.slice(0, 300));
+    check(alwaysYes.out.includes("mail_send:me@example.com"), "AP-3 回执说明了写下的规则(按收件人收窄)", alwaysYes.out.slice(0, 300));
     let rules2 = null;
     try { rules2 = JSON.parse(fs.readFileSync(rulesAfterNo, "utf8")); } catch (_) {}
     check(
-      !!rules2 && (rules2.rules || []).some((r) => r && r.pattern === "send_mail:*" && r.decision === "allow"),
+      !!rules2 && (rules2.rules || []).some((r) => r && r.pattern === "mail_send:me@example.com" && r.decision === "allow"),
       "AP-3 规则真的落在这台机器上",
       JSON.stringify(rules2 || {}).slice(0, 250),
+    );
+    // 负向:规则文件里不许出现邮件主题/正文
+    let rulesRaw2 = "";
+    try { rulesRaw2 = fs.readFileSync(rulesAfterNo, "utf8"); } catch (_) {}
+    check(
+      !rulesRaw2.includes("日报") && !rulesRaw2.includes("三条热点"),
+      "AP-3 负向:规则文件里没有邮件主题/正文",
+      rulesRaw2.slice(0, 250),
     );
 
     // ---- AP-4: deny 拒绝,什么也没执行 ----------------------------------
