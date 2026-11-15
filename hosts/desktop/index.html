@@ -2549,7 +2549,7 @@
     <span id="devmode-badge" data-i18n="devBadge">开发模式</span>
       <div id="header-actions">
       <div id="model-picker" title="国产多模型配置" aria-label="模型" data-i18n-title="railModelsTitle" data-i18n-aria="modelLabel">
-        <button type="button" id="model-entry" class="mp-btn"><span class="mp-label">模型</span></button>
+        <button type="button" id="model-entry" class="mp-btn"><span data-i18n="modelLabel" class="mp-label">模型</span></button>
       </div>
       <button type="button" id="tools-toggle-btn" data-lab title="机器 / 渠道 / 能力面板" data-i18n="headerSkills" data-i18n-title="railToolsTitle">能力</button>
       <button type="button" id="gp-panel-btn" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer" data-i18n-title="railGpPanelTitle">电脑</button>
@@ -2599,29 +2599,29 @@
     <details class="lab" data-lab id="agents-lab">
       <summary data-i18n="advanced">高级 · 代理 / 队友</summary>
       <div class="agent-item" id="agents-host-panel" style="margin-top:8px">
-        <div class="name">侧栏代理</div>
-        <div class="meta" id="agents-meta">列表 · 隐藏 (CM-1906/1907)</div>
+        <div data-i18n="sbTitleAgents" class="name">侧栏代理</div>
+        <div data-i18n="agentsMeta" class="meta" id="agents-meta">列表 · 隐藏 (CM-1906/1907)</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="ag-list" class="bb-btn bb-btn-sm bb-btn-primary">列出代理</button>
-          <button type="button" id="ag-hide" class="bb-btn bb-btn-sm">隐藏研究代理</button>
+          <button data-i18n="agList" type="button" id="ag-list" class="bb-btn bb-btn-sm bb-btn-primary">列出代理</button>
+          <button data-i18n="agHide" type="button" id="ag-hide" class="bb-btn bb-btn-sm">隐藏研究代理</button>
         </div>
       </div>
       <div class="agent-item" id="teammates-panel">
-        <div class="name">队友</div>
-        <div class="meta" id="teammates-meta">本机的持久化存储</div>
+        <div data-i18n="apSourceTeammate" class="name">队友</div>
+        <div data-i18n="teammatesMeta" class="meta" id="teammates-meta">本机的持久化存储</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="tm-create" class="bb-btn bb-btn-sm bb-btn-primary">新建队友</button>
-          <button type="button" id="tm-members" class="bb-btn bb-btn-sm">成员面板</button>
-          <button type="button" id="tm-members-group" class="bb-btn bb-btn-sm">打开成员群组</button>
-          <button type="button" id="tm-room" class="bb-btn bb-btn-sm">群聊回合</button>
-          <button type="button" id="tm-room-post" class="bb-btn bb-btn-sm">发送到群聊</button>
-          <button type="button" id="tm-room-join" class="bb-btn bb-btn-sm">加入群聊</button>
-          <button type="button" id="tm-list-members" class="bb-btn bb-btn-sm">列出成员</button>
-          <button type="button" id="tm-list-channels" class="bb-btn bb-btn-sm">列出频道</button>
-          <button type="button" id="tm-open-canvas" class="bb-btn bb-btn-sm">打开放画板</button>
-          <button type="button" id="tm-list-models" class="bb-btn bb-btn-sm">列出模型</button>
-          <button type="button" id="tm-send" class="bb-btn bb-btn-sm">发送到代理</button>
-          <button type="button" id="tm-subagent" class="bb-btn bb-btn-sm">派生子代理</button>
+          <button data-i18n="tmCreate" type="button" id="tm-create" class="bb-btn bb-btn-sm bb-btn-primary">新建队友</button>
+          <button data-i18n="tmMembers" type="button" id="tm-members" class="bb-btn bb-btn-sm">成员面板</button>
+          <button data-i18n="tmMembersGroup" type="button" id="tm-members-group" class="bb-btn bb-btn-sm">打开成员群组</button>
+          <button data-i18n="tmRoom" type="button" id="tm-room" class="bb-btn bb-btn-sm">群聊回合</button>
+          <button data-i18n="tmRoomPost" type="button" id="tm-room-post" class="bb-btn bb-btn-sm">发送到群聊</button>
+          <button data-i18n="tmRoomJoin" type="button" id="tm-room-join" class="bb-btn bb-btn-sm">加入群聊</button>
+          <button data-i18n="tmListMembers" type="button" id="tm-list-members" class="bb-btn bb-btn-sm">列出成员</button>
+          <button data-i18n="tmListChannels" type="button" id="tm-list-channels" class="bb-btn bb-btn-sm">列出频道</button>
+          <button data-i18n="tmOpenCanvas" type="button" id="tm-open-canvas" class="bb-btn bb-btn-sm">打开放画板</button>
+          <button data-i18n="tmListModels" type="button" id="tm-list-models" class="bb-btn bb-btn-sm">列出模型</button>
+          <button data-i18n="tmSend" type="button" id="tm-send" class="bb-btn bb-btn-sm">发送到代理</button>
+          <button data-i18n="tmSubagent" type="button" id="tm-subagent" class="bb-btn bb-btn-sm">派生子代理</button>
         </div>
       </div>
     </details>
@@ -2629,13 +2629,13 @@
          with Connect apps / Marketplace / Settings, not between the lists. -->
     <div id="sidebar-footer">
       <input type="checkbox" id="grok-adv-toggle" hidden />
-      <label for="grok-adv-toggle" class="grok-adv-label">管理 Bot / 应用</label>
+      <label data-i18n="sbLabelManageApps" for="grok-adv-toggle" class="grok-adv-label">管理 Bot / 应用</label>
       <details class="lab" id="hidden-bots-lab">
         <summary><span data-i18n="hiddenBots">已隐藏的 Bot</span> (<span id="hidden-bots-count">0</span>)</summary>
         <div id="hidden-bot-list"></div>
       </details>
       <details class="sb-adv" id="sb-more">
-        <summary class="sb-adv-sum">更多<span class="sb-adv-caret" aria-hidden="true">▸</span></summary>
+        <summary class="sb-adv-sum"><span data-i18n="sbMore">更多</span><span class="sb-adv-caret" aria-hidden="true">▸</span></summary>
         <div class="bb-split" style="margin-top:8px">
           <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" data-i18n="connectApps" data-i18n-title="railActionConnectApps">连接应用</button>
           <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板" data-i18n="marketplace" data-i18n-title="railActionMarketplace">模板市场</button>
@@ -2709,12 +2709,12 @@
     </div>
     <div id="pending-bar">
       <span id="pending-bar-text"></span>
-      <button type="button" id="pending-bar-btn" class="bb-btn bb-btn-sm" style="margin-left:8px">查看</button>
+      <button data-i18n="pendingBarBtn" type="button" id="pending-bar-btn" class="bb-btn bb-btn-sm" style="margin-left:8px">查看</button>
     </div>
     <div id="gp-panel" style="display:none;margin:0 16px 8px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="font-weight:700" data-i18n="gpPanel">对齐面板</div>
-        <button type="button" class="gp-chip gp-tab active" data-gptab="computer">电脑</button>
+        <button data-i18n="gpComputer" type="button" class="gp-chip gp-tab active" data-gptab="computer">电脑</button>
         <button type="button" class="gp-chip gp-tab" data-gptab="group" data-i18n="gpGroup">群组</button>
         <button type="button" class="gp-chip gp-tab" data-gptab="approvals" data-i18n="gpApprovals">后台审批</button>
         <button type="button" id="gp-panel-close" class="bb-btn bb-btn-sm" data-i18n="gpClose">关闭</button>
@@ -2758,10 +2758,10 @@
       </div>
     </div>
     <div id="permission" style="display:none;margin:12px 16px;padding:12px;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:8px">
-      <div class="title" style="font-weight:700;color:var(--warn-ink)">设备权限</div>
+      <div data-i18n="sbTitleDevicePermission" class="title" style="font-weight:700;color:var(--warn-ink)">设备权限</div>
       <div class="detail" id="permission-detail" style="margin-top:6px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div class="actions" style="margin-top:10px;display:flex;gap:8px">
-        <button type="button" id="permission-dismiss" class="bb-btn bb-btn-sm">关闭卡片</button>
+        <button data-i18n="permissionDismiss" type="button" id="permission-dismiss" class="bb-btn bb-btn-sm">关闭卡片</button>
       </div>
     </div>
     <div id="settings-panel" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -2793,8 +2793,8 @@
         <div class="gp-row">
           <select id="gp-language" class="gp-select">
             <option value="system" data-i18n="followSystem">跟随系统</option>
-            <option value="zh-CN">简体中文</option>
-            <option value="zh-TW">繁體中文</option>
+            <option data-i18n="stLangZhCn" value="zh-CN">简体中文</option>
+            <option data-i18n="stLangZhTw" value="zh-TW">繁體中文</option>
             <option value="en">English</option>
           </select>
         </div>
@@ -2925,14 +2925,14 @@
       </div>
       <div id="st-usage" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="tabUsage">用量与账单</div>
-        <div class="st-note">本周真实 LLM 用量；数字全部来自 llm-usage.json，无数据即空态，不造假</div>
-        <div id="gp-usage"><div class="usage-skeleton">读取中…</div></div>
+        <div data-i18n="stUsageNote" class="st-note">本周真实 LLM 用量；数字全部来自 llm-usage.json，无数据即空态，不造假</div>
+        <div id="gp-usage"><div data-i18n="bmStateIdle" class="usage-skeleton">读取中…</div></div>
       </div>
       <div id="st-updates" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="tabUpdates">更新</div>
-        <div class="st-note">版本信息、更新源与安装都在这一页；桌面外壳不再另设「更新」入口。</div>
+        <div data-i18n="stUpdatesNote" class="st-note">版本信息、更新源与安装都在这一页；桌面外壳不再另设「更新」入口。</div>
         <div class="st-card">
-          <div class="st-card-title">当前版本</div>
+          <div data-i18n="stCurrentVersion" class="st-card-title">当前版本</div>
           <div id="st-updates-state" style="color:var(--muted);font:12px/1.5 ui-monospace,monospace"></div>
           <div class="gp-row" style="margin-top:10px">
             <button type="button" class="bb-btn bb-btn-sm bb-btn-primary" id="gp-check-updates" data-i18n="checkUpdatesBtn">检查更新</button>
@@ -2940,14 +2940,14 @@
           </div>
         </div>
         <div class="st-card">
-          <div class="st-card-title">更新源</div>
-          <label class="st-field"><span class="st-field-name">更新源 URL</span>
+          <div data-i18n="stUpdateSource" class="st-card-title">更新源</div>
+          <label class="st-field"><span data-i18n="stUpdateSourceUrl" class="st-field-name">更新源 URL</span>
             <div style="display:flex;gap:8px;align-items:center">
               <input id="sec-ota" type="text" placeholder="目录下需 latest.yml" class="bb-field bb-field-grow"  data-i18n-ph="settingsOtaPlaceholder"/>
-              <button type="button" id="sec-ota-check" class="bb-btn bb-btn-sm" style="white-space:nowrap">查更新</button>
+              <button data-i18n="secOtaCheck" type="button" id="sec-ota-check" class="bb-btn bb-btn-sm" style="white-space:nowrap">查更新</button>
             </div>
           </label>
-          <div class="st-note">留空走默认更新源；企业内网/私有分发填自己的目录。</div>
+          <div data-i18n="stUpdateSourceHint" class="st-note">留空走默认更新源；企业内网/私有分发填自己的目录。</div>
         </div>
       </div>
       <div id="secrets-panel" class="settings-tab" style="display:none">
@@ -2987,12 +2987,12 @@
             <label class="st-form-label" for="sec-llm-preset" data-i18n="credFieldProvider">服务商</label>
             <div class="st-form-ctl">
               <select id="sec-llm-preset" class="bb-field">
-                <option value="deepseek">DeepSeek（官方）</option>
-                <option value="qwen">通义千问（DashScope 兼容模式）</option>
+                <option data-i18n="stProviderDeepSeek" value="deepseek">DeepSeek（官方）</option>
+                <option data-i18n="stProviderQwen" value="qwen">通义千问（DashScope 兼容模式）</option>
                 <option value="moonshot">Moonshot / Kimi</option>
-                <option value="openrouter">OpenRouter（聚合网关）</option>
-                <option value="custom">自定义 · OpenAI 兼容端点</option>
-                <option value="gateway">企业网关 / 代理转发</option>
+                <option data-i18n="stProviderOpenRouter" value="openrouter">OpenRouter（聚合网关）</option>
+                <option data-i18n="stProviderCustom" value="custom">自定义 · OpenAI 兼容端点</option>
+                <option data-i18n="stProviderGateway" value="gateway">企业网关 / 代理转发</option>
               </select>
               <!-- 选完要说清「预填了什么」，否则用户不知道下面几栏被改了没有 -->
               <span id="sec-llm-hint" class="st-field-hint">…</span>
@@ -3041,17 +3041,17 @@
                主流程只剩服务商 / 模型 / Base URL / Key 四栏。 -->
           <details class="st-adv" id="sec-alt-channels">
             <summary class="st-adv-sum"><span data-i18n="credAdvTitle">备用渠道与 provider 标签</span> <span class="st-tag" data-i18n="credTagOptional">选填</span><span class="st-adv-mark" aria-hidden="true"></span></summary>
-            <div class="st-note">同一份 <code>.env.local</code>；切到对应渠道时不用再填一遍。</div>
+            <div class="st-note"><span data-i18n="stAltChannelsSame">同一份</span> <code>.env.local</code><span data-i18n="stAltChannelsSameTail">；切到对应渠道时不用再填一遍。</span></div>
             <!-- 折叠里也用同一套行式排法：展开后突然换回竖排表单，会让人以为
                  这不是同一张卡的延续。 -->
             <div class="st-form">
-              <label class="st-form-label" for="sec-llm-provider">provider 标签</label>
+              <label data-i18n="stProviderLabelField" class="st-form-label" for="sec-llm-provider">provider 标签</label>
               <div class="st-form-ctl">
                 <input id="sec-llm-provider" type="text" autocomplete="off" placeholder="deepseek / my-gateway" class="bb-field" />
-                <span class="st-field-hint">写进配置里的 provider_id；留空就跟着上面选的服务商。</span>
+                <span data-i18n="stProviderIdHint" class="st-field-hint">写进配置里的 provider_id；留空就跟着上面选的服务商。</span>
               </div>
 
-              <label class="st-form-label" for="sec-qwen-key">通义千问</label>
+              <label data-i18n="stQwenLabel" class="st-form-label" for="sec-qwen-key">通义千问</label>
               <div class="st-form-ctl">
                 <input id="sec-qwen-key" type="password" autocomplete="off" placeholder="可选" class="bb-field"  data-i18n-ph="settingsFieldOptional"/>
                 <span id="sec-qwen-mask" class="st-field-hint"></span>
@@ -3079,7 +3079,7 @@
             <label class="st-form-label" for="sec-search-provider" data-i18n="credFieldProvider">服务商</label>
             <div class="st-form-ctl">
               <select id="sec-search-provider" class="bb-field">
-                <option value="tavily">Tavily（有免费额度）</option>
+                <option data-i18n="stProviderTavily" value="tavily">Tavily（有免费额度）</option>
                 <option value="brave">Brave Search</option>
               </select>
             </div>
@@ -3108,36 +3108,36 @@
                   能开同一个码。删掉，全产品只剩一处。
                标题也不再写两遍：分组标题由上面那颗 .st-sub-title 负责，折叠卡自己的
                summary 只报状态（钉钉/飞书/企微 开没开）——那正是点开它的理由。 -->
-          <div class="st-sub-title"><span>国内通信渠道</span></div>
+          <div class="st-sub-title"><span data-i18n="stCnChannelsTitle">国内通信渠道</span></div>
           <!-- 字段 id 一个不改（引擎绑定与门禁都按 id 取），只是搬家。
                默认收起，卡头就写着三家开没开；有错会自动摊开。 -->
           <div id="ca-cn-channels" class="ca-cn" style="display:flex;flex-direction:column">
             <details class="ca-cn-box" id="ca-cn-box">
               <summary class="ca-cn-sum">
-                <span id="cn-card-state" class="ca-cn-state">钉钉 未开启 · 飞书 未开启 · 企微 未开启</span>
+                <span data-i18n="cnCardState" id="cn-card-state" class="ca-cn-state">钉钉 未开启 · 飞书 未开启 · 企微 未开启</span>
                 <svg class="ca-cn-chev" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5"/></svg>
               </summary>
               <div class="ca-cn-body">
-                <p class="ca-cn-lead">勾选即开启推送，三项互不影响。填完点下面的「保存并热加载」写入，再点「试连国内渠道」验证真的发得出去。</p>
+                <p data-i18n="stCnChannelsLead" class="ca-cn-lead">勾选即开启推送，三项互不影响。填完点下面的「保存并热加载」写入，再点「试连国内渠道」验证真的发得出去。</p>
                 <div class="ca-cn-vendor">
-                  <label class="ca-cn-switch"><input id="sec-ding-post" type="checkbox" /><span>钉钉</span></label>
-                  <label class="st-field"><span class="st-field-name">Webhook 地址<span>（机器人设置里整段复制，地址自带 access_token）</span></span>
+                  <label class="ca-cn-switch"><input id="sec-ding-post" type="checkbox" /><span data-i18n="bmChDingtalk">钉钉</span></label>
+                  <label class="st-field"><span class="st-field-name"><span data-i18n="stCnWebhookLabel">Webhook 地址</span><span data-i18n="stCnWebhookHint">（机器人设置里整段复制，地址自带 access_token）</span></span>
                     <div class="ca-cn-line">
                       <input id="sec-ding-hook" type="password" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…" class="bb-field bb-field-grow" />
-                      <button type="button" id="cn-ding-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <button data-i18n="secretReveal" type="button" id="cn-ding-reveal" class="bb-btn bb-btn-sm">显示</button>
                     </div>
                     <span id="sec-ding-hook-err" class="st-field-error" hidden></span>
                   </label>
-                  <label class="st-field"><span class="st-field-name">加签密钥<span>（机器人安全设置里 SEC 开头那串，可选）</span></span>
+                  <label class="st-field"><span class="st-field-name"><span data-i18n="stCnSigningKeyLabel">加签密钥</span><span data-i18n="stCnSigningKeyHint">（机器人安全设置里 SEC 开头那串，可选）</span></span>
                     <div class="ca-cn-line">
                       <input id="sec-ding-secret" data-secret-key="BITBOT_DINGTALK_APP_SECRET" type="password" autocomplete="off" placeholder="SEC…" class="bb-field bb-field-grow" />
-                      <button type="button" id="cn-ding-secret-reveal" class="bb-btn bb-btn-sm">显示</button>
-                      <span id="sec-ding-secret-state" class="cn-hint">未配置</span>
+                      <button data-i18n="secretReveal" type="button" id="cn-ding-secret-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <span data-i18n="modelUnconfigured" id="sec-ding-secret-state" class="cn-hint">未配置</span>
                     </div>
                   </label>
                 </div>
                 <div class="ca-cn-vendor">
-                  <label class="ca-cn-switch"><input id="sec-feishu-post" type="checkbox" /><span>飞书</span></label>
+                  <label class="ca-cn-switch"><input id="sec-feishu-post" type="checkbox" /><span data-i18n="bmChFeishu">飞书</span></label>
                   <label class="st-field"><span class="st-field-name">tenant token + chat_id</span>
                     <div class="ca-cn-line">
                       <input id="sec-feishu-token" type="password" placeholder="tenant token" class="bb-field bb-field-grow" />
@@ -3145,23 +3145,23 @@
                     </div>
                     <span id="sec-feishu-err" class="st-field-error" hidden></span>
                   </label>
-                  <label class="st-field"><span class="st-field-name">Encrypt Key<span>（事件订阅「加密」用，可选）</span></span>
+                  <label class="st-field"><span class="st-field-name">Encrypt Key<span data-i18n="stCnFeishuEncryptHint">（事件订阅「加密」用，可选）</span></span>
                     <div class="ca-cn-line">
                       <input id="sec-feishu-encrypt" data-secret-key="BITBOT_FEISHU_ENCRYPT_KEY" type="password" autocomplete="off" placeholder="事件订阅请求加密密钥" class="bb-field bb-field-grow"  data-i18n-ph="settingsFeishuPlaceholderEncrypt"/>
-                      <button type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
-                      <span id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
+                      <button data-i18n="secretReveal" type="button" id="cn-feishu-encrypt-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <span data-i18n="modelUnconfigured" id="sec-feishu-encrypt-state" class="cn-hint">未配置</span>
                     </div>
                   </label>
-                  <label class="st-field"><span class="st-field-name">Verification Token<span>（事件订阅「验签」用，可选）</span></span>
+                  <label class="st-field"><span class="st-field-name">Verification Token<span data-i18n="stCnFeishuVerifyHint">（事件订阅「验签」用，可选）</span></span>
                     <div class="ca-cn-line">
                       <input id="sec-feishu-verify" data-secret-key="BITBOT_FEISHU_VERIFICATION_TOKEN" type="password" autocomplete="off" placeholder="事件订阅校验令牌" class="bb-field bb-field-grow"  data-i18n-ph="settingsFeishuPlaceholderVerify"/>
-                      <button type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
-                      <span id="sec-feishu-verify-state" class="cn-hint">未配置</span>
+                      <button data-i18n="secretReveal" type="button" id="cn-feishu-verify-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <span data-i18n="modelUnconfigured" id="sec-feishu-verify-state" class="cn-hint">未配置</span>
                     </div>
                   </label>
                 </div>
                 <div class="ca-cn-vendor">
-                  <label class="ca-cn-switch"><input id="sec-wecom-post" type="checkbox" /><span>企微</span></label>
+                  <label class="ca-cn-switch"><input id="sec-wecom-post" type="checkbox" /><span data-i18n="stCnWecomTitle">企微</span></label>
                   <label class="st-field"><span class="st-field-name">access_token + agentid + touser</span>
                     <div class="ca-cn-line">
                       <input id="sec-wecom-token" type="password" placeholder="access_token" class="bb-field bb-field-grow" />
@@ -3170,20 +3170,20 @@
                     </div>
                     <span id="sec-wecom-err" class="st-field-error" hidden></span>
                   </label>
-                  <label class="st-field"><span class="st-field-name">回调 Token<span>（接收事件服务器用，可选）</span></span>
+                  <label class="st-field"><span class="st-field-name"><span data-i18n="stCnCallbackTokenLabel">回调 Token</span><span data-i18n="stCnCallbackTokenHint">（接收事件服务器用，可选）</span></span>
                     <div class="ca-cn-line">
                       <input id="sec-wecom-callback" data-secret-key="BITBOT_WECOM_CALLBACK_TOKEN" type="password" autocomplete="off" placeholder="回调令牌" class="bb-field bb-field-grow"  data-i18n-ph="settingsWecomPlaceholderCallback"/>
-                      <button type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
-                      <span id="sec-wecom-callback-state" class="cn-hint">未配置</span>
+                      <button data-i18n="secretReveal" type="button" id="cn-wecom-callback-reveal" class="bb-btn bb-btn-sm">显示</button>
+                      <span data-i18n="modelUnconfigured" id="sec-wecom-callback-state" class="cn-hint">未配置</span>
                     </div>
                   </label>
                 </div>
-                <p id="cn-next-hint" class="cn-hint">这四栏密钥一律可选：留空不挡保存，已配过的会标「已配置 ****尾4」。</p>
+                <p data-i18n="cnNextHint" id="cn-next-hint" class="cn-hint">这四栏密钥一律可选：留空不挡保存，已配过的会标「已配置 ****尾4」。</p>
                 <!-- 入站公网地址：上面这些是「往外推」，这一行是「往里收」——
                      在钉钉/飞书/企微控制台配「事件订阅 / 回调地址」时填的就是它。
                      放在三家分组之后，因为它不是第四家的字段，混进分组里会被读错。 -->
                 <div class="st-subline"><span class="st-field-name" data-i18n="credInboundLabel">入站公网地址（连接应用回调要用）</span>
-                  <div id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
+                  <div data-i18n="secInboundUrl" id="sec-inbound-url" class="st-readout">入站公网 URL：读取中…</div>
                 </div>
               </div>
             </details>
@@ -3193,13 +3193,13 @@
              跑验收门禁是开发动作，跟着 data-lab 收起，产品态不占这颗按钮位。 -->
         <div class="st-foot" id="sec-foot">
           <div id="sec-status" class="st-foot-status">…</div>
-          <button type="button" id="sec-save" class="bb-btn bb-btn-primary">保存并热加载</button>
-          <button type="button" id="sec-probe" class="bb-btn bb-btn-sm">试连大脑</button>
-          <button type="button" id="sec-probe-cn" class="bb-btn bb-btn-sm">试连国内渠道</button>
-          <button type="button" id="sec-gate" class="bb-btn bb-btn-sm" data-lab>跑验收门禁</button>
+          <button data-i18n="secSave" type="button" id="sec-save" class="bb-btn bb-btn-primary">保存并热加载</button>
+          <button data-i18n="secProbe" type="button" id="sec-probe" class="bb-btn bb-btn-sm">试连大脑</button>
+          <button data-i18n="secProbeCn" type="button" id="sec-probe-cn" class="bb-btn bb-btn-sm">试连国内渠道</button>
+          <button data-i18n="secGate" type="button" id="sec-gate" class="bb-btn bb-btn-sm" data-lab>跑验收门禁</button>
         </div>
         <pre id="sec-gate-out" class="bb-meta bb-control" data-lab style="display:none;margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
-        <div class="st-note"><span data-i18n="credApplyLead">申请 DeepSeek</span>：<a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link">platform.deepseek.com/api_keys</a></div>
+        <div class="st-note"><span data-i18n="credApplyLead">申请 DeepSeek</span><span data-i18n="stColon">：</span><a href="https://platform.deepseek.com/api_keys" id="sec-deepseek-link">platform.deepseek.com/api_keys</a></div>
       </div>
 
       </div>
@@ -3251,8 +3251,8 @@
       <div class="bb-sheet bb-sheet-md bf-sheet">
         <div class="bb-sheet-head bf-head">
           <div class="bf-head-text">
-            <div id="bf-title" class="bb-sheet-title">编辑资料</div>
-            <div id="bf-subtitle" class="bf-sub">写清它负责什么、按什么方式做事；创建后可在「编辑资料」补头像与标签。</div>
+            <div data-i18n="botEditTitle" id="bf-title" class="bb-sheet-title">编辑资料</div>
+            <div data-i18n="bfSubCreate" id="bf-subtitle" class="bf-sub">写清它负责什么、按什么方式做事；创建后可在「编辑资料」补头像与标签。</div>
           </div>
           <button type="button" id="bf-close" class="bb-btn bb-close" title="Close">×</button>
         </div>
@@ -3500,9 +3500,9 @@
 
           <div class="bm-detail" id="bm-detail">
             <div class="bm-detail-head">
-              <span class="bm-avatar" id="bm-avatar" aria-hidden="true">微</span>
+              <span data-i18n="bmShortWechat" class="bm-avatar" id="bm-avatar" aria-hidden="true">微</span>
               <div class="bm-detail-tx">
-                <b id="bm-name">微信</b>
+                <b data-i18n="bmChWechat" id="bm-name">微信</b>
                 <small id="bm-state" data-i18n="bmStateIdle">读取中…</small>
               </div>
               <label class="bm-switch" id="bm-switch-wrap">
@@ -3683,8 +3683,8 @@
                       <input class="bb-control" id="mc-relay-box" type="text" autocomplete="off" spellcheck="false"></label>
                     <label><span data-i18n="mcRelayMode">模式</span>
                       <select class="bb-control" id="mc-relay-mode">
-                        <option value="reverse">reverse · 反向隧道（推荐）</option>
-                        <option value="dial">dial · 主动拨（同网部署）</option>
+                        <option data-i18n="stRelayModeReverse" value="reverse">reverse · 反向隧道（推荐）</option>
+                        <option data-i18n="stRelayModeDial" value="dial">dial · 主动拨（同网部署）</option>
                       </select></label>
                     <label><span data-i18n="mcRelayBoxToken">桌面凭证</span>
                       <input class="bb-control" id="mc-relay-box-token" type="password" autocomplete="new-password" data-i18n-ph="mcRelayKeep" placeholder="留空沿用"></label>
@@ -3704,26 +3704,26 @@
 
     <div id="agent-info-panel" class="bb-card bb-inset" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div class="title" style="font-weight:700" id="agent-info-title">代理信息</div>
+        <div data-i18n="agentInfoTitle" class="title" style="font-weight:700" id="agent-info-title">代理信息</div>
         <div style="display:flex;gap:6px">
-          <button type="button" id="agent-delete-btn" class="bb-btn bb-btn-sm bb-btn-danger-soft">删除…</button>
-          <button type="button" id="agent-info-close" class="bb-btn bb-btn-sm">关闭</button>
+          <button data-i18n="menuDelete" type="button" id="agent-delete-btn" class="bb-btn bb-btn-sm bb-btn-danger-soft">删除…</button>
+          <button data-i18n="modalActionClose" type="button" id="agent-info-close" class="bb-btn bb-btn-sm">关闭</button>
         </div>
       </div>
       <div id="agent-info-sections" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"></div>
       <div id="agent-info-meta" style="margin-top:8px;color:var(--muted);font:12px/1.4 ui-monospace,monospace"></div>
       <div id="agent-delete-confirm" style="display:none;margin-top:10px;padding:8px;border:1px solid var(--danger);border-radius:6px;background:var(--danger-bg)">
-        <div style="color:var(--danger-ink);font-size:13px">确认永久删除（CM-1907 · 非设置项）</div>
+        <div data-i18n="stBotDeleteConfirmNote" style="color:var(--danger-ink);font-size:13px">确认永久删除（CM-1907 · 非设置项）</div>
         <div style="margin-top:8px;display:flex;gap:8px">
-          <button type="button" id="agent-delete-confirm-btn" class="bb-btn bb-btn-sm bb-btn-danger">确认删除</button>
-          <button type="button" id="agent-delete-cancel-btn" class="bb-btn bb-btn-sm">取消</button>
+          <button data-i18n="riRemoveConfirm" type="button" id="agent-delete-confirm-btn" class="bb-btn bb-btn-sm bb-btn-danger">确认删除</button>
+          <button data-i18n="bcCancel" type="button" id="agent-delete-cancel-btn" class="bb-btn bb-btn-sm">取消</button>
         </div>
       </div>
     </div>
     <!-- GP-07 store-backed delete dialog (hide-first advisory · irreversible · cascade) -->
     <div id="bot-delete-dialog" class="bb-modal">
       <div class="bb-sheet bb-sheet-sm">
-        <div id="bot-delete-title" class="bb-sheet-title">删除 Bot</div>
+        <div data-i18n="botDeleteTitle" id="bot-delete-title" class="bb-sheet-title">删除 Bot</div>
         <div id="bot-delete-advise" class="bb-note" style="margin-top:8px;color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:var(--radius-md);padding:8px"></div>
         <div id="bot-delete-warn" class="bb-note" style="margin-top:8px;color:var(--danger-ink);font-size:var(--text-md)"></div>
         <div class="bb-actions">
@@ -3779,275 +3779,275 @@
   <aside id="machines">
     <div class="panel-title" data-i18n="machines">机器</div>
     <div class="machine-item">
-      <div class="name">多端花名册</div>
-      <div class="meta" id="machines-meta">桌面 · 手机在「配对」里连上后显示在线</div>
+      <div data-i18n="tpTitleRoster" class="name">多端花名册</div>
+      <div data-i18n="machinesMeta" class="meta" id="machines-meta">桌面 · 手机在「配对」里连上后显示在线</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mach-list" class="bb-btn bb-btn-sm bb-btn-primary">列出机器</button>
+        <button data-i18n="machList" type="button" id="mach-list" class="bb-btn bb-btn-sm bb-btn-primary">列出机器</button>
       </div>
     </div>
     <div id="machine-list">
-      <div class="machine-item"><div class="meta">请求刷新机器列表</div></div>
+      <div class="machine-item"><div data-i18n="tpMachinesRefreshHint" class="meta">请求刷新机器列表</div></div>
     </div>
-    <div class="panel-title" style="margin-top:16px">国内渠道</div>
+    <div data-i18n="tpCnChannelsTitle" class="panel-title" style="margin-top:16px">国内渠道</div>
     <div class="machine-item">
-      <div class="name">钉钉 / 飞书 / 企微</div>
-      <div class="meta" id="cn-channels-meta">读取中…</div>
+      <div data-i18n="tpCnChannelsSub" class="name">钉钉 / 飞书 / 企微</div>
+      <div data-i18n="bmStateIdle" class="meta" id="cn-channels-meta">读取中…</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cn-dingtalk" class="bb-btn bb-btn-sm bb-btn-primary">发钉钉</button>
-        <button type="button" id="cn-feishu" class="bb-btn bb-btn-sm">发飞书</button>
-        <button type="button" id="cn-wecom" class="bb-btn bb-btn-sm">发企微</button>
+        <button data-i18n="cnDingtalk" type="button" id="cn-dingtalk" class="bb-btn bb-btn-sm bb-btn-primary">发钉钉</button>
+        <button data-i18n="cnFeishu" type="button" id="cn-feishu" class="bb-btn bb-btn-sm">发飞书</button>
+        <button data-i18n="cnWecom" type="button" id="cn-wecom" class="bb-btn bb-btn-sm">发企微</button>
       </div>
     </div>
     <details class="lab" data-lab style="margin-top:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
-      <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外 Connectors（Slack/Gmail · 非本阶段主路径）</summary>
+      <summary data-i18n="tpConnectorsSummary" style="cursor:pointer;color:var(--muted);font-size:12px">海外 Connectors（Slack/Gmail · 非本阶段主路径）</summary>
       <div class="machine-item" style="margin-top:8px">
-        <div class="name">Slack / Gmail / Outlook 连接器</div>
-        <div class="meta" id="connectors-meta">降级保留 · 主渠道见上方国内钉钉/飞书/企微</div>
+        <div data-i18n="tpConnectorsSub" class="name">Slack / Gmail / Outlook 连接器</div>
+        <div data-i18n="connectorsMeta" class="meta" id="connectors-meta">降级保留 · 主渠道见上方国内钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="connect-slack" class="bb-btn bb-btn-sm">连接 Slack</button>
-          <button type="button" id="connect-gmail" class="bb-btn bb-btn-sm">连接 Gmail</button>
-          <button type="button" id="connect-outlook" class="bb-btn bb-btn-sm">连接 Outlook</button>
-          <button type="button" id="connect-finance" class="bb-btn bb-btn-sm">连接财务</button>
-          <button type="button" id="connect-identity" class="bb-btn bb-btn-sm">身份浏览器</button>
-          <button type="button" id="probe-connectors" class="bb-btn bb-btn-sm">列出连接器</button>
+          <button data-i18n="connectSlack" type="button" id="connect-slack" class="bb-btn bb-btn-sm">连接 Slack</button>
+          <button data-i18n="connectGmail" type="button" id="connect-gmail" class="bb-btn bb-btn-sm">连接 Gmail</button>
+          <button data-i18n="connectOutlook" type="button" id="connect-outlook" class="bb-btn bb-btn-sm">连接 Outlook</button>
+          <button data-i18n="connectFinance" type="button" id="connect-finance" class="bb-btn bb-btn-sm">连接财务</button>
+          <button data-i18n="connectIdentity" type="button" id="connect-identity" class="bb-btn bb-btn-sm">身份浏览器</button>
+          <button data-i18n="probeConnectors" type="button" id="probe-connectors" class="bb-btn bb-btn-sm">列出连接器</button>
         </div>
       </div>
     </details>
-    <div class="panel-title" style="margin-top:16px">本机偏好</div>
+    <div data-i18n="tpPrefsTitle" class="panel-title" style="margin-top:16px">本机偏好</div>
     <div class="machine-item">
-      <div class="name">通知 · 电脑 · 引导</div>
-      <div class="meta" id="prefs-meta">设置走 Host 效果（不假装）</div>
+      <div data-i18n="tpPrefsSub" class="name">通知 · 电脑 · 引导</div>
+      <div data-i18n="prefsMeta" class="meta" id="prefs-meta">设置走 Host 效果（不假装）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="pref-notify" class="bb-btn bb-btn-sm bb-btn-primary">通知设置</button>
-        <button type="button" id="pref-set-notify" class="bb-btn bb-btn-sm">关闭通知</button>
-        <button type="button" id="pref-guide" class="bb-btn bb-btn-sm">引导授权</button>
-        <button type="button" id="pref-update" class="bb-btn bb-btn-sm">更新电脑</button>
-        <button type="button" id="pref-reset" class="bb-btn bb-btn-sm">重置电脑</button>
-        <button type="button" id="pref-local" class="bb-btn bb-btn-sm">关闭本地执行</button>
+        <button data-i18n="prefNotify" type="button" id="pref-notify" class="bb-btn bb-btn-sm bb-btn-primary">通知设置</button>
+        <button data-i18n="prefSetNotify" type="button" id="pref-set-notify" class="bb-btn bb-btn-sm">关闭通知</button>
+        <button data-i18n="prefGuide" type="button" id="pref-guide" class="bb-btn bb-btn-sm">引导授权</button>
+        <button data-i18n="prefUpdate" type="button" id="pref-update" class="bb-btn bb-btn-sm">更新电脑</button>
+        <button data-i18n="prefReset" type="button" id="pref-reset" class="bb-btn bb-btn-sm">重置电脑</button>
+        <button data-i18n="prefLocal" type="button" id="pref-local" class="bb-btn bb-btn-sm">关闭本地执行</button>
       </div>
     </div>
     <details class="lab" data-lab style="margin:12px 0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg0)">
-      <summary style="cursor:pointer;color:var(--muted);font-size:12px">海外渠道实验室（Slack/Gmail · 非产品主路径）</summary>
+      <summary data-i18n="tpChannelsSummary" style="cursor:pointer;color:var(--muted);font-size:12px">海外渠道实验室（Slack/Gmail · 非产品主路径）</summary>
       <div class="machine-item" style="margin-top:8px">
-        <div class="name">Slack / Teams 出站 + 认领</div>
-        <div class="meta" id="channels-meta">降级 · 主路径是上方钉钉/飞书/企微</div>
+        <div data-i18n="tpChannelsSub" class="name">Slack / Teams 出站 + 认领</div>
+        <div data-i18n="channelsMeta" class="meta" id="channels-meta">降级 · 主路径是上方钉钉/飞书/企微</div>
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-          <button type="button" id="ch-slack-draft" class="bb-btn bb-btn-sm">Slack 草稿</button>
-          <button type="button" id="ch-slack-thread" class="bb-btn bb-btn-sm">Slack 讨论串</button>
-          <button type="button" id="ch-slack-dm" class="bb-btn bb-btn-sm">私聊 Slack</button>
-          <button type="button" id="ch-slack-claim" class="bb-btn bb-btn-sm">Slack 认领（沙盒）</button>
-          <button type="button" id="ch-teams-draft" class="bb-btn bb-btn-sm">Teams 草稿</button>
-          <button type="button" id="ch-teams-send" class="bb-btn bb-btn-sm">Teams 发送</button>
-          <button type="button" id="ch-teams-claim" class="bb-btn bb-btn-sm">Teams 认领（沙盒）</button>
-          <button type="button" id="ch-finance" class="bb-btn bb-btn-sm">财务调用</button>
-          <button type="button" id="ch-jobs" class="bb-btn bb-btn-sm">求职搜索</button>
-          <button type="button" id="ch-xsearch" class="bb-btn bb-btn-sm">X 搜索</button>
-          <button type="button" id="ch-workflows" class="bb-btn bb-btn-sm">列出工作流</button>
-          <button type="button" id="ch-credentials" class="bb-btn bb-btn-sm">列出凭证</button>
-          <button type="button" id="ch-cred-fill" class="bb-btn bb-btn-sm">填写凭证</button>
+          <button data-i18n="chSlackDraft" type="button" id="ch-slack-draft" class="bb-btn bb-btn-sm">Slack 草稿</button>
+          <button data-i18n="chSlackThread" type="button" id="ch-slack-thread" class="bb-btn bb-btn-sm">Slack 讨论串</button>
+          <button data-i18n="chSlackDm" type="button" id="ch-slack-dm" class="bb-btn bb-btn-sm">私聊 Slack</button>
+          <button data-i18n="chSlackClaim" type="button" id="ch-slack-claim" class="bb-btn bb-btn-sm">Slack 认领（沙盒）</button>
+          <button data-i18n="chTeamsDraft" type="button" id="ch-teams-draft" class="bb-btn bb-btn-sm">Teams 草稿</button>
+          <button data-i18n="chTeamsSend" type="button" id="ch-teams-send" class="bb-btn bb-btn-sm">Teams 发送</button>
+          <button data-i18n="chTeamsClaim" type="button" id="ch-teams-claim" class="bb-btn bb-btn-sm">Teams 认领（沙盒）</button>
+          <button data-i18n="chFinance" type="button" id="ch-finance" class="bb-btn bb-btn-sm">财务调用</button>
+          <button data-i18n="chJobs" type="button" id="ch-jobs" class="bb-btn bb-btn-sm">求职搜索</button>
+          <button data-i18n="chXsearch" type="button" id="ch-xsearch" class="bb-btn bb-btn-sm">X 搜索</button>
+          <button data-i18n="chWorkflows" type="button" id="ch-workflows" class="bb-btn bb-btn-sm">列出工作流</button>
+          <button data-i18n="chCredentials" type="button" id="ch-credentials" class="bb-btn bb-btn-sm">列出凭证</button>
+          <button data-i18n="chCredFill" type="button" id="ch-cred-fill" class="bb-btn bb-btn-sm">填写凭证</button>
         </div>
       </div>
     </details>
-    <div class="panel-title" style="margin-top:16px">插件</div>
+    <div data-i18n="caSkillPlugin" class="panel-title" style="margin-top:16px">插件</div>
     <div class="machine-item">
-      <div class="name">MCP 插件 (CM-0904 / 2107 / 2108)</div>
-      <div class="meta" id="plugins-meta">列出 · 获取 · 安装 → 就绪 · 卸载 → 不可用</div>
+      <div data-i18n="tpPluginsTitle" class="name">MCP 插件 (CM-0904 / 2107 / 2108)</div>
+      <div data-i18n="pluginsMeta" class="meta" id="plugins-meta">列出 · 获取 · 安装 → 就绪 · 卸载 → 不可用</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="plugin-list" class="bb-btn bb-btn-sm bb-btn-primary">列出插件</button>
-        <button type="button" id="plugin-get" class="bb-btn bb-btn-sm">获取 plugin-slides</button>
-        <button type="button" id="plugin-install" class="bb-btn bb-btn-sm">安装 plugin-slides</button>
-        <button type="button" id="plugin-uninstall" class="bb-btn bb-btn-sm bb-btn-danger-soft">卸载 plugin-slides</button>
-        <button type="button" id="plugin-mcp-discover" class="bb-btn bb-btn-sm">发现 MCP</button>
-        <button type="button" id="plugin-mcp-call" class="bb-btn bb-btn-sm">调用 MCP · Gmail 搜索</button>
+        <button data-i18n="pluginList" type="button" id="plugin-list" class="bb-btn bb-btn-sm bb-btn-primary">列出插件</button>
+        <button data-i18n="pluginGet" type="button" id="plugin-get" class="bb-btn bb-btn-sm">获取 plugin-slides</button>
+        <button data-i18n="pluginInstall" type="button" id="plugin-install" class="bb-btn bb-btn-sm">安装 plugin-slides</button>
+        <button data-i18n="pluginUninstall" type="button" id="plugin-uninstall" class="bb-btn bb-btn-sm bb-btn-danger-soft">卸载 plugin-slides</button>
+        <button data-i18n="pluginMcpDiscover" type="button" id="plugin-mcp-discover" class="bb-btn bb-btn-sm">发现 MCP</button>
+        <button data-i18n="pluginMcpCall" type="button" id="plugin-mcp-call" class="bb-btn bb-btn-sm">调用 MCP · Gmail 搜索</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">Webhook 回调</div>
+    <div data-i18n="tpWebhookTitle" class="panel-title" style="margin-top:16px">Webhook 回调</div>
     <div class="machine-item" id="webhook-panel" role="region" aria-label="Webhook 触发面板" data-i18n-aria="webhookAriaPanel">
-      <div class="name">定时任务触发 (CM-0411)</div>
-      <div class="meta" id="webhook-meta">打开面板 · 用户复制 URL/密钥 · 工具不可见密钥</div>
+      <div data-i18n="tpWebhookSub" class="name">定时任务触发 (CM-0411)</div>
+      <div data-i18n="webhookMeta" class="meta" id="webhook-meta">打开面板 · 用户复制 URL/密钥 · 工具不可见密钥</div>
       <div id="webhook-url" style="margin-top:6px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div id="webhook-key" style="margin-top:4px;color:var(--muted);font:11px/1.4 ui-monospace,monospace;word-break:break-all"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="wh-open" class="bb-btn bb-btn-sm bb-btn-primary">打开回调面板</button>
-        <button type="button" id="wh-copy-url" class="bb-btn bb-btn-sm">复制链接</button>
-        <button type="button" id="wh-copy-key" class="bb-btn bb-btn-sm">拷贝密钥</button>
-        <button type="button" id="wh-tool-read" class="bb-btn bb-btn-sm bb-btn-danger-soft">工具读取密钥（必须拒绝）</button>
-        <button type="button" id="wh-wake" class="bb-btn bb-btn-sm">模拟唤醒回调</button>
+        <button data-i18n="whOpen" type="button" id="wh-open" class="bb-btn bb-btn-sm bb-btn-primary">打开回调面板</button>
+        <button data-i18n="bmCopy" type="button" id="wh-copy-url" class="bb-btn bb-btn-sm">复制链接</button>
+        <button data-i18n="whCopyKey" type="button" id="wh-copy-key" class="bb-btn bb-btn-sm">拷贝密钥</button>
+        <button data-i18n="whToolRead" type="button" id="wh-tool-read" class="bb-btn bb-btn-sm bb-btn-danger-soft">工具读取密钥（必须拒绝）</button>
+        <button data-i18n="whWake" type="button" id="wh-wake" class="bb-btn bb-btn-sm">模拟唤醒回调</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">投递</div>
+    <div data-i18n="tpDeliveryTitle" class="panel-title" style="margin-top:16px">投递</div>
     <div class="machine-item">
-      <div class="name">发给用户</div>
-      <div class="meta" id="delivery-meta">文本 · 小组件 · 附件 · 语音 · 反应 · 讨论串 · 光标代理 · 密钥请求</div>
+      <div data-i18n="tpDeliverySub" class="name">发给用户</div>
+      <div data-i18n="deliveryMeta" class="meta" id="delivery-meta">文本 · 小组件 · 附件 · 语音 · 反应 · 讨论串 · 光标代理 · 密钥请求</div>
       <div id="reaction-tray" aria-label="消息反应" data-i18n-aria="reactionAriaTray"></div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="del-react" class="bb-btn bb-btn-sm bb-btn-primary">消息表态</button>
-        <button type="button" id="del-inbound-react" class="bb-btn bb-btn-sm">接收方表态</button>
-        <button type="button" id="del-markdown" class="bb-btn bb-btn-sm">渲染 Markdown</button>
-        <button type="button" id="del-channel-plan" class="bb-btn bb-btn-sm">渠道套餐（应用内）</button>
-        <button type="button" id="del-slides" class="bb-btn bb-btn-sm">生成幻灯片</button>
-        <button type="button" id="del-skill" class="bb-btn bb-btn-sm">编写技能</button>
-        <button type="button" id="del-export" class="bb-btn bb-btn-sm">导出 Bot 模板</button>
-        <button type="button" id="del-load-skill" class="bb-btn bb-btn-sm">加载技能</button>
-        <button type="button" id="del-list-skills" class="bb-btn bb-btn-sm">列出技能</button>
-        <button type="button" id="del-todo-write" class="bb-btn bb-btn-sm">写待办</button>
-        <button type="button" id="del-todo-list" class="bb-btn bb-btn-sm">列出待办</button>
-        <button type="button" id="del-attach-file" class="bb-btn bb-btn-sm">添加附件</button>
-        <button type="button" id="del-journal-query" class="bb-btn bb-btn-sm">查询日志</button>
-        <button type="button" id="del-open-thread" class="bb-btn bb-btn-sm">打开讨论串</button>
-        <button type="button" id="del-x-post" class="bb-btn bb-btn-sm">发布 X 草稿</button>
-        <button type="button" id="del-section" class="bb-btn bb-btn-sm">段落发布</button>
-        <button type="button" id="del-section-add" class="bb-btn bb-btn-sm">添加段落</button>
-        <button type="button" id="del-learn" class="bb-btn bb-btn-sm">从演示学习</button>
+        <button data-i18n="delReact" type="button" id="del-react" class="bb-btn bb-btn-sm bb-btn-primary">消息表态</button>
+        <button data-i18n="delInboundReact" type="button" id="del-inbound-react" class="bb-btn bb-btn-sm">接收方表态</button>
+        <button data-i18n="delMarkdown" type="button" id="del-markdown" class="bb-btn bb-btn-sm">渲染 Markdown</button>
+        <button data-i18n="delChannelPlan" type="button" id="del-channel-plan" class="bb-btn bb-btn-sm">渠道套餐（应用内）</button>
+        <button data-i18n="delSlides" type="button" id="del-slides" class="bb-btn bb-btn-sm">生成幻灯片</button>
+        <button data-i18n="delSkill" type="button" id="del-skill" class="bb-btn bb-btn-sm">编写技能</button>
+        <button data-i18n="delExport" type="button" id="del-export" class="bb-btn bb-btn-sm">导出 Bot 模板</button>
+        <button data-i18n="delLoadSkill" type="button" id="del-load-skill" class="bb-btn bb-btn-sm">加载技能</button>
+        <button data-i18n="delListSkills" type="button" id="del-list-skills" class="bb-btn bb-btn-sm">列出技能</button>
+        <button data-i18n="delTodoWrite" type="button" id="del-todo-write" class="bb-btn bb-btn-sm">写待办</button>
+        <button data-i18n="delTodoList" type="button" id="del-todo-list" class="bb-btn bb-btn-sm">列出待办</button>
+        <button data-i18n="delAttachFile" type="button" id="del-attach-file" class="bb-btn bb-btn-sm">添加附件</button>
+        <button data-i18n="delJournalQuery" type="button" id="del-journal-query" class="bb-btn bb-btn-sm">查询日志</button>
+        <button data-i18n="delOpenThread" type="button" id="del-open-thread" class="bb-btn bb-btn-sm">打开讨论串</button>
+        <button data-i18n="delXPost" type="button" id="del-x-post" class="bb-btn bb-btn-sm">发布 X 草稿</button>
+        <button data-i18n="delSection" type="button" id="del-section" class="bb-btn bb-btn-sm">段落发布</button>
+        <button data-i18n="delSectionAdd" type="button" id="del-section-add" class="bb-btn bb-btn-sm">添加段落</button>
+        <button data-i18n="delLearn" type="button" id="del-learn" class="bb-btn bb-btn-sm">从演示学习</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">记忆</div>
+    <div data-i18n="brMemories" class="panel-title" style="margin-top:16px">记忆</div>
     <div class="machine-item">
-      <div class="name">本机会话种子</div>
-      <div class="meta" id="memory-meta">记忆 k=v · 回忆（desktop-host.json）</div>
+      <div data-i18n="tpMemoryTitle" class="name">本机会话种子</div>
+      <div data-i18n="memoryMeta" class="meta" id="memory-meta">记忆 k=v · 回忆（desktop-host.json）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mem-remember" class="bb-btn bb-btn-sm bb-btn-primary">记住</button>
-        <button type="button" id="mem-recall" class="bb-btn bb-btn-sm">回忆</button>
-        <button type="button" id="mem-shared-put" class="bb-btn bb-btn-sm">共享写入</button>
-        <button type="button" id="mem-shared-read" class="bb-btn bb-btn-sm">共享读取</button>
+        <button data-i18n="memRemember" type="button" id="mem-remember" class="bb-btn bb-btn-sm bb-btn-primary">记住</button>
+        <button data-i18n="memRecall" type="button" id="mem-recall" class="bb-btn bb-btn-sm">回忆</button>
+        <button data-i18n="memSharedPut" type="button" id="mem-shared-put" class="bb-btn bb-btn-sm">共享写入</button>
+        <button data-i18n="memSharedRead" type="button" id="mem-shared-read" class="bb-btn bb-btn-sm">共享读取</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">工具</div>
+    <div data-i18n="tpToolsTitle" class="panel-title" style="margin-top:16px">工具</div>
     <div class="machine-item">
-      <div class="name">命令行 / 文件系统（Host FFI）</div>
-      <div class="meta" id="tools-meta">shell · 列目录 · 读取 (ADR 0002)</div>
+      <div data-i18n="tpToolsSub" class="name">命令行 / 文件系统（Host FFI）</div>
+      <div data-i18n="toolsMeta" class="meta" id="tools-meta">shell · 列目录 · 读取 (ADR 0002)</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="tool-shell" class="bb-btn bb-btn-sm bb-btn-primary">Shell 回显</button>
-        <button type="button" id="tool-listdir" class="bb-btn bb-btn-sm">列目录 docs</button>
-        <button type="button" id="tool-read" class="bb-btn bb-btn-sm">读取 README</button>
-        <button type="button" id="tool-webfetch" class="bb-btn bb-btn-sm">抓取 example.com</button>
-        <button type="button" id="tool-device" class="bb-btn bb-btn-sm">设备工具</button>
-        <button type="button" id="tool-take-photo" class="bb-btn bb-btn-sm">拍照</button>
-        <button type="button" id="tool-record-video" class="bb-btn bb-btn-sm">录制视频</button>
-        <button type="button" id="tool-open-terminal" class="bb-btn bb-btn-sm">打开终端</button>
-        <button type="button" id="tool-version-info" class="bb-btn bb-btn-sm">版本信息</button>
-        <button type="button" id="tool-mute-channel" class="bb-btn bb-btn-sm">频道静音</button>
-        <button type="button" id="tool-toggle-theme" class="bb-btn bb-btn-sm">切换主题</button>
-        <button type="button" id="tool-share-screen" class="bb-btn bb-btn-sm">共享屏幕</button>
-        <button type="button" id="tool-ping-host" class="bb-btn bb-btn-sm">本机连通性</button>
-        <button type="button" id="tool-dnd" class="bb-btn bb-btn-sm">免打扰</button>
-        <button type="button" id="tool-export-chat" class="bb-btn bb-btn-sm">导出会话</button>
-        <button type="button" id="tool-create-canvas" class="bb-btn bb-btn-sm">新建画板</button>
-        <button type="button" id="tool-edit-message" class="bb-btn bb-btn-sm">编辑消息</button>
-        <button type="button" id="tool-react-message" class="bb-btn bb-btn-sm">消息表态</button>
-        <button type="button" id="tool-pin-message" class="bb-btn bb-btn-sm">钉住消息</button>
-        <button type="button" id="tool-clear-chat" class="bb-btn bb-btn-sm">清空会话</button>
-        <button type="button" id="tool-journal" class="bb-btn bb-btn-sm">查询日志</button>
-        <button type="button" id="tool-journal-append" class="bb-btn bb-btn-sm">追加日志</button>
-        <button type="button" id="tool-pkg" class="bb-btn bb-btn-sm">安装软件包</button>
-        <button type="button" id="tool-pkg-npm" class="bb-btn bb-btn-sm">npm 安装</button>
-        <button type="button" id="tool-journal-range" class="bb-btn bb-btn-sm">范围查询日志</button>
+        <button data-i18n="toolShell" type="button" id="tool-shell" class="bb-btn bb-btn-sm bb-btn-primary">Shell 回显</button>
+        <button data-i18n="toolListdir" type="button" id="tool-listdir" class="bb-btn bb-btn-sm">列目录 docs</button>
+        <button data-i18n="toolRead" type="button" id="tool-read" class="bb-btn bb-btn-sm">读取 README</button>
+        <button data-i18n="toolWebfetch" type="button" id="tool-webfetch" class="bb-btn bb-btn-sm">抓取 example.com</button>
+        <button data-i18n="toolDevice" type="button" id="tool-device" class="bb-btn bb-btn-sm">设备工具</button>
+        <button data-i18n="toolTakePhoto" type="button" id="tool-take-photo" class="bb-btn bb-btn-sm">拍照</button>
+        <button data-i18n="toolRecordVideo" type="button" id="tool-record-video" class="bb-btn bb-btn-sm">录制视频</button>
+        <button data-i18n="toolOpenTerminal" type="button" id="tool-open-terminal" class="bb-btn bb-btn-sm">打开终端</button>
+        <button data-i18n="toolVersionInfo" type="button" id="tool-version-info" class="bb-btn bb-btn-sm">版本信息</button>
+        <button data-i18n="toolMuteChannel" type="button" id="tool-mute-channel" class="bb-btn bb-btn-sm">频道静音</button>
+        <button data-i18n="toolToggleTheme" type="button" id="tool-toggle-theme" class="bb-btn bb-btn-sm">切换主题</button>
+        <button data-i18n="toolShareScreen" type="button" id="tool-share-screen" class="bb-btn bb-btn-sm">共享屏幕</button>
+        <button data-i18n="toolPingHost" type="button" id="tool-ping-host" class="bb-btn bb-btn-sm">本机连通性</button>
+        <button data-i18n="toolDnd" type="button" id="tool-dnd" class="bb-btn bb-btn-sm">免打扰</button>
+        <button data-i18n="toolExportChat" type="button" id="tool-export-chat" class="bb-btn bb-btn-sm">导出会话</button>
+        <button data-i18n="toolCreateCanvas" type="button" id="tool-create-canvas" class="bb-btn bb-btn-sm">新建画板</button>
+        <button data-i18n="toolEditMessage" type="button" id="tool-edit-message" class="bb-btn bb-btn-sm">编辑消息</button>
+        <button data-i18n="toolReactMessage" type="button" id="tool-react-message" class="bb-btn bb-btn-sm">消息表态</button>
+        <button data-i18n="toolPinMessage" type="button" id="tool-pin-message" class="bb-btn bb-btn-sm">钉住消息</button>
+        <button data-i18n="toolClearChat" type="button" id="tool-clear-chat" class="bb-btn bb-btn-sm">清空会话</button>
+        <button data-i18n="toolJournal" type="button" id="tool-journal" class="bb-btn bb-btn-sm">查询日志</button>
+        <button data-i18n="toolJournalAppend" type="button" id="tool-journal-append" class="bb-btn bb-btn-sm">追加日志</button>
+        <button data-i18n="toolPkg" type="button" id="tool-pkg" class="bb-btn bb-btn-sm">安装软件包</button>
+        <button data-i18n="toolPkgNpm" type="button" id="tool-pkg-npm" class="bb-btn bb-btn-sm">npm 安装</button>
+        <button data-i18n="toolJournalRange" type="button" id="tool-journal-range" class="bb-btn bb-btn-sm">范围查询日志</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">电脑操作</div>
+    <div data-i18n="kindComputer" class="panel-title" style="margin-top:16px">电脑操作</div>
     <div class="machine-item">
-      <div class="name">云端 Chrome CU（CM-0802）</div>
-      <div class="meta" id="cu-meta">导航 · 操作 · 视觉（私有 CDP）</div>
+      <div data-i18n="tpCuTitle" class="name">云端 Chrome CU（CM-0802）</div>
+      <div data-i18n="cuMeta" class="meta" id="cu-meta">导航 · 操作 · 视觉（私有 CDP）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cu-open" class="bb-btn bb-btn-sm bb-btn-primary">打开 example.com</button>
-        <button type="button" id="cu-native" class="bb-btn bb-btn-sm">本地点击</button>
-        <button type="button" id="cu-ocr" class="bb-btn bb-btn-sm">OCR 一遍</button>
-        <button type="button" id="cu-shop" class="bb-btn bb-btn-sm">购物剧本</button>
-        <button type="button" id="cu-travel" class="bb-btn bb-btn-sm">旅游 expedia</button>
-        <button type="button" id="cu-flight" class="bb-btn bb-btn-sm">预订航班</button>
-        <button type="button" id="cu-food" class="bb-btn bb-btn-sm">点餐</button>
-        <button type="button" id="cu-paywall" class="bb-btn bb-btn-sm">付费墙测试</button>
+        <button data-i18n="cuOpen" type="button" id="cu-open" class="bb-btn bb-btn-sm bb-btn-primary">打开 example.com</button>
+        <button data-i18n="cuNative" type="button" id="cu-native" class="bb-btn bb-btn-sm">本地点击</button>
+        <button data-i18n="cuOcr" type="button" id="cu-ocr" class="bb-btn bb-btn-sm">OCR 一遍</button>
+        <button data-i18n="cuShop" type="button" id="cu-shop" class="bb-btn bb-btn-sm">购物剧本</button>
+        <button data-i18n="cuTravel" type="button" id="cu-travel" class="bb-btn bb-btn-sm">旅游 expedia</button>
+        <button data-i18n="cuFlight" type="button" id="cu-flight" class="bb-btn bb-btn-sm">预订航班</button>
+        <button data-i18n="cuFood" type="button" id="cu-food" class="bb-btn bb-btn-sm">点餐</button>
+        <button data-i18n="cuPaywall" type="button" id="cu-paywall" class="bb-btn bb-btn-sm">付费墙测试</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">源码管理</div>
+    <div data-i18n="tpSourceControlTitle" class="panel-title" style="margin-top:16px">源码管理</div>
     <div class="machine-item">
-      <div class="name">git / PR 计划</div>
-      <div class="meta" id="source-control-meta">状态 · 计划门控（BITBOT_GH_PR_CREATE）</div>
+      <div data-i18n="tpSourceControlSub" class="name">git / PR 计划</div>
+      <div data-i18n="sourceControlMeta" class="meta" id="source-control-meta">状态 · 计划门控（BITBOT_GH_PR_CREATE）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="sc-status" class="bb-btn bb-btn-sm">Git 状态</button>
-        <button type="button" id="sc-create-pr" class="bb-btn bb-btn-sm">创建 PR 计划</button>
-        <button type="button" id="sc-code" class="bb-btn bb-btn-sm">代码改动计划</button>
+        <button data-i18n="scStatus" type="button" id="sc-status" class="bb-btn bb-btn-sm">Git 状态</button>
+        <button data-i18n="scCreatePr" type="button" id="sc-create-pr" class="bb-btn bb-btn-sm">创建 PR 计划</button>
+        <button data-i18n="scCode" type="button" id="sc-code" class="bb-btn bb-btn-sm">代码改动计划</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">媒体</div>
+    <div data-i18n="tpMediaTitle" class="panel-title" style="margin-top:16px">媒体</div>
     <div class="machine-item">
-      <div class="name">图片 / 视频 / 图表（CM-1601–1603 / 2157）</div>
-      <div class="meta" id="media-meta">生成 · 观察 · 结构化图表</div>
+      <div data-i18n="tpMediaSub" class="name">图片 / 视频 / 图表（CM-1601–1603 / 2157）</div>
+      <div data-i18n="mediaMeta" class="meta" id="media-meta">生成 · 观察 · 结构化图表</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="media-image" class="bb-btn bb-btn-sm bb-btn-primary">生成图片</button>
-        <button type="button" id="media-video" class="bb-btn bb-btn-sm">生成视频</button>
-        <button type="button" id="media-chart" class="bb-btn bb-btn-sm">结构化图表</button>
-        <button type="button" id="media-watch" class="bb-btn bb-btn-sm">观看最新视频</button>
+        <button data-i18n="mediaImage" type="button" id="media-image" class="bb-btn bb-btn-sm bb-btn-primary">生成图片</button>
+        <button data-i18n="mediaVideo" type="button" id="media-video" class="bb-btn bb-btn-sm">生成视频</button>
+        <button data-i18n="mediaChart" type="button" id="media-chart" class="bb-btn bb-btn-sm">结构化图表</button>
+        <button data-i18n="mediaWatch" type="button" id="media-watch" class="bb-btn bb-btn-sm">观看最新视频</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">语音</div>
+    <div data-i18n="tpVoiceTitle" class="panel-title" style="margin-top:16px">语音</div>
     <div class="machine-item">
-      <div class="name">会话 / 中继 / 结束</div>
-      <div class="meta" id="voice-meta">开始 · 中继 WAV · 结束写入</div>
+      <div data-i18n="tpVoiceSub" class="name">会话 / 中继 / 结束</div>
+      <div data-i18n="voiceMeta" class="meta" id="voice-meta">开始 · 中继 WAV · 结束写入</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="voice-start" class="bb-btn bb-btn-sm bb-btn-primary">开始语音</button>
-        <button type="button" id="voice-relay" class="bb-btn bb-btn-sm">语音中继</button>
-        <button type="button" id="voice-end" class="bb-btn bb-btn-sm">结束语音</button>
-        <button type="button" id="voice-huddle-start" class="bb-btn bb-btn-sm">开始临时会议</button>
-        <button type="button" id="voice-huddle-end" class="bb-btn bb-btn-sm">结束会议</button>
+        <button data-i18n="voiceStart" type="button" id="voice-start" class="bb-btn bb-btn-sm bb-btn-primary">开始语音</button>
+        <button data-i18n="voiceRelay" type="button" id="voice-relay" class="bb-btn bb-btn-sm">语音中继</button>
+        <button data-i18n="voiceEnd" type="button" id="voice-end" class="bb-btn bb-btn-sm">结束语音</button>
+        <button data-i18n="voiceHuddleStart" type="button" id="voice-huddle-start" class="bb-btn bb-btn-sm">开始临时会议</button>
+        <button data-i18n="voiceHuddleEnd" type="button" id="voice-huddle-end" class="bb-btn bb-btn-sm">结束会议</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">云端盒子</div>
+    <div data-i18n="tpBoxTitle" class="panel-title" style="margin-top:16px">云端盒子</div>
     <div class="machine-item">
-      <div class="name">诊断 / 环境 / 时钟 (CM-0607/0608/2175)</div>
-      <div class="meta" id="box-meta">自检 · 运行时 · 时区对齐</div>
+      <div data-i18n="tpBoxSub" class="name">诊断 / 环境 / 时钟 (CM-0607/0608/2175)</div>
+      <div data-i18n="boxMeta" class="meta" id="box-meta">自检 · 运行时 · 时区对齐</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="box-doctor" class="bb-btn bb-btn-sm bb-btn-primary">盒子诊断</button>
-        <button type="button" id="box-env" class="bb-btn bb-btn-sm">盒子环境</button>
-        <button type="button" id="box-clock" class="bb-btn bb-btn-sm">盒子时钟</button>
-        <button type="button" id="box-chrome" class="bb-btn bb-btn-sm">浏览器探测</button>
-        <button type="button" id="box-bare-chrome" class="bb-btn bb-btn-sm bb-btn-danger-soft">启动裸 Chrome（拒绝）</button>
-        <button type="button" id="box-screenshot" class="bb-btn bb-btn-sm">截屏</button>
-        <button type="button" id="box-copy-to" class="bb-btn bb-btn-sm">拷贝到盒子</button>
-        <button type="button" id="box-copy-from" class="bb-btn bb-btn-sm">从盒子拷贝</button>
-        <button type="button" id="box-shared-fs" class="bb-btn bb-btn-sm">共享盒子文件系统</button>
+        <button data-i18n="boxDoctor" type="button" id="box-doctor" class="bb-btn bb-btn-sm bb-btn-primary">盒子诊断</button>
+        <button data-i18n="boxEnv" type="button" id="box-env" class="bb-btn bb-btn-sm">盒子环境</button>
+        <button data-i18n="boxClock" type="button" id="box-clock" class="bb-btn bb-btn-sm">盒子时钟</button>
+        <button data-i18n="boxChrome" type="button" id="box-chrome" class="bb-btn bb-btn-sm">浏览器探测</button>
+        <button data-i18n="boxBareChrome" type="button" id="box-bare-chrome" class="bb-btn bb-btn-sm bb-btn-danger-soft">启动裸 Chrome（拒绝）</button>
+        <button data-i18n="boxScreenshot" type="button" id="box-screenshot" class="bb-btn bb-btn-sm">截屏</button>
+        <button data-i18n="boxCopyTo" type="button" id="box-copy-to" class="bb-btn bb-btn-sm">拷贝到盒子</button>
+        <button data-i18n="boxCopyFrom" type="button" id="box-copy-from" class="bb-btn bb-btn-sm">从盒子拷贝</button>
+        <button data-i18n="boxSharedFs" type="button" id="box-shared-fs" class="bb-btn bb-btn-sm">共享盒子文件系统</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">云服务</div>
+    <div data-i18n="tpCloudTitle" class="panel-title" style="margin-top:16px">云服务</div>
     <div class="machine-item">
-      <div class="name">Cursor 代理卡（CM-2131）</div>
-      <div class="meta" id="cloud-meta">本地代理 · 交付产物</div>
+      <div data-i18n="tpCloudSub" class="name">Cursor 代理卡（CM-2131）</div>
+      <div data-i18n="cloudMeta" class="meta" id="cloud-meta">本地代理 · 交付产物</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="cloud-launch" class="bb-btn bb-btn-sm bb-btn-primary">启动云端代理</button>
-        <button type="button" id="cloud-deliver" class="bb-btn bb-btn-sm">投递上一个产物</button>
+        <button data-i18n="cloudLaunch" type="button" id="cloud-launch" class="bb-btn bb-btn-sm bb-btn-primary">启动云端代理</button>
+        <button data-i18n="cloudDeliver" type="button" id="cloud-deliver" class="bb-btn bb-btn-sm">投递上一个产物</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">定时任务</div>
+    <div data-i18n="apSourceRoutine" class="panel-title" style="margin-top:16px">定时任务</div>
     <div class="machine-item">
-      <div class="name">排程 · 触发 · 心跳</div>
-      <div class="meta" id="routines-meta">持久 Host 唤醒（非 cron 假装）</div>
+      <div data-i18n="tpRoutinesSub" class="name">排程 · 触发 · 心跳</div>
+      <div data-i18n="routinesMeta" class="meta" id="routines-meta">持久 Host 唤醒（非 cron 假装）</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="rt-create" class="bb-btn bb-btn-sm bb-btn-primary">创建定时任务</button>
-        <button type="button" id="rt-reminder" class="bb-btn bb-btn-sm">创建提醒</button>
-        <button type="button" id="rt-list-scheduled" class="bb-btn bb-btn-sm">列出已计划</button>
-        <button type="button" id="rt-list" class="bb-btn bb-btn-sm">列出定时任务</button>
-        <button type="button" id="rt-fire" class="bb-btn bb-btn-sm">触发定时任务</button>
-        <button type="button" id="rt-tick" class="bb-btn bb-btn-sm">触发定时任务</button>
-        <button type="button" id="rt-pause" class="bb-btn bb-btn-sm">暂停定时任务</button>
-        <button type="button" id="rt-resume" class="bb-btn bb-btn-sm">恢复定时任务</button>
-        <button type="button" id="rt-auto-review" class="bb-btn bb-btn-sm">自动审批设置</button>
+        <button data-i18n="rtCreate" type="button" id="rt-create" class="bb-btn bb-btn-sm bb-btn-primary">创建定时任务</button>
+        <button data-i18n="rtReminder" type="button" id="rt-reminder" class="bb-btn bb-btn-sm">创建提醒</button>
+        <button data-i18n="rtListScheduled" type="button" id="rt-list-scheduled" class="bb-btn bb-btn-sm">列出已计划</button>
+        <button data-i18n="rtList" type="button" id="rt-list" class="bb-btn bb-btn-sm">列出定时任务</button>
+        <button data-i18n="rtFire" type="button" id="rt-fire" class="bb-btn bb-btn-sm">触发定时任务</button>
+        <button data-i18n="rtTick" type="button" id="rt-tick" class="bb-btn bb-btn-sm">触发定时任务</button>
+        <button data-i18n="rtPause" type="button" id="rt-pause" class="bb-btn bb-btn-sm">暂停定时任务</button>
+        <button data-i18n="rtResume" type="button" id="rt-resume" class="bb-btn bb-btn-sm">恢复定时任务</button>
+        <button data-i18n="rtAutoReview" type="button" id="rt-auto-review" class="bb-btn bb-btn-sm">自动审批设置</button>
       </div>
     </div>
-    <div class="panel-title" style="margin-top:16px">邮件 / 商务</div>
+    <div data-i18n="tpMailTitle" class="panel-title" style="margin-top:16px">邮件 / 商务</div>
     <div class="machine-item">
-      <div class="name">草稿 · 冷启 · 代理 · 认领</div>
-      <div class="meta" id="mail-meta">沙盒 eml · ICS · 回执</div>
+      <div data-i18n="tpMailSub" class="name">草稿 · 冷启 · 代理 · 认领</div>
+      <div data-i18n="mailMeta" class="meta" id="mail-meta">沙盒 eml · ICS · 回执</div>
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <button type="button" id="mail-draft" class="bb-btn bb-btn-sm bb-btn-primary">起草邮件</button>
-        <button type="button" id="mail-cold" class="bb-btn bb-btn-sm">冷启动邮件</button>
-        <button type="button" id="mail-onbehalf" class="bb-btn bb-btn-sm">代为发送</button>
-        <button type="button" id="mail-claim" class="bb-btn bb-btn-sm">认领收件箱</button>
-        <button type="button" id="mail-schedule" class="bb-btn bb-btn-sm">安排会议</button>
-        <button type="button" id="mail-purchase" class="bb-btn bb-btn-sm">下单（沙盒）</button>
-        <button type="button" id="mail-search" class="bb-btn bb-btn-sm">搜索邮件</button>
-        <button type="button" id="mail-meeting" class="bb-btn bb-btn-sm">会议纪要</button>
-        <button type="button" id="mail-read" class="bb-btn bb-btn-sm">读邮件</button>
-        <button type="button" id="mail-outlook" class="bb-btn bb-btn-sm">Outlook 草稿</button>
+        <button data-i18n="mailDraft" type="button" id="mail-draft" class="bb-btn bb-btn-sm bb-btn-primary">起草邮件</button>
+        <button data-i18n="mailCold" type="button" id="mail-cold" class="bb-btn bb-btn-sm">冷启动邮件</button>
+        <button data-i18n="mailOnbehalf" type="button" id="mail-onbehalf" class="bb-btn bb-btn-sm">代为发送</button>
+        <button data-i18n="mailClaim" type="button" id="mail-claim" class="bb-btn bb-btn-sm">认领收件箱</button>
+        <button data-i18n="mailSchedule" type="button" id="mail-schedule" class="bb-btn bb-btn-sm">安排会议</button>
+        <button data-i18n="mailPurchase" type="button" id="mail-purchase" class="bb-btn bb-btn-sm">下单（沙盒）</button>
+        <button data-i18n="mailSearch" type="button" id="mail-search" class="bb-btn bb-btn-sm">搜索邮件</button>
+        <button data-i18n="mailMeeting" type="button" id="mail-meeting" class="bb-btn bb-btn-sm">会议纪要</button>
+        <button data-i18n="mailRead" type="button" id="mail-read" class="bb-btn bb-btn-sm">读邮件</button>
+        <button data-i18n="mailOutlook" type="button" id="mail-outlook" class="bb-btn bb-btn-sm">Outlook 草稿</button>
       </div>
     </div>
   </aside>
@@ -4172,7 +4172,7 @@
     <div id="ri-rail-status" class="ri-err" role="status"></div>
   </aside>
   <form id="composer">
-    <pre id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
+    <pre data-i18n="jsonOut" id="json-out">turn JSON (v:1) — Alt+D 切换调试</pre>
     <div id="attachment-strip" class="attach-strip" aria-label="待发送附件" data-i18n-aria="composerAriaPendingAttachments"></div>
     <!-- GP-60: in-call control (composer 为空时启动；结束留 Voice chat 卡) -->
     <div id="voicechat-bar" class="bb-banner" style="display:none;align-items:stretch;flex-direction:column">
@@ -4232,18 +4232,18 @@
       <button type="button" id="attach-btn" title="更多：附件 / 联网搜索 / 模型 / 语音对话" data-i18n-title="composerTitleMore"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       <button type="button" id="shot-btn" title="截图（框选区域 · Esc 取消）" aria-label="截图并作为附件" data-i18n-title="composerTitleScreenshot" data-i18n-aria="composerAriaScreenshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2l1-1.6A1.4 1.4 0 0 1 8.9 3.7h6.2c.5 0 .9.2 1.2.7l1 1.6h1.2A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="12" cy="12.5" r="3.4"/></svg></button>
       <button type="button" id="voice-btn" title="语音输入（Ctrl/Cmd+D）" data-i18n-title="composerTitleVoice"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><path d="M12 18v4"/><path d="M8 22h8"/></svg></button>
-      <button type="button" id="turn-cancel" class="bb-btn" hidden aria-label="取消" data-i18n-aria="commonCancel">取消</button>
+      <button data-i18n="bcCancel" type="button" id="turn-cancel" class="bb-btn" hidden aria-label="取消" data-i18n-aria="commonCancel">取消</button>
       <button id="send" type="submit" title="发送 (Enter)" aria-label="Send" data-i18n-aria="send" data-i18n-title="send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 19.5V5"/><path d="M5.8 11.2 12 5l6.2 6.2"/></svg></button>
     </div>
     <!-- G-28: Grok 极简 composer —— 联网搜索 / 模型 / 语音对话收进左侧「＋」弹层，
          composer 表面只剩 [＋][输入][麦][↑]，对齐 replica/screens/grok-composer-controls.png。
          三个控件保留原 id，原有 click 处理逻辑不变，只是从行内搬进菜单。 -->
     <div id="composer-more" class="composer-more" hidden>
-      <button type="button" id="add-attachment-btn">📎 添加附件</button>
-      <button type="button" id="shot-more-btn">📷 截图（框选）</button>
-      <button type="button" id="shot-screen-btn">🖥 整屏截图</button>
+      <button data-i18n="addAttachmentBtn" type="button" id="add-attachment-btn">📎 添加附件</button>
+      <button data-i18n="shotMoreBtn" type="button" id="shot-more-btn">📷 截图（框选）</button>
+      <button data-i18n="shotScreenBtn" type="button" id="shot-screen-btn">🖥 整屏截图</button>
       <button type="button" class="bb-chip bb-chip--toggle" id="web-search-toggle" aria-pressed="false" title="联网搜索（本轮是否会真的检索网页）" data-i18n-title="composerTitleWebSearch"><span data-i18n="webSearch">联网搜索</span></button>
-      <button type="button" class="bb-chip" id="model-switch-chip" aria-haspopup="listbox" title="切换模型" aria-label="切换模型" data-i18n-title="composerTitleSwitchModel" data-i18n-aria="composerAriaSwitchModel"><span id="active-model-label">默认</span></button>
+      <button type="button" class="bb-chip" id="model-switch-chip" aria-haspopup="listbox" title="切换模型" aria-label="切换模型" data-i18n-title="composerTitleSwitchModel" data-i18n-aria="composerAriaSwitchModel"><span data-i18n="activeModelLabel" id="active-model-label">默认</span></button>
       <button type="button" id="voicechat-btn" title="开始语音对话" data-i18n="voiceChatBtn" data-i18n-title="composerTitleVoiceChat">🎧 语音对话</button>
       <button type="button" id="canvas-open-btn" title="把本对话的产物铺开（只读）" data-i18n="canvasOpenBtn" data-i18n-title="composerTitleCanvas">🖼 画布</button>
     </div>
@@ -4338,6 +4338,11 @@
     })();
   </script>
   <script>
+    /* WAVEG_I18N 是本文件后半段才初始化的 const（脚本求值阶段调 wavegT() 会撞
+       TDZ ReferenceError）。这个旗子标「字典已经就绪」：
+       求值阶段要取词的地方先看它，没就绪就晚一拍再补，避免整个调用链炸掉。
+       —— 2026-11-14 M46 第二波：机器人管理面板的「就绪/未就绪」徽标就是栽在这。 */
+    let I18N_READY = false;
     const banner = document.getElementById("banner");
     const log = document.getElementById("log");
     const jsonOut = document.getElementById("json-out");
@@ -4365,7 +4370,7 @@
         try { r = await window.bitbot.cancelTurn(); } catch (_) { r = null; }
         if (r && r.had_active_turn === false) {
           setTurnBusy(false);
-          if (typeof cmdToast === "function") cmdToast("没有在执行的回合", "warn");
+          if (typeof cmdToast === "function") cmdToast(t("toastNoRunningTurn"), "warn");
         }
       });
     }
@@ -5017,35 +5022,39 @@
             const st = await window.bitbot.productStatus();
             if (st && st.llm) {
               bits.push(
-                "大脑=" +
-                  (st.llm.provider_id || "?") +
-                  "/" +
-                  (st.llm.model || "?") +
-                  (st.llm.key_configured ? "·就绪" : "·缺key"),
+                t("statusBrain", {
+                  provider: st.llm.provider_id || "?",
+                  model: st.llm.model || "?",
+                  key: st.llm.key_configured ? t("statusReady") : t("statusNoKey"),
+                }),
               );
             }
             if (st && st.filing) {
               bits.push(
-                "备案=" + (st.filing.residual ? "residual" : "已配"),
+                t("statusFiling", {
+                  v: st.filing.residual ? "residual" : t("statusConfigured"),
+                }),
               );
             }
             if (st && st.content_moderation) {
               bits.push(
-                "审核=" +
-                  (st.content_moderation.armed ? "armed" : "residual"),
+                t("statusModeration", {
+                  v: st.content_moderation.armed ? "armed" : "residual",
+                }),
               );
             }
             if (st && st.ota) {
               bits.push("OTA=" + (st.ota.residual ? "residual" : "feed"));
             }
-            if (st && st.mobile_ready) bits.push("移动=可配对");
-            else if (st && st.mobile_deferred) bits.push("移动=暂缓");
+            if (st && st.mobile_ready) bits.push(t("statusMobileReady"));
+            else if (st && st.mobile_deferred) bits.push(t("statusMobileDeferred"));
           }
           if (window.bitbot.cnStatus) {
             const cn = await window.bitbot.cnStatus();
             if (cn && Array.isArray(cn.channels)) {
               bits.push(
-                "渠道=" +
+                t("statusChannels", {
+                  v:
                   cn.channels
                     .map(function (x) {
                       return (
@@ -5053,14 +5062,14 @@
                       );
                     })
                     .join(","),
+                }),
               );
             }
             if (cn && cn.inbound) {
               bits.push(
-                "入站=" +
-                  (cn.inbound.listening
-                    ? ":" + cn.inbound.port
-                    : "off"),
+                t("statusInbound", {
+                  v: cn.inbound.listening ? ":" + cn.inbound.port : "off",
+                }),
               );
               if (cn.inbound.listening && cn.inbound.routes && cn.inbound.routes.turn) {
                 bits.push("手机配对=/v1/turn");
@@ -7147,7 +7156,7 @@
           case "reorder":
             break; // 已并进状态：弹层下一次打开按 state 画；顺序由 structural 负责
           default:
-            console.warn("[KP-08] 会话面收到不认识的效果：" + e.type);
+            console.warn(t("warnUnknownEffectSession", { type: e.type }));
         }
       }
       return dirty;
@@ -7861,7 +7870,7 @@
       if (av) { av.innerHTML = ""; av.textContent = nm.slice(0, 1); }
       // 颜色只写根变量（与 updateBotPill 同一约定），元素级不留字面色值。
       if (rm.id) document.documentElement.style.setProperty("--bot-avatar", avatarColorFor(rm.id));
-      pill.title = "当前对话：" + nm;
+      pill.title = t("composerCurrentChatTitle", { name: nm });
     }
     function restoreHeaderIdentity() {
       const saved = headerPillBeforeRoom;
@@ -9581,7 +9590,7 @@
     async function openTeamFromTemplate(tpl) {
       closeMarketplace();
       const roles = Array.isArray(tpl.roles) ? tpl.roles : [];
-      if (!roles.length) { cmdToast("该团队模板缺少角色定义", "warn"); return; }
+      if (!roles.length) { cmdToast(t("toastTeamTemplateNoRoles"), "warn"); return; }
       await buildTeamFromBrief({
         title: tpl.default_name || tpl.job || "",
         roles,
@@ -9823,8 +9832,8 @@
         if (!el) return;
         const fv = f[r.key];
         el.textContent = fv && fv.present
-          ? "已配置 " + (fv.masked || "****") + " · 要换就粘新的"
-          : "未配置 · 填了才生效";
+          ? t("secretConfiguredSwap", { masked: fv.masked || "****" })
+          : t("secretNotConfiguredYet");
         /* 空输入框最容易被读成「还没配」。已配的那几个把占位改成
            「留空＝不改动」，让框里自己回答这件事；原占位记在 dataset 里，
            未配置时原样放回去（通义/Kimi 两栏的占位是「可选」）。 */
@@ -9866,7 +9875,10 @@
         const key = inferLlmPreset(savedProv, savedBase);
         presetEl.value = key;
         const hintEl = document.getElementById("sec-llm-hint");
-        if (hintEl && LLM_PRESETS[key]) hintEl.textContent = LLM_PRESETS[key].hint;
+        if (hintEl && LLM_PRESETS[key]) {
+          const hp = LLM_PRESETS[key];
+          hintEl.textContent = (hp.hintKey && t(hp.hintKey)) || hp.hint;
+        }
         renderLlmModelChips(key);
       }
       /* 结论区跟着同一份 status 走：不另开推断路径，避免和底部保存状态各说一套 */
@@ -9909,7 +9921,9 @@
         const st = document.getElementById(s.state);
         if (!st) return;
         const fv = f[s.key];
-        st.textContent = fv && fv.present ? "已配置 " + (fv.masked || "****") : "未配置";
+        st.textContent = fv && fv.present
+          ? t("secretConfiguredMasked", { masked: fv.masked || "****" })
+          : t("secretNotConfigured");
         const el = document.getElementById(s.input);
         if (el) el.value = "";
       });
@@ -9966,10 +9980,11 @@
           {
             id: "sec-ding-hook",
             label: "Webhook 地址",
+            labelKey: "cnWebhookLabel",
             key: "BITBOT_DINGTALK_WEBHOOK",
             check: function (v) {
-              if (!/^https?:\/\//i.test(v)) return "要以 http:// 或 https:// 开头（在钉钉机器人设置里整段复制）";
-              if (!/access_token=/.test(v)) return "这段地址里没有 access_token，粘的可能是机器人主页而不是 Webhook";
+              if (!/^https?:\/\//i.test(v)) return t("cnWebhookMustHttp");
+              if (!/access_token=/.test(v)) return t("cnWebhookNoToken");
               return "";
             },
           },
@@ -9997,7 +10012,8 @@
     function cnChannelStateText() {
       return CN_CHANNEL_ROWS.map(function (row) {
         const box = document.getElementById(row.post);
-        const name = row.post === "sec-ding-post" ? "钉钉" : row.post === "sec-feishu-post" ? "飞书" : "企微";
+        const name = row.post === "sec-ding-post" ? t("cnVendorDingtalk")
+          : row.post === "sec-feishu-post" ? t("cnVendorFeishu") : t("cnVendorWecom");
         let tail = "";
         if (box && box.checked) {
           /* 已配但看不见 = 最容易误判成「没配」的一种；把掩码尾号写进状态行，
@@ -10006,9 +10022,11 @@
           const masked = row.fields.filter(function (f) { return f.key; });
           const held = masked.filter(function (f) { return CN_MASKED_PRESENT[f.key]; });
           if (masked.length && held.length === masked.length)
-            tail = "（" + held.map(function (f) { return CN_MASKED_PRESENT[f.key]; }).join(" / ") + " 已配置，无需重填）";
+            tail = t("cnSecretHeldNote", {
+              keys: held.map(function (f) { return CN_MASKED_PRESENT[f.key]; }).join(" / "),
+            });
         }
-        return name + " " + (box && box.checked ? "已开启" : "未开启") + tail;
+        return name + " " + (box && box.checked ? t("cnChannelOn") : t("cnChannelOff")) + tail;
         /* 卡头只留「开没开」：这句劝告原来跟在状态后面，把一行话变成了两行，
            在收起的卡片头上被省略号吃掉一半。它现在写在展开区的第一句里。 */
       }).join(" · ");
@@ -10029,7 +10047,7 @@
               /* 空栏 + 盘上已配置 ≠ 没配：这时报「还是空的」是谎话，还会把保存按死。
                  用户真想换地址就直接粘新的，粘了走下面的 check。 */
               if (f.key && CN_MASKED_PRESENT[f.key]) return;
-              msgs.push("勾选了开启推送，" + f.label + "还是空的");
+              msgs.push(t("cnPushEnabledButEmpty", { label: f.labelKey ? t(f.labelKey) : f.label }));
             } else if (f.check) {
               const m = f.check(v);
               if (m) msgs.push(f.label + "：" + m);
@@ -10079,7 +10097,7 @@
         if (!el) return;
         const show = el.type !== "text";
         el.type = show ? "text" : "password";
-        cnDingReveal.textContent = show ? "隐藏" : "显示";
+        cnDingReveal.textContent = show ? t("secretHide") : t("secretShow");
       });
     }
     CN_OPTIONAL_SECRETS.forEach(function (s) {
@@ -10090,7 +10108,7 @@
         if (!el) return;
         const show = el.type !== "text";
         el.type = show ? "text" : "password";
-        btn.textContent = show ? "隐藏" : "显示";
+        btn.textContent = show ? t("secretHide") : t("secretShow");
       });
     });
 
@@ -10103,8 +10121,8 @@
         const secStatus = document.getElementById("sec-status");
         if (secStatus) {
           secStatus.textContent = cnProblems > 0
-            ? "国内渠道有字段要改（该栏下方红字），没有写入"
-            : "密钥栏有 " + keyProblems + " 处像是粘错了（该栏下方红字），没有写入";
+            ? t("cnFieldsInvalid")
+            : t("secretKeyProblem", { n: keyProblems });
         }
         return;
       }
@@ -10188,7 +10206,10 @@
       if (secStatus) {
         if (r && r.ok) {
           secStatus.textContent = devModeOn()
-            ? "已保存 " + (r.applied || []).join(",") + " → " + (r.path || "") +
+            ? t("secretSaved", {
+              applied: (r.applied || []).join(","),
+              path: r.path || "",
+            }) +
               (r.llm && r.llm.key_configured ? " · 大脑 key 就绪" : " · 大脑仍缺 key")
             : wavegT("secSavedOk") + " · " + (r.llm && r.llm.key_configured ? wavegT("modelConnected") : wavegT("modelUnconfigured"));
         } else {
@@ -10225,7 +10246,7 @@
               })
               .join(" · ");
             if (cn.inbound && cn.inbound.listening) {
-              t += " · 入站:" + cn.inbound.port;
+              t += t("statusInboundColon", { port: cn.inbound.port });
             }
             meta.textContent = t;
           }
@@ -10968,11 +10989,11 @@
        live LLM 反推团队结构 → 按教程要求建 Bot+群，并把共享目录落在应用数据目录
        （data/workspace/<team>，不碰真实 /workspace，契合 local_execution=never）。 */
     async function runBuildTeamFromUrl(text, url) {
-      cmdToast("正在抓取链接内容…", "info");
+      cmdToast(t("toastFetchingLink"), "info");
       const wf = await window.bitbot.webfetch(url).catch(() => null);
       if (!wf || !wf.ok) {
         const whyText = webfetchFailText(wf);
-        cmdToast("没能读取这个链接：" + whyText, "warn");
+        cmdToast(t("toastLinkFailed", { why: whyText }), "warn");
         showPasteBox(
           (pasted) => { if (pasted && pasted.trim()) runBuildTeamFromText(pasted.trim()); },
           {
@@ -10996,21 +11017,24 @@
     }
 
     async function runBuildTeamFromText(text) {
-      cmdToast("正在从正文反推团队结构…", "info");
+      cmdToast(t("toastInferringFromText"), "info");
       const ex = await window.bitbot.llmExtractTeam(text).catch(() => null);
       if (!ex || !ex.ok) {
         if (ex && ex.needs_key) {
-          cmdToast("需先在「设置」里配置可用的 LLM 密钥，才能从正文反推团队结构", "warn");
+          cmdToast(t("toastNeedLlmKey"), "warn");
         } else {
-          cmdToast("无法从正文识别团队结构（" + String((ex && ex.reason) || "unknown") + "），请换个链接或贴正文", "warn");
+          cmdToast(t("toastTeamStructureFailed", { reason: String((ex && ex.reason) || "unknown") }), "warn");
         }
         return;
       }
       // 预览识别结果，再按教程要求直接搭建（用户指令：抓内容 → 按要求搭建团队）。
       addMsg(
         "assistant",
-        "按教程识别到团队：《" + ex.title + "》\n角色：" + ex.roles.join("、") +
-          "\n目标：" + (ex.task || "（未识别）"),
+        t("teamBuiltFromTutorial", {
+          title: ex.title,
+          roles: ex.roles.join("、"),
+          task: ex.task || t("taskUnrecognized"),
+        }),
         { speaker: undefined },
       );
       await buildTeamFromBrief(ex);
@@ -11026,8 +11050,12 @@
         const roleFiles = ws && ws.ok && ex.roles && ex.roles.length
           ? "，每个角色的完整岗位 Prompt 已落到共享目录 00-profile/<角色>.md（Bot 按此交付）" : "";
         cmdToast(
-          "已按教程搭好团队《" + ex.title + "》：" + ex.roles.length + " 个岗位 Bot + 协作群" +
-            (ws && ws.ok ? "，共享目录在 " + ws.path : "") + tail + roleFiles,
+          t("teamBuiltToast", {
+            title: ex.title,
+            n: ex.roles.length,
+            dir: ws && ws.ok ? t("teamSharedDir", { path: ws.path }) : "",
+            files: tail + roleFiles,
+          }),
           "ok",
         );
       }
@@ -11097,7 +11125,7 @@
     async function runBuildTeamFromDoc(paths, text) {
       let doc = (text || "").trim();
       if (Array.isArray(paths) && paths.length) {
-        cmdToast("正在读取附件正文…", "info");
+        cmdToast(t("toastReadingAttachment"), "info");
         const parts = [];
         for (const p of paths) {
           const r = await window.bitbot.file.readText(p).catch(() => null);
@@ -11105,14 +11133,14 @@
         }
         doc = (doc + "\n\n" + parts.join("\n\n")).trim();
       }
-      if (!doc) { cmdToast("没有可读的正文，无法组建团队", "warn"); return; }
+      if (!doc) { cmdToast(t("toastNoReadableBody"), "warn"); return; }
       let ex = extractTeamFromDoc(doc);
       if (!ex) {
-        cmdToast("正在用 LLM 反推团队结构…", "info");
+        cmdToast(t("toastLlmInferring"), "info");
         const llm = await window.bitbot.llmExtractTeam(doc).catch(() => null);
         if (!llm || !llm.ok) {
-          if (llm && llm.needs_key) cmdToast("需先在「设置」里配置可用的 LLM 密钥，才能从正文反推团队结构", "warn");
-          else cmdToast("无法从正文识别团队结构（" + String((llm && llm.reason) || "unknown") + "）", "warn");
+          if (llm && llm.needs_key) cmdToast(t("toastNeedLlmKey"), "warn");
+          else cmdToast(t("toastTeamStructureFailedShort", { reason: String((llm && llm.reason) || "unknown") }), "warn");
           return;
         }
         ex = {
@@ -11140,7 +11168,7 @@
         read_failed: "本地文件读取失败",
         empty_file: "文件为空",
       };
-      return map[why] || ("抓取失败：" + why);
+      return map[why] || t("fetchFailedPrefix", { why: why });
     }
 
     function showPasteBox(onSubmit, info) {
@@ -11173,7 +11201,7 @@
 
       const ta = document.createElement("textarea");
       ta.rows = 10;
-      ta.placeholder = "把教程正文粘到这里…";
+      ta.placeholder = t("phPasteTutorialHere");
       ta.style.cssText =
         "width:100%;box-sizing:border-box;resize:vertical;background:var(--input-bg,#f2f2f2);" +
         "color:var(--ink,#18191c);border:1px solid var(--line,#e5e5e5);border-radius:var(--radius-md,8px);" +
@@ -11225,7 +11253,7 @@
         // 空内容不关框：直接关掉会被当成「点了没反应」
         if (!v) {
           ta.focus();
-          ta.placeholder = "正文还没粘进来——粘完再点「开始搭建」";
+          ta.placeholder = t("phBodyNotPastedYet");
           return;
         }
         close();
@@ -13809,8 +13837,8 @@
             gpStatus(
               "waveg-settings-status",
               res && res.ok
-                ? "Always allow 规则已持久化：" + pattern + "（intent=" + res.intent + "）"
-                : "规则写入失败：" + (res && res.error ? res.error : "unknown"),
+                ? t("ruleAlwaysAllowSaved", { pattern: pattern, intent: res.intent })
+                : t("ruleSaveFailed", { err: res && res.error ? res.error : "unknown" }),
             );
             refreshApprovalRules().catch(() => {});
           })
@@ -14029,14 +14057,17 @@
         model: "deepseek-chat",
         models: ["deepseek-chat", "deepseek-reasoner"],
         hint: "DeepSeek 官方端点。",
+        hintKey: "providerDeepSeekHint",
       },
       qwen: {
         provider: "qwen",
         label: "通义千问",
+        labelKey: "providerQwenLabel",
         base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
         model: "qwen-plus",
         models: ["qwen-plus", "qwen-max", "qwen-turbo"],
         hint: "DashScope 的 OpenAI 兼容模式。",
+        hintKey: "providerQwenHint",
       },
       moonshot: {
         provider: "moonshot",
@@ -14045,6 +14076,7 @@
         model: "moonshot-v1-8k",
         models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
         hint: "Moonshot 官方端点。",
+        hintKey: "providerMoonshotHint",
       },
       openrouter: {
         provider: "openrouter",
@@ -14053,22 +14085,27 @@
         model: "openai/gpt-4o-mini",
         models: ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
         hint: "聚合网关：模型名带厂商前缀。",
+        hintKey: "providerOpenRouterHint",
       },
       custom: {
         provider: "custom",
         label: "自定义端点",
+        labelKey: "providerCustomLabel",
         base: "",
         model: "",
         models: [],
         hint: "自建端点：vLLM / Ollama（http://127.0.0.1:11434/v1）/ LM Studio 等，Base 一般以 /v1 结尾。",
+        hintKey: "providerCustomHint",
       },
       gateway: {
         provider: "gateway",
         label: "企业网关",
+        labelKey: "providerGatewayLabel",
         base: "",
         model: "",
         models: [],
         hint: "企业网关 / 代理：Base 指向网关，模型名与 Key 由网关下发；协议不同就在网关侧转换。",
+        hintKey: "providerGatewayHint",
       },
     };
 
@@ -14143,7 +14180,8 @@
         return;
       }
       const known = LLM_PRESETS[provider];
-      title.textContent = ((known && known.label) || provider) + (model ? " · " + model : "");
+      title.textContent = ((known && known.labelKey && t(known.labelKey)) || (known && known.label) || provider)
+        + (model ? " · " + model : "");
       if (!hasKey) say(wavegT("credConnNoKey"));
       else if (!String(baseUrl || "").trim()) say(wavegT("credConnNoBase"));
       else say("");
@@ -14193,7 +14231,7 @@
           return;
         }
         el.textContent = pub
-          ? "入站公网（贴进钉钉/飞书/企微控制台）: " +
+          ? t("inboundPublicLabel", { url:"" }) +
             pub +
             " · dingtalk=" +
             (routes.dingtalk || "") +
@@ -14201,7 +14239,7 @@
             (routes.feishu || "") +
             " · wecom=" +
             (routes.wecom || "")
-          : "入站本机 " +
+          : t("inboundLocalLabel", { url:"" }) +
             (st.port ? "http://127.0.0.1:" + st.port : "端口没读出来（不猜默认值）") +
             " — 尚无公网 URL（跑 cn_inbound_tunnel.sh）";
       } catch (_) {
@@ -14530,7 +14568,14 @@
         const ready = Boolean(st && st.lan_open && url && qr && typeof qr.toSvg === "function");
         if (badge) {
           badge.dataset.state = ready ? "on" : "off";
-          badge.textContent = wavegT(ready ? "mc2Ready" : "mc2NotReady");
+          /* WAVEG_I18N 是文件后半段才初始化的 const —— 在脚本求值阶段调 wavegT()
+             会撞 TDZ，整个调用链炸掉，徽标永远没字。字典就绪后补一次即可：
+             那时整个脚本已经求值完毕，setTimeout 回调里 WAVEG_I18N 已存在。 */
+          if (I18N_READY) {
+            badge.textContent = wavegT(ready ? "mc2Ready" : "mc2NotReady");
+          } else {
+            setTimeout(() => { if (badge.isConnected) paintManagerQr(st); }, 0);
+          }
         }
         if (!qrBox || !qrEmpty) return;
         if (!ready) { qrBox.innerHTML = ""; qrBox.hidden = true; qrEmpty.hidden = false; return; }
@@ -15382,20 +15427,20 @@
           if (secStatus) {
             if (r && r.ok) {
               secStatus.textContent = devModeOn()
-                ? "试连成功 · " + ((r.result && r.result.provider_id) || "") + "/" +
+                ? t("probeOk", { id: (r.result && r.result.provider_id) || "" }) + "/" +
                   ((r.result && r.result.model) || "") + " · " + ((r.result && r.result.stdout_prefix) || "").slice(0, 80)
                 : wavegT("probeOk");
             } else {
               const err = (r && r.result && r.result.error) || (r && r.error) || "";
               secStatus.textContent = devModeOn()
-                ? "试连失败 · " + err + "（不假装成功）"
+                ? t("probeFail", { err: err })
                 : wavegT("probeFail");
             }
           }
         } catch (e) {
           if (secStatus) {
             secStatus.textContent = devModeOn()
-              ? "试连异常 · " + String(e && e.message ? e.message : e)
+              ? t("probeError", { err: String(e && e.message ? e.message : e) })
               : wavegT("probeErr");
           }
         }
@@ -15422,14 +15467,17 @@
           if (secStatus) {
             const live = r && r.any_live;
             secStatus.textContent = devModeOn()
-              ? "渠道试连 · " + (live ? "至少一路 live" : "无 live（不假装）") + " · " + parts
+              ? t("channelProbeOk", {
+              live: live ? t("channelLiveYes") : t("channelLiveNo"),
+              parts: parts,
+            })
               : wavegT(live ? "cnProbeOk" : "cnProbeNone");
           }
           await refreshInboundUrlStrip();
         } catch (e) {
           if (secStatus) {
             secStatus.textContent = devModeOn()
-              ? "渠道试连异常 · " + String(e && e.message ? e.message : e)
+              ? t("channelProbeError", { err: String(e && e.message ? e.message : e) })
               : wavegT("cnProbeErr");
           }
         }
@@ -15482,7 +15530,7 @@
             secStatus.textContent =
               r && r.ok
                 ? "门禁 PASS（exit 0）"
-                : "门禁 FAIL（exit " +
+                : t("gateFailPrefix", { code:"" }) +
                   String(r && r.exit_code) +
                   "）— 不假装完成";
           }
@@ -15773,7 +15821,7 @@
           case "set_scalar":
             break;
           default:
-            console.warn("[KP-08] Bot 面收到不认识的效果：" + e.type);
+            console.warn(t("warnUnknownEffectBot", { type: e.type }));
         }
       }
       if (rebuild) {
@@ -17949,12 +17997,12 @@
         if (tk) {
           try {
             const p = JSON.parse(tk.stdout || "{}");
-            if (p.guidance) addMsg("assistant", "接管中：" + p.guidance);
-            if (p.residual) addMsg("assistant", "截屏 residual：" + p.residual + "（无 DISPLAY，不假装有帧）");
+            if (p.guidance) addMsg("assistant", t("computerTakeover", { guidance: p.guidance }));
+            if (p.residual) addMsg("assistant", t("computerShotResidual", { residual: p.residual }));
           } catch (_) { /* ignore */ }
         }
         const done = hosts.find((h) => h && h.kind === "takeover_done" && h.ok);
-        if (done) addMsg("assistant", "已交还控制权（handback）。可以在对话里让 Bot 从当前页面继续。");
+        if (done) addMsg("assistant", t("computerHandback"));
       } catch (_) { /* never break transcript */ }
       notifyTurnIfNeeded(r, opts).catch(() => {});
       refreshPendingBar().catch(() => {});
@@ -18338,6 +18386,8 @@
     let wavegLang = "zh-CN";
     const WAVEG_I18N = {
       "zh-CN": {
+
+        appTitle: "Bit Bot 桌面版",
         agentActionOpenCloudProxy: "打开云端代理",
         agentMetaProxy: "代理 · {{id}}",
         artifactActionOpenSystem: "用系统程序打开",
@@ -19449,8 +19499,358 @@
         rVoiceEnd: "语音对话已结束（{id}），通话录音已存入本对话的 Voice chat 卡。",
         rVoiceRelay: "通话中已转述 {n} 轮。",
         chatCreatedHint: "新会话已创建 · 输入消息开始",
+        activeModelLabel: "默认",
+        addAttachmentBtn: "📎 添加附件",
+        agHide: "隐藏研究代理",
+        agList: "列出代理",
+        agentInfoTitle: "代理信息",
+        agentsMeta: "列表 · 隐藏 (CM-1906/1907)",
+        botDeleteTitle: "删除 Bot",
+        boxBareChrome: "启动裸 Chrome（拒绝）",
+        boxChrome: "浏览器探测",
+        boxClock: "盒子时钟",
+        boxCopyFrom: "从盒子拷贝",
+        boxCopyTo: "拷贝到盒子",
+        boxDoctor: "盒子诊断",
+        boxEnv: "盒子环境",
+        boxMeta: "自检 · 运行时 · 时区对齐",
+        boxScreenshot: "截屏",
+        boxSharedFs: "共享盒子文件系统",
+        chCredFill: "填写凭证",
+        chCredentials: "列出凭证",
+        chFinance: "财务调用",
+        chJobs: "求职搜索",
+        chSlackClaim: "Slack 认领（沙盒）",
+        chSlackDm: "私聊 Slack",
+        chSlackDraft: "Slack 草稿",
+        chSlackThread: "Slack 讨论串",
+        chTeamsClaim: "Teams 认领（沙盒）",
+        chTeamsDraft: "Teams 草稿",
+        chTeamsSend: "Teams 发送",
+        chWorkflows: "列出工作流",
+        chXsearch: "X 搜索",
+        channelsMeta: "降级 · 主路径是上方钉钉/飞书/企微",
+        cloudDeliver: "投递上一个产物",
+        cloudLaunch: "启动云端代理",
+        cloudMeta: "本地代理 · 交付产物",
+        cnCardState: "钉钉 未开启 · 飞书 未开启 · 企微 未开启",
+        cnDingtalk: "发钉钉",
+        cnFeishu: "发飞书",
+        cnNextHint: "这四栏密钥一律可选：留空不挡保存，已配过的会标「已配置 ****尾4」。",
+        cnWecom: "发企微",
+        connectFinance: "连接财务",
+        connectGmail: "连接 Gmail",
+        connectIdentity: "身份浏览器",
+        connectOutlook: "连接 Outlook",
+        connectSlack: "连接 Slack",
+        connectorsMeta: "降级保留 · 主渠道见上方国内钉钉/飞书/企微",
+        cuFlight: "预订航班",
+        cuFood: "点餐",
+        cuMeta: "导航 · 操作 · 视觉（私有 CDP）",
+        cuNative: "本地点击",
+        cuOcr: "OCR 一遍",
+        cuOpen: "打开 example.com",
+        cuPaywall: "付费墙测试",
+        cuShop: "购物剧本",
+        cuTravel: "旅游 expedia",
+        delAttachFile: "添加附件",
+        delChannelPlan: "渠道套餐（应用内）",
+        delExport: "导出 Bot 模板",
+        delInboundReact: "接收方表态",
+        delJournalQuery: "查询日志",
+        delLearn: "从演示学习",
+        delListSkills: "列出技能",
+        delLoadSkill: "加载技能",
+        delMarkdown: "渲染 Markdown",
+        delOpenThread: "打开讨论串",
+        delReact: "消息表态",
+        delSection: "段落发布",
+        delSectionAdd: "添加段落",
+        delSkill: "编写技能",
+        delSlides: "生成幻灯片",
+        delTodoList: "列出待办",
+        delTodoWrite: "写待办",
+        delXPost: "发布 X 草稿",
+        deliveryMeta: "文本 · 小组件 · 附件 · 语音 · 反应 · 讨论串 · 光标代理 · 密钥请求",
+        jsonOut: "turn JSON (v:1) — Alt+D 切换调试",
+        machList: "列出机器",
+        machinesMeta: "桌面 · 手机在「配对」里连上后显示在线",
+        mailClaim: "认领收件箱",
+        mailCold: "冷启动邮件",
+        mailDraft: "起草邮件",
+        mailMeeting: "会议纪要",
+        mailMeta: "沙盒 eml · ICS · 回执",
+        mailOnbehalf: "代为发送",
+        mailOutlook: "Outlook 草稿",
+        mailPurchase: "下单（沙盒）",
+        mailRead: "读邮件",
+        mailSchedule: "安排会议",
+        mailSearch: "搜索邮件",
+        mediaChart: "结构化图表",
+        mediaImage: "生成图片",
+        mediaMeta: "生成 · 观察 · 结构化图表",
+        mediaVideo: "生成视频",
+        mediaWatch: "观看最新视频",
+        memRecall: "回忆",
+        memRemember: "记住",
+        memSharedPut: "共享写入",
+        memSharedRead: "共享读取",
+        memoryMeta: "记忆 k=v · 回忆（desktop-host.json）",
+        pendingBarBtn: "查看",
+        permissionDismiss: "关闭卡片",
+        pluginGet: "获取 plugin-slides",
+        pluginInstall: "安装 plugin-slides",
+        pluginList: "列出插件",
+        pluginMcpCall: "调用 MCP · Gmail 搜索",
+        pluginMcpDiscover: "发现 MCP",
+        pluginUninstall: "卸载 plugin-slides",
+        pluginsMeta: "列出 · 获取 · 安装 → 就绪 · 卸载 → 不可用",
+        prefGuide: "引导授权",
+        prefLocal: "关闭本地执行",
+        prefNotify: "通知设置",
+        prefReset: "重置电脑",
+        prefSetNotify: "关闭通知",
+        prefUpdate: "更新电脑",
+        prefsMeta: "设置走 Host 效果（不假装）",
+        probeConnectors: "列出连接器",
+        routinesMeta: "持久 Host 唤醒（非 cron 假装）",
+        rtAutoReview: "自动审批设置",
+        rtCreate: "创建定时任务",
+        rtFire: "触发定时任务",
+        rtList: "列出定时任务",
+        rtListScheduled: "列出已计划",
+        rtPause: "暂停定时任务",
+        rtReminder: "创建提醒",
+        rtResume: "恢复定时任务",
+        rtTick: "触发定时任务",
+        sbLabelManageApps: "管理 Bot / 应用",
+        sbMore: "更多",
+        sbTitleAgents: "侧栏代理",
+        sbTitleDevicePermission: "设备权限",
+        scCode: "代码改动计划",
+        scCreatePr: "创建 PR 计划",
+        scStatus: "Git 状态",
+        secGate: "跑验收门禁",
+        secInboundUrl: "入站公网 URL：读取中…",
+        secOtaCheck: "查更新",
+        secProbe: "试连大脑",
+        secProbeCn: "试连国内渠道",
+        secSave: "保存并热加载",
+        shotMoreBtn: "📷 截图（框选）",
+        shotScreenBtn: "🖥 整屏截图",
+        sourceControlMeta: "状态 · 计划门控（BITBOT_GH_PR_CREATE）",
+        stAltChannelsSame: "同一份",
+        stAltChannelsSameTail: "；切到对应渠道时不用再填一遍。",
+        stBotDeleteConfirmNote: "确认永久删除（CM-1907 · 非设置项）",
+        stCnCallbackTokenHint: "（接收事件服务器用，可选）",
+        stCnCallbackTokenLabel: "回调 Token",
+        stCnChannelsLead: "勾选即开启推送，三项互不影响。填完点下面的「保存并热加载」写入，再点「试连国内渠道」验证真的发得出去。",
+        stCnChannelsTitle: "国内通信渠道",
+        stCnFeishuEncryptHint: "（事件订阅「加密」用，可选）",
+        stCnFeishuVerifyHint: "（事件订阅「验签」用，可选）",
+        stCnSigningKeyHint: "（机器人安全设置里 SEC 开头那串，可选）",
+        stCnSigningKeyLabel: "加签密钥",
+        stCnWebhookHint: "（机器人设置里整段复制，地址自带 access_token）",
+        stCnWebhookLabel: "Webhook 地址",
+        stCnWecomTitle: "企微",
+        stColon: "：",
+        stCurrentVersion: "当前版本",
+        stLangZhCn: "简体中文",
+        stLangZhTw: "繁體中文",
+        stProviderCustom: "自定义 · OpenAI 兼容端点",
+        stProviderDeepSeek: "DeepSeek（官方）",
+        stProviderGateway: "企业网关 / 代理转发",
+        stProviderIdHint: "写进配置里的 provider_id；留空就跟着上面选的服务商。",
+        stProviderLabelField: "provider 标签",
+        stProviderOpenRouter: "OpenRouter（聚合网关）",
+        stProviderQwen: "通义千问（DashScope 兼容模式）",
+        stProviderTavily: "Tavily（有免费额度）",
+        stQwenLabel: "通义千问",
+        stRelayModeDial: "dial · 主动拨（同网部署）",
+        stRelayModeReverse: "reverse · 反向隧道（推荐）",
+        stUpdateSource: "更新源",
+        stUpdateSourceHint: "留空走默认更新源；企业内网/私有分发填自己的目录。",
+        stUpdateSourceUrl: "更新源 URL",
+        stUpdatesNote: "版本信息、更新源与安装都在这一页；桌面外壳不再另设「更新」入口。",
+        stUsageNote: "本周真实 LLM 用量；数字全部来自 llm-usage.json，无数据即空态，不造假",
+        teammatesMeta: "本机的持久化存储",
+        tmCreate: "新建队友",
+        tmListChannels: "列出频道",
+        tmListMembers: "列出成员",
+        tmListModels: "列出模型",
+        tmMembers: "成员面板",
+        tmMembersGroup: "打开成员群组",
+        tmOpenCanvas: "打开放画板",
+        tmRoom: "群聊回合",
+        tmRoomJoin: "加入群聊",
+        tmRoomPost: "发送到群聊",
+        tmSend: "发送到代理",
+        tmSubagent: "派生子代理",
+        toolClearChat: "清空会话",
+        toolCreateCanvas: "新建画板",
+        toolDevice: "设备工具",
+        toolDnd: "免打扰",
+        toolEditMessage: "编辑消息",
+        toolExportChat: "导出会话",
+        toolJournal: "查询日志",
+        toolJournalAppend: "追加日志",
+        toolJournalRange: "范围查询日志",
+        toolListdir: "列目录 docs",
+        toolMuteChannel: "频道静音",
+        toolOpenTerminal: "打开终端",
+        toolPinMessage: "钉住消息",
+        toolPingHost: "本机连通性",
+        toolPkg: "安装软件包",
+        toolPkgNpm: "npm 安装",
+        toolReactMessage: "消息表态",
+        toolRead: "读取 README",
+        toolRecordVideo: "录制视频",
+        toolShareScreen: "共享屏幕",
+        toolShell: "Shell 回显",
+        toolTakePhoto: "拍照",
+        toolToggleTheme: "切换主题",
+        toolVersionInfo: "版本信息",
+        toolWebfetch: "抓取 example.com",
+        toolsMeta: "shell · 列目录 · 读取 (ADR 0002)",
+        tpBoxSub: "诊断 / 环境 / 时钟 (CM-0607/0608/2175)",
+        tpBoxTitle: "云端盒子",
+        tpChannelsSub: "Slack / Teams 出站 + 认领",
+        tpChannelsSummary: "海外渠道实验室（Slack/Gmail · 非产品主路径）",
+        tpCloudSub: "Cursor 代理卡（CM-2131）",
+        tpCloudTitle: "云服务",
+        tpCnChannelsSub: "钉钉 / 飞书 / 企微",
+        tpCnChannelsTitle: "国内渠道",
+        tpConnectorsSub: "Slack / Gmail / Outlook 连接器",
+        tpConnectorsSummary: "海外 Connectors（Slack/Gmail · 非本阶段主路径）",
+        tpCuTitle: "云端 Chrome CU（CM-0802）",
+        tpDeliverySub: "发给用户",
+        tpDeliveryTitle: "投递",
+        tpMachinesRefreshHint: "请求刷新机器列表",
+        tpMailSub: "草稿 · 冷启 · 代理 · 认领",
+        tpMailTitle: "邮件 / 商务",
+        tpMediaSub: "图片 / 视频 / 图表（CM-1601–1603 / 2157）",
+        tpMediaTitle: "媒体",
+        tpMemoryTitle: "本机会话种子",
+        tpPluginsTitle: "MCP 插件 (CM-0904 / 2107 / 2108)",
+        tpPrefsSub: "通知 · 电脑 · 引导",
+        tpPrefsTitle: "本机偏好",
+        tpRoutinesSub: "排程 · 触发 · 心跳",
+        tpSourceControlSub: "git / PR 计划",
+        tpSourceControlTitle: "源码管理",
+        tpTitleRoster: "多端花名册",
+        tpToolsSub: "命令行 / 文件系统（Host FFI）",
+        tpToolsTitle: "工具",
+        tpVoiceSub: "会话 / 中继 / 结束",
+        tpVoiceTitle: "语音",
+        tpWebhookSub: "定时任务触发 (CM-0411)",
+        tpWebhookTitle: "Webhook 回调",
+        voiceEnd: "结束语音",
+        voiceHuddleEnd: "结束会议",
+        voiceHuddleStart: "开始临时会议",
+        voiceMeta: "开始 · 中继 WAV · 结束写入",
+        voiceRelay: "语音中继",
+        voiceStart: "开始语音",
+        webhookMeta: "打开面板 · 用户复制 URL/密钥 · 工具不可见密钥",
+        whCopyKey: "拷贝密钥",
+        whOpen: "打开回调面板",
+        whToolRead: "工具读取密钥（必须拒绝）",
+        whWake: "模拟唤醒回调",
+        attachRejected: "附件被拒绝: {{code}}",
+        channelLiveNo: "无 live（不假装）",
+        channelLiveYes: "至少一路 live",
+        channelProbeError: "渠道试连异常 · {{err}}",
+        channelProbeOk: "渠道试连 · {{live}} · {{parts}}",
+        cnPushEnabledButEmpty: "勾选了开启推送，{{label}}还是空的",
+        composerCurrentChatTitle: "当前对话：{{name}}",
+        computerHandback: "已交还控制权（handback）。可以在对话里让 Bot 从当前页面继续。",
+        computerShotResidual: "截屏 residual：{{residual}}（无 DISPLAY，不假装有帧）",
+        computerTakeover: "接管中：{{guidance}}",
+        fetchFailedPrefix: "抓取失败：{{why}}",
+        gateFailPrefix: "门禁 FAIL（exit {{code}}）",
+        groupChatDefaultTitle: "群聊 {{date}}",
+        groupCreateFailed: "创建失败：{{err}}",
+        groupCreated: "群组已建（intent={{intent}}）：{{title}}",
+        groupMaxBots: "最多 6 个 Bot（GP-50）",
+        inboundLocalLabel: "入站本机 {{url}}",
+        inboundPublicLabel: "入站公网（贴进钉钉/飞书/企微控制台）: {{url}}",
+        kernelUnknown: "kernel 未识别",
+        micNotAuthorized: "麦克风没有授权。到「{{path}}」里勾上 Bit Bot，然后重开应用。",
+        micUnavailable: "麦克风打不开（{{err}}）。到「{{path}}」确认已勾上 Bit Bot。",
+        noFrameHonest: "无帧（诚实 residual：{{residual}}）。有 DISPLAY 且 Bot 运行 computer-use 任务时自动出现真帧。",
+        noFrameResidual: "无帧（residual：{{err}}）",
+        phBodyNotPastedYet: "正文还没粘进来——粘完再点「开始搭建」",
+        phPasteTutorialHere: "把教程正文粘到这里…",
+        probeError: "试连异常 · {{err}}",
+        probeFail: "试连失败 · {{err}}（不假装成功）",
+        probeOk: "试连成功 · {{id}}",
+        ruleAlwaysAllowHit: "Always allow 规则命中：{{kind}} → 同类操作后续自动执行。",
+        ruleAlwaysAllowSaved: "Always allow 规则已持久化：{{pattern}}（intent={{intent}}）",
+        ruleSaveFailed: "规则写入失败：{{err}}",
+        secretConfiguredMasked: "已配置 {{masked}}",
+        secretConfiguredSwap: "已配置 {{masked}} · 要换就粘新的",
+        secretKeyProblem: "密钥栏有 {{n}} 处像是粘错了（该栏下方红字），没有写入",
+        secretNotConfigured: "未配置",
+        secretSaved: "已保存 {{applied}} → {{path}}",
+        statusBrain: "大脑={{provider}}/{{model}}{{key}}",
+        statusChannels: "渠道={{v}}",
+        statusConfigured: "已配",
+        statusFiling: "备案={{v}}",
+        statusInbound: "入站={{v}}",
+        statusInboundColon: " · 入站:{{port}}",
+        statusMobileDeferred: "移动=暂缓",
+        statusMobileReady: "移动=可配对",
+        statusModeration: "审核={{v}}",
+        statusNoKey: "·缺key",
+        statusReady: "·就绪",
+        taskUnrecognized: "（未识别）",
+        teamBuiltFromTutorial: "按教程识别到团队：《{{title}}》\n角色：{{roles}}\n目标：{{task}}",
+        teamBuiltToast: "已按教程搭好团队《{{title}}》：{{n}} 个岗位 Bot + 协作群{{dir}}{{files}}",
+        toastFetchingLink: "正在抓取链接内容…",
+        toastInferringFromText: "正在从正文反推团队结构…",
+        toastLinkFailed: "没能读取这个链接：{{why}}",
+        toastLlmInferring: "正在用 LLM 反推团队结构…",
+        toastNeedLlmKey: "需先在「设置」里配置可用的 LLM 密钥，才能从正文反推团队结构",
+        toastNoReadableBody: "没有可读的正文，无法组建团队",
+        toastNoRunningTurn: "没有在执行的回合",
+        toastReadingAttachment: "正在读取附件正文…",
+        toastTeamStructureFailed: "无法从正文识别团队结构（{{reason}}），请换个链接或贴正文",
+        toastTeamStructureFailedShort: "无法从正文识别团队结构（{{reason}}）",
+        toastTeamTemplateNoRoles: "该团队模板缺少角色定义",
+        voiceEmptyRecording: "录音为空，未提交",
+        voiceFailed: "录音失败: {{err}}",
+        voiceResidualNote: "（{{residual}}，转写需你在下方补文字）",
+        voiceSaved: "录音已存 {{path}}{{residual}}",
+        voiceUnavailable: "语音输入不可用：无麦克风 API（residual，不伪造转写）",
+        warnUnknownEffectBot: "[KP-08] Bot 面收到不认识的效果：{{type}}",
+        warnUnknownEffectSession: "[KP-08] 会话面收到不认识的效果：{{type}}",
+        approvalCardTitle: "Bit Bot 需要你的确认",
+        cnWebhookLabel: "Webhook 地址",
+        mentionEveryoneLabel: "全部成员",
+        providerCustomHint: "自建端点：vLLM / Ollama（http://127.0.0.1:11434/v1）/ LM Studio 等，Base 一般以 /v1 结尾。",
+        providerCustomLabel: "自定义端点",
+        providerDeepSeekHint: "DeepSeek 官方端点。",
+        providerGatewayHint: "企业网关 / 代理：Base 指向网关，模型名与 Key 由网关下发；协议不同就在网关侧转换。",
+        providerGatewayLabel: "企业网关",
+        providerMoonshotHint: "Moonshot 官方端点。",
+        providerOpenRouterHint: "聚合网关：模型名带厂商前缀。",
+        providerQwenHint: "DashScope 的 OpenAI 兼容模式。",
+        providerQwenLabel: "通义千问",
+        taskDoneCardTitle: "Bit Bot 完成任务",
+        cnChannelOff: "未开启",
+        cnChannelOn: "已开启",
+        cnFieldsInvalid: "国内渠道有字段要改（该栏下方红字），没有写入",
+        cnSecretHeldNote: "（{{keys}} 已配置，无需重填）",
+        cnVendorDingtalk: "钉钉",
+        cnVendorFeishu: "飞书",
+        cnVendorWecom: "企微",
+        cnWebhookMustHttp: "要以 http:// 或 https:// 开头（在钉钉机器人设置里整段复制）",
+        cnWebhookNoToken: "这段地址里没有 access_token，粘的可能是机器人主页而不是 Webhook",
+        secretHide: "隐藏",
+        secretShow: "显示",
       },
       "zh-TW": {
+
+        appTitle: "Bit Bot 桌面版",
         agentActionOpenCloudProxy: "開啟雲端代理",
         agentMetaProxy: "代理 · {{id}}",
         artifactActionOpenSystem: "用系統程式開啟",
@@ -20558,8 +20958,358 @@
         rVoiceEnd: "語音對話已結束（{id}），通話錄音已存入本對話的 Voice chat 卡。",
         rVoiceRelay: "通話中已轉述 {n} 輪。",
         chatCreatedHint: "新工作已建立 · 輸入訊息開始",
+        activeModelLabel: "預設",
+        addAttachmentBtn: "📎 新增附件",
+        agHide: "隱藏研究代理",
+        agList: "列出代理",
+        agentInfoTitle: "代理資訊",
+        agentsMeta: "列表 · 隱藏 (CM-1906/1907)",
+        botDeleteTitle: "刪除 Bot",
+        boxBareChrome: "啟動裸 Chrome（拒絕）",
+        boxChrome: "瀏覽器探測",
+        boxClock: "盒子時鐘",
+        boxCopyFrom: "從盒子拷貝",
+        boxCopyTo: "拷貝到盒子",
+        boxDoctor: "盒子診斷",
+        boxEnv: "盒子環境",
+        boxMeta: "自檢 · 執行時 · 時區對齊",
+        boxScreenshot: "截屏",
+        boxSharedFs: "共用盒子檔案系統",
+        chCredFill: "填寫憑證",
+        chCredentials: "列出憑證",
+        chFinance: "財務呼叫",
+        chJobs: "求職搜尋",
+        chSlackClaim: "Slack 認領（沙盒）",
+        chSlackDm: "私聊 Slack",
+        chSlackDraft: "Slack 草稿",
+        chSlackThread: "Slack 討論串",
+        chTeamsClaim: "Teams 認領（沙盒）",
+        chTeamsDraft: "Teams 草稿",
+        chTeamsSend: "Teams 發送",
+        chWorkflows: "列出工作流",
+        chXsearch: "X 搜尋",
+        channelsMeta: "降級 · 主路徑是上方釘釘/飛書/企微",
+        cloudDeliver: "投遞上一個產物",
+        cloudLaunch: "啟動雲端代理",
+        cloudMeta: "本機代理 · 交付產物",
+        cnCardState: "釘釘 未開啟 · 飛書 未開啟 · 企微 未開啟",
+        cnDingtalk: "發釘釘",
+        cnFeishu: "發飛書",
+        cnNextHint: "這四欄密鑰一律可選：留空不擋儲存，已配過的會標「已配置 ****尾4」。",
+        cnWecom: "發企微",
+        connectFinance: "連接財務",
+        connectGmail: "連接 Gmail",
+        connectIdentity: "身分瀏覽器",
+        connectOutlook: "連接 Outlook",
+        connectSlack: "連接 Slack",
+        connectorsMeta: "降級保留 · 主渠道見上方國內釘釘/飛書/企微",
+        cuFlight: "預訂航班",
+        cuFood: "點餐",
+        cuMeta: "導航 · 操作 · 視覺（私有 CDP）",
+        cuNative: "本機點擊",
+        cuOcr: "OCR 一遍",
+        cuOpen: "開啟 example.com",
+        cuPaywall: "付費牆測試",
+        cuShop: "購物劇本",
+        cuTravel: "旅遊 expedia",
+        delAttachFile: "新增附件",
+        delChannelPlan: "渠道套餐（應用內）",
+        delExport: "匯出 Bot 範本",
+        delInboundReact: "接收方表態",
+        delJournalQuery: "查詢日誌",
+        delLearn: "從示範學習",
+        delListSkills: "列出技能",
+        delLoadSkill: "載入技能",
+        delMarkdown: "渲染 Markdown",
+        delOpenThread: "開啟討論串",
+        delReact: "訊息表態",
+        delSection: "段落發佈",
+        delSectionAdd: "新增段落",
+        delSkill: "編寫技能",
+        delSlides: "產生投影片",
+        delTodoList: "列出待辦",
+        delTodoWrite: "寫待辦",
+        delXPost: "發佈 X 草稿",
+        deliveryMeta: "文字 · 小工具 · 附件 · 語音 · 反應 · 討論串 · 游標代理 · 密鑰請求",
+        jsonOut: "turn JSON (v:1) — Alt+D 切換除錯",
+        machList: "列出機器",
+        machinesMeta: "桌面 · 手機在「配對」裡連上後顯示在線",
+        mailClaim: "認領收件匣",
+        mailCold: "冷啟動郵件",
+        mailDraft: "起草郵件",
+        mailMeeting: "會議紀要",
+        mailMeta: "沙盒 eml · ICS · 回執",
+        mailOnbehalf: "代為發送",
+        mailOutlook: "Outlook 草稿",
+        mailPurchase: "下單（沙盒）",
+        mailRead: "讀郵件",
+        mailSchedule: "安排會議",
+        mailSearch: "搜尋郵件",
+        mediaChart: "結構化圖表",
+        mediaImage: "產生圖片",
+        mediaMeta: "產生 · 觀察 · 結構化圖表",
+        mediaVideo: "產生影片",
+        mediaWatch: "觀看最新影片",
+        memRecall: "回憶",
+        memRemember: "記住",
+        memSharedPut: "共用寫入",
+        memSharedRead: "共用讀取",
+        memoryMeta: "記憶 k=v · 回憶（desktop-host.json）",
+        pendingBarBtn: "查看",
+        permissionDismiss: "關閉卡片",
+        pluginGet: "取得 plugin-slides",
+        pluginInstall: "安裝 plugin-slides",
+        pluginList: "列出外掛",
+        pluginMcpCall: "呼叫 MCP · Gmail 搜尋",
+        pluginMcpDiscover: "探索 MCP",
+        pluginUninstall: "卸載 plugin-slides",
+        pluginsMeta: "列出 · 取得 · 安裝 → 就緒 · 卸載 → 不可用",
+        prefGuide: "引導授權",
+        prefLocal: "關閉本機執行",
+        prefNotify: "通知設定",
+        prefReset: "重設電腦",
+        prefSetNotify: "關閉通知",
+        prefUpdate: "更新電腦",
+        prefsMeta: "設定走 Host 效果（不假裝）",
+        probeConnectors: "列出連接器",
+        routinesMeta: "持久 Host 喚醒（非 cron 假裝）",
+        rtAutoReview: "自動審批設定",
+        rtCreate: "建立定時任務",
+        rtFire: "觸發定時任務",
+        rtList: "列出定時任務",
+        rtListScheduled: "列出已排定",
+        rtPause: "暫停定時任務",
+        rtReminder: "建立提醒",
+        rtResume: "恢復定時任務",
+        rtTick: "觸發定時任務",
+        sbLabelManageApps: "管理 Bot / 應用",
+        sbMore: "更多",
+        sbTitleAgents: "側欄代理",
+        sbTitleDevicePermission: "裝置權限",
+        scCode: "程式碼改動計畫",
+        scCreatePr: "建立 PR 計畫",
+        scStatus: "Git 狀態",
+        secGate: "跑驗收門禁",
+        secInboundUrl: "入站公網 URL：讀取中…",
+        secOtaCheck: "查更新",
+        secProbe: "試連大腦",
+        secProbeCn: "試連國內渠道",
+        secSave: "儲存並熱載入",
+        shotMoreBtn: "📷 截圖（框選）",
+        shotScreenBtn: "🖥 全螢幕截圖",
+        sourceControlMeta: "狀態 · 計畫門控（BITBOT_GH_PR_CREATE）",
+        stAltChannelsSame: "同一份",
+        stAltChannelsSameTail: "；切到對應渠道時不用再填一遍。",
+        stBotDeleteConfirmNote: "確認永久刪除（CM-1907 · 非設定項）",
+        stCnCallbackTokenHint: "（接收事件伺服器用，可選）",
+        stCnCallbackTokenLabel: "回呼 Token",
+        stCnChannelsLead: "勾選即開啟推送，三項互不影響。填完點下面的「儲存並熱載入」寫入，再點「試連國內渠道」驗證真的發得出去。",
+        stCnChannelsTitle: "國內通訊渠道",
+        stCnFeishuEncryptHint: "（事件訂閱「加密」用，可選）",
+        stCnFeishuVerifyHint: "（事件訂閱「驗簽」用，可選）",
+        stCnSigningKeyHint: "（機器人安全設定裡 SEC 開頭那串，可選）",
+        stCnSigningKeyLabel: "加簽密鑰",
+        stCnWebhookHint: "（機器人設定裡整段複製，地址自帶 access_token）",
+        stCnWebhookLabel: "Webhook 地址",
+        stCnWecomTitle: "企微",
+        stColon: "：",
+        stCurrentVersion: "目前版本",
+        stLangZhCn: "簡體中文",
+        stLangZhTw: "繁體中文",
+        stProviderCustom: "自訂 · OpenAI 相容端點",
+        stProviderDeepSeek: "DeepSeek（官方）",
+        stProviderGateway: "企業閘道 / 代理轉發",
+        stProviderIdHint: "寫進設定檔的 provider_id；留空就跟著上面選的服務商。",
+        stProviderLabelField: "provider 標籤",
+        stProviderOpenRouter: "OpenRouter（聚合閘道）",
+        stProviderQwen: "通義千問（DashScope 相容模式）",
+        stProviderTavily: "Tavily（有免費額度）",
+        stQwenLabel: "通義千問",
+        stRelayModeDial: "dial · 主動撥（同一網路部署）",
+        stRelayModeReverse: "reverse · 反向隧道（建議）",
+        stUpdateSource: "更新來源",
+        stUpdateSourceHint: "留空走預設更新來源；企業內網／私有分發填自己的目錄。",
+        stUpdateSourceUrl: "更新來源 URL",
+        stUpdatesNote: "版本資訊、更新來源與安裝都在這一頁；桌面外殼不再另設「更新」入口。",
+        stUsageNote: "本週真實 LLM 用量；數字全部來自 llm-usage.json，無資料即空態，不造假",
+        teammatesMeta: "本機的持久化儲存",
+        tmCreate: "新建隊友",
+        tmListChannels: "列出頻道",
+        tmListMembers: "列出成員",
+        tmListModels: "列出模型",
+        tmMembers: "成員面板",
+        tmMembersGroup: "開啟成員群組",
+        tmOpenCanvas: "開啟放畫板",
+        tmRoom: "群聊回合",
+        tmRoomJoin: "加入群聊",
+        tmRoomPost: "發送到群聊",
+        tmSend: "發送到代理",
+        tmSubagent: "派生子代理",
+        toolClearChat: "清除對話",
+        toolCreateCanvas: "新增畫板",
+        toolDevice: "裝置工具",
+        toolDnd: "勿擾",
+        toolEditMessage: "編輯訊息",
+        toolExportChat: "匯出對話",
+        toolJournal: "查詢日誌",
+        toolJournalAppend: "附加日誌",
+        toolJournalRange: "範圍查詢日誌",
+        toolListdir: "列目錄 docs",
+        toolMuteChannel: "頻道靜音",
+        toolOpenTerminal: "開啟終端機",
+        toolPinMessage: "釘住訊息",
+        toolPingHost: "本機連通性",
+        toolPkg: "安裝套件",
+        toolPkgNpm: "npm 安裝",
+        toolReactMessage: "訊息表態",
+        toolRead: "讀取 README",
+        toolRecordVideo: "錄影",
+        toolShareScreen: "共用螢幕",
+        toolShell: "Shell 回顯",
+        toolTakePhoto: "拍照",
+        toolToggleTheme: "切換主題",
+        toolVersionInfo: "版本資訊",
+        toolWebfetch: "抓取 example.com",
+        toolsMeta: "shell · 列目錄 · 讀取 (ADR 0002)",
+        tpBoxSub: "診斷 / 環境 / 時鐘 (CM-0607/0608/2175)",
+        tpBoxTitle: "雲端盒子",
+        tpChannelsSub: "Slack / Teams 出站 + 認領",
+        tpChannelsSummary: "海外渠道實驗室（Slack/Gmail · 非產品主路徑）",
+        tpCloudSub: "Cursor 代理卡（CM-2131）",
+        tpCloudTitle: "雲端服務",
+        tpCnChannelsSub: "釘釘 / 飛書 / 企微",
+        tpCnChannelsTitle: "國內渠道",
+        tpConnectorsSub: "Slack / Gmail / Outlook 連接器",
+        tpConnectorsSummary: "海外 Connectors（Slack/Gmail · 非本階段主路徑）",
+        tpCuTitle: "雲端 Chrome CU（CM-0802）",
+        tpDeliverySub: "發給使用者",
+        tpDeliveryTitle: "投遞",
+        tpMachinesRefreshHint: "要求重新整理機器清單",
+        tpMailSub: "草稿 · 冷啟 · 代理 · 認領",
+        tpMailTitle: "郵件 / 商務",
+        tpMediaSub: "圖片 / 影片 / 圖表（CM-1601–1603 / 2157）",
+        tpMediaTitle: "媒體",
+        tpMemoryTitle: "本機會話種子",
+        tpPluginsTitle: "MCP 外掛 (CM-0904 / 2107 / 2108)",
+        tpPrefsSub: "通知 · 電腦 · 引導",
+        tpPrefsTitle: "本機偏好",
+        tpRoutinesSub: "排程 · 觸發 · 心跳",
+        tpSourceControlSub: "git / PR 計畫",
+        tpSourceControlTitle: "原始碼管理",
+        tpTitleRoster: "多端花名冊",
+        tpToolsSub: "命令列 / 檔案系統（Host FFI）",
+        tpToolsTitle: "工具",
+        tpVoiceSub: "會話 / 中繼 / 結束",
+        tpVoiceTitle: "語音",
+        tpWebhookSub: "定時任務觸發 (CM-0411)",
+        tpWebhookTitle: "Webhook 回呼",
+        voiceEnd: "結束語音",
+        voiceHuddleEnd: "結束會議",
+        voiceHuddleStart: "開始臨時會議",
+        voiceMeta: "開始 · 中繼 WAV · 結束寫入",
+        voiceRelay: "語音中繼",
+        voiceStart: "開始語音",
+        webhookMeta: "開啟面板 · 使用者複製 URL/密鑰 · 工具不可見密鑰",
+        whCopyKey: "拷貝密鑰",
+        whOpen: "開啟回呼面板",
+        whToolRead: "工具讀取密鑰（必須拒絕）",
+        whWake: "模擬喚醒回呼",
+        attachRejected: "附件被拒絕: {{code}}",
+        channelLiveNo: "無 live（不假裝）",
+        channelLiveYes: "至少一路 live",
+        channelProbeError: "渠道試連異常 · {{err}}",
+        channelProbeOk: "渠道試連 · {{live}} · {{parts}}",
+        cnPushEnabledButEmpty: "勾選了開啟推送，{{label}}還是空的",
+        composerCurrentChatTitle: "目前對話：{{name}}",
+        computerHandback: "已交還控制權（handback）。可以在對話裡讓 Bot 從目前頁面繼續。",
+        computerShotResidual: "截圖 residual：{{residual}}（無 DISPLAY，不假裝有幀）",
+        computerTakeover: "接管中：{{guidance}}",
+        fetchFailedPrefix: "抓取失敗：{{why}}",
+        gateFailPrefix: "門禁 FAIL（exit {{code}}）",
+        groupChatDefaultTitle: "群聊 {{date}}",
+        groupCreateFailed: "建立失敗：{{err}}",
+        groupCreated: "群組已建（intent={{intent}}）：{{title}}",
+        groupMaxBots: "最多 6 個 Bot（GP-50）",
+        inboundLocalLabel: "入站本機 {{url}}",
+        inboundPublicLabel: "入站公網（貼進釘釘/飛書/企微控制台）: {{url}}",
+        kernelUnknown: "kernel 未識別",
+        micNotAuthorized: "麥克風沒有授權。到「{{path}}」裡勾上 Bit Bot，然後重開應用。",
+        micUnavailable: "麥克風打不開（{{err}}）。到「{{path}}」確認已勾上 Bit Bot。",
+        noFrameHonest: "無幀（誠實 residual：{{residual}}）。有 DISPLAY 且 Bot 執行 computer-use 任務時自動出現真幀。",
+        noFrameResidual: "無幀（residual：{{err}}）",
+        phBodyNotPastedYet: "正文還沒貼進來——貼完再點「開始搭建」",
+        phPasteTutorialHere: "把教學正文貼到這裡…",
+        probeError: "試連異常 · {{err}}",
+        probeFail: "試連失敗 · {{err}}（不假裝成功）",
+        probeOk: "試連成功 · {{id}}",
+        ruleAlwaysAllowHit: "Always allow 規則命中：{{kind}} → 同類操作後續自動執行。",
+        ruleAlwaysAllowSaved: "Always allow 規則已持久化：{{pattern}}（intent={{intent}}）",
+        ruleSaveFailed: "規則寫入失敗：{{err}}",
+        secretConfiguredMasked: "已設定 {{masked}}",
+        secretConfiguredSwap: "已設定 {{masked}} · 要換就貼新的",
+        secretKeyProblem: "密鑰欄有 {{n}} 處像是貼錯了（該欄下方紅字），沒有寫入",
+        secretNotConfigured: "未設定",
+        secretSaved: "已儲存 {{applied}} → {{path}}",
+        statusBrain: "大腦={{provider}}/{{model}}{{key}}",
+        statusChannels: "渠道={{v}}",
+        statusConfigured: "已配",
+        statusFiling: "備案={{v}}",
+        statusInbound: "入站={{v}}",
+        statusInboundColon: " · 入站:{{port}}",
+        statusMobileDeferred: "移動=暫緩",
+        statusMobileReady: "移動=可配對",
+        statusModeration: "審核={{v}}",
+        statusNoKey: "·缺key",
+        statusReady: "·就緒",
+        taskUnrecognized: "（未識別）",
+        teamBuiltFromTutorial: "按教學識別到團隊：《{{title}}》\n角色：{{roles}}\n目標：{{task}}",
+        teamBuiltToast: "已按教學搭好團隊《{{title}}》：{{n}} 個崗位 Bot + 協作群{{dir}}{{files}}",
+        toastFetchingLink: "正在抓取連結內容…",
+        toastInferringFromText: "正在從正文反推團隊結構…",
+        toastLinkFailed: "沒能讀取這個連結：{{why}}",
+        toastLlmInferring: "正在用 LLM 反推團隊結構…",
+        toastNeedLlmKey: "需先在「設定」裡配置可用的 LLM 密鑰，才能從正文反推團隊結構",
+        toastNoReadableBody: "沒有可讀的正文，無法組建團隊",
+        toastNoRunningTurn: "沒有在執行的回合",
+        toastReadingAttachment: "正在讀取附件正文…",
+        toastTeamStructureFailed: "無法從正文識別團隊結構（{{reason}}），請換個連結或貼正文",
+        toastTeamStructureFailedShort: "無法從正文識別團隊結構（{{reason}}）",
+        toastTeamTemplateNoRoles: "該團隊範本缺少角色定義",
+        voiceEmptyRecording: "錄音為空，未提交",
+        voiceFailed: "錄音失敗: {{err}}",
+        voiceResidualNote: "（{{residual}}，轉寫需你在下方補文字）",
+        voiceSaved: "錄音已存 {{path}}{{residual}}",
+        voiceUnavailable: "語音輸入不可用：無麥克風 API（residual，不偽造轉寫）",
+        warnUnknownEffectBot: "[KP-08] Bot 面收到不認識的效果：{{type}}",
+        warnUnknownEffectSession: "[KP-08] 會話面收到不認識的效果：{{type}}",
+        approvalCardTitle: "Bit Bot 需要你的確認",
+        cnWebhookLabel: "Webhook 地址",
+        mentionEveryoneLabel: "全部成員",
+        providerCustomHint: "自建端點：vLLM / Ollama（http://127.0.0.1:11434/v1）/ LM Studio 等，Base 一般以 /v1 結尾。",
+        providerCustomLabel: "自訂端點",
+        providerDeepSeekHint: "DeepSeek 官方端點。",
+        providerGatewayHint: "企業閘道 / 代理：Base 指向閘道，模型名與 Key 由閘道下發；協議不同就在閘道側轉換。",
+        providerGatewayLabel: "企業閘道",
+        providerMoonshotHint: "Moonshot 官方端點。",
+        providerOpenRouterHint: "聚合閘道：模型名帶廠商前綴。",
+        providerQwenHint: "DashScope 的 OpenAI 相容模式。",
+        providerQwenLabel: "通義千問",
+        taskDoneCardTitle: "Bit Bot 完成任務",
+        cnChannelOff: "未開啟",
+        cnChannelOn: "已開啟",
+        cnFieldsInvalid: "國內渠道有欄位要改（該欄下方紅字），沒有寫入",
+        cnSecretHeldNote: "（{{keys}} 已設定，無需重填）",
+        cnVendorDingtalk: "釘釘",
+        cnVendorFeishu: "飛書",
+        cnVendorWecom: "企微",
+        cnWebhookMustHttp: "要以 http:// 或 https:// 開頭（在釘釘機器人設定裡整段複製）",
+        cnWebhookNoToken: "這段地址裡沒有 access_token，貼的可能是機器人主頁而不是 Webhook",
+        secretHide: "隱藏",
+        secretShow: "顯示",
       },
       en: {
+
+        appTitle: "Bit Bot Desktop",
         agentActionOpenCloudProxy: "Open the cloud proxy",
         agentMetaProxy: "Proxy · {{id}}",
         artifactActionOpenSystem: "Open with the system app",
@@ -21667,11 +22417,370 @@
         rVoiceEnd: "Voice chat ended ({id}); the call recording is kept in this chat as a Voice chat card.",
         rVoiceRelay: "Relayed {n} turn(s) on the call.",
         chatCreatedHint: "New chat created · type a message to start",
+        activeModelLabel: "Default",
+        addAttachmentBtn: "📎 Attach file",
+        agHide: "Hide research agents",
+        agList: "List agents",
+        agentInfoTitle: "Agent info",
+        agentsMeta: "List · Hide (CM-1906/1907)",
+        botDeleteTitle: "Delete Bot",
+        boxBareChrome: "Launch bare Chrome (must refuse)",
+        boxChrome: "Probe the browser",
+        boxClock: "Box clock",
+        boxCopyFrom: "Copy from the box",
+        boxCopyTo: "Copy to the box",
+        boxDoctor: "Box doctor",
+        boxEnv: "Box environment",
+        boxMeta: "Self-check · Runtime · Timezone alignment",
+        boxScreenshot: "Screenshot",
+        boxSharedFs: "Share the box filesystem",
+        chCredFill: "Fill in credentials",
+        chCredentials: "List credentials",
+        chFinance: "Finance call",
+        chJobs: "Job search",
+        chSlackClaim: "Claim on Slack (sandbox)",
+        chSlackDm: "Slack DM",
+        chSlackDraft: "Slack draft",
+        chSlackThread: "Slack thread",
+        chTeamsClaim: "Claim on Teams (sandbox)",
+        chTeamsDraft: "Teams draft",
+        chTeamsSend: "Send to Teams",
+        chWorkflows: "List workflows",
+        chXsearch: "X search",
+        channelsMeta: "Degraded · the main path is DingTalk / Feishu / WeCom above",
+        cloudDeliver: "Deliver the last artifact",
+        cloudLaunch: "Launch the cloud agent",
+        cloudMeta: "Local agent · delivered artifacts",
+        cnCardState: "DingTalk off · Feishu off · WeCom off",
+        cnDingtalk: "Send to DingTalk",
+        cnFeishu: "Send to Feishu",
+        cnNextHint: "All four secret fields are optional: leaving them blank won't block saving; configured ones are marked “configured ****last4”.",
+        cnWecom: "Send to WeCom",
+        connectFinance: "Connect finance",
+        connectGmail: "Connect Gmail",
+        connectIdentity: "Identity browser",
+        connectOutlook: "Connect Outlook",
+        connectSlack: "Connect Slack",
+        connectorsMeta: "Kept as degraded · the main channels are DingTalk / Feishu / WeCom above",
+        cuFlight: "Book a flight",
+        cuFood: "Order food",
+        cuMeta: "Navigate · Act · See (private CDP)",
+        cuNative: "Native click",
+        cuOcr: "Run OCR",
+        cuOpen: "Open example.com",
+        cuPaywall: "Paywall test",
+        cuShop: "Shopping script",
+        cuTravel: "Travel on expedia",
+        delAttachFile: "Attach a file",
+        delChannelPlan: "Channel bundle (in-app)",
+        delExport: "Export Bot template",
+        delInboundReact: "Recipient reaction",
+        delJournalQuery: "Query the journal",
+        delLearn: "Learn from a demo",
+        delListSkills: "List skills",
+        delLoadSkill: "Load skill",
+        delMarkdown: "Render Markdown",
+        delOpenThread: "Open a thread",
+        delReact: "Message reaction",
+        delSection: "Publish a section",
+        delSectionAdd: "Add a section",
+        delSkill: "Write a skill",
+        delSlides: "Generate slides",
+        delTodoList: "List todos",
+        delTodoWrite: "Write a todo",
+        delXPost: "Post an X draft",
+        deliveryMeta: "Text · Widgets · Attachments · Voice · Reactions · Threads · Cursor agent · Key requests",
+        jsonOut: "turn JSON (v:1) — Alt+D toggles debug",
+        machList: "List machines",
+        machinesMeta: "Desktop · the phone shows online once paired",
+        mailClaim: "Claim the inbox",
+        mailCold: "Cold-start email",
+        mailDraft: "Draft an email",
+        mailMeeting: "Meeting notes",
+        mailMeta: "Sandbox eml · ICS · receipts",
+        mailOnbehalf: "Send on my behalf",
+        mailOutlook: "Outlook draft",
+        mailPurchase: "Place an order (sandbox)",
+        mailRead: "Read email",
+        mailSchedule: "Schedule a meeting",
+        mailSearch: "Search email",
+        mediaChart: "Structured chart",
+        mediaImage: "Generate an image",
+        mediaMeta: "Generate · Observe · Structured charts",
+        mediaVideo: "Generate a video",
+        mediaWatch: "Watch the latest video",
+        memRecall: "Recall",
+        memRemember: "Remember",
+        memSharedPut: "Shared write",
+        memSharedRead: "Shared read",
+        memoryMeta: "Memory k=v · recall (desktop-host.json)",
+        pendingBarBtn: "View",
+        permissionDismiss: "Dismiss card",
+        pluginGet: "Get plugin-slides",
+        pluginInstall: "Install plugin-slides",
+        pluginList: "List plugins",
+        pluginMcpCall: "Call MCP · Gmail search",
+        pluginMcpDiscover: "Discover MCP",
+        pluginUninstall: "Uninstall plugin-slides",
+        pluginsMeta: "List · get · install → ready · uninstall → unavailable",
+        prefGuide: "Guided authorization",
+        prefLocal: "Turn off local execution",
+        prefNotify: "Notification settings",
+        prefReset: "Reset the computer",
+        prefSetNotify: "Turn off notifications",
+        prefUpdate: "Update the computer",
+        prefsMeta: "Settings go through real Host effects",
+        probeConnectors: "List connectors",
+        routinesMeta: "Durable Host wake-ups (not fake cron)",
+        rtAutoReview: "Auto-approval settings",
+        rtCreate: "Create a scheduled task",
+        rtFire: "Fire the scheduled task",
+        rtList: "List scheduled tasks",
+        rtListScheduled: "List what's scheduled",
+        rtPause: "Pause the scheduled task",
+        rtReminder: "Create a reminder",
+        rtResume: "Resume the scheduled task",
+        rtTick: "Fire the scheduled task",
+        sbLabelManageApps: "Manage bots / apps",
+        sbMore: "More",
+        sbTitleAgents: "Sidebar agents",
+        sbTitleDevicePermission: "Device permissions",
+        scCode: "Plan a code change",
+        scCreatePr: "Plan a PR",
+        scStatus: "Git status",
+        secGate: "Run acceptance gates",
+        secInboundUrl: "Inbound public URL: reading…",
+        secOtaCheck: "Check for updates",
+        secProbe: "Probe the brain",
+        secProbeCn: "Probe CN channels",
+        secSave: "Save & hot-reload",
+        shotMoreBtn: "📷 Screenshot (region)",
+        shotScreenBtn: "🖥 Full-screen screenshot",
+        sourceControlMeta: "Status · plan gating (BITBOT_GH_PR_CREATE)",
+        stAltChannelsSame: "The same",
+        stAltChannelsSameTail: "; no need to fill it in again when you switch channels.",
+        stBotDeleteConfirmNote: "Confirm permanent deletion (CM-1907 · not a setting)",
+        stCnCallbackTokenHint: "(for the receiving event server; optional)",
+        stCnCallbackTokenLabel: "Callback token",
+        stCnChannelsLead: "Tick to turn on push; the three are independent. Fill them in, press “Save & hot-reload” below to write them, then press “Probe CN channels” to confirm messages really go out.",
+        stCnChannelsTitle: "Domestic messaging channels",
+        stCnFeishuEncryptHint: "(for the event subscription's “Encrypt” option; optional)",
+        stCnFeishuVerifyHint: "(for the event subscription's “Verify signature” option; optional)",
+        stCnSigningKeyHint: "(the SEC-prefixed string from the bot's security settings; optional)",
+        stCnSigningKeyLabel: "Signing secret",
+        stCnWebhookHint: "(copy the whole thing from the bot's settings; the URL already carries access_token)",
+        stCnWebhookLabel: "Webhook URL",
+        stCnWecomTitle: "WeCom",
+        stColon: ":",
+        stCurrentVersion: "Current version",
+        stLangZhCn: "Simplified Chinese",
+        stLangZhTw: "Traditional Chinese",
+        stProviderCustom: "Custom · OpenAI-compatible endpoint",
+        stProviderDeepSeek: "DeepSeek (official)",
+        stProviderGateway: "Enterprise gateway / proxy forwarding",
+        stProviderIdHint: "The provider_id written into the config; leave it blank to follow the provider picked above.",
+        stProviderLabelField: "provider label",
+        stProviderOpenRouter: "OpenRouter (aggregator gateway)",
+        stProviderQwen: "Qwen (DashScope-compatible mode)",
+        stProviderTavily: "Tavily (free tier)",
+        stQwenLabel: "Qwen",
+        stRelayModeDial: "dial · dial out (same-network deployment)",
+        stRelayModeReverse: "reverse · reverse tunnel (recommended)",
+        stUpdateSource: "Update source",
+        stUpdateSourceHint: "Leave blank to use the default update source; for an intranet or a private distribution, put your own directory here.",
+        stUpdateSourceUrl: "Update source URL",
+        stUpdatesNote: "Version info, update source and install all live on this page; the desktop shell no longer has a separate “Update” entry.",
+        stUsageNote: "This week's real LLM usage; every number comes from llm-usage.json — empty when there's no data, never faked",
+        teammatesMeta: "Durable local storage",
+        tmCreate: "New teammate",
+        tmListChannels: "List channels",
+        tmListMembers: "List members",
+        tmListModels: "List models",
+        tmMembers: "Members panel",
+        tmMembersGroup: "Open member group",
+        tmOpenCanvas: "Open canvas",
+        tmRoom: "Group chat turn",
+        tmRoomJoin: "Join group chat",
+        tmRoomPost: "Post to group chat",
+        tmSend: "Send to agent",
+        tmSubagent: "Spawn subagent",
+        toolClearChat: "Clear the chat",
+        toolCreateCanvas: "New canvas",
+        toolDevice: "Device tools",
+        toolDnd: "Do not disturb",
+        toolEditMessage: "Edit the message",
+        toolExportChat: "Export the chat",
+        toolJournal: "Query the journal",
+        toolJournalAppend: "Append to the journal",
+        toolJournalRange: "Query the journal by range",
+        toolListdir: "List dir docs",
+        toolMuteChannel: "Mute the channel",
+        toolOpenTerminal: "Open a terminal",
+        toolPinMessage: "Pin the message",
+        toolPingHost: "Local connectivity",
+        toolPkg: "Install a package",
+        toolPkgNpm: "npm install",
+        toolReactMessage: "Message reaction",
+        toolRead: "Read README",
+        toolRecordVideo: "Record video",
+        toolShareScreen: "Share the screen",
+        toolShell: "Shell echo",
+        toolTakePhoto: "Take a photo",
+        toolToggleTheme: "Toggle the theme",
+        toolVersionInfo: "Version info",
+        toolWebfetch: "Fetch example.com",
+        toolsMeta: "shell · list dir · read (ADR 0002)",
+        tpBoxSub: "Diagnostics / environment / clock (CM-0607/0608/2175)",
+        tpBoxTitle: "Cloud box",
+        tpChannelsSub: "Slack / Teams outbound + claiming",
+        tpChannelsSummary: "Overseas channel lab (Slack/Gmail · not the product's main path)",
+        tpCloudSub: "Cursor agent card (CM-2131)",
+        tpCloudTitle: "Cloud services",
+        tpCnChannelsSub: "DingTalk / Feishu / WeCom",
+        tpCnChannelsTitle: "Domestic channels",
+        tpConnectorsSub: "Slack / Gmail / Outlook connectors",
+        tpConnectorsSummary: "Overseas connectors (Slack/Gmail · not the main path at this stage)",
+        tpCuTitle: "Cloud Chrome CU (CM-0802)",
+        tpDeliverySub: "Send to the user",
+        tpDeliveryTitle: "Delivery",
+        tpMachinesRefreshHint: "Ask to refresh the machine list",
+        tpMailSub: "Drafts · cold start · on behalf · claiming",
+        tpMailTitle: "Mail / business",
+        tpMediaSub: "Images / video / charts (CM-1601–1603 / 2157)",
+        tpMediaTitle: "Media",
+        tpMemoryTitle: "Local session seeds",
+        tpPluginsTitle: "MCP plugins (CM-0904 / 2107 / 2108)",
+        tpPrefsSub: "Notifications · Computer · Guidance",
+        tpPrefsTitle: "Local preferences",
+        tpRoutinesSub: "Scheduling · triggers · heartbeat",
+        tpSourceControlSub: "git / PR plans",
+        tpSourceControlTitle: "Source control",
+        tpTitleRoster: "Multi-device roster",
+        tpToolsSub: "Command line / filesystem (Host FFI)",
+        tpToolsTitle: "Tools",
+        tpVoiceSub: "Session / relay / end",
+        tpVoiceTitle: "Voice",
+        tpWebhookSub: "Scheduled-task triggers (CM-0411)",
+        tpWebhookTitle: "Webhook callback",
+        voiceEnd: "End voice",
+        voiceHuddleEnd: "End the huddle",
+        voiceHuddleStart: "Start a huddle",
+        voiceMeta: "Start · relay WAV · write on end",
+        voiceRelay: "Voice relay",
+        voiceStart: "Start voice",
+        webhookMeta: "Open the panel · the user copies the URL/secret · tools can't see the secret",
+        whCopyKey: "Copy the secret",
+        whOpen: "Open the callback panel",
+        whToolRead: "Tool reads the secret (must refuse)",
+        whWake: "Simulate a wake callback",
+        attachRejected: "Attachment rejected: {{code}}",
+        channelLiveNo: "no live (not pretending)",
+        channelLiveYes: "at least one live",
+        channelProbeError: "Channel probe threw · {{err}}",
+        channelProbeOk: "Channel probe · {{live}} · {{parts}}",
+        cnPushEnabledButEmpty: "Push is enabled but {{label}} is still empty",
+        composerCurrentChatTitle: "Current chat: {{name}}",
+        computerHandback: "Control handed back. You can ask the bot to continue from the current page.",
+        computerShotResidual: "Screenshot residual: {{residual}} (no DISPLAY — not faking a frame)",
+        computerTakeover: "Taking over: {{guidance}}",
+        fetchFailedPrefix: "Fetch failed: {{why}}",
+        gateFailPrefix: "Gate FAIL (exit {{code}})",
+        groupChatDefaultTitle: "Group chat {{date}}",
+        groupCreateFailed: "Couldn't create it: {{err}}",
+        groupCreated: "Group created (intent={{intent}}): {{title}}",
+        groupMaxBots: "At most 6 bots (GP-50)",
+        inboundLocalLabel: "Inbound on this machine {{url}}",
+        inboundPublicLabel: "Inbound public URL (paste into the DingTalk / Feishu / WeCom console): {{url}}",
+        kernelUnknown: "the kernel didn't recognise it",
+        micNotAuthorized: "The microphone isn't authorized. Tick Bit Bot under “{{path}}” and reopen the app.",
+        micUnavailable: "The microphone won't open ({{err}}). Check that Bit Bot is ticked under “{{path}}”.",
+        noFrameHonest: "No frame (honest residual: {{residual}}). Real frames appear once there's a DISPLAY and the bot runs a computer-use task.",
+        noFrameResidual: "No frame (residual: {{err}})",
+        phBodyNotPastedYet: "The text isn't pasted yet — paste it, then press “Start building”",
+        phPasteTutorialHere: "Paste the guide text here…",
+        probeError: "Probe threw · {{err}}",
+        probeFail: "Probe failed · {{err}} (not pretending it worked)",
+        probeOk: "Probe OK · {{id}}",
+        ruleAlwaysAllowHit: "Always-allow rule hit: {{kind}} → similar actions run automatically from now on.",
+        ruleAlwaysAllowSaved: "Always-allow rule persisted: {{pattern}} (intent={{intent}})",
+        ruleSaveFailed: "Couldn't save the rule: {{err}}",
+        secretConfiguredMasked: "Configured {{masked}}",
+        secretConfiguredSwap: "Configured {{masked}} · paste a new one to replace it",
+        secretKeyProblem: "{{n}} secret field(s) look pasted wrong (red text below); nothing was written",
+        secretNotConfigured: "Not configured",
+        secretSaved: "Saved {{applied}} → {{path}}",
+        statusBrain: "Brain={{provider}}/{{model}}{{key}}",
+        statusChannels: "Channels={{v}}",
+        statusConfigured: "configured",
+        statusFiling: "Filing={{v}}",
+        statusInbound: "Inbound={{v}}",
+        statusInboundColon: " · Inbound: {{port}}",
+        statusMobileDeferred: "Mobile=deferred",
+        statusMobileReady: "Mobile=pairable",
+        statusModeration: "Moderation={{v}}",
+        statusNoKey: "·no key",
+        statusReady: "·ready",
+        taskUnrecognized: "(not recognized)",
+        teamBuiltFromTutorial: "Team detected from the guide: 《{{title}}》\nRoles: {{roles}}\nGoal: {{task}}",
+        teamBuiltToast: "Team 《{{title}}》 set up: {{n}} role bots + a collaboration group{{dir}}{{files}}",
+        toastFetchingLink: "Fetching the link…",
+        toastInferringFromText: "Inferring the team structure from the text…",
+        toastLinkFailed: "Couldn't read this link: {{why}}",
+        toastLlmInferring: "Using the LLM to infer the team structure…",
+        toastNeedLlmKey: "Configure a working LLM key in Settings first to infer a team from the text",
+        toastNoReadableBody: "No readable text — can't build a team",
+        toastNoRunningTurn: "No turn is running",
+        toastReadingAttachment: "Reading the attachment…",
+        toastTeamStructureFailed: "Couldn't identify a team structure in the text ({{reason}}) — try another link or paste the text",
+        toastTeamStructureFailedShort: "Couldn't identify a team structure in the text ({{reason}})",
+        toastTeamTemplateNoRoles: "This team template has no role definitions",
+        voiceEmptyRecording: "The recording was empty; nothing was submitted",
+        voiceFailed: "Recording failed: {{err}}",
+        voiceResidualNote: "({{residual}} — type the transcript below)",
+        voiceSaved: "Recording saved to {{path}}{{residual}}",
+        voiceUnavailable: "Voice input unavailable: no microphone API (residual — not faking a transcript)",
+        warnUnknownEffectBot: "[KP-08] the bot surface got an unknown effect: {{type}}",
+        warnUnknownEffectSession: "[KP-08] the session surface got an unknown effect: {{type}}",
+        approvalCardTitle: "Bit Bot needs your confirmation",
+        cnWebhookLabel: "Webhook URL",
+        mentionEveryoneLabel: "Everyone",
+        providerCustomHint: "Self-hosted endpoint: vLLM / Ollama (http://127.0.0.1:11434/v1) / LM Studio etc. — the Base usually ends with /v1.",
+        providerCustomLabel: "Custom endpoint",
+        providerDeepSeekHint: "DeepSeek's official endpoint.",
+        providerGatewayHint: "Enterprise gateway / proxy: the Base points at the gateway; model name and Key are handed down by it. If the protocol differs, convert it on the gateway side.",
+        providerGatewayLabel: "Enterprise gateway",
+        providerMoonshotHint: "Moonshot's official endpoint.",
+        providerOpenRouterHint: "Aggregator gateway: model names carry a vendor prefix.",
+        providerQwenHint: "DashScope's OpenAI-compatible mode.",
+        providerQwenLabel: "Qwen",
+        taskDoneCardTitle: "Bit Bot finished the task",
+        cnChannelOff: "off",
+        cnChannelOn: "on",
+        cnFieldsInvalid: "Some CN channel fields need changing (see the red text below) — nothing was written",
+        cnSecretHeldNote: "({{keys}} already configured — no need to refill)",
+        cnVendorDingtalk: "DingTalk",
+        cnVendorFeishu: "Feishu",
+        cnVendorWecom: "WeCom",
+        cnWebhookMustHttp: "It has to start with http:// or https:// (copy the whole thing from the bot's settings)",
+        cnWebhookNoToken: "There's no access_token in this URL — you may have pasted the bot's home page instead of the Webhook",
+        secretHide: "Hide",
+        secretShow: "Show",
       },
     };
+    /* 字典到此为止才算存在 —— 之前在脚本求值阶段调 wavegT() 会撞 TDZ。 */
+    I18N_READY = true;
     function wavegT(key) {
-      const d = WAVEG_I18N[wavegLang] || WAVEG_I18N["zh-CN"];
-      return (d && d[key]) || WAVEG_I18N["zh-CN"][key] || key;
+      /* WAVEG_I18N 是文件后半段才初始化的 const —— 在脚本求值阶段取词会撞 TDZ
+         ReferenceError,整个脚本就停在那一行,后面的代码全都不执行(界面停在
+         「正在启动 MoonBit…」)。所以这里兜住:字典还没就绪时返回键名,
+         至少不让一处 eval 期的 t() 把整个页面带走。
+         —— 2026-11-14 M46 第二波踩到过:CN_CHANNEL_ROWS 是顶层 const。 */
+      try {
+        const d = WAVEG_I18N[wavegLang] || WAVEG_I18N["zh-CN"];
+        return (d && d[key]) || WAVEG_I18N["zh-CN"][key] || key;
+      } catch (_) {
+        return key;
+      }
     }
     /* Copy contract v1 §1: t() is the single source for ALL visible copy,
        including dynamic strings. Interpolation accepts {{name}} (contract
@@ -21717,6 +22826,8 @@
         const k = el.getAttribute("data-i18n-aria");
         if (k) el.setAttribute("aria-label", t(k));
       });
+      // 文档标题也是可见文案(合同 §4 的扫描口径含 title)。
+      try { document.title = wavegT("appTitle"); } catch (_) { /* 字典还没就绪 */ }
       // elements with dynamic children keep explicit wiring
       const sum = document.querySelector("#hidden-bots-lab summary");
       if (sum) {
@@ -22215,8 +23326,8 @@
         } else {
           const txt =
             res && res.residual
-              ? "无帧（诚实 residual：" + res.residual + "）。有 DISPLAY 且 Bot 运行 computer-use 任务时自动出现真帧。"
-              : "无帧（residual：" + (res && res.error ? res.error : "unknown") + "）";
+              ? t("noFrameHonest", { residual: res.residual })
+              : t("noFrameResidual", { err: res && res.error ? res.error : "unknown" });
           if (box) box.textContent = txt;
           if (railBox) railBox.textContent = txt;
           if (meta) meta.textContent = t("computerUseMetaFramePolling");
@@ -22345,7 +23456,7 @@
         chip.addEventListener("click", () => {
           if (gpRoomSelected.has(b.id)) gpRoomSelected.delete(b.id);
           else if (gpRoomSelected.size < 6) gpRoomSelected.add(b.id);
-          else gpStatus("gp-group-status", "最多 6 个 Bot（GP-50）");
+          else gpStatus("gp-group-status", t("groupMaxBots"));
           refreshRooms();
         });
         members.appendChild(chip);
@@ -22383,14 +23494,15 @@
       }
       const csv = Array.from(gpRoomSelected).join(",");
       const titleEl = document.getElementById("gp-room-title");
-      const title = (titleEl && titleEl.value.trim()) || "群聊 " + new Date().toISOString().slice(5, 10);
+      const title = (titleEl && titleEl.value.trim())
+          || t("groupChatDefaultTitle", { date: new Date().toISOString().slice(5, 10) });
       const phrase = "create group chat bots=" + csv + " title=" + encodeURIComponentVal(title);
       const res = await window.bitbot.bots.op({ phrase });
       if (status)
         status.textContent =
           res && res.ok
-            ? "群组已建（intent=" + res.intent + "）：" + title
-            : "创建失败：" + (res && res.error ? res.error : "kernel 未识别");
+            ? t("groupCreated", { intent: res.intent, title: title })
+            : t("groupCreateFailed", { err: res && res.error ? res.error : t("kernelUnknown") });
       refreshRooms();
     }
     function sendRoomMessage() {
@@ -22462,7 +23574,7 @@
       }
       await window.bitbot.notify
         .turn({
-          title: needsInput ? "Bit Bot 需要你的确认" : "Bit Bot 完成任务",
+          title: needsInput ? t("approvalCardTitle") : t("taskDoneCardTitle"),
           body: needsInput ? "审批等待处理" : String((r.assistant && r.assistant[0] && r.assistant[0].text) || r.text || "回合完成").slice(0, 120),
           session_id: sid,
           bot_id: activeBotId || "agent-bit",
@@ -23060,7 +24172,7 @@
       }
       if (window.bitbot.onApprovalAlwaysAllow) {
         window.bitbot.onApprovalAlwaysAllow((payload) => {
-          addMsg("assistant", "Always allow 规则命中：" + (payload && payload.kind ? payload.kind : "?") + " → 同类操作后续自动执行。");
+          addMsg("assistant", t("ruleAlwaysAllowHit", { kind: payload && payload.kind ? payload.kind : "?" }));
           refreshApprovalRules();
         });
       }
@@ -23306,7 +24418,7 @@
                 })
                 .join(" · ");
               if (cn.inbound && cn.inbound.listening) {
-                t += " · 入站:" + cn.inbound.port;
+                t += t("statusInboundColon", { port: cn.inbound.port });
               }
               meta.textContent = t;
             }
@@ -23600,7 +24712,7 @@
         // 群里：能点的只有本群成员。点一个不在群里的人，宿主会记 unknown_mentions 并
         // 按「没点名」处理 —— 与其让用户以为定向成功了，不如根本不列出来。
         if (!query || "everyone".indexOf(query) === 0 || "全部成员".indexOf(query) === 0) {
-          push({ token: "everyone", label: "全部成员", meta: wavegT("mentionEveryoneMeta"), info: null });
+          push({ token: "everyone", label: t("mentionEveryoneLabel"), meta: wavegT("mentionEveryoneMeta"), info: null });
         }
         for (const id of members) {
           const info = botInfoById[id] || { id, name: roomBotNames[id] || String(id), avatar: "" };
@@ -23823,7 +24935,7 @@
           .replace("{name}", name);
       }
       if (code.startsWith("no_real_path")) return wavegT("attachNoPath");
-      return "附件被拒绝: " + code;
+      return t("attachRejected", { code: code });
     }
     // G-28: the "＋" button opens the minimal composer's overflow menu
     // (attach / web-search / model / voice-chat), instead of jumping straight
@@ -24040,7 +25152,7 @@
       const st = String(status || "");
       const nm = String(errName || "");
       if (st === "denied" || st === "restricted") {
-        return "麦克风没有授权。到「" + MIC_SETTINGS_PATH + "」里勾上 Bit Bot，然后重开应用。";
+        return t("micNotAuthorized", { path: MIC_SETTINGS_PATH });
       }
       if (nm === "NotFoundError" || nm === "OverconstrainedError") {
         return "没找到可用的麦克风，接一个输入设备再试。";
@@ -24051,7 +25163,7 @@
       if (st === "granted") {
         return "系统已授权但仍打不开麦克风，重开应用后再试一次。";
       }
-      return "麦克风打不开（" + (nm || st || "unknown") + "）。到「" + MIC_SETTINGS_PATH + "」确认已勾上 Bit Bot。";
+      return t("micUnavailable", { err: nm || st || "unknown", path: MIC_SETTINGS_PATH });
     }
     /* 先问宿主 TCC 的真实状态：not-determined 时宿主会弹系统授权框，
        已经是 denied 就不再白问一次（问了也不会弹）。 */
@@ -24071,7 +25183,7 @@
         return;
       }
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        addMsg("assistant", "语音输入不可用：无麦克风 API（residual，不伪造转写）");
+        addMsg("assistant", t("voiceUnavailable"));
         return;
       }
       const pre = await micPreflight();
@@ -24096,18 +25208,21 @@
             b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + 4096));
           }
           if (!b64) {
-            addMsg("assistant", "录音为空，未提交");
+            addMsg("assistant", t("voiceEmptyRecording"));
             return;
           }
           const r = await window.bitbot.voice.ingest({ wav_b64: btoa(b64), session: activeSessionId });
           if (r && r.ok) {
-            addMsg("assistant", "录音已存 " + r.wav_path + (r.residual ? "（" + r.residual + "，转写需你在下方补文字）" : ""));
+            addMsg("assistant", t("voiceSaved", {
+          path: r.wav_path,
+          residual: r.residual ? t("voiceResidualNote", { residual: r.residual }) : "",
+        }));
             if (r.transcript) {
               input.value = r.transcript + " ";
               input.focus();
             }
           } else {
-            addMsg("assistant", "录音失败: " + ((r && (r.error || r.residual)) || "unknown"));
+            addMsg("assistant", t("voiceFailed", { err: (r && (r.error || r.residual)) || "unknown" }));
           }
         };
         mediaRec.start();

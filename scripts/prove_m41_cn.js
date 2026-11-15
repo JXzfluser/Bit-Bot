@@ -53,38 +53,44 @@ function zhValue(src, key) {
   return mm ? mm[1] : null;
 }
 
-/* 一条「前缀必须来自字典、且 zh-CN 词条是中文」的断言。 */
-function localizedByKey(src, key, expectZh, label) {
-  const used = new RegExp('t\\(\\s*"' + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + '"').test(src);
+/* 一条「前缀必须来自字典、且 zh-CN 词条是中文」的断言。
+   usage: 该键的**使用点**正则 —— 渲染器里可以走 t("key")，
+   静态 HTML 里可以走 data-i18n="key"（M46 第二波把静态文案也挂上了字典）。 */
+function localizedByKey(src, key, expectZh, label, usageRe) {
+  const used = usageRe.test(src);
   const val = zhValue(src, key);
   if (used && val === expectZh) {
     ok(label + "（取自字典 " + key + "，可翻译）");
     return true;
   }
-  bad(label, used ? ("字典词条不是 " + JSON.stringify(expectZh) + "，实际 " + JSON.stringify(val)) : ("没走 t(\"" + key + "\")"));
+  bad(label, used ? ("字典词条不是 " + JSON.stringify(expectZh) + "，实际 " + JSON.stringify(val)) : ("这个键没被用上 " + key));
   return false;
 }
 
+/* 渲染器里走 t()，静态 HTML 里走 data-i18n —— 两种都算「用上了」。 */
+const usedInRenderer = (key) => new RegExp('t\\(\\s*"' + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + '"');
+const usedInMarkup = (key) => new RegExp('data-i18n="\\s*' + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + '\\s*"');
+const usedAnywhere = (key) => new RegExp('(t\\(\\s*"|data-i18n=")' + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + '"');
+
 /* ---------- 1) channels meta ---------- */
 localizedByKey(html, "workflowMetaCount", "工作流 · {{count}}",
-  "channels-meta 前缀本地化：workflows · → 工作流 ·");
+  "channels-meta 前缀本地化：workflows · → 工作流 ·", usedInRenderer("workflowMetaCount"));
 
 /* ---------- 2) box meta ---------- */
 localizedByKey(html, "pluginMetaRuntime", "运行环境 · {{runtime}}",
-  "box-meta 前缀本地化：env · → 运行环境 ·");
+  "box-meta 前缀本地化：env · → 运行环境 ·", usedInRenderer("pluginMetaRuntime"));
 
 /* ---------- 3) webhook copied ---------- */
 localizedByKey(html, "commonFeedbackCopied", "已复制 {{what}}",
-  "webhook meta 前缀本地化：copied → 已复制");
+  "webhook meta 前缀本地化：copied → 已复制", usedInRenderer("commonFeedbackCopied"));
 
 /* ---------- 4) delivery last ---------- */
 localizedByKey(html, "memoryMetaRecentTypes", "最近：{{types}}",
-  "delivery meta 前缀本地化：last: → 最近：");
+  "delivery meta 前缀本地化：last: → 最近：", usedInRenderer("memoryMetaRecentTypes"));
 
 /* ---------- 5) cloud-meta enum leak ---------- */
-if (/<div class="meta" id="cloud-meta">本地代理 · 交付产物<\/div>/.test(html)) {
-  ok("cloud-meta 默认值不再外泄内部枚举 local_worker");
-} else { bad("cloud-meta", "still local_worker leak"); }
+localizedByKey(html, "cloudMeta", "本地代理 · 交付产物",
+  "cloud-meta 默认值不再外泄内部枚举 local_worker", usedAnywhere("cloudMeta"));
 
 /* ---------- 6) 保留技术引用（不硬译） ---------- */
 if (/ADR 0002/.test(html) && /\bICS\b/.test(html)) {
