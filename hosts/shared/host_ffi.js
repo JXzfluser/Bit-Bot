@@ -18,6 +18,7 @@ const p0 = require("./p0_security");
 const { createRoomRuntime } = require("./room_runtime");
 const { dispatchRoomTurn } = require("./room_dispatch");
 const effectKinds = require("./effect_kinds");
+const remoteTurn = require("./remote_turn");
 
 /* 「什么形状算密钥」是一份合同:内核(core/secret_shapes.mbt)、
    渲染层(secret_protocol.js)、Host 都得对得上。Host 这边按同样的
@@ -25764,6 +25765,31 @@ function createHostFfi(repoRoot, opts = {}) {
         results.push(
           await executeMultiAgentEffect(kind, cmd, (ffiOpts && ffiOpts.botId) || DEFAULT_BOT_ID),
         );
+        continue;
+      }
+      if (kind === "remote_turn") {
+        // 把一个回合派到**另一台机器**上跑(B-3)。
+        // command 形状: <machine_id>|<text>(按第一个 | 切,正文里的 | 不受影响)。
+        // 对外动作仍然在**目标机器那侧**走它自己的审批闸 —— 这里只递话。
+        const sep = cmd.indexOf("|");
+        const machineId = sep >= 0 ? cmd.slice(0, sep).trim() : cmd.trim();
+        const text = sep >= 0 ? cmd.slice(sep + 1) : "";
+        const sent = await remoteTurn.sendRemoteTurn({
+          dataRoot: DATA_ROOT,
+          machineId,
+          text,
+          sessionId: (ffiOpts && ffiOpts.sessionId) || "",
+          machineKind: (ffiOpts && ffiOpts.machineKind) || "desktop",
+        });
+        results.push({
+          kind,
+          ok: Boolean(sent && sent.ok),
+          command: cmd,
+          stdout: JSON.stringify(sent || {}),
+          stderr: sent && sent.ok ? "" : (sent && sent.error) || "remote_turn_failed",
+          error: sent && sent.ok ? "" : (sent && sent.error) || "remote_turn_failed",
+          mode: "host_remote_turn",
+        });
         continue;
       }
       const productRes = await executeProductDeliveryEffect(kind, cmd);

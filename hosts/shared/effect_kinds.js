@@ -39,6 +39,7 @@ const HOST_ACTION_KINDS = new Set([
   "routine_fire",
   "routine_remove",
   "routine_wake",
+  "remote_turn",
   "secret_store",
   "shell",
   "uninstall_plugin",
@@ -181,6 +182,10 @@ const HOST_ACTION_POLICY = {
   llm_list_models: { mutating: false, approval: "none", source: "host" },
   llm_set_model: { mutating: false, approval: "none", source: "host" },
   mail_draft: { mutating: true, approval: "none", source: "host" },
+  // 跨机派回合(B-3):Host 侧的动作(内核不产生这种 effect)。
+  // mutating:true —— 它在**另一台机器**上做了一件事,自决回合不该顺手派。
+  // approval:none —— 对外动作仍然在**目标机器那侧**走它自己的审批闸。
+  remote_turn: { mutating: true, approval: "none", source: "host" },
   routine_fire: { mutating: true, approval: "none", source: "host" },
   routine_remove: { mutating: true, approval: "none", source: "host" },
   routine_wake: { mutating: true, approval: "none", source: "host" },
