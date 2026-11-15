@@ -2887,9 +2887,9 @@
           </div>
           <div class="gp-lorule">
             <span class="gp-lorule-name" data-i18n="rulePurchase">发起购买</span>
-            <button type="button" class="gp-chip" data-lokind="purchase_item" data-lodecision="follow" data-i18n="followMaster">跟随</button>
-            <button type="button" class="gp-chip" data-lokind="purchase_item" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
-            <button type="button" class="gp-chip" data-lokind="purchase_item" data-lodecision="ask" data-i18n="askFirst">先询问</button>
+            <button type="button" class="gp-chip" data-lokind="purchase" data-lodecision="follow" data-i18n="followMaster">跟随</button>
+            <button type="button" class="gp-chip" data-lokind="purchase" data-lodecision="allow" data-i18n="allowAuto">自动允许</button>
+            <button type="button" class="gp-chip" data-lokind="purchase" data-lodecision="ask" data-i18n="askFirst">先询问</button>
           </div>
           <div class="gp-lorule">
             <span class="gp-lorule-name" data-i18n="ruleMcpCall">调用工具</span>
@@ -6894,7 +6894,12 @@
       }
       if (cls === "Shell") return "shell:*";
       if (cls === "McpMutation" || s.indexOf("mcp") >= 0) return "mcp_call:*";
-      if (cls === "Purchase") return "purchase_item:*";
+      // effect kind 就是 "purchase"(内核 turn_json.mbt 产生的就是它)——
+      // 以前写 "purchase_item:*",这条规则永远匹配不到真正的审批项。
+      // 渲染层在浏览器里 require 不到 hosts/shared/effect_kinds.js,
+      // 所以这里保留一份映射,但**由 scripts/prove_effect_contract.mjs 盯着**
+      // 它与注册表一致(渲染层那份不许自己漂)。
+      if (cls === "Purchase") return "purchase:*";
       if (cls === "LocalMachine" || cls === "CloudAgent") return "computer_use:*";
       if (cls === "Destructive") return null; // never auto-allowable
       return null;

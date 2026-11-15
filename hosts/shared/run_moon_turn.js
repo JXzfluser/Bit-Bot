@@ -65,32 +65,25 @@ function defaultResolveReplyForRoot(repoRoot) {
   };
 }
 
-/* 会改动状态的 effect 分两类，群聊里按回合的职责收口。
-   实测事故：一句「每天 7 点发邮件」在群里落下 13 条定时任务 —— 自决回合、
-   每个成员回合、lead 综合回合各自建了一条。 */
-const SCHEDULE_EFFECT_KINDS = new Set([
-  "routine_schedule",
-  "routine_fire",
-  "routine_pause",
-  "routine_resume",
-  "routine_remove",
-]);
-/* 自决回合（只回 YES/NO）连同别的写操作也不该做：它本就没有"做事"的资格。
-   这里是「已知会写盘」的清单，宁可少列也别把 llm_chat 列进来。 */
-const MUTATING_EFFECT_KINDS = new Set([
-  ...SCHEDULE_EFFECT_KINDS,
-  "teammate_create",
-  "secret_store",
-  "memory_update",
-  "hide_agent",
-  "install_plugin",
-  "uninstall_plugin",
-  "disable_plugin",
-]);
-/* 自决回合真正需要的只有「把 YES/NO 说出来」。这是白名单：除了 llm_chat
-   一律不执行 —— 判定环节不该有任何副作用的可能，也不该指望提示词自觉
-   （room_discretion.js 第 23 行早就写着「不要调用工具」，实测无效）。 */
-const TEXT_ONLY_EFFECT_KINDS = new Set(["llm_chat"]);
+/* 会改动状态的 effect 分两类,群聊里按回合的职责收口。
+   实测事故:一句「每天 7 点发邮件」在群里落下 13 条定时任务 —— 自决回合、
+   每个成员回合、lead 综合回合各自建了一条。
+
+   三个清单**从 effect_kinds.js 派生**,不再手写。
+   以前这里是手抄的,抄错了名:
+     · install_plugin / uninstall_plugin / secret_store / routine_remove /
+       disable_plugin —— 这些是**意图名**或根本不存在的 kind,内核压根不产生
+       这样的 effect ⇒ 清单看着在管插件与凭证,实际上一个都拦不住;
+     · 真正会改盘的 package_install / mcp_uninstall / mcp_tool_toggle /
+       credential_fill 反而**不在**清单里 ⇒ 自决回合能装插件、能写凭证。
+   现在的规矩只有一条:**会改状态的一律不许**(effect_kinds 里 mutating:true),
+   不再靠人手维护一张会漂的表。 */
+const {
+  SCHEDULE_EFFECT_KINDS,
+  TEXT_ONLY_EFFECT_KINDS,
+  mutatingEffectKinds,
+} = require("./effect_kinds");
+const MUTATING_EFFECT_KINDS = mutatingEffectKinds();
 
 /**
  * 按回合职责裁掉不该执行的效果。

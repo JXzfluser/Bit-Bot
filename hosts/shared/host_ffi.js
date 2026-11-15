@@ -17,6 +17,7 @@ const { createProductSession } = require("./agent_loop_product_wire");
 const p0 = require("./p0_security");
 const { createRoomRuntime } = require("./room_runtime");
 const { dispatchRoomTurn } = require("./room_dispatch");
+const effectKinds = require("./effect_kinds");
 
 /* 「什么形状算密钥」是一份合同:内核(core/secret_shapes.mbt)、
    渲染层(secret_protocol.js)、Host 都得对得上。Host 这边按同样的
@@ -362,7 +363,9 @@ function createHostFfi(repoRoot, opts = {}) {
     } else if (cls === "McpMutation") {
       patternKind = "mcp_call";
     } else if (cls === "Purchase") {
-      patternKind = "purchase_item";
+      // effect kind 就是 "purchase"(内核 turn_json.mbt 产生的就是它)——
+      // 以前写 "purchase_item",于是这条规则永远匹配不到真正的审批项。
+      patternKind = "purchase";
     } else if (cls === "LocalMachine" || cls === "CloudAgent") {
       patternKind = "computer_use";
     } else if (cls === "Destructive") {
@@ -25124,18 +25127,11 @@ function createHostFfi(repoRoot, opts = {}) {
               continue;
             }
           }
-          if (
-            !userApproved &&
-            (
-              kind === "shell" ||
-              kind === "channel_send" ||
-              kind === "mail_send" ||
-              kind === "purchase_item" ||
-              kind === "mcp_call" ||
-              kind === "computer_use" ||
-              kind === "delegate_task"
-            )
-          ) {
+          // 要不要问人**从 effect_kinds.js 派生**。
+          // 以前这里是手抄的 7 个 kind,里面写的是 "purchase_item" ——
+          // 而内核产生的 effect kind 是 "purchase" ⇒ **该问的不问**
+          // (用户下单可以不经过审批闸)。手抄的清单就是这么容易漂。
+          if (!userApproved && effectKinds.needsApproval(kind)) {
             const ag = waveGApprovalGate(kind);
             if (ag && !ag.proceed) {
               const pend = surface.appendPendingApproval({
