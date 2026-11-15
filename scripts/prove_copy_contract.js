@@ -387,21 +387,15 @@ if (appTitleZh && appTitleEn && /document\.title\s*=\s*wavegT\(\s*"appTitle"\s*\
     `zh=${JSON.stringify(appTitleZh)} en=${JSON.stringify(appTitleEn)}`);
 }
 
-/* ── CC-13 带中文的 label:/hint: 必须配 labelKey:/hintKey ─────────────────
+/* ── CC-13 渲染器里 0 处中文 label:/hint: 字面量 ────────────────────────────
    这些字段所在的 const 是**脚本求值期**建的(LLM_PRESETS / CN_CHANNEL_ROWS),
-   在那儿直接调 t() 会撞 TDZ —— 所以字面量留作 zh-CN 种子,另配一个键,
-   消费点再翻译。
-   少了 labelKey/hintKey ⇒ 英文界面会直接露出中文 ⇒ 必须有门。 */
+   在那儿直接调 t() 会撞 TDZ —— 所以字面量当初只能留作 zh-CN 种子。
+   现在改成**只留键**(labelKey / hintKey),消费点再取词 ⇒ 字典是唯一来源。
+   种子值清零 ⇒ 这条断言从「有中文就必须配键」升级成「压根不该有中文」。 */
 const zhLabelHits = [...renderer.matchAll(/\b(label|hint)\s*:\s*"((?:[^"\\]|\\.)*[一-鿿](?:[^"\\]|\\.)*)"/g)];
-const zhLabelNoKey = [];
-for (const m of zhLabelHits) {
-  const tail = renderer.slice(m.index, m.index + 420);
-  const kind = m[1];
-  const keyRe = new RegExp("\\b" + kind + "Key\\s*:");
-  if (!keyRe.test(tail)) zhLabelNoKey.push(`${kind}: ${m[2].slice(0, 24)}`);
-}
-if (!zhLabelNoKey.length) ok(`CC-13 带中文的 label:/hint: 都配了对应的 labelKey:/hintKey:（${zhLabelHits.length} 处）`);
-else bad("CC-13 带中文的 label:/hint: 都配了对应的 labelKey:/hintKey:", zhLabelNoKey.slice(0, 6).join(" | "));
+if (!zhLabelHits.length) ok("CC-13 渲染器里 0 处中文 label:/hint: 字面量（字典是唯一来源）");
+else bad("CC-13 渲染器里 0 处中文 label:/hint: 字面量（字典是唯一来源）",
+  zhLabelHits.slice(0, 6).map((m) => m[0].slice(0, 50)).join(" | "));
 
 console.log(`prove_copy_contract: PASS=${PASS} FAIL=${FAIL}`);
 if (FAIL) process.exit(1);

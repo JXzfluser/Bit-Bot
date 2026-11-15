@@ -7819,7 +7819,6 @@
     }
 
     /* ---- M29 (§2.4) group chat entry ---- */
-    const COMPOSER_PLACEHOLDER_DEFAULT = "给 Bit Bot 发消息…";
     let composerRoom = null;
     function roomBannerBits(rm) {
       const n = (rm.members || []).length;
@@ -9426,7 +9425,7 @@
       const ta = document.getElementById("ri-text");
       if (ta) ta.value = "";
       const input2 = document.querySelector("#composer #text");
-      if (input2) input2.placeholder = COMPOSER_PLACEHOLDER_DEFAULT;
+      if (input2) input2.placeholder = t("placeholder");
     }
     // 群回合是 Host 异步链：running 状态与「有新行可读」都由 Host 事件驱动，
     // 渲染层不自己拼状态，避免和 rooms.json 漂移。
@@ -9877,7 +9876,7 @@
         const hintEl = document.getElementById("sec-llm-hint");
         if (hintEl && LLM_PRESETS[key]) {
           const hp = LLM_PRESETS[key];
-          hintEl.textContent = (hp.hintKey && t(hp.hintKey)) || hp.hint;
+          hintEl.textContent = (hp.hintKey && t(hp.hintKey)) || "";
         }
         renderLlmModelChips(key);
       }
@@ -9979,7 +9978,6 @@
         fields: [
           {
             id: "sec-ding-hook",
-            label: "Webhook 地址",
             labelKey: "cnWebhookLabel",
             key: "BITBOT_DINGTALK_WEBHOOK",
             check: function (v) {
@@ -10047,7 +10045,7 @@
               /* 空栏 + 盘上已配置 ≠ 没配：这时报「还是空的」是谎话，还会把保存按死。
                  用户真想换地址就直接粘新的，粘了走下面的 check。 */
               if (f.key && CN_MASKED_PRESENT[f.key]) return;
-              msgs.push(t("cnPushEnabledButEmpty", { label: f.labelKey ? t(f.labelKey) : f.label }));
+              msgs.push(t("cnPushEnabledButEmpty", { label: f.labelKey ? t(f.labelKey) : "" }));
             } else if (f.check) {
               const m = f.check(v);
               if (m) msgs.push(f.label + "：" + m);
@@ -14052,59 +14050,50 @@
     const LLM_PRESETS = {
       deepseek: {
         provider: "deepseek",
-        label: "DeepSeek",
+        labelKey: "providerDeepSeekLabel",
         base: "https://api.deepseek.com/v1",
         model: "deepseek-chat",
         models: ["deepseek-chat", "deepseek-reasoner"],
-        hint: "DeepSeek 官方端点。",
         hintKey: "providerDeepSeekHint",
       },
       qwen: {
         provider: "qwen",
-        label: "通义千问",
         labelKey: "providerQwenLabel",
         base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
         model: "qwen-plus",
         models: ["qwen-plus", "qwen-max", "qwen-turbo"],
-        hint: "DashScope 的 OpenAI 兼容模式。",
         hintKey: "providerQwenHint",
       },
       moonshot: {
         provider: "moonshot",
-        label: "Moonshot",
+        labelKey: "providerMoonshotLabel",
         base: "https://api.moonshot.cn/v1",
         model: "moonshot-v1-8k",
         models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
-        hint: "Moonshot 官方端点。",
         hintKey: "providerMoonshotHint",
       },
       openrouter: {
         provider: "openrouter",
-        label: "OpenRouter",
+        labelKey: "providerOpenRouterLabel",
         base: "https://openrouter.ai/api/v1",
         model: "openai/gpt-4o-mini",
         models: ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
-        hint: "聚合网关：模型名带厂商前缀。",
         hintKey: "providerOpenRouterHint",
       },
       custom: {
         provider: "custom",
-        label: "自定义端点",
         labelKey: "providerCustomLabel",
         base: "",
         model: "",
         models: [],
-        hint: "自建端点：vLLM / Ollama（http://127.0.0.1:11434/v1）/ LM Studio 等，Base 一般以 /v1 结尾。",
         hintKey: "providerCustomHint",
       },
       gateway: {
         provider: "gateway",
-        label: "企业网关",
         labelKey: "providerGatewayLabel",
         base: "",
         model: "",
         models: [],
-        hint: "企业网关 / 代理：Base 指向网关，模型名与 Key 由网关下发；协议不同就在网关侧转换。",
         hintKey: "providerGatewayHint",
       },
     };
@@ -14180,7 +14169,7 @@
         return;
       }
       const known = LLM_PRESETS[provider];
-      title.textContent = ((known && known.labelKey && t(known.labelKey)) || (known && known.label) || provider)
+      title.textContent = ((known && known.labelKey && t(known.labelKey)) || provider)
         + (model ? " · " + model : "");
       if (!hasKey) say(wavegT("credConnNoKey"));
       else if (!String(baseUrl || "").trim()) say(wavegT("credConnNoBase"));
@@ -19845,6 +19834,9 @@
         cnWebhookNoToken: "这段地址里没有 access_token，粘的可能是机器人主页而不是 Webhook",
         secretHide: "隐藏",
         secretShow: "显示",
+        providerDeepSeekLabel: "DeepSeek",
+        providerMoonshotLabel: "Moonshot",
+        providerOpenRouterLabel: "OpenRouter",
       },
       "zh-TW": {
 
@@ -21302,6 +21294,9 @@
         cnWebhookNoToken: "這段地址裡沒有 access_token，貼的可能是機器人主頁而不是 Webhook",
         secretHide: "隱藏",
         secretShow: "顯示",
+        providerDeepSeekLabel: "DeepSeek",
+        providerMoonshotLabel: "Moonshot",
+        providerOpenRouterLabel: "OpenRouter",
       },
       en: {
 
@@ -22759,6 +22754,9 @@
         cnWebhookNoToken: "There's no access_token in this URL — you may have pasted the bot's home page instead of the Webhook",
         secretHide: "Hide",
         secretShow: "Show",
+        providerDeepSeekLabel: "DeepSeek",
+        providerMoonshotLabel: "Moonshot",
+        providerOpenRouterLabel: "OpenRouter",
       },
     };
     /* 字典到此为止才算存在 —— 之前在脚本求值阶段调 wavegT() 会撞 TDZ。 */
