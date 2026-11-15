@@ -378,6 +378,24 @@ test "desktop_turn_parity_routines_mcp_subagent_device" {
   assert_true(lc.ok)
   assert_eq(lc.intent, "list_credentials")
   assert_eq(lc.effects[0].kind, "credential_list")
+  // 「create routine」不带 cron ⇒ 中文排程由**内核**算,不是 @daily。
+  // 以前「每天早上9点」被降级成 @daily(＝凌晨0点)——用户要的是 9 点,
+  // 任务却在半夜跑,而且用户看不出来。
+  let cr_cn = run_desktop_turn(
+    "create routine id=r-cn prompt=每天早上9点采集 AI 科技热点",
+    turn_id="rt-cn-cron",
+  )
+  assert_true(cr_cn.ok)
+  assert_eq(cr_cn.intent, "create_routine")
+  assert_eq(cr_cn.effects[0].kind, "routine_schedule")
+  assert_true(cr_cn.effects[0].command.contains("0 9 * * *"))
+  // 给了 cron 就用给的,不许被中文解析器覆盖。
+  let cr_exp = run_desktop_turn(
+    "create routine id=r-cn2 cron=@weekly prompt=每周复盘",
+    turn_id="rt-cn-cron2",
+  )
+  assert_true(cr_exp.ok)
+  assert_true(cr_exp.effects[0].command.contains("@weekly"))
   let cr = run_desktop_turn(
     "create routine id=r1 cron=@daily prompt=standup notes",
     turn_id="rt-1",

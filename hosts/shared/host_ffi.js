@@ -15711,6 +15711,55 @@ function createHostFfi(repoRoot, opts = {}) {
     return minGap < 5 ? { minute_gap: minGap } : null;
   }
 
+  /** 到点把活派进群。
+   *
+   *  以前 routine_fire 只做三件事:重排下一次、写草稿、排一条邮件审批 ——
+   *  **从不把用户那句话派进群**。于是「每天9点采集热点」这条任务,到点只会在
+   *  盘上多一份草稿,群里的成员回合一次都不会被触发:任务看着在跑,其实没跑。
+   *  （探针实测:routine_fire 到 executeRoutineEffect 返回为止,没有任何一处
+   *   调 roomTurn / orchestrateRoom / runTurn。）
+   *
+   *  这里只做**群内**产出(成员各跑各的,产出留在群里/盘上);
+   *  **对外**的动作(发邮件 / 发文 / 下单)仍然走审批闸 ——
+   *  机器自己干活可以,但替人对外说话仍然要人点头。
+   */
+  async function dispatchRoutineToRoom(info) {
+    const roomId = String((info && info.room_id) || "").trim();
+    const text = String((info && info.prompt) || "").trim();
+    if (!roomId || !text) {
+      // 没有群 / 没有正文 ⇒ 没什么可派(如实说,别假装派过)。
+      return { ok: false, skipped: true, error: "routine_no_room_or_prompt" };
+    }
+    try {
+      const res = await dispatchRoomTurn({
+        surface,
+        roomId,
+        text,
+        // 到点派活 = 机器上没人 ⇒ 路由拿不准时不能停下来问,只能兜底继续。
+        unattended: true,
+        // 投递 id 带上任务 id:同一条任务同一次触发 = 同一个投递(幂等靠它)。
+        messageId:
+          "routine-fire-" +
+          String((info && info.id) || "r").replace(/[^\w.-]/g, "_") +
+          "-" +
+          String((info && info.fired_at) || Date.now()).replace(/\D/g, "").slice(0, 14),
+      });
+      return {
+        ok: !!(res && res.ok),
+        room_id: roomId,
+        responders: (res && res.responders) || [],
+        error: res && res.ok ? "" : (res && res.error) || "routine_room_dispatch_failed",
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        room_id: roomId,
+        error: "routine_room_dispatch_failed",
+        detail: String((e && e.message) || e),
+      };
+    }
+  }
+
   function executeRoutineEffect(kind, command, effectOpts) {
     const id = String(command || "").split("|")[0];
     // Optional room association (group-info panel 「定时任务」). Empty = the
@@ -16207,6 +16256,9 @@ function createHostFfi(repoRoot, opts = {}) {
         fired: true,
         at: firedAt,
         next_due: nextDue,
+        // 定时任务挂在哪个群 —— 到点要把活派进这个群(见 dispatchRoutineToRoom)。
+        // 没有群的老任务没有这个字段,行为不变。
+        room_id: (hit && hit.room_id) || null,
         // GP-156 可选新字段（旧读取方按缺省处理即可，不改既有形状）。
         mail_to: mailTo || null,
         queued_approval: Boolean(queuedApproval && queuedApproval.ok),
@@ -16291,6 +16343,8 @@ function createHostFfi(repoRoot, opts = {}) {
           fired.push({
             id: r.id,
             prompt: r.prompt || "",
+            // 这条任务挂在哪个群 —— 到点要把活派进这个群(见 dispatchRoutineToRoom)。
+            room_id: r.room_id || "",
             next_due: payload.next_due || null,
             // GP-108: a tick prepares drafts, it does not silently execute.
             executed: payload.executed === true,
@@ -25306,6 +25360,50 @@ function createHostFfi(repoRoot, opts = {}) {
               routineRes.stdout = JSON.stringify(Object.assign({}, tickPayload, { handoff_retry: hr }), null, 2);
             }
           } catch (_) { /* stdout 不是 JSON：效果行已经带上如实回报，不伪造 stdout */ }
+        }
+        // ── 到点派活 ────────────────────────────────────────────────────
+        // routine_fire 以前只备草稿,不派活 ⇒ 群里的成员回合一次都不会被触发。
+        // 现在:直接触发的那一条派一次;tick 扫出来的每一条都派。
+        // 派的是**群内**产出,对外动作仍然走审批闸(见 dispatchRoutineToRoom)。
+        if (kind === "routine_fire" || kind === "routine_wake") {
+          let info = null;
+          try {
+            info = JSON.parse(routineRes.stdout || "{}");
+          } catch (_) {
+            info = null;
+          }
+          if (info && info.id) {
+            const d = await dispatchRoutineToRoom(info);
+            routineRes.room_dispatch = d;
+            try {
+              const p = JSON.parse(routineRes.stdout || "{}");
+              if (p && typeof p === "object") {
+                routineRes.stdout = JSON.stringify(Object.assign({}, p, { room_dispatch: d }), null, 2);
+              }
+            } catch (_) { /* stdout 不是 JSON：效果行已经带上如实回报 */ }
+          }
+        } else if (kind === "routine_tick") {
+          let tick = null;
+          try {
+            tick = JSON.parse(routineRes.stdout || "{}");
+          } catch (_) {
+            tick = null;
+          }
+          const firedRows = (tick && Array.isArray(tick.fired) ? tick.fired : []) || [];
+          const dispatches = [];
+          for (const f of firedRows) {
+            const d = await dispatchRoutineToRoom(f);
+            dispatches.push(d);
+          }
+          if (dispatches.length) {
+            routineRes.room_dispatches = dispatches;
+            try {
+              const p = JSON.parse(routineRes.stdout || "{}");
+              if (p && typeof p === "object") {
+                routineRes.stdout = JSON.stringify(Object.assign({}, p, { room_dispatches: dispatches }), null, 2);
+              }
+            } catch (_) { /* stdout 不是 JSON：效果行已经带上如实回报 */ }
+          }
         }
         results.push(routineRes);
         continue;

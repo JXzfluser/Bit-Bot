@@ -2195,16 +2195,23 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
           None => "routine-1"
         }
     }
-    let cron = match extract_kv(rest, "cron") {
-      Some(v) => v
-      None => "@daily"
-    }
     let prompt = match extract_kv(rest, "prompt") {
       Some(v) => v
       None =>
         match extract_kv(rest, "action") {
           Some(v) => v
           None => rest
+        }
+    }
+    // 没给 cron ⇒ 让**内核**的中文排程解析器算,而不是让调用方猜。
+    // 「每天早上9点」以前只能落 @daily(＝凌晨0点),用户要的是 9 点。
+    // 解析不出来就照旧落 @daily(既有兜底),不编一个时间糊弄人。
+    let cron = match extract_kv(rest, "cron") {
+      Some(v) => v
+      None =>
+        match decode_cn_schedule(prompt) {
+          Some((c, _)) => c
+          None => "@daily"
         }
     }
     if prompt != "" {

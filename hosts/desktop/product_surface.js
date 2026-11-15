@@ -2742,6 +2742,15 @@ function createProductSurface(repoRoot, opts = {}) {
           margin: route.margin, reason: "user_asked_everyone_relay_keeps_serial",
         };
       }
+      if (route.mode === "unclear" && opts.unattended && roster.length) {
+        // 无人值守(定时任务到点):「这句话我没看出该谁做」这句话在常开机器上
+        // **问不到人** —— 桌面上停下来问是对的,机器上停下来就是永远卡死。
+        // 这种情况下按名册顺序交给第一位,并如实记下这是兜底、不是判断。
+        route = {
+          mode: "unattended_fallback_to_first", owner: roster[0], ranking: route.ranking,
+          margin: route.margin, reason: "no_one_to_ask_fallback_to_first",
+        };
+      }
       const routeOut = {
         mode: route.mode, reason: route.reason,
         owner: route.owner ? route.owner.id : "",

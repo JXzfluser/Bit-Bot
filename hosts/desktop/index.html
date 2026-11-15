@@ -10831,11 +10831,17 @@
        只组队不挂定时任务，等于把他这句话做了一半。 */
     const TEAM_SCHEDULE_RE = /(每天|每日|每小时|每隔|每周|每月|定时|按天|工作日|早上|晚上)/;
 
+    /* 注意:这里**不算**「每天几点」。
+       旧口径只出 @hourly/@weekly/@monthly/@daily ——「每天早上9点」被降级成
+       @daily(＝凌晨0点),用户要的是 9 点,任务却在半夜跑,而且回执看不出差别。
+       中文排程由**内核**确定性解析(parity_intents.mbt 的 decode_cn_schedule:
+       「每天早上9点」→ "0 9 * * *"),桌面不猜时间 —— 猜错了用户看不出来。
+       内核解析不了(中文数字钟点/每周每月)时它自己落 @daily,如实。 */
     function teamCronOf(text) {
       if (/每小时|每隔/.test(text)) return "@hourly";
       if (/每周/.test(text)) return "@weekly";
       if (/每月/.test(text)) return "@monthly";
-      return "@daily";
+      return "";   // 每天/每日/每晚/工作日 ⇒ 交给内核算(可能带钟点)
     }
 
     /** 解析组队话术 → { title, roles[], task, cron? }；不像组队话术就返回 null。 */
@@ -10861,7 +10867,26 @@
       if (askish) return null;
 
       const rest2 = rest.replace(/^(?:来|去)?(?:负责|处理|做|搞|管理|运营|完成|用于|专门做)\s*/, "").trim();
-      let roles = rest2
+      /* 显式角色清单:「(角色:采集/写作/排版)」—— 用户真的会这么写。
+         旧口径把它按 / 切开:第一个角色带着「(角色:」前缀,最后一个角色因为
+         后面黏着整句任务而被长度过滤吃掉 ⇒ 只建出 2 个名字还带前缀的 Bot,
+         「排版」这个角色凭空消失。这里先把清单**整段**摘出来,剩下的才是任务。 */
+      let roleListText = "";
+      let taskText = rest2;
+      const roleHead = taskText.match(
+        /[（(【\[]?\s*(?:角色|分工|岗位|职位|职能)\s*[:：=]\s*([^）)】\]]+)[）)】\]]?/,
+      );
+      if (roleHead) {
+        roleListText = roleHead[1];
+        taskText = (
+          taskText.slice(0, roleHead.index) +
+          " " +
+          taskText.slice(roleHead.index + roleHead[0].length)
+        )
+          .replace(/^[+＋&、,，;；\-—]+\s*/, "")
+          .trim();
+      }
+      let roles = (roleListText || taskText)
         .replace(/^(?:包含|包括|含|需要|主要有|有)\s*/, "")
         .split(/[、,，;；/|｜\n]+/)
         .map((s) => s.replace(/^(?:一个|一名|个|负责|做)\s*/, "").trim())
@@ -10871,8 +10896,9 @@
         .filter((s, i, arr) => arr.indexOf(s) === i)
         .slice(0, 6);
       /* 没写分隔符 → 整句是一段任务描述，不是角色清单。此时不要硬把一个长句
-         当角色名（那会建出叫「来处理公众号从每天…」的 Bot）。 */
-      if (roles.length === 1 && rest2.length > 12) roles = [];
+         当角色名（那会建出叫「来处理公众号从每天…」的 Bot）。
+         但**用户显式写了角色清单**时不管长度 —— 他写的就是清单。 */
+      if (!roleListText && roles.length === 1 && taskText.length > 12) roles = [];
 
       const fallbackTitle = title || wavegT("teamDefaultName");
       if (!roles.length) {
@@ -10886,13 +10912,18 @@
           title: fallbackTitle,
           roles: picked,
           autoRoles: true,
-          task: rest2,
-          ...(TEAM_SCHEDULE_RE.test(rest2) ? { cron: teamCronOf(rest2) } : {}),
+          task: taskText || rest2,
+          ...(TEAM_SCHEDULE_RE.test(taskText || rest2)
+            ? { scheduled: true, cron: teamCronOf(taskText || rest2) }
+            : {}),
         };
       }
       const brief = { title: fallbackTitle, roles };
-      if (rest) brief.task = rest;
-      if (TEAM_SCHEDULE_RE.test(rest)) brief.cron = teamCronOf(rest);
+      if (taskText) brief.task = taskText;
+      if (TEAM_SCHEDULE_RE.test(taskText || rest)) {
+        brief.scheduled = true;
+        brief.cron = teamCronOf(taskText || rest);
+      }
       return brief;
     }
 
@@ -10944,24 +10975,34 @@
          群是定时任务的落点：没绑 room_id 的 routine 在群资料里看不到，
          用户会以为"任务丢了"（实录：room_id:"" 就是这次的样子）。 */
       let routineOk = false;
-      if (brief.cron && roomId) {
+      let realCron = "";
+      if (brief.scheduled && roomId) {
         const task = String(brief.task || "")
           // 等号是全角化：内核的 kv 提取遇到 ` id=` / ` cron=` 会截断 prompt。
           .replace(/=/g, "＝")
           .slice(0, 200);
         const rid = "team-" + Date.now().toString(36);
-        const text = "create routine id=" + rid + " cron=" + brief.cron + " prompt=" + (task || title);
+        // **不写 cron=** 时,内核的中文排程解析器会算出真实时间
+        // (「每天早上9点」→ "0 9 * * *")。写死了 @daily 就是凌晨0点。
+        const text =
+          "create routine id=" + rid +
+          (brief.cron ? " cron=" + brief.cron : "") +
+          " prompt=" + (task || title);
         const ro = await window.bitbot.routines.op({ text, roomId, botId: made[0].id }).catch(() => null);
         routineOk = !!(ro && ro.ok);
+        // 回执显示**真实落库的** cron,不是我们以为的那个。
+        realCron = String((ro && ro.routine && ro.routine.cron) || brief.cron || "");
       }
       await refreshBots().catch(() => {});
       await refreshSidebarRooms().catch(() => {});
       flashMoved(made[0].id, title);
+      const shownCron = realCron || brief.cron || "";
       const cronLabel =
-        brief.cron === "@hourly" ? wavegT("cronHourly")
-          : brief.cron === "@weekly" ? wavegT("cronWeekly")
-            : brief.cron === "@monthly" ? wavegT("cronMonthly")
-              : wavegT("cronDaily");
+        shownCron === "@hourly" ? wavegT("cronHourly")
+          : shownCron === "@weekly" ? wavegT("cronWeekly")
+            : shownCron === "@monthly" ? wavegT("cronMonthly")
+              : shownCron ? shownCron
+                : wavegT("cronDaily");
       let msg;
       if (roomId && routineOk) {
         msg = wavegT("teamCreatedScheduled")
