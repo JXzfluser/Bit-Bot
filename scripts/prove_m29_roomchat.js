@@ -262,9 +262,15 @@ const ffiSrc = fs.readFileSync(path.join(REPO, "hosts/shared/host_ffi.js"), "utf
   ? ok("运行中为每个 responder 显示「工作中」卡，收线后清理并回读 rooms.json")
   : bad("in-flight working state missing");
 
-/roomExitBtn\.addEventListener\("click", exitRoomChat\)/.test(html) &&
-  /COMPOSER_PLACEHOLDER_DEFAULT/.test(html)
-  ? ok("退出群聊恢复 DM composer（banner 收起 + placeholder 复原）")
+/* 退出群聊要把 DM composer 的 placeholder 复原。
+   判据跟着真源改了形状：M46 第三波把 `COMPOSER_PLACEHOLDER_DEFAULT` 这个
+   **常量**删了 —— 占位符现在走字典的 `placeholder`（切英文后复原成英文，
+   不再是切回群聊就冒出中文）。原来那版只检查"这个常量还在"，既不检查
+   占位符有没有被复原，也不检查它是不是本地化的。
+   现在的判据**比原来强**：要求复原动作走 `t("placeholder")`。 */
+ /roomExitBtn\.addEventListener\("click", exitRoomChat\)/.test(html) &&
+  /input2\.placeholder\s*=\s*t\("placeholder"\)/.test(html)
+  ? ok("退出群聊恢复 DM composer（banner 收起 + placeholder 从字典复原）")
   : bad("exit wiring missing");
 
 /roomTranscriptEmpty/.test(html) && /entries\.slice\(-ROOM_RENDER_CAP\)/.test(html) &&
