@@ -346,31 +346,30 @@ function createHostFfi(repoRoot, opts = {}) {
     return { ok: false, error: "shell_approval_required" };
   }
 
-  // Wave G GP-21/GP-36: map a kernel approval_card command ("Class :: summary :: reason")
-  // to the host auto-review rule vocabulary. Destructive never maps (can't auto-allow).
+  // Wave G GP-21/GP-36: map a kernel approval_card command to the host
+  // auto-review rule vocabulary. Destructive never maps (can't auto-allow).
+  //
+  // 内核现在发结构化前缀 "approval_class=<Class> :: <summary> :: <reason>";
+  // 旧格式 "<Class> :: ..." 仍然认。
+  //
+  // **class 词表与映射只有一份**(effect_kinds.js):以前 Host 与渲染层各抄
+  // 一份 token 表,抄法还不一样 —— Host 不校验(认不出的 class 静默变成
+  // "没有规则"),渲染层用 startsWith(把 "Purchase " 这种带空格的怪 token
+  // 也算命中)。两边不一致 ⇒ 同一条审批卡在两边得到不同结论。
   const WAVEG_LOCAL_KINDS = ["shell", "computer_use"];
   function parseApprovalCardCommand(cmd) {
-    const parts = String(cmd || "").split("::").map((s) => s.trim());
-    let cls = parts[0] || "";
-    let summary = parts.slice(1).join(" :: ");
-    let patternKind = null;
-    if (cls === "mcp") {
-      patternKind = "mcp_call";
-    } else if (cls === "Shell") {
-      patternKind = "shell";
-    } else if (cls === "ExternalSend") {
-      patternKind = /mail|email/i.test(summary) ? "mail_send" : "channel_send";
-    } else if (cls === "McpMutation") {
-      patternKind = "mcp_call";
-    } else if (cls === "Purchase") {
-      // effect kind 就是 "purchase"(内核 turn_json.mbt 产生的就是它)——
-      // 以前写 "purchase_item",于是这条规则永远匹配不到真正的审批项。
-      patternKind = "purchase";
-    } else if (cls === "LocalMachine" || cls === "CloudAgent") {
-      patternKind = "computer_use";
-    } else if (cls === "Destructive") {
-      patternKind = null; // GP-24: never auto-allowable
-    }
+    const raw = String(cmd || "");
+    const m = raw.match(/^approval_class=([A-Za-z]+)\s*::\s*/);
+    const cls = effectKinds.parseApprovalClass(raw);
+    // 旧格式的 summary 是"第一段之后全部";新格式是"前缀之后全部"——
+    // 两者口径一致(含 reason),渲染层那边也按同一口径切。
+    const summary = m
+      ? raw.slice(m[0].length)
+      : (() => {
+          const parts = raw.split("::").map((s) => s.trim());
+          return cls ? parts.slice(1).join(" :: ") : parts.join(" :: ");
+        })();
+    const patternKind = effectKinds.approvalPatternForClass(cls, summary) || null;
     return { cls, summary, patternKind };
   }
 

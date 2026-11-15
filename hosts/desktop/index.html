@@ -6870,13 +6870,30 @@
     }
 
     // GP-20: structured card — proposed action / input params / target system.
-    // Kernel command grammar (security.ApprovalClass): "<Class> :: <summary> :: <reason>"
-    // or mcp "mcp :: <request_id>" / commerce "Purchase :: present :: <reason>".
+    //
+    // 内核现在发结构化前缀 "approval_class=<Class> :: <summary> :: <reason>";
+    // 旧格式 "<Class> :: <summary> :: <reason>" 仍然认(历史转录/日志)。
+    //
+    // class 必须是**整段等于**某个已知 class。以前这里用 startsWith 配一份
+    // 手抄的 token 表("Purchase " 这种带空格的怪 token 也算命中),Host 那边
+    // 却是另一套口径 ⇒ 同一条审批卡在两边得到不同结论。
+    // 渲染层在浏览器里 require 不到 hosts/shared/effect_kinds.js,所以这里
+    // 留一份副本,但**由 scripts/prove_effect_contract.mjs 盯着**它与注册表一致。
+    const APPROVAL_CLASS_TOKENS = ["Shell","LocalMachine","McpMutation","CloudAgent","ExternalSend","Purchase","Destructive","mcp","commerce"];
     function parseApprovalCommand(cmd) {
-      const parts = String(cmd || "").split("::").map((s) => s.trim());
-      const classTokens = ["Shell","LocalMachine","McpMutation","CloudAgent","ExternalSend","Purchase","Destructive","mcp","Purchase "];
-      let cls = parts.length > 1 && classTokens.some((t) => parts[0].indexOf(t) === 0 || parts[0] === t) ? parts[0] : "";
-      const summary = cls ? parts.slice(1).join(" :: ") : parts.join(" :: ");
+      const raw = String(cmd || "");
+      const parts = raw.split("::").map((s) => s.trim());
+      const m = raw.match(/^approval_class=([A-Za-z]+)\s*::\s*/);
+      let cls = "";
+      let summary = "";
+      if (m) {
+        cls = APPROVAL_CLASS_TOKENS.indexOf(m[1]) >= 0 ? m[1] : "";
+        summary = raw.slice(m[0].length);
+      } else {
+        const first = parts[0] || "";
+        cls = parts.length > 1 && APPROVAL_CLASS_TOKENS.indexOf(first) >= 0 ? first : "";
+        summary = cls ? parts.slice(1).join(" :: ") : parts.join(" :: ");
+      }
       let target = "";
       const mTarget = summary.match(/(?:to=|agent=|bot=|item=|ns=)([^\s|]+)/);
       if (mTarget) target = mTarget[1];

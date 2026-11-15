@@ -5628,7 +5628,11 @@ fn write_memory_json(
 }
 
 ///|
-fn write_effects_json(buf : StringBuilder, rows : Array[DesktopEffect]) -> Unit {
+fn write_effects_json(
+  buf : StringBuilder,
+  rows : Array[DesktopEffect],
+  turn_id : String,
+) -> Unit {
   buf.write_string("[")
   let mut i = 0
   while i < rows.length() {
@@ -5636,7 +5640,14 @@ fn write_effects_json(buf : StringBuilder, rows : Array[DesktopEffect]) -> Unit 
       buf.write_string(",")
     }
     let e = rows[i]
-    buf.write_string("{\"kind\":\"")
+    // 每个 effect 一个**稳定标识**。
+    // 以前 effect 只有 kind+command,没有 id ⇒ Host 那边想按"同一次投递"做幂等
+    // 只能比 command 文字 —— 而同样的文字可能是两次不同的投递(Q-5 的教训)。
+    // id = turn_id + kind + 序号:同一轮重放得到同样的 id ⇒ 幂等认得出来;
+    // 不同的轮次天然不同 id ⇒ 不会把两次投递混成一次。
+    buf.write_string("{\"id\":\"")
+    buf.write_string(escape_json_string(turn_id + ":" + e.kind + ":" + i.to_string()))
+    buf.write_string("\",\"kind\":\"")
     buf.write_string(escape_json_string(e.kind))
     buf.write_string("\",\"command\":\"")
     buf.write_string(escape_json_string(e.command))
@@ -5669,7 +5680,7 @@ pub fn DesktopTurnResult::to_json_line(self : DesktopTurnResult) -> String {
   buf.write_string(",\"memory\":")
   write_memory_json(buf, self.memory)
   buf.write_string(",\"effects\":")
-  write_effects_json(buf, self.effects)
+  write_effects_json(buf, self.effects, self.turn_id)
   buf.write_string(",\"needs_host_ffi\":")
   buf.write_string(if self.needs_host_ffi { "true" } else { "false" })
   buf.write_string(",\"host_continued\":")

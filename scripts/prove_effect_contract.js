@@ -217,5 +217,65 @@ const hostActionKinds = new Set(registry.HOST_ACTION_KINDS);
   );
 }
 
+/* ── EC-11 审批卡的 class 是结构化的(不靠"第一段像不像某个 token") ───────── */
+{
+  const pi = fs.readFileSync(path.join(REPO, "cmd/desktop_turn/parity_intents.mbt"), "utf8");
+  const structured = pi.includes('"approval_class=" + class_.label()');
+  check(structured, "EC-11 内核发的是结构化前缀 approval_class=<Class>", pi.slice(0, 0));
+  const legacyOnly = /command:\s*class_\.label\(\)\s*\+/.test(pi);
+  check(!legacyOnly, "EC-11 内核没有残留「裸 class 开头」的旧写法(会逼 Host 去猜)");
+}
+
+/* ── EC-12 Host 的审批卡解析从注册表派生 ───────────────────────────────── */
+{
+  const h = fs.readFileSync(path.join(REPO, "hosts/shared/host_ffi.js"), "utf8");
+  check(
+    /effectKinds\.parseApprovalClass\(/.test(h) &&
+      /effectKinds\.approvalPatternForClass\(/.test(h),
+    "EC-12 Host 的审批卡解析从注册表派生(不是手抄的 class 表)",
+  );
+  check(
+    !/cls === "mcp"|cls === "Shell"|cls === "ExternalSend"/.test(
+      h.slice(h.indexOf("function parseApprovalCardCommand"), h.indexOf("function parseApprovalCardCommand") + 1400),
+    ),
+    "EC-12 Host 那边没有残留手抄的 class 分支",
+  );
+}
+
+/* ── EC-13 渲染层那份 class 词表不许自己漂 ────────────────────────────── */
+{
+  const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+  const m = html.match(/const APPROVAL_CLASS_TOKENS\s*=\s*\[([^\]]*)\]/);
+  const toks = m ? [...m[1].matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]).sort() : [];
+  const want = [...registry.ALL_APPROVAL_CLASSES].sort();
+  const same = toks.length === want.length && toks.every((t, i) => t === want[i]);
+  check(same, "EC-13 渲染层的 class 词表与注册表逐条一致", "渲染层:" + toks.join(",") + " 注册表:" + want.join(","));
+  check(
+    !/classTokens/.test(html),
+    "EC-13 渲染层没有残留老的 classTokens(那份含 'Purchase ' 这种带空格的怪 token)",
+  );
+}
+
+/* ── EC-14 effect 有一个稳定标识 ───────────────────────────────────────── */
+{
+  const tj = fs.readFileSync(path.join(REPO, "cmd/desktop_turn/turn_json.mbt"), "utf8");
+  check(
+    /write_effects_json/.test(tj) && /\\"id\\":\\"/.test(tj),
+    "EC-14 effect 的 JSON 出口带稳定 id",
+  );
+}
+
+/* ── EC-15 内核的 ApprovalClass 枚举 == 注册表的词表 ───────────────────── */
+{
+  const ap = fs.readFileSync(path.join(REPO, "security/approval.mbt"), "utf8");
+  const enumBody = (ap.match(/enum\s+ApprovalClass\s*\{([\s\S]*?)\}/) || [null, ""])[1];
+  const kc = [];
+  for (const m of enumBody.matchAll(/^\s*([A-Z][A-Za-z]*)\s*$/gm)) kc.push(m[1]);
+  const same =
+    kc.length === registry.APPROVAL_CLASSES.length &&
+    kc.every((c, i) => c === registry.APPROVAL_CLASSES[i]);
+  check(same, "EC-15 内核的 ApprovalClass 枚举与注册表逐条一致", "内核:" + kc.join(",") + " 注册表:" + registry.APPROVAL_CLASSES.join(","));
+}
+
 console.log("\nprove_effect_contract: PASS=" + pass + " FAIL=" + fail);
 process.exit(fail ? 1 : 0);

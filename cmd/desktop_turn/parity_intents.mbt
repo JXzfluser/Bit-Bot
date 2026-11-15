@@ -2975,7 +2975,10 @@ pub fn gate_consequential(
     @security.NeedUser(reason~) => {
       let effect : DesktopEffect = {
         kind: "approval_card",
-        command: class_.label() + " :: " + summary + " :: " + reason,
+        // 结构化前缀:Host 不再靠"第一段是不是某个 token"去猜 class ——
+        // 那种猜法在两边各抄一份 token 表,加一档漏一处就静默错判。
+        // 新前缀是 "approval_class=<Class> :: ...";旧格式仍然被 Host 认。
+        command: "approval_class=" + class_.label() + " :: " + summary + " :: " + reason,
         needs_host_ffi: true,
       }
       Some(
@@ -2997,7 +3000,7 @@ pub fn gate_consequential(
     @security.Escalate => {
       let effect : DesktopEffect = {
         kind: "approval_card",
-        command: class_.label() + " :: escalate :: " + summary,
+        command: "approval_class=" + class_.label() + " :: escalate :: " + summary,
         needs_host_ffi: true,
       }
       Some(

@@ -239,8 +239,58 @@ function askApprovalEffectKinds() {
   return out;
 }
 
+
+/* ── 审批 class 词表 ─────────────────────────────────────────────────────
+ * 内核 security/approval.mbt 的 7 档 + Host 侧的两个历史 class。
+ * 以前 Host 与渲染层各抄一份 token 表,而且抄法不一样:
+ *   Host:第一段是什么就是什么(不校验)⇒ 认不出的 class 静默变成"没有规则";
+ *   渲染层:startsWith 匹配 ⇒ "Purchase "(带空格)这种怪 token 也算命中。
+ * 两边不一致 ⇒ 同一条审批卡在两边得到不同的结论。现在只有这一份。 */
+const APPROVAL_CLASSES = [
+  "Shell",
+  "LocalMachine",
+  "McpMutation",
+  "CloudAgent",
+  "ExternalSend",
+  "Purchase",
+  "Destructive",
+];
+/* Host 侧的历史 class(内核不产生,但老路径会发)。 */
+const HOST_APPROVAL_CLASSES = ["mcp", "commerce"];
+const ALL_APPROVAL_CLASSES = APPROVAL_CLASSES.concat(HOST_APPROVAL_CLASSES);
+
+/** 审批卡的 class。内核现在发结构化前缀 "approval_class=<Class> :: ...";
+ *  旧格式 "<Class> :: ..." 仍然认。认不出来的 class 一律当"没有 class"
+ *  (⇒ 不可自动放行),不猜。 */
+function parseApprovalClass(cmd) {
+  const s = String(cmd || "");
+  const m = s.match(/^approval_class=([A-Za-z]+)\s*::/);
+  if (m) return ALL_APPROVAL_CLASSES.indexOf(m[1]) >= 0 ? m[1] : "";
+  const first = (s.split("::")[0] || "").trim();
+  return ALL_APPROVAL_CLASSES.indexOf(first) >= 0 ? first : "";
+}
+
+/** class → 审批规则的 pattern kind。Destructive 永远不映射(不可自动放行)。 */
+function approvalPatternForClass(cls, summary) {
+  const c = String(cls || "");
+  const s = String(summary || "").toLowerCase();
+  if (c === "mcp") return "mcp_call";
+  if (c === "commerce") return "purchase";
+  if (c === "Shell") return "shell";
+  if (c === "ExternalSend") return /mail|email/.test(s) ? "mail_send" : "channel_send";
+  if (c === "McpMutation") return "mcp_call";
+  if (c === "Purchase") return "purchase";
+  if (c === "LocalMachine" || c === "CloudAgent") return "computer_use";
+  return "";   // Destructive 与认不出来的 class:不可自动放行
+}
+
 module.exports = {
   EFFECT_POLICY,
+  APPROVAL_CLASSES,
+  HOST_APPROVAL_CLASSES,
+  ALL_APPROVAL_CLASSES,
+  parseApprovalClass,
+  approvalPatternForClass,
   HOST_ACTION_POLICY,
   HOST_ACTION_KINDS,
   SCHEDULE_EFFECT_KINDS,
