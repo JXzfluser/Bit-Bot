@@ -3094,8 +3094,15 @@ pub fn run_desktop_turn(
     }
     DeviceToolInvoke(tool~) => {
       let reg = @box_host.DeviceLocalToolsRegistry::seed_phones()
+      let kind = if ctx.machine_kind == "ios" {
+        @box_host.Ios
+      } else if ctx.machine_kind == "android" {
+        @box_host.Android
+      } else {
+        @box_host.Desktop
+      }
       let mid = resolve_device_machine_id(ctx)
-      match reg.invoke(mid, tool) {
+      match reg.invoke(mid, kind, tool) {
         Ok(msg) => {
           let effect : DesktopEffect = {
             kind: "device_tool",

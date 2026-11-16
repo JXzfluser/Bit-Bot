@@ -102,6 +102,14 @@ enum TurnBridge {
       "session_id": "ios-app",
     ]
     req.httpBody = try JSONSerialization.data(withJSONObject: body)
+    // 设备签名(B-6):签名覆盖的是**刚构造好的 body 字节**,所以必须排在
+    // httpBody 之后。没配对(没有 deviceId)⇒ 不挂头,行为与从前一致。
+    if let identity = DeviceIdentity.load(),
+       let headers = identity.requestHeaders(body: req.httpBody ?? Data()) {
+      for (field, value) in headers.headerFields {
+        req.setValue(value, forHTTPHeaderField: field)
+      }
+    }
     let (data, resp) = try await URLSession.shared.data(for: req)
     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
     let out = String(data: data, encoding: .utf8) ?? ""

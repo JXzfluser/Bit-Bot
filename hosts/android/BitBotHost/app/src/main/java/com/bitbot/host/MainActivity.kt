@@ -281,6 +281,13 @@ class MainActivity : ComponentActivity() {
   /** 配对状态：只在真的保存/配对成功后刷新，不在 Composable 里现读全局。 */
   private fun pairedNow(): Boolean = TurnBridge.hostUrl() != null && TurnBridge.turnToken() != null
 
+  /** 手机上的审批客户端:地址取配对里的那台机器,身份取本机的设备密钥。 */
+  private fun approvalClientNow(): ApprovalClient? {
+    val host = TurnBridge.hostUrl() ?: return null
+    if (DeviceIdentity.loadOrCreate(this).deviceId.isNullOrEmpty()) return null
+    return ApprovalClient(this, host)
+  }
+
   /**
    * A3-17：每次回到前台 +1，组合里据此重新探活。
    *
@@ -312,6 +319,8 @@ class MainActivity : ComponentActivity() {
     var hostLabel by remember { mutableStateOf(hostLabelNow()) }
     var showMenu by remember { mutableStateOf(false) }
     var showCapabilities by remember { mutableStateOf(false) }
+    // 手机上也能**批**(B-6):之前手机只能看审批卡,点不动。
+    var showApprovals by remember { mutableStateOf(false) }
     var showCredentials by remember { mutableStateOf(false) }
     var showPairing by remember { mutableStateOf(false) }
     var hostDraft by remember { mutableStateOf(TurnBridge.hostUrl().orEmpty()) }
@@ -448,6 +457,7 @@ class MainActivity : ComponentActivity() {
         hostLabel = hostLabel,
         onCredentials = { openCredentials() },
         onCapabilities = { showMenu = false; showCapabilities = true },
+        onApprovals = { showMenu = false; showApprovals = true },
         onPairing = { showMenu = false; showPairing = true },
         onClearChat = { showMenu = false; clearChat() },
         onDismiss = { showMenu = false },
@@ -484,6 +494,13 @@ class MainActivity : ComponentActivity() {
           statsVersion++
         },
         onDismiss = { showCredentials = false },
+      )
+    }
+
+    if (showApprovals) {
+      ApprovalSheet(
+        client = approvalClientNow(),
+        onDismiss = { showApprovals = false },
       )
     }
 

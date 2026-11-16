@@ -81,6 +81,7 @@ fun MenuSheet(
   hostLabel: String?,
   onCredentials: () -> Unit,
   onCapabilities: () -> Unit,
+  onApprovals: () -> Unit,
   onPairing: () -> Unit,
   onClearChat: () -> Unit,
   onDismiss: () -> Unit,
@@ -91,6 +92,8 @@ fun MenuSheet(
     Spacer(Modifier.height(BitBotSpace.xs))
     SheetActionRow(title = "凭证", detail = "配对地址与配对令牌", onClick = onCredentials)
     SheetActionRow(title = "能力", detail = "国内渠道 / 设备 / 定时", onClick = onCapabilities)
+    // 手机上也能**批**(B-6):之前手机只能看审批卡,点不动。
+    SheetActionRow(title = "审批", detail = "这台机器上等着批的操作", onClick = onApprovals)
     SheetActionRow(
       title = if (paired) "重新配对" else "连接 Desktop",
       detail = "局域网自动发现，输 6 位配对码",
