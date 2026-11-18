@@ -230,6 +230,33 @@ function touchDevice(file, deviceId) {
   return hit;
 }
 
+/**
+ * 设备侧:构造**带签名的请求头**。
+ *
+ * 以前这份代码只有验签(signTurn 是给 Box 验用的),发签名只在 Android 的
+ * Kotlin 侧有(DeviceIdentity.requestHeaders)—— 于是从 JS 这边**派一个回合
+ * 到另一台机器**这件事做不了:Box 认设备凭证,而 JS 不会签。
+ * 头名与签名口径与 Kotlin 侧逐字一致(见 verifyDeviceTurn 的读取处)。
+ *
+ * @param {object} device  { id, private_key_pem }
+ * @param {string|Buffer} body  要签名的请求体(必须与实际发出的字节一致)
+ * @returns {object|null} 请求头;缺私钥/缺 id ⇒ null(调用方要如实报"没凭证")
+ */
+function signRequest(device, body) {
+  const priv = device && (device.private_key_pem || device.private_key);
+  const id = String((device && device.id) || "").trim();
+  if (!priv || !id) return null;
+  const ts = String(Date.now());
+  const nonce = "js-" + crypto.randomBytes(12).toString("hex");
+  const sig = signTurn(priv, id, ts, nonce, body);
+  return {
+    "x-bitbot-device": id,
+    "x-bitbot-timestamp": ts,
+    "x-bitbot-nonce": nonce,
+    "x-bitbot-signature": sig,
+  };
+}
+
 module.exports = {
   DEVICES_VERSION,
   loadDevices,
@@ -238,6 +265,7 @@ module.exports = {
   deviceCredentialFile,
   signingPayload,
   signTurn,
+  signRequest,
   verifyDeviceTurn,
   revokeDevice,
   touchDevice,

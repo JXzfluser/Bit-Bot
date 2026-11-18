@@ -63,30 +63,43 @@ pub fn DevicePermissionCard::is_approval_card(
 ///|
 /// Per-phone deviceLocalTools registry (only phones list tools).
 pub(all) struct DeviceLocalToolsRegistry {
-  /// machineId → tools
+  /// machineId → tools(设备专属,优先)
   by_machine : Map[String, Array[DeviceLocalTool]]
+  /// kind → tools(按类型的默认表)
+  ///
+  /// 为什么必须有这一层:真实手机的 machine_id 是**设备密钥的 id**
+  /// (`dev-android-<指纹>`),每台都不一样 —— 只按 id 写死两张表,
+  /// 任何一台真机查表都落空 ⇒ 拍照/麦克风全没有落点(unavailable)。
+  /// 类型表是"这类设备**声明**有什么工具",设备专属表是"这一台额外有/没有"。
+  by_kind : Map[String, Array[DeviceLocalTool]]
   cards : Array[DevicePermissionCard]
 }
 
 ///|
 pub fn DeviceLocalToolsRegistry::empty() -> DeviceLocalToolsRegistry {
-  { by_machine: Map([]), cards: [], }
+  { by_machine: Map([]), by_kind: Map([]), cards: [], }
 }
 
 ///|
 /// Seed iOS + Android phones with representative local tools.
 pub fn DeviceLocalToolsRegistry::seed_phones() -> DeviceLocalToolsRegistry {
   let reg = DeviceLocalToolsRegistry::empty()
-  reg.by_machine.set("phone-ios", [
+  let ios_tools = [
     { name: "camera", permission: NeedsPermission, },
     { name: "photos", permission: Ready, },
     { name: "location", permission: Denied, },
-  ])
-  reg.by_machine.set("phone-android", [
+  ]
+  let android_tools = [
     { name: "camera", permission: Ready, },
     { name: "microphone", permission: NeedsPermission, },
     { name: "notifications", permission: Unavailable, },
-  ])
+  ]
+  // 按类型的默认表 —— 任何一台**这个类型的**设备都从这里拿到工具声明。
+  reg.by_kind.set("ios", ios_tools)
+  reg.by_kind.set("android", android_tools)
+  // 稳定 id 的专属表(内核注册表里那两台"代表机");真机走上面的类型表。
+  reg.by_machine.set("phone-ios", ios_tools)
+  reg.by_machine.set("phone-android", android_tools)
   reg
 }
 
@@ -99,8 +112,29 @@ pub fn DeviceLocalToolsRegistry::list_for(
 ) -> Array[DeviceLocalTool] {
   match kind {
     Desktop => []
-    Ios | Android =>
-      match self.by_machine.get(machine_id) {
+    Ios | Android => self.tools_for(machine_id, kind)
+  }
+}
+
+///|
+/// 找一台设备的工具:先设备专属表,再按**类型**回落。
+/// 回落这一层是承重的:真机的 machine_id 是设备密钥 id,查不到专属表,
+/// 但它**确实是**一台 android 设备 —— 类型表就是给这种情况准备的。
+pub fn DeviceLocalToolsRegistry::tools_for(
+  self : DeviceLocalToolsRegistry,
+  machine_id : String,
+  kind : MachineKind,
+) -> Array[DeviceLocalTool] {
+  match self.by_machine.get(machine_id) {
+    Some(tools) => {
+      let out : Array[DeviceLocalTool] = []
+      for t in tools {
+        out.push(t)
+      }
+      out
+    }
+    None =>
+      match self.by_kind.get(kind.name()) {
         Some(tools) => {
           let out : Array[DeviceLocalTool] = []
           for t in tools {
@@ -118,10 +152,11 @@ pub fn DeviceLocalToolsRegistry::list_for(
 pub fn DeviceLocalToolsRegistry::invoke(
   self : DeviceLocalToolsRegistry,
   machine_id : String,
+  kind : MachineKind,
   tool_name : String,
 ) -> Result[String, DevicePermissionCard] {
-  match self.by_machine.get(machine_id) {
-    None => {
+  match self.tools_for(machine_id, kind) {
+    [] => {
       let card = {
         machine_id,
         tool_name,
@@ -130,7 +165,7 @@ pub fn DeviceLocalToolsRegistry::invoke(
       }
       Err(card)
     }
-    Some(tools) => {
+    tools => {
       for t in tools {
         if t.name == tool_name {
           match t.permission {

@@ -17,6 +17,8 @@ const { createProductSession } = require("./agent_loop_product_wire");
 const p0 = require("./p0_security");
 const { createRoomRuntime } = require("./room_runtime");
 const { dispatchRoomTurn } = require("./room_dispatch");
+const effectKinds = require("./effect_kinds");
+const remoteTurn = require("./remote_turn");
 
 /* 「什么形状算密钥」是一份合同:内核(core/secret_shapes.mbt)、
    渲染层(secret_protocol.js)、Host 都得对得上。Host 这边按同样的
@@ -345,29 +347,30 @@ function createHostFfi(repoRoot, opts = {}) {
     return { ok: false, error: "shell_approval_required" };
   }
 
-  // Wave G GP-21/GP-36: map a kernel approval_card command ("Class :: summary :: reason")
-  // to the host auto-review rule vocabulary. Destructive never maps (can't auto-allow).
+  // Wave G GP-21/GP-36: map a kernel approval_card command to the host
+  // auto-review rule vocabulary. Destructive never maps (can't auto-allow).
+  //
+  // 内核现在发结构化前缀 "approval_class=<Class> :: <summary> :: <reason>";
+  // 旧格式 "<Class> :: ..." 仍然认。
+  //
+  // **class 词表与映射只有一份**(effect_kinds.js):以前 Host 与渲染层各抄
+  // 一份 token 表,抄法还不一样 —— Host 不校验(认不出的 class 静默变成
+  // "没有规则"),渲染层用 startsWith(把 "Purchase " 这种带空格的怪 token
+  // 也算命中)。两边不一致 ⇒ 同一条审批卡在两边得到不同结论。
   const WAVEG_LOCAL_KINDS = ["shell", "computer_use"];
   function parseApprovalCardCommand(cmd) {
-    const parts = String(cmd || "").split("::").map((s) => s.trim());
-    let cls = parts[0] || "";
-    let summary = parts.slice(1).join(" :: ");
-    let patternKind = null;
-    if (cls === "mcp") {
-      patternKind = "mcp_call";
-    } else if (cls === "Shell") {
-      patternKind = "shell";
-    } else if (cls === "ExternalSend") {
-      patternKind = /mail|email/i.test(summary) ? "mail_send" : "channel_send";
-    } else if (cls === "McpMutation") {
-      patternKind = "mcp_call";
-    } else if (cls === "Purchase") {
-      patternKind = "purchase_item";
-    } else if (cls === "LocalMachine" || cls === "CloudAgent") {
-      patternKind = "computer_use";
-    } else if (cls === "Destructive") {
-      patternKind = null; // GP-24: never auto-allowable
-    }
+    const raw = String(cmd || "");
+    const m = raw.match(/^approval_class=([A-Za-z]+)\s*::\s*/);
+    const cls = effectKinds.parseApprovalClass(raw);
+    // 旧格式的 summary 是"第一段之后全部";新格式是"前缀之后全部"——
+    // 两者口径一致(含 reason),渲染层那边也按同一口径切。
+    const summary = m
+      ? raw.slice(m[0].length)
+      : (() => {
+          const parts = raw.split("::").map((s) => s.trim());
+          return cls ? parts.slice(1).join(" :: ") : parts.join(" :: ");
+        })();
+    const patternKind = effectKinds.approvalPatternForClass(cls, summary) || null;
     return { cls, summary, patternKind };
   }
 
@@ -9453,7 +9456,19 @@ function createHostFfi(repoRoot, opts = {}) {
    * 正文优先取本群最近一次成稿回执（final_report），取不到就退回任务原话本身。 */
   function pickMailRecipient(text) {
     const m = String(text || "").match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/);
-    return m ? m[0] : "";
+    if (m) return m[0];
+    // 「发我邮箱」——用户没写地址,地址在**账户档案**里(本地 profile 登记过
+    // 「我的邮箱」)。以前账户档案只有名字,于是这句话永远解析不出收件人,
+    // 连审批都排不出来 —— 用户看到的就是"我明明说了发我邮箱"。
+    // 登记过就用它;没登记就**不外发**(绝不编地址)。
+    try {
+      if (surface && typeof surface.accountStatus === "function") {
+        const st = surface.accountStatus();
+        const email = String((st && st.active && st.active.email) || "").trim();
+        if (email) return email;
+      }
+    } catch (_) { /* 读不到档案就当没有,外发这一步如实停住 */ }
+    return "";
   }
 
   /* KP-09 片2：群面的读法收回 product_surface（见 §8.124）。
@@ -15719,6 +15734,55 @@ function createHostFfi(repoRoot, opts = {}) {
     return minGap < 5 ? { minute_gap: minGap } : null;
   }
 
+  /** 到点把活派进群。
+   *
+   *  以前 routine_fire 只做三件事:重排下一次、写草稿、排一条邮件审批 ——
+   *  **从不把用户那句话派进群**。于是「每天9点采集热点」这条任务,到点只会在
+   *  盘上多一份草稿,群里的成员回合一次都不会被触发:任务看着在跑,其实没跑。
+   *  （探针实测:routine_fire 到 executeRoutineEffect 返回为止,没有任何一处
+   *   调 roomTurn / orchestrateRoom / runTurn。）
+   *
+   *  这里只做**群内**产出(成员各跑各的,产出留在群里/盘上);
+   *  **对外**的动作(发邮件 / 发文 / 下单)仍然走审批闸 ——
+   *  机器自己干活可以,但替人对外说话仍然要人点头。
+   */
+  async function dispatchRoutineToRoom(info) {
+    const roomId = String((info && info.room_id) || "").trim();
+    const text = String((info && info.prompt) || "").trim();
+    if (!roomId || !text) {
+      // 没有群 / 没有正文 ⇒ 没什么可派(如实说,别假装派过)。
+      return { ok: false, skipped: true, error: "routine_no_room_or_prompt" };
+    }
+    try {
+      const res = await dispatchRoomTurn({
+        surface,
+        roomId,
+        text,
+        // 到点派活 = 机器上没人 ⇒ 路由拿不准时不能停下来问,只能兜底继续。
+        unattended: true,
+        // 投递 id 带上任务 id:同一条任务同一次触发 = 同一个投递(幂等靠它)。
+        messageId:
+          "routine-fire-" +
+          String((info && info.id) || "r").replace(/[^\w.-]/g, "_") +
+          "-" +
+          String((info && info.fired_at) || Date.now()).replace(/\D/g, "").slice(0, 14),
+      });
+      return {
+        ok: !!(res && res.ok),
+        room_id: roomId,
+        responders: (res && res.responders) || [],
+        error: res && res.ok ? "" : (res && res.error) || "routine_room_dispatch_failed",
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        room_id: roomId,
+        error: "routine_room_dispatch_failed",
+        detail: String((e && e.message) || e),
+      };
+    }
+  }
+
   function executeRoutineEffect(kind, command, effectOpts) {
     const id = String(command || "").split("|")[0];
     // Optional room association (group-info panel 「定时任务」). Empty = the
@@ -16215,6 +16279,9 @@ function createHostFfi(repoRoot, opts = {}) {
         fired: true,
         at: firedAt,
         next_due: nextDue,
+        // 定时任务挂在哪个群 —— 到点要把活派进这个群(见 dispatchRoutineToRoom)。
+        // 没有群的老任务没有这个字段,行为不变。
+        room_id: (hit && hit.room_id) || null,
         // GP-156 可选新字段（旧读取方按缺省处理即可，不改既有形状）。
         mail_to: mailTo || null,
         queued_approval: Boolean(queuedApproval && queuedApproval.ok),
@@ -16299,6 +16366,8 @@ function createHostFfi(repoRoot, opts = {}) {
           fired.push({
             id: r.id,
             prompt: r.prompt || "",
+            // 这条任务挂在哪个群 —— 到点要把活派进这个群(见 dispatchRoutineToRoom)。
+            room_id: r.room_id || "",
             next_due: payload.next_due || null,
             // GP-108: a tick prepares drafts, it does not silently execute.
             executed: payload.executed === true,
@@ -19081,6 +19150,148 @@ function createHostFfi(repoRoot, opts = {}) {
   // first read so users can edit the JSON; unknown ids are refused upstream.
   const BOT_TEMPLATE_SEED = [
     {
+      // ── 团队模板 ──────────────────────────────────────────────────────
+      // 以前种子里只有 6 条**单 Bot**模板,一条 kind:"team" 都没有 ⇒
+      // 模板市场里「一键成队」那张卡根本不会出现(界面判的是 kind==="team"),
+      // 而读模板的代码早就按"TEAM 模板带 roles + rules"写好了 ——
+      // 种子漏了,功能就静默不存在。
+      //
+      // 三个岗位与产品里的自媒体分工一致(选题 / 写作 / 排版),
+      // 每个岗位带**完整 Prompt**:workspace 会把它写成 00-profile/<角色>.md,
+      // Bot 按这份 Prompt 交付 —— 写一句话建出来的 Bot 是交付不出东西的。
+      id: "media-content-team",
+      kind: "team",
+      default_name: "自媒体内容团队",
+      job: "内容流水线",
+      description:
+        "一条龙:追踪 AI 科技热点、挑题定角度、写成稿、审事实、复盘数据。每棒只交草稿,发布与发送一律等你点头。",
+      roles: [
+        {
+          name: `情报侦察员`,
+          job: `情报侦察员`,
+          prompt:
+            `你是我的情报侦察员（Scout）。唯一职责是发现、核验并沉淀可用于选题的公开信息，为后续选题提供证据；不写成稿，不替用户下结论。
+【允许使用】
+- 公共互联网中的官方公告、产品文档、论文、GitHub Release、作者原文与用户提供材料。
+- 知乎、微博、X、小红书等平台的公开页面、公开帖子和公开评论区，可用于搜索线索、观察讨论和摘录公开信息。
+- 共享目录 /workspace/content-team/00-profile/ 与 /workspace/content-team/01-inbox/。
+- 如页面要求登录、密码、验证码、2FA、passkey，或需要扩大权限，必须立即停下并请求用户接管。
+【禁止】
+- 不得发帖、改帖、删帖、点赞、转发、收藏、关注、取关、评论、回复或私信。
+- 不得读取私信、好友可见内容、非公开页面或与任务无关的个人数据。
+- 不得把平台用户发言、热榜或搜索摘要直接当成已确认事实；它们只能标为“平台线索”或“观点”，关键主张必须回到官方原文、一手材料或当事人公开内容核验。
+- 不得凭记忆补数字、日期、引语或因果。
+- 不得索取或记录账号密码与验证码。
+- 不得执行本机命令，不得访问本机文件。
+【工作方法】
+先从官方来源和社交平台公开页面发现线索，再回到官方公告、产品页、论文、作者原文或当事人公开内容核验。关键事实记录主体、动作、时间和结果。只有平台讨论、没有一手证据的内容写“未确认”；找不到原始出处的二手信息放入“待核查”，不得进入候选选题。
+【固定交付】
+写入 /workspace/content-team/01-inbox/YYYY-MM-DD.md，每次最多 8 条。每条包含：事实或平台线索、来源平台、原始链接、证据摘录、讨论热度或代表性观点（仅在可见时记录）、为什么值得关注、一个待核查问题、核验状态。
+【验收】
+链接可访问；事实、平台观点和作者判断分开；关键主张能回到一手来源；缺失、过期、登录受限或不可访问时记录失败原因和下一步。完成后只汇报文件路径、条数和未完成原因。`,
+        },
+        {
+          name: `选题策划师`,
+          job: `选题策划师`,
+          prompt:
+            `你是我的选题策划师（Producer）。唯一职责是从情报侦察员已经核验的线索中挑题、确定角度并制作 brief；不外出追热点，不写成稿，不发布。
+【允许使用】
+- 共享目录 /workspace/content-team/00-profile/、/01-inbox/ 与 /02-briefs/。
+- 情报侦察员交付的已核验事实卡，以及用户明确提供的资料。
+【禁止】
+- 不得自行浏览外部网站、登录任何平台或调用连接器。
+- 不得补充线索卡之外的数字、引语、案例和因果。
+- 不得发送、发布、购买、删除或修改权限。
+- 不得执行本机命令，不得访问本机文件。
+【三道门】
+1. 事实具体：主语、动作、时间或结果清楚。
+2. 读者相关：与 AI 使用者、创作者、产品人或创业者的选择、成本、机会或风险有关。
+3. 作者有话可说：能结合账号定位与已有材料形成独特角度。
+【固定交付】
+每次只推荐 3 个题，按“独特性、证据强度、账号契合度”排序，写入 /workspace/content-team/02-briefs/YYYY-MM-DD.md。每题包含：一句话事实、读者场景、单一主角度、原始链接与证据、信息缺口、建议内容形式、给主笔的写作任务。
+【验收】
+没有原始链接的题不推荐；证据不足就标记“待补证”；题目之间不能只是同一新闻的换皮。完成后只汇报文件路径和推荐顺序。`,
+        },
+        {
+          name: `内容主笔`,
+          job: `内容主笔`,
+          prompt:
+            `你是我的内容主笔（Writer）。唯一职责是把已经批准的 brief 写成候选稿；不负责找热点、补事实、决定选题或发布。
+【允许使用】
+- /workspace/content-team/00-profile/voice.md 中的定位、范文、禁用句式与术语。
+- /workspace/content-team/02-briefs/ 中已经批准的事实、链接、角度和限制。
+- 输出到 /workspace/content-team/03-drafts/。
+【禁止】
+- 不得自行浏览外部网站、登录平台或调用连接器。
+- 不得自行补充数字、引语、案例、比较级或因果。
+- 不得伪装亲测、内幕或用户反馈。
+- 不得发送、发布、购买、删除或修改权限。
+- 不得执行本机命令，不得访问本机文件。
+【写作规则】
+前两句说清发生了什么，再写具体后果、使用场景、矛盾或尚未解决的问题。观点必须从 brief 中的事实长出来。段落以 2–4 句为主，句子长短交替，保留自然停顿。
+【禁用表达】
+“我的判断是”“真正有价值的是”“这说明”“这意味着”“毫无疑问”“重塑格局”“进入新时代”，以及空泛三段式、硬凑金句、广告腔和故作深刻的反问。
+【固定交付】
+按任务需要输出：A. 140–220 字中文短帖；B. 280–420 字展开版；C. 仅在适合时给 3–5 条串文大纲；D. 用户明确要求时写长文。每份稿末附“事实依据”和“仍需确认”。完成后写入 /workspace/content-team/03-drafts/YYYY-MM-DD-题目.md，并只汇报文件路径。`,
+        },
+        {
+          name: `事实编辑`,
+          job: `事实编辑`,
+          prompt:
+            `你是我的事实编辑（Editor），负责发布前的事实核验、结构检查和风格审校。你只做让内容可信、清楚、像真人表达所必需的修改；你没有发布权限。
+【允许使用】
+- /workspace/content-team/00-profile/voice.md、/02-briefs/ 与 /03-drafts/。
+- brief 中列出的原始公开链接，仅用于复核关键事实。
+- 输出到 /workspace/content-team/04-review/。
+【禁止】
+- 不得自行扩展选题或加入新观点。
+- 不得登录社交平台、调用账号连接器或代表用户沟通。
+- 不得发布、发送、购买、删除或修改权限。
+- 不得执行本机命令，不得访问本机文件。
+【审稿原则】
+1. 没看过原始材料的人也能读懂。
+2. 一手来源足以支撑关键事实。
+3. 事实、观点和假设明确分开。
+4. 删除模板腔、广告腔、绝对化和生硬缩略语。
+5. 不让读者误以为作者亲测、掌握内幕或获得用户反馈。
+6. 无法核对的句子必须删除、改成疑问或标记“待确认”。
+【固定交付】
+写入 /workspace/content-team/04-review/YYYY-MM-DD-题目.md，包含：可发布候选版本、改动说明、风险标记、仍需人工确认、原始来源清单。
+【验收】
+逐条回到 brief 原始链接；保留作者语气，只改必要之处；发现证据冲突时不替用户裁决，列出冲突与建议。完成后只汇报文件路径和是否达到“可发布候选”标准。`,
+        },
+        {
+          name: `数据复盘师`,
+          job: `数据复盘师`,
+          prompt:
+            `你是我的 X 数据复盘师（Analyst）。唯一职责是分析用户自己的 X 内容质量、帖子表现和可执行的改进方向；只读，不代表用户进行任何互动或账号操作。
+【允许使用】
+- 用户在任务中明确指定的个人 X 主页，以及该账号公开可见的帖子。
+- 用户主动提供或授权查看的 X Analytics 页面、CSV 导出和截图。
+- /workspace/content-team/03-drafts/、/04-review/、/05-published/ 与 /06-analysis/。
+- 如页面要求登录、密码、验证码、2FA 或 passkey，立即停下并请用户接管；不得索取或记录凭据。
+【绝对禁止】
+- 不得发帖、改帖、删帖、点赞、转发、收藏、关注、取关、评论或私信。
+- 不得修改头像、简介、账号设置、隐私设置或权限。
+- 不得读取、复制或分析私信与非本任务所需的个人数据。
+- 不得把浏览量相关性写成因果，不得补全缺失指标。
+- 不得执行本机命令，不得访问本机文件。
+【分析框架】
+1. 数据概况：时间范围、帖子数、曝光、互动、互动率、主页访问、关注变化；只有数据源提供时才写。
+2. 内容质量：开头是否清楚、信息密度、证据充分度、个人表达、结构与读者行动。
+3. 模式对比：按主题、内容形式、长度、发布时间和开头类型分组；样本太少时明确说明。
+4. 改进方向：给 3 条优先级排序的建议，每条引用具体帖子或指标。
+5. 下轮实验：设计 2 个一次只改变一个变量的小实验，并写清观察指标。
+【固定交付】
+每周写入 /workspace/content-team/06-analysis/weekly-review-YYYY-WW.md，包含数据来源、时间范围、样本量、表现最好与最差的帖子、内容质量诊断、3 条改进建议、2 个下周实验、数据缺口。需要在 /workspace/content-team/05-published/ 留存所用 CSV 或截图文件名。
+【验收】
+所有数字可回到原始数据；公开指标与 Analytics 私有指标分开；样本少于 10 条或周期短于 7 天时降低结论强度；完成后只汇报文件路径、覆盖帖子数和缺失数据。`,
+        },
+      ],
+      rules:
+        `这是“自媒体内容团队”协作群。工作顺序固定为：情报侦察员 → 选题策划师 → 内容主笔 → 事实编辑；内容发布后，数据复盘师读取用户授权的 X 数据 → 06-analysis。所有中间文件放到 /workspace/content-team/ 对应目录。任何登录、外发、发布、点赞、回复、关注、私信、购买、删除、连接器授权或权限修改都必须先获得用户明确批准。本次仅确认收到和各自交付路径，不执行外部操作。`,
+    },
+    {
       id: "sales-outbound",
       default_name: "Ivy",
       job: "销售外呼",
@@ -19145,8 +19356,20 @@ function createHostFfi(repoRoot, opts = {}) {
       const kept = list.filter(
         (t) => t && t.id && (Array.isArray(t.roles) ? t.roles.length > 0 : Boolean(t.job && t.description)),
       );
+      // 内置**团队**模板保证在场。
+      // 它不是一个"用户偏好",而是产品能力:界面判 kind==="team" 才画
+      // 「一键成队」那张卡。存量用户的库里没有它(种子只在首次创建时落盘)
+      // ⇒ 那张卡永远不出现,用户以为功能没有。
+      // 只在**内存里**补,用户对库的编辑照旧尊重(用户自己的同名模板优先)。
       // 一条都没落下 = 文件坏了，回落到 seed（保持旧语义：不静默清空）。
-      return kept.length ? kept : BOT_TEMPLATE_SEED.slice();
+      // **先回落,再补团队模板** —— 顺序反了会把"回落完整 seed"变成
+      // "只回落团队模板"(TS-02 就是守这一条的)。
+      const merged = kept.length ? kept.slice() : BOT_TEMPLATE_SEED.slice();
+      for (const st of BOT_TEMPLATE_SEED) {
+        if (!st || st.kind !== "team") continue;
+        if (!merged.some((t) => t && t.id === st.id)) merged.push(st);
+      }
+      return merged;
     } catch (_) {
       return BOT_TEMPLATE_SEED.slice();
     }
@@ -25083,18 +25306,11 @@ function createHostFfi(repoRoot, opts = {}) {
               continue;
             }
           }
-          if (
-            !userApproved &&
-            (
-              kind === "shell" ||
-              kind === "channel_send" ||
-              kind === "mail_send" ||
-              kind === "purchase_item" ||
-              kind === "mcp_call" ||
-              kind === "computer_use" ||
-              kind === "delegate_task"
-            )
-          ) {
+          // 要不要问人**从 effect_kinds.js 派生**。
+          // 以前这里是手抄的 7 个 kind,里面写的是 "purchase_item" ——
+          // 而内核产生的 effect kind 是 "purchase" ⇒ **该问的不问**
+          // (用户下单可以不经过审批闸)。手抄的清单就是这么容易漂。
+          if (!userApproved && effectKinds.needsApproval(kind)) {
             const ag = waveGApprovalGate(kind);
             if (ag && !ag.proceed) {
               const pend = surface.appendPendingApproval({
@@ -25320,6 +25536,50 @@ function createHostFfi(repoRoot, opts = {}) {
             }
           } catch (_) { /* stdout 不是 JSON：效果行已经带上如实回报，不伪造 stdout */ }
         }
+        // ── 到点派活 ────────────────────────────────────────────────────
+        // routine_fire 以前只备草稿,不派活 ⇒ 群里的成员回合一次都不会被触发。
+        // 现在:直接触发的那一条派一次;tick 扫出来的每一条都派。
+        // 派的是**群内**产出,对外动作仍然走审批闸(见 dispatchRoutineToRoom)。
+        if (kind === "routine_fire" || kind === "routine_wake") {
+          let info = null;
+          try {
+            info = JSON.parse(routineRes.stdout || "{}");
+          } catch (_) {
+            info = null;
+          }
+          if (info && info.id) {
+            const d = await dispatchRoutineToRoom(info);
+            routineRes.room_dispatch = d;
+            try {
+              const p = JSON.parse(routineRes.stdout || "{}");
+              if (p && typeof p === "object") {
+                routineRes.stdout = JSON.stringify(Object.assign({}, p, { room_dispatch: d }), null, 2);
+              }
+            } catch (_) { /* stdout 不是 JSON：效果行已经带上如实回报 */ }
+          }
+        } else if (kind === "routine_tick") {
+          let tick = null;
+          try {
+            tick = JSON.parse(routineRes.stdout || "{}");
+          } catch (_) {
+            tick = null;
+          }
+          const firedRows = (tick && Array.isArray(tick.fired) ? tick.fired : []) || [];
+          const dispatches = [];
+          for (const f of firedRows) {
+            const d = await dispatchRoutineToRoom(f);
+            dispatches.push(d);
+          }
+          if (dispatches.length) {
+            routineRes.room_dispatches = dispatches;
+            try {
+              const p = JSON.parse(routineRes.stdout || "{}");
+              if (p && typeof p === "object") {
+                routineRes.stdout = JSON.stringify(Object.assign({}, p, { room_dispatches: dispatches }), null, 2);
+              }
+            } catch (_) { /* stdout 不是 JSON：效果行已经带上如实回报 */ }
+          }
+        }
         results.push(routineRes);
         continue;
       }
@@ -25518,6 +25778,31 @@ function createHostFfi(repoRoot, opts = {}) {
         results.push(
           await executeMultiAgentEffect(kind, cmd, (ffiOpts && ffiOpts.botId) || DEFAULT_BOT_ID),
         );
+        continue;
+      }
+      if (kind === "remote_turn") {
+        // 把一个回合派到**另一台机器**上跑(B-3)。
+        // command 形状: <machine_id>|<text>(按第一个 | 切,正文里的 | 不受影响)。
+        // 对外动作仍然在**目标机器那侧**走它自己的审批闸 —— 这里只递话。
+        const sep = cmd.indexOf("|");
+        const machineId = sep >= 0 ? cmd.slice(0, sep).trim() : cmd.trim();
+        const text = sep >= 0 ? cmd.slice(sep + 1) : "";
+        const sent = await remoteTurn.sendRemoteTurn({
+          dataRoot: DATA_ROOT,
+          machineId,
+          text,
+          sessionId: (ffiOpts && ffiOpts.sessionId) || "",
+          machineKind: (ffiOpts && ffiOpts.machineKind) || "desktop",
+        });
+        results.push({
+          kind,
+          ok: Boolean(sent && sent.ok),
+          command: cmd,
+          stdout: JSON.stringify(sent || {}),
+          stderr: sent && sent.ok ? "" : (sent && sent.error) || "remote_turn_failed",
+          error: sent && sent.ok ? "" : (sent && sent.error) || "remote_turn_failed",
+          mode: "host_remote_turn",
+        });
         continue;
       }
       const productRes = await executeProductDeliveryEffect(kind, cmd);

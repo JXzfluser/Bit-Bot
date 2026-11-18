@@ -171,6 +171,9 @@ async function dispatchRoomTurn(o) {
         message_id: messageId,
         force: Boolean(opts.force),
         report: opts.report,
+        // 无人值守(定时任务到点):「看不出该谁做」在常开机器上问不到人 ⇒
+        // 任务会永远卡着。编排器据此走兜底,而不是停下来等一个不会来的回答。
+        unattended: Boolean(opts.unattended),
         deps: opts.deps || {},
       }),
       deadlineMs,

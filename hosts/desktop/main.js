@@ -3979,6 +3979,18 @@ ipcMain.handle("bitbot:account:status", async () =>
 ipcMain.handle("bitbot:account:signIn", async (_e, label) =>
   runAccountEffect("account_sign_in", String(label || "").trim().replace(/ /g, "+")),
 );
+/* 「我的邮箱」:登记/改一个本地 profile 的收件地址。
+   不走 effect —— 这是**用户自己填的地址**,不是模型产生的意图,
+   让模型去产生"设置邮箱"这种 intent 反而多一条能被别人触发的路。 */
+ipcMain.handle("bitbot:account:setEmail", async (_e, payload) => {
+  try {
+    const label = String((payload && payload.label) || "").trim();
+    const email = String((payload && payload.email) || "").trim();
+    return surface.accountSetEmail(label, email);
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
 ipcMain.handle("bitbot:account:signOut", async () =>
   runAccountEffect("account_sign_out", "local"),
 );

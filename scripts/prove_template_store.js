@@ -24,6 +24,7 @@
  * 跑法：node scripts/prove_template_store.js
  */
 "use strict";
+(async function main() {
 
 const fs = require("fs");
 const path = require("path");
@@ -131,7 +132,13 @@ function dropCommentLines(src) {
   const judgeFilter = (text) => {
     const i = text.indexOf("function loadBotTemplates()");
     if (i < 0) return { ok: false, why: "找不到 loadBotTemplates" };
-    const block = text.slice(i, i + 1400);
+    /* 按**函数边界**截取,不用固定字符数。
+       原来写死 1400 字符:函数体一改长(比如加了一段"内置团队模板保证在场"
+       的合并逻辑),判据就看不见关键行了 —— 那是尺子与真源脱钩,不是产品坏了。
+       按函数边界截,判据只跟着语义走。 */
+    const rest = text.slice(i);
+    const endIdx = rest.search(/\n  function [A-Za-z_]/);
+    const block = endIdx > 0 ? rest.slice(0, endIdx) : rest;
     // 旧条件：job 与 description 同时为硬门槛
     if (/t\.id\s*&&\s*t\.job\s*&&\s*t\.description/.test(block)) {
       return { ok: false, why: "过滤仍要求 job+description —— 团队模板(roles/rules)会被静默丢掉" };
@@ -222,16 +229,27 @@ function dropCommentLines(src) {
 /* ---------- 4) 自媒体团队模板在位，且角色数对得上真实团队 ---------- */
 
 {
-  if (!fs.existsSync(STORE)) {
-    skip("TS-04", "没有模板库文件");
+  /* 判据走**产品真实路径**(bot_templates_list effect ⇒ loadBotTemplates),
+     不再直接读库文件。
+     原来读文件 ⇒ 存量用户的库里没有内置团队模板(种子只在首次创建时落盘),
+     判据就红了,而产品其实能拿到模板 —— 判据测的是文件,不是产品。
+     走产品路径才是"用户点一键成队到底看得到什么"。 */
+  let list = [];
+  try {
+    const { createHostFfi } = require("../hosts/shared/host_ffi");
+    const ffi = createHostFfi(ROOT, { dataRoot: path.join(ROOT, "data") });
+    // executeHostEffects 是 async ⇒ 这一段必须 await(下面整块用 async main 包住)。
+    const rows = await ffi.executeHostEffects([{ kind: "bot_templates_list", command: "" }]);
+    const r = (rows || []).find((x) => x && x.kind === "bot_templates_list") || {};
+    let payload = {};
+    try { payload = JSON.parse(r.stdout || "{}"); } catch (_) { payload = {}; }
+    list = Array.isArray(payload.templates) ? payload.templates : [];
+  } catch (e) {
+    bad("TS-04 走产品路径取模板失败", String((e && e.message) || e).slice(0, 200));
+  }
+  if (!list.length) {
+    bad("TS-04 产品路径一条模板都没给出来");
   } else {
-    let list = [];
-    try {
-      const raw = JSON.parse(read(STORE));
-      list = Array.isArray(raw) ? raw : raw.templates || [];
-    } catch (_) {
-      /* 下面按空处理 */
-    }
     const team = list.find((t) => t && t.kind === "team" && Array.isArray(t.roles) && t.roles.length);
     if (!team) {
       bad("TS-04", "模板库里没有任何团队模板（一键成队点了会报「缺少角色定义」）");
@@ -259,5 +277,11 @@ function dropCommentLines(src) {
   }
 }
 
+
 console.log("\nprove_template_store: PASS=" + PASS + " FAIL=" + FAIL);
 process.exit(FAIL ? 1 : 0);
+})().catch((e) => {
+  console.error("prove_template_store: " + String((e && e.message) || e));
+  console.log("\nprove_template_store: PASS=" + PASS + " FAIL=" + (FAIL + 1));
+  process.exit(1);
+});

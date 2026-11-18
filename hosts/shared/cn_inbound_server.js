@@ -1073,8 +1073,17 @@ function createCnInboundServer(opts = {}) {
           ).trim();
           // 注意别把局部变量叫 res —— 那会盖掉 HTTP 响应对象。
           let decisionResult = null;
+          // scope:"wide" ⇒ 「总是允许」按**类**放行(kind:*)。
+          // 不带 scope ⇒ 走**作用域**规则(kind:<作用域>),窄得多。
+          const wantScope =
+            payload && payload.scope ? String(payload.scope).trim().toLowerCase() : "";
           try {
-            decisionResult = surface.approvalDecide(id, decision);
+            decisionResult = surface.approvalDecide(
+              id,
+              decision,
+              undefined,
+              wantScope === "wide" ? { scope: "wide" } : undefined,
+            );
           } catch (e) {
             json(res, 500, { ok: false, error: "approval_decide_failed" });
             return;
@@ -1103,10 +1112,19 @@ function createCnInboundServer(opts = {}) {
             kind: decisionResult.kind || "",
             // "always" 会写一条 allow 规则 —— 这是**授权这台机器**以后做这类事。
             persisted_pattern: decisionResult.persisted_pattern || "",
+            // scoped = 窄规则(kind:<作用域>) / kind = 一类放行(kind:*) / 空 = 没写规则
+            persisted_scope: decisionResult.persisted_scope || "",
             device_id: auth.device_id,
             note:
               decision === "always"
-                ? "已记下规则:这台机器以后做这类事不再逐次问你。"
+                ? decisionResult.persisted_pattern
+                  ? "已记下规则:" +
+                    decisionResult.persisted_pattern +
+                    " —— 这台机器以后做**这一件**事不再逐次问你。" +
+                    (decisionResult.persisted_scope === "kind"
+                      ? "(按类放行:这一类以后都不问)"
+                      : "")
+                  : "这次批了,但没写长期规则(算不出安全的作用域)——下次照常再问。"
                 : decision === "deny"
                   ? "已拒绝。什么也没执行。"
                   : "已批准这一次。",

@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld("bitbot", {
     status: () => ipcRenderer.invoke("bitbot:account:status"),
     signIn: (label) => ipcRenderer.invoke("bitbot:account:signIn", label),
     signOut: () => ipcRenderer.invoke("bitbot:account:signOut"),
+    // 「我的邮箱」:本地 profile 的收件地址(定时任务外发时用它)。
+    setEmail: (label, email) => ipcRenderer.invoke("bitbot:account:setEmail", { label, email }),
     switchTo: (label) => ipcRenderer.invoke("bitbot:account:switch", label),
   },
   // Wave M10 — Bot template catalog (GP-02).

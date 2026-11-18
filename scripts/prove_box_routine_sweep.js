@@ -276,8 +276,12 @@ async function waitFor(fn, ms, step) {
       JSON.stringify({
         id: pendId,
         source: "routine",
-        kind: "send_mail",
-        command: "me@example.com|AI 热点日报|今天三条热点",
+        // kind 是 **effect kind**(mail_send),不是工具名(send_mail)——
+        // 进审批队列的是 effect 那一侧,工具名那一侧不落这里。
+        kind: "mail_send",
+        // command 的真形状是 <provider>|<收件人>|<主题>|<正文>
+        // (内核 turn_json.mbt 的 mail_send effect 就是这么拼的)。
+        command: "gmail|me@example.com|AI 热点日报|今天三条热点",
         requested_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
         status: "pending",
@@ -310,17 +314,28 @@ async function waitFor(fn, ms, step) {
     });
     check(decide.status === 200, "SW-8 手机的决定被接受", decide.status + " " + decide.raw.slice(0, 200));
     check(
-      decide.body && String(decide.body.persisted_pattern || "") === "send_mail:*",
-      "SW-8 「总是允许」写下了这台机器的规则",
+      decide.body && String(decide.body.persisted_pattern || "") === "mail_send:me@example.com",
+      "SW-8 「总是允许」写下的是**作用域**规则(按收件人收窄,不是按类)",
+      JSON.stringify(decide.body || {}).slice(0, 220),
+    );
+    check(
+      decide.body && String(decide.body.persisted_scope || "") === "scoped",
+      "SW-8 作用域标记是 scoped",
       JSON.stringify(decide.body || {}).slice(0, 220),
     );
     const rulesPath = path.join(boxDir, "data", "desktop", "approval-rules.json");
     let rules = null;
-    try { rules = JSON.parse(fs.readFileSync(rulesPath, "utf8")); } catch (_) {}
+    let rulesRaw = "";
+    try { rulesRaw = fs.readFileSync(rulesPath, "utf8"); rules = JSON.parse(rulesRaw); } catch (_) {}
     check(
-      !!rules && Array.isArray(rules.rules) && rules.rules.some((r) => r && r.pattern === "send_mail:*" && r.decision === "allow"),
-      "SW-8 规则真的落在这台机器上(下一次同类操作不再逐次问)",
+      !!rules && Array.isArray(rules.rules) && rules.rules.some((r) => r && r.pattern === "mail_send:me@example.com" && r.decision === "allow"),
+      "SW-8 规则真的落在这台机器上(下一次同一个收件人不再逐次问)",
       JSON.stringify(rules || {}).slice(0, 250),
+    );
+    check(
+      !rulesRaw.includes("AI 热点日报") && !rulesRaw.includes("今天三条热点"),
+      "SW-8 负向:规则文件里没有邮件主题/正文(别把内容存一份在磁盘上)",
+      rulesRaw.slice(0, 250),
     );
     // 决定本身有留痕
     const eventsPath = path.join(boxDir, "data", "routines", "webhooks", "cn-inbound", "events.jsonl");

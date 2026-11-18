@@ -98,10 +98,22 @@ if (/if \(dayKeyOf\(m\.at\) && dayKeyOf\(m\.at\) !== lastDayKey\) appendDaySep\(
 } else {
   bad("day sep history", "not inserted in transcript load");
 }
-if (/ensureDaySepForNow\(\);[\s\S]{0,200}?userEl = addMsg\("user"/.test(html)) {
-  ok("实时发送：跨天时先补分隔行再画用户气泡");
-} else {
-  bad("day sep live", "not inserted on send");
+/* 判据:同一个「画用户气泡」的块里,**先**补日期分隔、**再**画气泡。
+   原来写的是「ensureDaySepForNow(); 之后 200 个字符内出现 addMsg("user")」——
+   中间这些年加了台账/回执逻辑,200 字符装不下了 ⇒ 判定失真(行为没变)。
+   那是尺子与真源脱钩,不是产品坏了。改成按**同一个块**判顺序:更准,
+   而且比"200 字符内"更严 —— 它不许跨块凑数。 */
+{
+  const i = html.indexOf("if (!(opts && opts.silentUser)) {");
+  const j = i >= 0 ? html.indexOf("sendBtn.disabled = true;", i) : -1;
+  const block = i >= 0 && j > i ? html.slice(i, j) : "";
+  const a = block.indexOf("ensureDaySepForNow();");
+  const b = block.indexOf('userEl = addMsg("user"');
+  if (a >= 0 && b > a) {
+    ok("实时发送：跨天时先补分隔行再画用户气泡（同一个块内,顺序在前）");
+  } else {
+    bad("day sep live", "not inserted on send（块内没找到 ensureDaySepForNow() 在 addMsg 之前）");
+  }
 }
 if (/\.msg-day-sep\s*\{[^}]*align-self:\s*center/.test(html) && /\.msg-day-sep\s*\{[^}]*text-align:\s*center/.test(html)) {
   ok("样式：.msg-day-sep 居中（与真机居中灰小字同形）");

@@ -2195,16 +2195,23 @@ pub fn classify_parity_intent(trimmed : String, low : String) -> TurnIntent? {
           None => "routine-1"
         }
     }
-    let cron = match extract_kv(rest, "cron") {
-      Some(v) => v
-      None => "@daily"
-    }
     let prompt = match extract_kv(rest, "prompt") {
       Some(v) => v
       None =>
         match extract_kv(rest, "action") {
           Some(v) => v
           None => rest
+        }
+    }
+    // 没给 cron ⇒ 让**内核**的中文排程解析器算,而不是让调用方猜。
+    // 「每天早上9点」以前只能落 @daily(＝凌晨0点),用户要的是 9 点。
+    // 解析不出来就照旧落 @daily(既有兜底),不编一个时间糊弄人。
+    let cron = match extract_kv(rest, "cron") {
+      Some(v) => v
+      None =>
+        match decode_cn_schedule(prompt) {
+          Some((c, _)) => c
+          None => "@daily"
         }
     }
     if prompt != "" {
@@ -2968,7 +2975,10 @@ pub fn gate_consequential(
     @security.NeedUser(reason~) => {
       let effect : DesktopEffect = {
         kind: "approval_card",
-        command: class_.label() + " :: " + summary + " :: " + reason,
+        // 结构化前缀:Host 不再靠"第一段是不是某个 token"去猜 class ——
+        // 那种猜法在两边各抄一份 token 表,加一档漏一处就静默错判。
+        // 新前缀是 "approval_class=<Class> :: ...";旧格式仍然被 Host 认。
+        command: "approval_class=" + class_.label() + " :: " + summary + " :: " + reason,
         needs_host_ffi: true,
       }
       Some(
@@ -2990,7 +3000,7 @@ pub fn gate_consequential(
     @security.Escalate => {
       let effect : DesktopEffect = {
         kind: "approval_card",
-        command: class_.label() + " :: escalate :: " + summary,
+        command: "approval_class=" + class_.label() + " :: escalate :: " + summary,
         needs_host_ffi: true,
       }
       Some(

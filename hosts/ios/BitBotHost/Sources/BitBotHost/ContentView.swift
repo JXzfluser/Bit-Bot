@@ -13,6 +13,7 @@ struct ContentView: View {
   @State private var busy = false
   @State private var showCapabilities = false
   @State private var showCredentials = false
+  @State private var showApprovals = false
   @State private var hostUrlDraft = TurnBridge.configuredHostURL() ?? ""
   @State private var delivery = SendToUserSurface.Summary()
   @State private var statusHint =
@@ -267,6 +268,13 @@ struct ContentView: View {
         ToolbarItem(placement: .topBarTrailing) {
           Button("能力") { showCapabilities.toggle() }
         }
+        // 手机上也能**批**(B-6):之前手机只能看审批卡,点不动。
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("审批") { showApprovals = true }
+        }
+      }
+      .sheet(isPresented: $showApprovals) {
+        ApprovalSheet()
       }
       .sheet(isPresented: $showCredentials) {
         NavigationStack {

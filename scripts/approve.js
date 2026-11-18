@@ -10,14 +10,16 @@
  *   node scripts/approve.js --box http://127.0.0.1:18765 \
  *        --credential data/host/credentials/dev-mobile-xxx.credential.json list
  *   node scripts/approve.js ... allow  <approval-id>    # 只批这一次
- *   node scripts/approve.js ... always <approval-id>    # 授权这台机器以后做这类事
+ *   node scripts/approve.js ... always <approval-id>    # 以后**同一件**不再问你
+ *   node scripts/approve.js ... always --wide <id>      # 以后**这一类**都不再问(宽授权)
  *   node scripts/approve.js ... deny   <approval-id>
  *
  * 鉴权用**设备密钥**(B-4a):凭证文件里有私钥,签名之后 Box 用公钥验。
  * 账号 = 设备密钥,没有别的身份。
  *
- * 注意 `always` 的分量:它写的是这台机器上的 allow 规则(`kind:*`),
- * 等于**授权这台机器以后做这类事不再逐次问你**。所以这个命令会先问你一句。
+ * 注意 `always` 的分量:默认写的是**作用域**规则(shell:git push / mail_send:我@你.com),
+ * 等于授权这台机器以后做**同一件**事不再逐次问你。想放宽到整类(--wide),
+ * 那就是一把万能钥匙 —— 所以这个命令会先问你一句,还得显式 --yes。
  */
 
 const fs = require("fs");
@@ -199,25 +201,49 @@ async function main() {
     process.exit(2);
   }
   const decision = cmd === "allow" ? "allow_once" : cmd;
+  // 「总是允许」默认写**作用域**规则(shell:git push / mail_send:me@x.com),
+  // 也就是"这一件"以后不再问你;--wide 才按**类**放行(kind:*)。
+  const wantWide = has("wide");
 
   if (decision === "always" && !has("yes")) {
-    // always 的分量比 allow_once 重:它授权的是**这台机器**以后做这类事。
+    // always 的分量比 allow_once 重:它授权的是**这台机器**以后不再问你。
     console.log(
-      "「总是允许」会在这台机器上写一条 allow 规则(" + cmd + "),\n" +
-      "也就是:以后这类操作不再逐次问你。\n" +
-      "确认请加 --yes 再跑一次。",
+      wantWide
+        ? "「总是允许 --wide」会在这台机器上写一条**按类**放行的规则(kind:*),\n" +
+          "也就是:以后**这一类**操作都不再逐次问你(不管具体参数)。\n" +
+          "确认请加 --yes 再跑一次。"
+        : "「总是允许」会在这台机器上写一条**作用域**规则,\n" +
+          "也就是:以后**同一件**操作(同一条命令 / 同一个收件人)不再逐次问你。\n" +
+          "确认请加 --yes 再跑一次。\n" +
+          "想按类放行(宽授权)请加 --wide —— 那等于给这台机器一把万能钥匙。",
     );
     process.exit(3);
   }
 
-  const res = await request(boxUrl, "POST", "/v1/approvals/" + encodeURIComponent(id) + "/decide", device, {
-    decision,
-  });
+  const payload = { decision };
+  if (decision === "always" && wantWide) payload.scope = "wide";
+  const res = await request(boxUrl, "POST", "/v1/approvals/" + encodeURIComponent(id) + "/decide", device, payload);
   if (res.status !== 200) {
     console.error("决定失败: HTTP " + res.status + " " + JSON.stringify(res.body));
     process.exit(1);
   }
   console.log(JSON.stringify(res.body, null, 2));
+  // 写下了什么规则、还是根本没写 —— 如实说,不让人以为"以后都不问了"。
+  const pat = res.body && res.body.persisted_pattern;
+  if (decision === "always") {
+    if (pat) {
+      console.error(
+        "\n已写下的规则:" + pat +
+          (res.body.persisted_scope === "kind"
+            ? "(按类放行 —— 这一类以后都不问了)"
+            : "(作用域 —— 只有同一件不再问)"),
+      );
+    } else {
+      console.error(
+        "\n这次批了,但**没写长期规则**(算不出安全的作用域)——下次照常再问。",
+      );
+    }
+  }
 }
 
 main().catch((e) => {

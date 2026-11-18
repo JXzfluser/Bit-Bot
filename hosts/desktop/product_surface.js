@@ -1042,21 +1042,82 @@ function createProductSurface(repoRoot, opts = {}) {
     return { ok: true, removed, mode: "host_approval_rule_remove" };
   }
 
+  // ── 「总是允许」的作用域(scope) ────────────────────────────────────────
+  // 「总是允许」不是「一把钥匙开整栋楼」。
+  // 以前一次 always 写的是 kind:* —— 批一次 mail_send,以后**任何**一封邮件
+  // 都不用问;批一次 shell,以后**任何**一条命令都能跑。那一次的授权量,
+  // 远大于用户当时看到的那一条。
+  //
+  // 现在按 kind 算一个**结构性的作用域**:只说"哪一类里的哪一个",
+  // 不含正文/参数值 ⇒ 规则文件里不会留下邮件正文、消息内容、命令参数。
+  //
+  //   shell        → 可执行名[ + 子命令]:  shell:git push
+  //   mail_send    → 收件人:               mail_send:me@example.com
+  //   channel_send → 渠道名:               channel_send:dingtalk
+  //   mcp_call     → 服务名:               mcp_call:notion
+  //   其它 kind    → 算不出 ⇒ 不写长期规则(这一次仍然批了)
+  //
+  // 算不出作用域时**不退回 kind:*** —— 宁可这次多问一句,也不要默默递一把
+  // 万能钥匙。要按类授权,用户得**显式**说"按类放行"(CLI 的 --wide)。
+  function approvalScope(kind, command) {
+    const k = String(kind || "");
+    const cmd = String(command || "");
+    if (!cmd) return "";
+    // 作用域里允许出现的字符:不含空格/竖线/引号等结构字符。
+    const okTok = (s) => /^[A-Za-z0-9._@+-]{1,60}$/.test(s);
+    if (k === "shell") {
+      // 带管道/重定向/复合(; && || | > < …)的命令 ⇒ 作用域不可靠 ⇒ 不写长期规则。
+      if (/[;&|`$(){}\[\]<>\n\r*?!~#\\]/.test(cmd)) return "";
+      const toks = cmd.trim().split(/\s+/).filter(Boolean);
+      if (!toks.length) return "";
+      if (!toks.every(okTok)) return "";
+      // 第二个 token 若不是子命令(不以 - 开头)就算进去:`git push` 收窄,
+      // `git push --force` 不会被 `git push` 这条规则命中。
+      if (toks.length >= 2 && !toks[1].startsWith("-")) return `${toks[0]} ${toks[1]}`;
+      return toks[0];
+    }
+    if (k === "mail_send") {
+      // command 形状: <provider>|<收件人>|<主题>|<正文> —— 只取收件人。
+      const parts = cmd.split("|");
+      const to = String(parts[1] || "").trim();
+      return /^[^@\s|]{1,64}@[^@\s|]{1,190}$/.test(to) ? to : "";
+    }
+    if (k === "channel_send") {
+      // command 形状: <渠道> :: <正文>
+      const head = cmd.split("::")[0].trim();
+      return okTok(head) ? head : "";
+    }
+    if (k === "mcp_call") {
+      // command 形状: <namespace.name>|<参数 JSON>
+      const head = cmd.split("|")[0].trim();
+      return okTok(head) ? head : "";
+    }
+    return "";
+  }
+
   function approvalRuleMatch(kind, command) {
     const data = loadApprovalRules();
-    const testPattern = `${kind}:${command || ""}`;
-    
+    const cmd = String(command || "");
+    const scope = approvalScope(kind, cmd);
+    // 一次待批要同时试三种形态:
+    //   ① kind:<作用域>    —— 新写的长期规则(窄)
+    //   ② kind:<整条命令>  —— 老代码可能写过的精确规则(得留着)
+    //   ③ kind:*           —— 老的一类放行(得留着,不能被新逻辑悄悄作废)
+    const testPatterns = [];
+    if (scope) testPatterns.push(`${kind}:${scope}`);
+    if (cmd) testPatterns.push(`${kind}:${cmd}`);
+
     // GP-22: ask takes priority over allow
     let askMatch = null;
     let allowMatch = null;
 
     for (const rule of data.rules) {
-      if (matchPattern(rule.pattern, testPattern)) {
-        if (rule.decision === "ask" && !askMatch) {
-          askMatch = rule;
-        } else if (rule.decision === "allow" && !allowMatch) {
-          allowMatch = rule;
-        }
+      const hit = testPatterns.some(tp => matchPattern(rule.pattern, tp));
+      if (!hit) continue;
+      if (rule.decision === "ask" && !askMatch) {
+        askMatch = rule;
+      } else if (rule.decision === "allow" && !allowMatch) {
+        allowMatch = rule;
       }
     }
 
@@ -1193,7 +1254,9 @@ function createProductSurface(repoRoot, opts = {}) {
     }
   }
 
-  function approvalDecide(id, decision, nowIsoParam) {
+  // opts: { scope: "wide" } ⇒ 「总是允许」按**类**放行(kind:*)。
+  // 默认走**作用域**规则(kind:<作用域>),窄得多。
+  function approvalDecide(id, decision, nowIsoParam, opts) {
     if (!["allow_once", "always", "deny"].includes(decision)) {
       return { ok: false, error: "invalid_decision", mode: "host_approval_decide" };
     }
@@ -1265,11 +1328,27 @@ function createProductSurface(repoRoot, opts = {}) {
     });
 
     let persisted_pattern;
-    // If "always", upsert allow rule; pattern form `<kind>:*` so the host gate
-    // (matchApprovalRule(kind) → "kind:") actually matches it (GP-21).
+    let persisted_scope = "";
+    // If "always", upsert allow rule.
+    //
+    // 以前写的是 kind:* —— 一次授权 = 这台机器以后做**这一类**事不再问你。
+    // 现在默认写**作用域**规则(kind:<作用域>),窄得多:
+    //   shell:git push        mail_send:me@example.com   channel_send:dingtalk
+    // 算不出作用域(命令带管道/复合,或 kind 没定义作用域)⇒ **不写长期规则**:
+    // 这一次批了,下次照常再问。想按类放行得显式说(--wide / scope:"wide")。
     if (decision === "always") {
-      persisted_pattern = entry.kind + ":*";
-      approvalRuleUpsert({ pattern: persisted_pattern, decision: "allow", source: "personal" });
+      const wantWide = !!(opts && opts.scope === "wide");
+      const scope = wantWide ? "*" : approvalScope(entry.kind, entry.command);
+      if (scope === "*") {
+        persisted_pattern = entry.kind + ":*";
+        persisted_scope = "kind";
+      } else if (scope) {
+        persisted_pattern = entry.kind + ":" + scope;
+        persisted_scope = "scoped";
+      }
+      if (persisted_pattern) {
+        approvalRuleUpsert({ pattern: persisted_pattern, decision: "allow", source: "personal" });
+      }
     }
 
     return {
@@ -1280,6 +1359,7 @@ function createProductSurface(repoRoot, opts = {}) {
       command: entry.command,
       item: entry,
       persisted_pattern,
+      persisted_scope,
       mode: "host_approval_decide"
     };
   }
@@ -2662,6 +2742,15 @@ function createProductSurface(repoRoot, opts = {}) {
           margin: route.margin, reason: "user_asked_everyone_relay_keeps_serial",
         };
       }
+      if (route.mode === "unclear" && opts.unattended && roster.length) {
+        // 无人值守(定时任务到点):「这句话我没看出该谁做」这句话在常开机器上
+        // **问不到人** —— 桌面上停下来问是对的,机器上停下来就是永远卡死。
+        // 这种情况下按名册顺序交给第一位,并如实记下这是兜底、不是判断。
+        route = {
+          mode: "unattended_fallback_to_first", owner: roster[0], ranking: route.ranking,
+          margin: route.margin, reason: "no_one_to_ask_fallback_to_first",
+        };
+      }
       const routeOut = {
         mode: route.mode, reason: route.reason,
         owner: route.owner ? route.owner.id : "",
@@ -3935,6 +4024,10 @@ function createProductSurface(repoRoot, opts = {}) {
       active: active
         ? {
             label: active.label,
+            // 「我的邮箱」:用户在这个 profile 上登记的收件地址。
+            // 有了它,「发我邮箱」这种话才解析得出收件人 —— 以前账户档案里
+            // 只有名字,于是定时任务里的"发我邮箱"连审批都排不出来。
+            email: active.email || "",
             created_at: active.created_at,
             last_used_at: active.last_used_at,
             backed_by: active.backed_by || [],
@@ -3942,6 +4035,7 @@ function createProductSurface(repoRoot, opts = {}) {
         : null,
       accounts: (data.accounts || []).map(a => ({
         label: a.label,
+        email: a.email || "",
         created_at: a.created_at,
         last_used_at: a.last_used_at,
       })),
@@ -3953,6 +4047,40 @@ function createProductSurface(repoRoot, opts = {}) {
           : "local profile «" + active.label + "» has NO configured credentials — features needing them stay off"
         : "not signed in (no local profile); configure credentials under Settings · Credentials",
       at: nowIso()
+    };
+  }
+
+  /* 登记/改「我的邮箱」。
+   *
+   * 账户档案以前只有名字(label),没有地址 ⇒ 用户说"发我邮箱"时,
+   * 收件人只从原话里找字面邮箱地址;找不到就不外发(绝不编地址)——
+   * 于是"发我邮箱"这句话永远落不了地。
+   * 这里让用户自己登记一个地址:登记了,定时任务的外发才有收件人。
+   *
+   * 地址只做**形状**校验,不验证可达性(那要联网、要发信,不该在保存时做)。
+   * 空串 = 清除。 */
+  function accountSetEmail(label, email) {
+    const name = String(label || "").trim();
+    if (!name) return { ok: false, error: "account_needs_label", mode: "host_account_set_email" };
+    const raw = String(email || "").trim();
+    if (raw && !/^[^@\s]{1,64}@[^@\s]{1,190}$/.test(raw)) {
+      return { ok: false, error: "account_email_invalid", mode: "host_account_set_email" };
+    }
+    const data = loadAccountProfile();
+    const hit = (data.accounts || []).find(a => a.label === name);
+    if (!hit) {
+      return { ok: false, error: "account_not_found", mode: "host_account_set_email" };
+    }
+    hit.email = raw;
+    hit.email_updated_at = raw ? nowIso() : null;
+    saveAccountProfile(data);
+    return {
+      ok: true,
+      mode: "host_account_set_email",
+      label: name,
+      email: raw,
+      cleared: !raw,
+      at: nowIso(),
     };
   }
 
@@ -4368,6 +4496,7 @@ function createProductSurface(repoRoot, opts = {}) {
     appendPendingApproval,
     pendingApprovals,
     approvalDecide,
+    approvalScope,
     logApprovalDeny,
     
     // Legacy aliases
@@ -4438,6 +4567,7 @@ function createProductSurface(repoRoot, opts = {}) {
     // Account (GP-74) — local profile semantics only
     accountStatus,
     accountSignIn,
+    accountSetEmail,
     accountSignOut,
     accountSwitch,
     

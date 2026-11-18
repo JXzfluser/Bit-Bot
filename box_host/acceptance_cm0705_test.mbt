@@ -35,7 +35,7 @@ test "acceptance_CM-0705_device_local_tools_needs_permission_card" {
   assert_true(and_tools.length() >= 1)
 
   // needs_permission → approval card
-  match devices.invoke("phone-ios", "camera") {
+  match devices.invoke("phone-ios", @box_host.Ios, "camera") {
     Err(card) => {
       assert_true(card.is_approval_card())
       assert_true(card.shown)
@@ -51,13 +51,13 @@ test "acceptance_CM-0705_device_local_tools_needs_permission_card" {
   }
 
   // ready → Ok, no card
-  match devices.invoke("phone-ios", "photos") {
+  match devices.invoke("phone-ios", @box_host.Ios, "photos") {
     Ok(out) => assert_true(out.contains("photos"))
     Err(_) => fail("ready tool must succeed")
   }
 
   // denied → Err without approval card shown
-  match devices.invoke("phone-ios", "location") {
+  match devices.invoke("phone-ios", @box_host.Ios, "location") {
     Err(card) => {
       assert_false(card.is_approval_card())
       assert_eq(card.permission_label, "denied")

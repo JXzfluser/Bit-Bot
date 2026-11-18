@@ -127,21 +127,71 @@ pub fn MachineRegistry::mark_host_present(
 ) -> Unit {
   let mid = machine_id.trim().to_owned()
   let mk = machine_kind.trim().to_lower().to_owned()
+  // **只认精确 id**。
+  //
+  // 原来这里是 `kind_match || id_match` —— 只要 kind 一样就把**所有**同类型
+  // 机器标成 Connected。两台安卓手机会互相把对方标"在线",
+  // 而其中一台明明没连(注册表里那句"never pretend remote phone OS is online"
+  // 就是这个意思)。kind 一样 ≠ 同一台设备。
   let mut i = 0
+  let mut hit = false
   while i < self.machines.length() {
     let m = self.machines[i]
-    let kind_match = m.kind.name() == mk
-    let id_match = mid != "" && m.id == mid
-    if kind_match || id_match {
+    if mid != "" && m.id == mid {
       self.machines[i] = {
         id: m.id,
         label: m.label,
         kind: m.kind,
         status: Connected,
       }
+      hit = true
     }
     i = i + 1
   }
+  if !hit && mid != "" && mk != "" {
+    // 这台设备不在注册表里(手机入站时是 `dev-android-<指纹>`)⇒
+    // 登记它,而不是假装它不存在。
+    self.register_machine(mid, mk)
+  }
+}
+
+///|
+/// 登记一台**真实**设备(手机入站时用)。
+/// id = 设备密钥 id,kind = 这台设备的类型。
+pub fn MachineRegistry::register_machine(
+  self : MachineRegistry,
+  machine_id : String,
+  machine_kind : String,
+) -> Unit {
+  let mid = machine_id.trim().to_owned()
+  if mid == "" {
+    return
+  }
+  let mk = machine_kind.trim().to_lower().to_owned()
+  let kind = match mk {
+    "ios" | "iphone" => Ios
+    "android" | "pixel" => Android
+    _ => Desktop
+  }
+  let mut i = 0
+  while i < self.machines.length() {
+    if self.machines[i].id == mid {
+      self.machines[i] = {
+        id: self.machines[i].id,
+        label: self.machines[i].label,
+        kind: self.machines[i].kind,
+        status: Connected,
+      }
+      return
+    }
+    i = i + 1
+  }
+  self.machines.push({
+    id: mid,
+    label: mid,
+    kind,
+    status: Connected,
+  })
 }
 
 ///|
