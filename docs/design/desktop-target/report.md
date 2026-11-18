@@ -12276,3 +12276,38 @@ A/B 两个 `createProductSurface` 实例、`BITBOT_EVENT_ONLY=1`、产品同款 
 
 下一片按这个顺序收：先补 sessions 的双实例交错（同形状，成本最低），
 再把 rooms/sessions 的跨进程交错在 EVENT_ONLY 下各测一遍；两轮都绿才有资格谈 KP-09 收口。
+
+## 8.143 会话面那一格不用交错写探针：片1 的单写者是按 dataRoot 收口的，实测 store 同一对象（2026-11-18）
+
+8.142 把「sessions 双实例交错写」列为下一格。真去搭探针之前先看了这张面的写法，
+结论换了一种：**这一格按现在的架构问不出东西**，因为会话面根本没有「每实例一份」的写路径可交错。
+
+读到的结构（不是推测，逐条有出处）：
+- product_surface.js:31 明写 `sessions.json 没有本地路径常量了：这张面只有一个写者（sessions store）`，
+  :45-57 是那个句柄的来源 —— 优先用 `opts.sessions` 注入，否则
+  `require("./sessions").getSessionStore(REPO_ROOT, { dataRoot })`。
+- 注释自己点名了原因：main.js 把自己那个实例注进来，
+  「同一个进程里两个实例交替 load/save 就是 grok_import.js 注释里点名要避免的那种丢更新」。
+- 全仓 `grep sessions.json|SESSIONS` 在 product_surface.js 里没有留下任何一处 `atomicWrite(会话路径)`。
+
+于是「双实例是否各有第二份 prev 缓存」在会话面上应当化为：**同进程内两个 surface 是不是共用同一个 store**。
+这一条可以直接量，比交错写更贴要害：
+
+| 断言 | 实测 |
+| --- | --- |
+| `getSessionStore(REPO, {dataRoot: d1})` 两次取回同一对象 | **true** |
+| 同一调用换一个 `dataRoot` 得到不同对象 | **true** |
+
+（临时 dataRoot 各自 `mkdtemp`，`BITBOT_EVENT_ONLY` 不参与 —— store 的身份与模式无关。）
+
+结论：**片1 的单写者确实是「每进程 × 每 dataRoot 一个」**，所以 8.139/8.140/8.142 那条
+「每实例缓存」的风险在会话面上不适用；三张旁路面里，会话面靠单写者收口、
+群面靠每次 mutation 从折叠重取基底（:1993-2000）、追加面靠 `next ⊇ prev`（:258-265）。
+三种机制不同，但都在同进程双实例下被量过，各有一条直读判据。
+
+还欠两格，不许拿本节顶掉：
+1. main.js 那个 `sessions` 绑定（:1694 起用它开 IPC）与 `product_surface_ref` 走的路径
+   是否**同一个 store 对象** —— 本节只证了 `getSessionStore` 自身按 dataRoot 幂等，
+   没证两个调用方真的都调它而不是各自 `create`。这是本节论证明面上唯一没接上的一环。
+2. 三张面在**跨进程**（主进程 + 定时守护）下 EVENT_ONLY 那条不合并路径的交错测量；
+   默认模式那半边片4/5/6 已按 `withFaceLock` + `merge*AgainstDisk` 证过，两套机制不互证。
