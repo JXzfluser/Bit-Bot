@@ -12194,3 +12194,41 @@ G-71 那 11 个 `data/` 跟踪文件；G-53 还有一项没归因；CP 系列的
 顺带记一笔工具层的坑（同一份探针在两处踩到）：把 CJS 模块复制成 `.mjs` 再
 `import()` 会当场 `require is not defined`（product_surface.js 是 CommonJS）；
 变体要用 `.cjs` 落盘、`require` 载入、跑完即删。
+
+## 8.141 群面（整面替换）的双实例测量**没做成**：探针在写入之前就退场了（2026-11-18）
+
+8.140 把片9 剩下的真靶子定成「整面替换路径（sessions/rooms）在双实例下的 `prev`/`next` 新旧关系」。
+本轮试着量它，结论是**这一格仍然空着**，而且要说清楚为什么空 —— 不是「测了没问题」，是「压根没写到那张面」。
+
+探针形状：同一临时 `dataRoot` 上建 A、B 两个实例，`BITBOT_EVENT_ONLY=1`，各自
+`roomCreate` 两个群，再各改一次名，用 `readSurfaces` 读回。
+第一次跑出来 `建群后 fold =`（空）+ 改名回执 `room_required`。
+补打印建群回执后真相清楚：
+
+```
+建群回执 = {"ok":false,"error":"names_not_found","names_not_found":["bot-a1"],
+            "resolved_names":[],"mode":"host_group_chat","pretend_saved":false}
+建群后 fold =  | hit: {"ok":false,"reason":"no_db", ... }
+```
+
+两条读数各自说明一件事：
+1. `names_not_found` —— `roomCreate(bots_csv, title)`（:2209）先 `loadBots()` 按名字解析成员，
+   解析不到就直接退，**不给建空群**（`pretend_saved:false` 这一栏是它自己声明的「我不装成功」）。
+   我的探针没先造 Bot，所以四次建群全在门口被拦下。
+2. `no_db` —— 事件库文件根本没被创建。这就把「fold 为空是因为丢行」这个误读排除了：
+   没有任何一次写入发生过，读回自然是空库。**这条读数本身就是探针失败的证据，不是产品的缺陷。**
+   （顺带：`盘上 rooms.json = 无`证明旁路生效，JSON 侧也没写。）
+
+所以 8.139/8.140 的适用边界要再收紧一次：已证的只有**追加面**（approvals，
+`next = prev + 一行` ⇒ `next ⊇ prev` 恒成立 ⇒ 差集不含删除）。
+群面/会话面是**整面替换**：`saveRooms(data)` 在 EVENT_ONLY 下直接
+`atomicWrite(ROOMS_PATH, JSON.stringify(data))`（:2020-2021），
+**故意不过 `mergeRoomsAgainstDisk`** —— :2013-2019 的注释给了理由
+（这张面的真源是事件库，`rooms.json` 可能是遗留物，拿它当「盘上当前」合并会凭空造出幽灵群）。
+这个不对称是有意的、写在代码里的口径，不是漏；但它意味着整面替换的安全性
+完全押在「调用方交来的 `next` 不早于缓存里的 `prev`」这一条上，
+而这一条我**没有测过**，不能靠追加面的论证外推（8.140 刚为这种事道过歉）。
+
+下一片的靶子已经具体到可以直接抄：先造 Bot（`roomCreate` 要能解析出成员），
+再让 A、B 交替 `roomCreate` / `roomRename`，读回比对「四个群是否都在 + 两次改名是否都落地」；
+并且要把建群回执断言成 `ok:true`，否则又会拿一次「没写成的测量」当结论。
