@@ -49,7 +49,7 @@ fun ApprovalSheet(
   var message by remember { mutableStateOf("") }
   var wideConfirm by remember { mutableStateOf<ApprovalClient.Pending?>(null) }
 
-  fun decide(row: ApprovalClient.Pending, decision: ApprovalDecision, wide: Boolean) {
+  fun decide(row: ApprovalClient.Pending, decision: String, wide: Boolean) {
     val c = client ?: return
     busy = true
     c.decide(row.id, decision, wide) { result ->

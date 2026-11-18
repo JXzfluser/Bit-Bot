@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BitBotSheet(
+internal fun BitBotSheet(
   onDismiss: () -> Unit,
   sheetState: SheetState,
   content: @Composable () -> Unit,

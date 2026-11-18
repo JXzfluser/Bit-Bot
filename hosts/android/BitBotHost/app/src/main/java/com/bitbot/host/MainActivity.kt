@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.bitbot.host.ui.ApprovalSheet
 import com.bitbot.host.ui.BitBotTheme
 import com.bitbot.host.ui.CapabilitiesSheet
 import com.bitbot.host.ui.ChatLine
@@ -284,7 +285,8 @@ class MainActivity : ComponentActivity() {
   /** 手机上的审批客户端:地址取配对里的那台机器,身份取本机的设备密钥。 */
   private fun approvalClientNow(): ApprovalClient? {
     val host = TurnBridge.hostUrl() ?: return null
-    if (DeviceIdentity.loadOrCreate(this).deviceId.isNullOrEmpty()) return null
+    // loadOrCreate 在坏文件上会返回 null（不覆盖、不假装 healed）—— 那时手机上不建审批客户端。
+    if (DeviceIdentity.loadOrCreate(this)?.deviceId.isNullOrEmpty()) return null
     return ApprovalClient(this, host)
   }
 

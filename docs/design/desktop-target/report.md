@@ -12018,3 +12018,47 @@ G-123 段单独跑：`SECTION PASS=2 FAIL=0`，锚点下限 11→16。
 G-53 单条未定性）。欠的三件事按性价比排：① 收 G-71 —— 把 Box 运行态与生成物从被跟踪状态移出，或让那几类门只在
 夹具目录里跑；② 把 `g24-probe.log` 这类红原文加进 artifact 上传清单，否则「CI 红、本机绿」永远只能靠重跑猜；
 ③ 重跑一次矩阵给 G-53 定性（flake 还是真回归）。
+
+## 8.137 同步远端 feat/copy-contract-m46（PR #34）：编译红是 B-6 带进来的，修好之后第一条真跑到的安卓单测就判红（CP-05，2026-11-18）
+
+**同步范围**：`git fetch` 后本分支远端无新提交；新出现的 `origin/feat/copy-contract-m46` = PR #34 的 head `d9749bc`，
+13 个提交（M46 三波文案合同 / `effect kind` 单一真源 / 作用域审批 / B-3 跨机派回合 / B-6 手机上能批审批）。
+只读试合并（`git merge-tree --write-tree`）零冲突 → `--no-ff` 合入 `66592c8`；合并后两侧的门各自复跑：
+`prove_skill_reaches_model` **18/0**（本侧片3）、`prove_copy_contract` **13/0**（那侧文案合同）、
+`prove_report_history_intact` **8/0**、真开机 `e2e_grok_desktop_boot` **132/0**，`git status` 干净。
+
+**PR #34 的检查里有一条真红，而且合并后落到了本分支**：`编译 APK + 读回包里的事实` fail，
+`:app:compileUniversalDebugKotlin` 8 处 Kotlin 错误。本机 `./gradlew` 复现出**同样 8 行**（一字不差）：
+`MainActivity.kt:287` 在 `DeviceCredentials?` 上用了非安全调用、`:501` `Unresolved reference: ApprovalSheet`、
+`ui/ApprovalSheet.kt:55` 把 `ApprovalDecision` 当 `String` 用、`:75` 跨文件访问 `private BitBotSheet`、
+`:111/114/117/149` 反过来把 `String` 常量当 `ApprovalDecision` 传。定性：
+**这是 B-6 那一片自己的编译红**（合并前 `32dacd3` 里 `Sheets.kt` 没有 `onApprovals`、`ui/ApprovalSheet.kt` 根本不存在），
+不是合并引入的。
+
+**修的是四处，全是类型与可见性，不改行为**：
+- `ui/ApprovalSheet.kt:52` 局部 `decide(...)` 的参数类型 `ApprovalDecision` → `String`（`ApprovalDecision` 是常量
+  `object`，成员是 `const val` 字符串；`ApprovalClient.decide(id, decision: String, wide)` 才是真签名）——一处解掉 5 个报错。
+- `ui/Sheets.kt:55` `private fun BitBotSheet` → `internal`（跨文件复用同一个弹层壳，不再各写一份 `ModalBottomSheet`）。
+- `MainActivity.kt` 补 `import com.bitbot.host.ui.ApprovalSheet`。
+- `MainActivity.kt:287` `DeviceIdentity.loadOrCreate(this)` → `?.deviceId.isNullOrEmpty()`，并写明为什么：
+  `loadOrCreate` 在**坏文件**上按设计返回 null（不覆盖、不假装 healed），这时手机上不建审批客户端 —— 宁可不批，不能拿空身份批。
+- 补强：`UiTokensAndSheetsTest.kt` 那台 `MenuSheet` 调用补 `onApprovals = {}`（B-6 新加的必填回调），
+  并把 B-6 的入口断言加进同一条测试（`onNodeWithText("审批").assertExists()`）—— 测试要跟着新合同走，不是删断言让它过。
+
+**编译绿了，第一次真跑到的安卓单测立刻判红**：`:app:assembleUniversalDebug` 通过，
+`testUniversalDebugUnitTest` **235 项里 1 项失败** ——
+`CP05_清空对话后屏幕与盘都干净且转屏不回来`，`ComposeTimeoutException at ChatThreadPersistenceTest.kt:153`
+（`waitUntil(10_000)` 等屏幕上那句话消失，没等到）。单跑该类也红（13s，5 项 1 失败）⇒ **稳定红，不是 flake**。
+归属核过：合并前 `32dacd3` 里这条测试**已存在**，`clearChat()` 也已经是 `TurnCoordinator.clearAll()`
+（`da0db2b` 把回合挪到进程级时改的：旧版在协程里直接 `lines.clear()`，新版只 `save(emptyList()) + revision++`，
+靠 `LaunchedEffect(revision)` 重读文件）。所以这不是新引入的回归，而是一条**一直没人跑到**的红：
+mac 上 `prove_android_build` 因为自己的 JDK 探测没认这台机器的 `openjdk 17.0.17` 而诚实 SKIP（第 142 行那句
+`if (!JDK || !fs.existsSync(JDK))`），CI 上 AB-01 又从没走到测试（本轮 §8.136 是 exit=143 被 timeout 杀，
+PR #34 是编译失败）⇒ 三层各自「绿/跳过」的合起来把这条测试盖住了。
+两个待验证的机制候选（下一片先做能证的那个）：① `scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)`
+里的 `revision++` 在 Robolectric 下没被排空/没进组合订阅；② `save(emptyList())` 写的是 `"[]"` 而不是删文件，
+所以同一条测试后半句 `chatFileOrNull() == null` 本来就断不过 —— 判据与实现得对齐一个口径（清空到底是「文件没了」还是「文件里是空表」）。
+
+**这片没收的**：CP-05 还没修（上面两条机制未定谁真的）；`prove_android_build.mjs` 的 JDK 探测在本机判不出 Java 17
+（要修，否则 mac 永远看不见 G-47 的测试面）；CI 的 AB-01 25 分钟 timeout 太紧（§8.136 的 exit=143）；
+G-71 那 11 个被跟踪 `data/` 文件仍未收；G-53 单条未定性。
