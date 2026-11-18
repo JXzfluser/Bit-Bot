@@ -24,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -54,9 +53,13 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun BitBotSheet(
   onDismiss: () -> Unit,
-  sheetState: SheetState,
   content: @Composable () -> Unit,
 ) {
+  // 展开到全高由这一处统一决定：半展开时弹层只给出一屏高的一半，
+  // 排在后面的动作行（「审批」「清空对话」）压根没有可命中的位置 ——
+  // 屏幕上看得见一点边，手指按下去只是关掉弹层。动作不许藏在折叠线下面，
+  // 所以状态也不留给每个调用方各写一遍。
+  val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   ModalBottomSheet(
     onDismissRequest = onDismiss,
     sheetState = sheetState,
@@ -86,8 +89,7 @@ fun MenuSheet(
   onClearChat: () -> Unit,
   onDismiss: () -> Unit,
 ) {
-  val state = rememberModalBottomSheetState()
-  BitBotSheet(onDismiss = onDismiss, sheetState = state) {
+  BitBotSheet(onDismiss = onDismiss) {
     SheetHeader(title = "Bit Bot", subtitle = if (paired) "已配对 · ${hostLabel ?: "桌面"}" else "还没配对桌面大脑", onClose = onDismiss)
     Spacer(Modifier.height(BitBotSpace.xs))
     SheetActionRow(title = "凭证", detail = "配对地址与配对令牌", onClick = onCredentials)
@@ -157,8 +159,7 @@ fun CredentialsSheet(
 ) {
   val scheme = MaterialTheme.colorScheme
   var reveal by remember { mutableStateOf(false) }
-  val state = rememberModalBottomSheetState()
-  BitBotSheet(onDismiss = onDismiss, sheetState = state) {
+  BitBotSheet(onDismiss = onDismiss) {
     SheetHeader(
       title = "凭证",
       subtitle = "模型 key 和国内渠道都在桌面「凭证」里配；这台手机只填配对地址与配对令牌",
@@ -242,8 +243,7 @@ fun CapabilitiesSheet(
   templates: List<String> = emptyList(),
   onPickTemplate: (String) -> Unit = {},
 ) {
-  val state = rememberModalBottomSheetState()
-  BitBotSheet(onDismiss = onDismiss, sheetState = state) {
+  BitBotSheet(onDismiss = onDismiss) {
     SheetHeader(
       title = "能力",
       subtitle = "点了就把这一句发给桌面大脑；没接上的会如实报错，不假装成功",
@@ -349,8 +349,7 @@ fun PairingSheet(
   onRedeemViaRelay: () -> Unit = {},
 ) {
   val scheme = MaterialTheme.colorScheme
-  val state = rememberModalBottomSheetState()
-  BitBotSheet(onDismiss = onDismiss, sheetState = state) {
+  BitBotSheet(onDismiss = onDismiss) {
     SheetHeader(
       title = "连接 Desktop",
       subtitle = "同一 Wi-Fi 里自动找，找到就点一下，再输桌面上那 6 位码",

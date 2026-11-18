@@ -12062,3 +12062,54 @@ PR #34 是编译失败）⇒ 三层各自「绿/跳过」的合起来把这条�
 **这片没收的**：CP-05 还没修（上面两条机制未定谁真的）；`prove_android_build.mjs` 的 JDK 探测在本机判不出 Java 17
 （要修，否则 mac 永远看不见 G-47 的测试面）；CI 的 AB-01 25 分钟 timeout 太紧（§8.136 的 exit=143）；
 G-71 那 11 个被跟踪 `data/` 文件仍未收；G-53 单条未定性。
+
+## 8.138 CP-05 的真相不是并发也不是判据：那一行根本没有可命中的位置（弹层折叠线）；顺手把 mac 上恒 SKIP 的 JDK 探测修好（2026-11-18）
+
+**先说结论：§8.137 里那两个候选机制都错了。** 既不是 `revision++` 没被排空，也不是 `"[]"` 与「文件没了」的口径问题 ——
+清空那一步**从来没执行过**。
+
+**推上去之后 CI 先把范围钉死**：run `44324399545`（Android APK）里 `:app:compileUniversalDebugKotlin` 已过，
+`testUniversalDebugUnitTest` 唯一失败项还是 `CP05_清空对话后屏幕与盘都干净且转屏不回来`；
+同 run 的 `Capability Matrix Gate` = success（`44324399938`）。**ubuntu 与本机 mac 红在同一行** ⇒ 不是环境问题。
+
+**取证用一条临时探针**（跑完即删，不在仓里留门）：点「清空对话」前后打印 `TurnCoordinator.revision`、
+`inFlight`、屏幕上那句话的节点数、`chat-history.json` 的正文，以及那一行的 `boundsInWindow`：
+
+| 时刻 | rev | 屏幕上的那句 | 盘上 | 那一行 bounds |
+|------|-----|--------------|------|---------------|
+| 发送完（回合已结束） | 2 | 1 条 | user + assistant 两行 | — |
+| 点「清空对话」之后 | **2**（没变） | **1 条**（没清） | 两行**原样** | `Rect(0,0,0,0)` |
+| `performScrollTo()` 之后再点 | **3** | **0 条** | `[]` | `Rect(0,376,320,470)` |
+
+`rev` 那一列是决定性的：清空若真跑过，`clearAll()` 里的 `revision++` 一定把 2 抬到 3；它纹丝不动，
+而盘上内容一字未改。也就是**点击落到了别处**。`boundsInWindow = (0,0,0,0)` 说清了落点在哪：
+`MenuSheet` 的动作列超过弹层给的高度，「清空对话」排在折叠线以下，节点压根没被摆到窗口里 ——
+Compose 测试对这种节点仍然「点得动」（不报错），但坐标落点是空的，命中的是遮罩 ⇒ 走 `onDismiss`，弹层关掉，`onClearChat` 不触发。
+`assertExists()` 挡不住这种形状：节点**存在**和节点**按得到**是两件事。
+
+**改的两处（一处测试、一处产品）**：
+- `ChatThreadPersistenceTest.kt`（在 `app/src/test/java/com/bitbot/host/`，§8.137 写成 `ui/` 是我记错）：
+  点之前先 `performScrollTo()` —— 这就是真人在那个弹层上要做的事（把面板往上拖）。断言一条没减，
+  后半句「盘上没了 + 转屏不回来」也照常跑。
+- `ui/Sheets.kt`：弹层展开到全高由 `BitBotSheet` **一处**决定（`rememberModalBottomSheetState(skipPartiallyExpanded = true)`），
+  五个调用方各自 `rememberModalBottomSheetState()` 再传进来的写法删掉 —— 半展开只给半屏高，五个动作里两个看不见是同一件事，
+  这条规矩也不该靠五个地方各记一遍。**但别把它当成本片修好 CP-05 的原因**：实测在探针那台 320 宽的短屏上，
+  改成全展开之后「清空对话」的 bounds 仍是 `(0,0,0,0)`，滚出来才有 `(0,376,320,470)` —— 让它按得到的是**滚动**，
+  展开只是把同一屏里能一次装下的动作从三个变成五个。真机（≈800dp 高）上会不会一屏装得下，没有设备就没有结论（仍列残留）。
+
+**修 JDK 探测：mac 上 G-47 的测试面一直是盲的**。`prove_android_build.mjs` 原来只认
+`JAVA_HOME` 或写死的 `/usr/lib/jvm/temurin-21`，本机 `JAVA_HOME` 未设 ⇒ `JDK=""` ⇒ 每次 `SKIP — 没有 JDK`，
+而 `which java` 明明是 temurin 17.0.17。现在按「gradle 自己会用的那个 java」倒推：`JAVA_HOME/bin/java` →
+`PATH` 上的 `java` → darwin 的 `/usr/libexec/java_home -v 17` → 两个 Linux 常见目录，逐个问 JVM 自己的
+`java.home`（`-XshowSettings:properties`）而不是截路径 —— `/usr/bin/java` 是系统壳，截它的父目录会得到
+`JAVA_HOME=/usr` 这种假答案；再要求 `version ≥ 17` 且有 `bin/javac`（gradle 要 JDK 不是 JRE）。
+**改前**：`SKIP — 没有 JDK（gradle 需要 Java 17+）`。**改后**：`jdk=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home`
+→ `PASS=23 FAIL=0 SKIP=0`，其中 `AB-06 JVM 单测真跑：235 用例 0 失败（27 个类）`。
+这条不是把门放宽：SKIP 分支只剩「四个来源都认不出 17+ 的 JDK」才走得到。
+
+**复跑（全部本机真实输出）**：`:app:testUniversalDebugUnitTest` + `:app:assembleUniversalDebug` ⇒
+**235 用例 0 失败**、APK 11 394 974 字节；`scripts/prove_android_build.mjs` ⇒ 23/0/0（上面那条）。
+
+**这片没收的**：CI 的 AB-01 25 分钟 timeout 仍偏紧（§8.136 exit=143；矩阵侧给的是 1800s，两处不是一个尺子）；
+「弹层里靠后的动作按不到」这条只在安卓侧按住了，桌面/IOS 的同类折叠线没有对应的门；
+G-71 那 11 个被跟踪 `data/` 文件、G-53 单条仍未收；真机旋转与厂商杀后台仍是残留（CP 系列自己写明的边界）。
