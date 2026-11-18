@@ -5364,6 +5364,34 @@ echo "    别名与近义说法不算；environments 只校形状、不按环境
 echo "    「Bot 的输出按该规则变」证到的是 HTTP 请求体那一层（stub 回显），真供应商 + 真开机的行为差还没量；"
 echo "    斜杠菜单那条「不进模型」的小字是静态断言，没在真应用里截图看过。"
 
+echo "== G-124 EVENT_ONLY 并发交错：旁路面在双实例/双进程下不许丢行 =="
+if timeout 300 node scripts/prove_kp09_event_only_concurrency.mjs > /tmp/g124-kp09.log 2>&1; then
+  g124_line=$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g124-kp09.log | tail -1)
+  g124_pass=$(printf '%s' "$g124_line" | sed -n 's/PASS=\([0-9]*\).*/\1/p')
+  g124_fail=$(printf '%s' "$g124_line" | sed -n 's/.*FAIL=\([0-9]*\).*/\1/p')
+  g124_skip=$(printf '%s' "$g124_line" | sed -n 's/.*SKIP=\([0-9]*\).*/\1/p')
+  if [ "$g124_fail" = "0" ] && [ "$g124_skip" = "0" ] && [ "${g124_pass:-0}" -ge 7 ]; then
+    ok "G-124 双实例 + 双进程交错全绿（$g124_line）"
+  else
+    bad "G-124 锚点不足：要 FAIL=0 且 SKIP=0 且 PASS>=7，实测 $g124_line"
+  fi
+else
+  bad "G-124 并发门翻红（见 /tmp/g124-kp09.log；$(tail -1 /tmp/g124-kp09.log)）"
+fi
+# 反向夹具：把期望里一条审批换成不存在的 id，门必须判红 —— 否则「没丢行」是恒真。
+# 突变体必须落在 scripts/ 里：门按自身目录推 REPO，放 /tmp 会把 REPO 指错（测出来过）。
+sed 's/"cmd-a1", "cmd-a2", "cmd-b1", "cmd-b2"/"cmd-a1", "cmd-a2", "cmd-b1", "cmd-不存在"/' \
+  scripts/prove_kp09_event_only_concurrency.mjs > scripts/.g124-mut.mjs
+if timeout 300 node scripts/.g124-mut.mjs > /tmp/g124-mut.log 2>&1; then
+  bad "G-124 反向夹具没红：改掉期望照样过门，这条门是假门"
+else
+  ok "G-124 反向夹具真红：期望被换掉即判红（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g124-mut.log | tail -1)）"
+fi
+rm -f scripts/.g124-mut.mjs /tmp/g124-mut.log
+echo "  · G-124 口径（诚实）：两条臂覆盖 approvals 追加面 + rooms 整面替换面（同进程双实例、跨进程文件屏障强制交错）；"
+echo "    sessions 面的跨进程交错不在这条门里（每进程各持一个 store，写序另测），"
+echo "    真并发随机撞窗口与 kill -9 落在两次写之间亦未覆盖 —— 见交付报告 §8.145 末段。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

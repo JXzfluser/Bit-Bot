@@ -12395,3 +12395,28 @@ A/B 两个 `createProductSurface` 实例、`BITBOT_EVENT_ONLY=1`、产品同款 
    所以 CI 不会自动跑它。下一片补登记（照 §8.66 的教训，锚点只能钉输出格式，不能钉散文）。
 2. **会话面的跨进程 EVENT_ONLY 交错**与**真并发/`kill -9` 落在两次写之间**：
    臂1/臂2 只覆盖 approvals 与 rooms 两面。
+
+## 8.146 G-124 落进矩阵：这条并发门从此在 CI 里跑，反向夹具一并登记（2026-11-18）
+
+§8.145 记的第一条欠账（门在 `scripts/` 里但矩阵没有 G 号，CI 不会自动跑）本轮收掉。
+`scripts/smoke_grok_desktop_parity.sh` 在 G-123 之后、收尾自清之前插入 **G-124**：
+
+- 正臂：`timeout 300 node scripts/prove_kp09_event_only_concurrency.mjs`，
+  锚点只钉输出格式 `PASS=n FAIL=n SKIP=n`（照 §8.66 的教训，不钉子门散文），
+  判据 `FAIL=0 且 SKIP=0 且 PASS>=7` —— **SKIP 也算不过**，
+  否则「本机没有可写的 event 库」这类情形会拿一句跳过冒充绿。
+- 反向夹具臂：`sed` 把期望里的 `cmd-b2` 换成不存在的 id 再跑一次，**必须判红**，
+  否则「没丢行」这条断言就是恒真。实测：
+  产品原样 `PASS=7 FAIL=0 SKIP=0`；突变体 `PASS=6 FAIL=1`、退出码 **1**。
+- 一个踩到的坑写进注释：突变体落在 `/tmp` 时门会失准 —— 它按自身目录推 `REPO`
+  （`path.resolve(import.meta.dirname, "..")`），放到 `/tmp` 里 REPO 就指到文件系统根，
+  于是「测的已经不是这个仓」。所以夹具写进 `scripts/.g124-mut.mjs`、跑完即删。
+- `bash -n scripts/smoke_grok_desktop_parity.sh` 通过；G-124 这一段的两条命令按矩阵同款判据
+  逐条手工跑过（上面那组数字就是手工跑的读数）。
+
+口径边界（别把本节读成整仓矩阵跑过）：
+1. 本轮**没有**在 mac 上重跑全量矩阵（436 项那个规模），只验证了新增的 G-124 两条 + 语法。
+   矩阵总项数因此比 §8.115 那份台账 **+2**（G-124 正臂 1 项、反向夹具 1 项），
+   下一次真跑（CI 或本地全量）应核对这个增量；对不上就是登记有出入，得查。
+2. G-124 覆盖 approvals + rooms 两面；**sessions 的跨进程交错、真并发随机窗口、
+   `kill -9` 落在两次写之间**都不在这条门里，门里的口径 echo 与 §8.145 末段一致。
