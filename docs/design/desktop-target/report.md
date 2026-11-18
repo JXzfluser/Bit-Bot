@@ -12311,3 +12311,16 @@ A/B 两个 `createProductSurface` 实例、`BITBOT_EVENT_ONLY=1`、产品同款 
    没证两个调用方真的都调它而不是各自 `create`。这是本节论证明面上唯一没接上的一环。
 2. 三张面在**跨进程**（主进程 + 定时守护）下 EVENT_ONLY 那条不合并路径的交错测量；
    默认模式那半边片4/5/6 已按 `withFaceLock` + `merge*AgainstDisk` 证过，两套机制不互证。
+
+**补（同一节，量完再写）：上面第 1 环已经接上。**
+`main.js:144` 取的是 `require("./sessions").getSessionStore`，`main.js:754` 用
+`getSessionStore(REPO_ROOT, { dataRoot: DATA_ROOT })` 造出它那个 `sessions` 绑定
+（:1694 起的 IPC 全用这一个绑定），并且把这个**同一个对象**注给 surface；
+而 `createProductSurface` 在没拿到 `opts.sessions` 时走的也是同一个
+`getSessionStore(REPO_ROOT, { dataRoot })`（product_surface.js:45-57）。
+`grep getSessionStore|createSessionsStore` 在 `hosts/shared/product_surface_ref.js` 与
+`hosts/shared/host_ffi.js` 里**没有命中** —— 参照实例不自建 store，因此它落回同一条缓存路径。
+配上本节实测的「同 dataRoot 两次取回同一对象 = true」，
+链条闭合：**同进程内每 dataRoot 只可能有一个会话 store**，
+除非将来有人在 `opts.sessions` 上塞第二个（那才是需要新门的位置，当下不可达）。
+剩下第 2 环（跨进程 × EVENT_ONLY 不合并路径的交错测量）依旧是空的，别拿本节顶账。
