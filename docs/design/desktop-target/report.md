@@ -12113,3 +12113,47 @@ Compose 测试对这种节点仍然「点得动」（不报错），但坐标落
 **这片没收的**：CI 的 AB-01 25 分钟 timeout 仍偏紧（§8.136 exit=143；矩阵侧给的是 1800s，两处不是一个尺子）；
 「弹层里靠后的动作按不到」这条只在安卓侧按住了，桌面/IOS 的同类折叠线没有对应的门；
 G-71 那 11 个被跟踪 `data/` 文件、G-53 单条仍未收；真机旋转与厂商杀后台仍是残留（CP 系列自己写明的边界）。
+
+## 8.139 KP-09 片9 的前提被实测否掉了：同进程两个实例的 prev 缓存不丢行，把它合并成一份才会丢（2026-11-18）
+
+片9 原本的假设是「桌面进程里合法地存在 ≥2 个 `createProductSurface` 实例（main.js:757 与
+hosts/shared/product_surface_ref.js:41），而 `lastTextBySurface` 是每实例一份（product_surface.js:72），
+所以两份缓存会互相看不见，导致事件镜像丢行或写出假删除」。这一条我没有继续推理下去，
+而是写了一次性探针（`/tmp/kp09-probe.mjs`，不入库、不做门）把它量了出来。
+
+探针形状：同一个临时 `dataRoot` 上建 A、B 两个实例，交替发起四次
+`appendPendingApproval`（B b1 → A a1 → B b2 → A a2），两种模式各跑一遍，读回用产品同款
+`eventReadModel.readSurfaces(DATA_ROOT)`（event_read_model.js:68）与真实落盘文件。
+
+| 模式 | 发起 | 事件库 fold | 落盘 jsonl | 丢行 | anomalies |
+| --- | --- | --- | --- | --- | --- |
+| `BITBOT_EVENT_ONLY=1` | 4 | 4 | 0 行（旁路，符合预期） | **0** | `[]` |
+| 默认（文件真源） | 4 | `read_disabled`（读模型按 env 关着，不是丢） | 4 行 | **0** | — |
+
+结论一：**追加这条路在同进程双实例下不丢行，两种模式都不丢。** 机制在 product_surface.js:254-265：
+`next = prev + 一行`，而 `prev` 取的就是本实例自己的缓存。于是「prev 与 next 一样旧」——
+差集里只有本实例这一条新增，永远不含删除，别人的行不可能被判成 `entity_removed`；
+event log 在行级合并，两边各自的新增都在 fold 里凑齐。缓存陈旧在这里是**安全的一侧**。
+
+结论二（这条才是片9 真正的收获）：**把 Map 提到模块级共享，会反过来造出事。** 共享之后
+`prev` 可能比某个调用方手里的 `next` 更新（A 刚写的行进了共享 prev，B 的 stale next 里没有它），
+diff 立刻产出一条假 `entity_removed` —— 也就是片3 在 :116-130 那段注释里警告过的同一个坑。
+所以「统一 prev 来源」不是片9 该做的修复，而是片9 差点引入的回归。
+
+结论三（如实标注探针自己的缺陷，别让它冒充证据）：第一轮两种模式都打出「文件 0 行」。
+原因不是产品，是我把路径猜成 `dataRoot/pending-approvals.jsonl`，而真路径多一层
+`desktop/`（product_surface.js:22 `DESKTOP_DIR = DATA_ROOT/desktop`）。改对之后才有上面这张表。
+`[file] fold 0 条`同理是 `readSurfaces` 的 env 闸门（event_read_model.js:69-71 直接回
+`read_disabled`），不是丢数据——第一版把这两格当成「丢了 4 条」报出来过，那是错的读数。
+
+片9 因此重新定口径（不是收工，是换靶子）：
+1. 已证：追加面（approvals）同进程双实例无损，无需改机制。
+2. **未测**：整面替换路径（`atomicWrite` + 缓存 prev 的 sessions/rooms）。它按同样论证应当也安全
+   （prev 与 next 同旧 ⇒ 差集干净），但这只是把结论从 approvals 外推，没有实测，不能当已闭合。
+3. 真正值得钉的门是**反向钉**：一条断言「任何把 `lastTextBySurface` 改成跨实例共享的改动必须判红」，
+   形状就是本节的探针（双实例交替写 + fold 读回 + `entity_removed` 计数为 0）。
+   下一片按这个做，而不是去动写路径。
+
+仍未闭合（连同 8.138 那份一起欠着）：CI AB-01 的 25 分钟与矩阵 1800s 是两把尺子；
+「折叠线以下的动作不可命中」这一类只在安卓钉住，桌面/iOS 没有对应门；
+G-71 那 11 个 `data/` 跟踪文件；G-53 还有一项没归因；CP 系列的真机转屏/厂商杀进程仍是残余。
