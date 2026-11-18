@@ -12232,3 +12232,47 @@ G-71 那 11 个 `data/` 跟踪文件；G-53 还有一项没归因；CP 系列的
 下一片的靶子已经具体到可以直接抄：先造 Bot（`roomCreate` 要能解析出成员），
 再让 A、B 交替 `roomCreate` / `roomRename`，读回比对「四个群是否都在 + 两次改名是否都落地」；
 并且要把建群回执断言成 `ok:true`，否则又会拿一次「没写成的测量」当结论。
+
+## 8.142 群面整面替换：双实例交替建群/改名实测无损（8.141 那格空着的原因就是没先造 Bot）（2026-11-18）
+
+接着 8.141 的靶子重跑，这次把前置补齐，测法与上一轮逐字同形（同一临时 `dataRoot`、
+A/B 两个 `createProductSurface` 实例、`BITBOT_EVENT_ONLY=1`、产品同款 `readSurfaces` 读回），
+只在两处按 8.141 的教训改了：
+
+1. **先造 Bot**：`botsCreate({name})` 在两个实例上各建一个（回执 `ok:true`，
+   且 `bots.json` 落盘 = true —— Bot 面不在三张旁路面里，仍是 JSON 真源，符合 T1-03 的口径）。
+2. **群成员给 2 个**：第一次补完 Bot 仍全军覆没，回执是
+   `{"ok":false,"error":"members_2_to_6","resolved_count":1}` —— `roomCreate` 要 2~6 个成员。
+   两次失败都不是产品问题，是探针的前置问题；它们各自被 `names_not_found` /
+   `members_2_to_6` 这两条**如实的失败回执**挡在门外（`pretend_saved:false`），
+   所以从来不曾出现「以为写过、其实没写」的假绿。
+
+补齐后的测量：
+
+| 步骤 | 回执 | fold 读回 |
+| --- | --- | --- |
+| A 建「甲一」· B 建「乙一」· A 建「甲二」· B 建「乙二」（交替） | 4 × `ok:true` | **4 个群全在**（甲一,甲二,乙一,乙二） |
+| A `roomRename(甲一→甲一改)` · B `roomRename(乙一→乙一改)` | 2 × `ok:true`（各带 `previous`） | **4 个群 + 两次改名都落地**（甲一改,甲二,乙一改,乙二） |
+
+判据直读：`应有 4 个群，甲一改/乙一改都在 = true`。
+
+机制（这次是看完代码再测，不是反过来）：整面替换之所以在双实例下也不丢，
+靠的是 `requireWritableRooms()`（:1993-2000）在**每次要落盘的 mutation 开头**
+从事件折叠重取基底，并同步 `setLastTextFor(ROOMS_PATH, text)` 与 `roomsBaseText` ——
+于是调用方手里的 `next` 永远不比缓存里的 `prev` 旧，8.140 指出的
+「stale `next` + 较新 `prev` ⇒ 假 `entity_removed`」这一前置条件在本产品的路径上被挡住了。
+改名这种「修改」在 diff 里等价于一次删+一次加，B 的群能在 A 改名之后还在，
+就是 A 的基底确实重取过、而不是拿旧快照盖回去的证据。
+
+**口径边界（别再外推）：**
+- 已证：追加面（approvals，8.139）+ 整面替换的**群面**（rooms，本节）在**同进程双实例**下无损。
+- 仍未证：**会话面**（sessions.json，第三张旁路面）的同进程双实例交错写；
+  以及这四条路在**跨进程**（桌面主进程 + 定时守护）下的同样测量 ——
+  片5 曾按 8.139 的教训被误判过一次，跨进程那一半走的是 `withFaceLock` +
+  `mergeRoomsAgainstDisk`，与 EVENT_ONLY 这条不合并的路径是两套机制，不能算同一条已证。
+- 「调用方绕过 `requireWritableRooms` 自己拿旧快照来写」这条危险形状，
+  在导出 API 里没有入口（`saveRooms` 不导出），因此**当下不可达**；
+  它是以后加 mutation 时的约束，不是现在的缺陷。
+
+下一片按这个顺序收：先补 sessions 的双实例交错（同形状，成本最低），
+再把 rooms/sessions 的跨进程交错在 EVENT_ONLY 下各测一遍；两轮都绿才有资格谈 KP-09 收口。
