@@ -200,7 +200,9 @@ function resetFoldCache() {
 function fullFold(db, limit) {
   const handle = openEventLog({ file: db, actor: "surface-parity" });
   try {
-    const r = foldPages(handle, { fromSeq: 0, maxRows: limit });
+    const r = /* deadlineMs:0 —— 尺的护栏必须是**行**，不能是墙钟：门禁一慢就变成机器相关的假 truncated，
+         那种红不可复现。产品侧的 250ms 是「别冻住主进程」，与对账无关。 */
+    foldPages(handle, { fromSeq: 0, maxRows: limit, deadlineMs: 0 });
     if (r.truncated) return { folded: null, rowsRead: r.rows, lastSeq: handle.lastSeq(), mode: "truncated" };
     return { folded: r.folded, rowsRead: r.rows, lastSeq: handle.lastSeq(), mode: "full" };
   } finally {
@@ -224,7 +226,7 @@ function cachedFoldOf(db, limit) {
     }
     if (continuable) {
       try {
-        const inc = foldPages(handle, { fromSeq: slot.lastSeq, base: slot.folded, maxRows: limit });
+        const inc = foldPages(handle, { fromSeq: slot.lastSeq, base: slot.folded, maxRows: limit, deadlineMs: 0 });
         if (inc.truncated) return fullFold(db, limit);
         if (inc.folded.anomalies && inc.folded.anomalies.length === 0) {
           foldCacheByFile.set(db, { lastSeq, folded: inc.folded });

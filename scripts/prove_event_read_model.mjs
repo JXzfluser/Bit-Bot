@@ -390,10 +390,13 @@ const onRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-on-"));
   else if (JSON.stringify(idsOf(paged)) !== JSON.stringify(idsOf(single))) bad("RM-11", "分页与整份折完不等值");
   else ok("RM-11", `pageSize=4 逐页折完 ${rowsInDb} 行 → ${TOTAL} 条会话、最后一条 entity_removed 生效，与整份折逐 id 相等`);
 
-  /* RM-12：额度咬住 = 没看完 = 必须拒，且**热槽**上也不许留下任何痕迹。
+  /* RM-12：额度咬住 = 没看完 = 必须拒，且截断的面**只能记在它自己的游标上**。
      热槽才是历史上真被毒死的那一格：旧实现把截断折出来的面连同**真实 lastSeq** 写进缓存，
      之后同进程放开额度仍是 cached:true（探针 P2）。冷槽那条断言验不到这件事——
-     第一版 RM-12 就是冷槽，突变体「删掉 truncated 分支」当场溜过（PASS=14 FAIL=0），照实记。 */
+     第一版 RM-12 就是冷槽，突变体「删掉 truncated 分支」当场溜过（PASS=14 FAIL=0），照实记。
+     口径后来（本节这次读）从「缓存全作废」升级成「前缀续折」：作废是诚实但不收敛——
+     每次拒读都从头再付一遍预算，日志越大越读不出来。判据因此是三段：面绝不交出（ok:false）、
+     前缀不冒充终态（游标 = 前缀自己的 seq）、下次必须只补剩余。 */
   eventReadModel.closeAll();
   const warm = eventReadModel.readSurfaces(capRoot, { file: capFile, env: envOnly });
   const h2 = openLog({ file: capFile, actor: "rm-cap-warm" });
@@ -410,8 +413,13 @@ const onRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-on-"));
   else if (starved.rowsRead > starved.maxRows) bad("RM-12", `拒读那次读了 ${starved.rowsRead} 行，比额度 ${starved.maxRows} 还多 —— 额度不是内存护栏`);
   else if (!reopen.ok || reopen.cached) bad("RM-12", `拒完之后放开额度仍不重读（ok=${reopen.ok} cached=${reopen.cached}）—— 缓存没作废`);
   else if (lateOf(reopen) !== 3) bad("RM-12", `重读回来的面里有 ${lateOf(reopen)}/3 条拒读期间落库的新会话 —— 热槽被截断状态毒死了`);
-  else if (reopen.count !== rowsInDb + 3 || idsOf(reopen).includes(DELETED)) bad("RM-12", `重读回来的面不完整（${reopen.count} 行 / 已删那条在=${idsOf(reopen).includes(DELETED)}）`);
-  else ok("RM-12", `热槽 + 额度咬住 → ok:false/log_too_long（读 ${starved.rowsRead}/${starved.maxRows} 行，不超额）；放开额度重读回 ${reopen.count} 行、含拒读期间的 3 条新会话、已删那条仍不在`);
+  /* 前缀保住之后（#83 的修法只到「不作弊」，这一格要求「不白烧」）：放开额度那次不许重折全部，
+     它必须恰好补完前缀之后的剩余行。等式两侧都由这次读自己报出来，改任何一边都会红：
+     把前缀扔掉 → 左边变成 rowsInDb+3；把前缀记到真 lastSeq 上（#83 的原洞）→ 左边 0 行但
+     lateOf 先红（那 3 条根本没折过）。面本身仍要完整，这条不许省。 */
+  else if (reopen.count !== rowsInDb + 3 - starved.progressSeq) bad("RM-12", `重读补了 ${reopen.count} 行，但前缀停在 ${starved.progressSeq}、库里共 ${rowsInDb + 3} 行 —— 「续上剩余」不成立（面=${idsOf(reopen).length} 条）`);
+  else if (idsOf(reopen).length !== TOTAL - 1 + 3 || idsOf(reopen).includes(DELETED)) bad("RM-12", `重读回来的面不完整：${idsOf(reopen).length} 条（应 ${TOTAL - 1 + 3}）/ 已删那条在=${idsOf(reopen).includes(DELETED)}`);
+  else ok("RM-12", `热槽 + 额度咬住 → ok:false/log_too_long（读 ${starved.rowsRead}/${starved.maxRows} 行，不超额，前缀落在自己的游标 ${starved.progressSeq}）；放开额度只补 ${reopen.count} 行就齐面（共 ${idsOf(reopen).length} 条，含拒读期间的 3 条新会话，已删那条仍不在）`);
 
   cleanupFlags();
   eventReadModel.closeAll();
@@ -579,6 +587,90 @@ const onRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-on-"));
   if (poisoned.ok || poisoned.reason !== "fold_anomalies") bad("RM-17", `未知 kind 应该拒读：${JSON.stringify({ ok: poisoned.ok, reason: poisoned.reason })}`);
   else if (stillSame !== beforePoison) bad("RM-17", "折出不干净的面之后仍然写了检查点 —— 毒面被写进盘上缓存");
   else ok("RM-17", "fold_anomalies 那次拒读且检查点逐字节未变（脏面不落盘，靠行为判，不靠源码片段）");
+
+  /* RM-20：墙钟咬住也必须拒，但**拒读不许白烧钱** —— 截断折出的前缀记在它自己的游标上，
+     既当缓存也当检查点：每趟读要比上一趟多折一些，直到折完。这一条同时咬两个突变体：
+     ①只在「新增 >= stride」时才落盘 → 每趟只折得动 < stride 行时游标永不推进 = 活锁；
+     ②把前缀记到库的 lastSeq 上（#83 的原洞）→ 新进程「读到了」却少实体、面与全量不等值。 */
+  {
+  const dlRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-deadline-"));
+  const dlDb = path.join(dlRoot, "events", "desktop-events.sqlite");
+  fs.mkdirSync(path.dirname(dlDb), { recursive: true });
+  const DL = 1200;
+  const hdl = openLog2({ file: dlDb, actor: "rm-deadline" });
+  for (let i = 0; i < DL; i += 1) {
+    hdl.append({ sessionId: "system", kind: "session_created", payload: { surface: "sessions", session: { id: `sess-d${i}`, title: `死线 ${i}` } } });
+  }
+  hdl.close();
+  const dlCk = eventReadModel.checkpointPathFor(dlDb);
+  const scratchDl = eventReadModel.readSurfaces(dlRoot, { file: dlDb, env: envRead });
+  const wantIds = scratchDl.ok ? JSON.stringify(scratchDl.sessions.sessions.map((s) => s.id).sort()) : null;
+  /* 先把检查点清空再换进程：否则下面「新进程只补一页」量的就是 scratch 那次全量落的盘。 */
+  fs.rmSync(dlCk, { force: true });
+  eventReadModel.closeAll();
+  const tiny = { pageSize: 100, deadlineMs: 0.0001 };
+  const first = eventReadModel.readSurfaces(dlRoot, { file: dlDb, env: envRead, ...tiny });
+  const ckFirst = fs.existsSync(dlCk) ? JSON.parse(fs.readFileSync(dlCk, "utf8")) : null;
+  eventReadModel.closeAll();
+  const coldResume = eventReadModel.readSurfaces(dlRoot, { file: dlDb, env: envRead, ...tiny });
+  const steps = [first.progressSeq, coldResume.ok ? "converged" : coldResume.progressSeq];
+  let converged = coldResume.ok ? coldResume : null;
+  for (let i = 0; i < 20 && !converged; i += 1) {
+    const r = eventReadModel.readSurfaces(dlRoot, { file: dlDb, env: envRead, ...tiny });
+    if (r.ok) converged = r;
+    else steps.push(r.progressSeq);
+  }
+  const strictly = steps.every((c, i) => typeof c === "number" && (i === 0 || c > steps[i - 1]));
+  if (!scratchDl.ok) bad("RM-20", `前置的全量读就失败（${scratchDl.reason}）—— 夹具不成立`);
+  else if (first.ok || first.reason !== "fold_timeout") bad("RM-20", `墙钟咬住时读数不对：${JSON.stringify({ ok: first.ok, reason: first.reason })}`);
+  else if (first.progressSeq !== 100) bad("RM-20", `第一次截断读的 progressSeq=${String(first.progressSeq)}，应正好是第一页的 100 —— 前缀没记在自己的游标上`);
+  else if (!ckFirst || ckFirst.lastSeq !== first.progressSeq) bad("RM-20", `截断的前缀没落盘（盘上 ${ckFirst ? ckFirst.lastSeq : "无"} / 前缀 ${String(first.progressSeq)}）—— 每趟 < stride 行的截断永不落盘就是活锁`);
+  else if (coldResume.ok || coldResume.rowsRead >= scratchDl.count) bad("RM-20", `换进程后没从盘上续上（ok=${coldResume.ok} 读 ${coldResume.rowsRead} 行 / 全量 ${scratchDl.count} 行）`);
+  else if (!strictly) bad("RM-20", `反复拒读的游标没有严格前进：${steps.join("→")} —— 拒读在原地白烧墙钟`);
+  else if (!converged) bad("RM-20", `20 趟截断读仍没收敛成 ok:true（游标 ${steps.join("→")}）`);
+  else if (JSON.stringify(converged.sessions.sessions.map((s) => s.id).sort()) !== wantIds) bad("RM-20", "收敛回来的面与全量折不等值");
+  else if (converged.count >= scratchDl.count) bad("RM-20", `收敛那次读了 ${converged.count} 行（全量 ${scratchDl.count}）—— 续上的前缀没起作用`);
+  else ok("RM-20", `墙钟咬住 → fold_timeout/progressSeq=100 且前缀落盘；换进程从 ${ckFirst.lastSeq} 续（只补 ${coldResume.rowsRead} 行）、${steps.length} 趟严格前进后收敛 ok:true（补 ${converged.count} 行）、${DL} 条面与全量逐 id 相等`);
+  try {
+    fs.rmSync(dlRoot, { recursive: true, force: true });
+  } catch {
+    /* 临时目录清不掉不影响结论 */
+  }
+  }
+
+  /* RM-21：默认墙钟（250ms）**不许**咬住正常库 —— 护栏若在日常量级上就咬，等于把
+     「读切换」变成「读不到」。量到的对照：9002 行全量折 805ms、512 行的单页在最坏量级也远不到
+     250ms；这里用同一份 1200 行的库走默认参数，必须 ok:true 且把整份读完。 */
+  {
+  const DL = 1200;
+  eventReadModel.closeAll();
+  const dlRoot2 = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-dl21-"));
+  const dlDb2 = path.join(dlRoot2, "events", "desktop-events.sqlite");
+  fs.mkdirSync(path.dirname(dlDb2), { recursive: true });
+  const hdl2 = openLog2({ file: dlDb2, actor: "rm-deadline-21" });
+  for (let i = 0; i < DL; i += 1) {
+    hdl2.append({ sessionId: "system", kind: "session_created", payload: { surface: "sessions", session: { id: `sess-e${i}`, title: `默认 ${i}` } } });
+  }
+  hdl2.close();
+  /* 反向对照先跑（此刻盘上还没有检查点）：同一份库、把死线压到 0.0001ms 就必须拒 ——
+     否则「默认没咬住」可能只是因为护栏根本不存在（P4 摘掉墙钟那格突变体只能靠这里露出来）。
+     跑完清掉它落的检查点，免得正常读从 100 行续上、count 不再是全量。 */
+  const tiny21 = { pageSize: 100, deadlineMs: 0.0001 };
+  const bitten = eventReadModel.readSurfaces(dlRoot2, { file: dlDb2, env: envRead, ...tiny21 });
+  eventReadModel.closeAll();
+  fs.rmSync(eventReadModel.checkpointPathFor(dlDb2), { force: true });
+  const normal = eventReadModel.readSurfaces(dlRoot2, { file: dlDb2, env: envRead });
+  if (!normal.ok) bad("RM-21", `默认墙钟 ${eventReadModel.FOLD_DEADLINE_MS}ms 把 ${DL} 行的正常库拒掉了（reason=${normal.reason} 用了 ${normal.elapsedMs}ms）—— 护栏咬在日常量级上`);
+  else if (normal.count !== DL) bad("RM-21", `默认参数这次只读了 ${normal.count} 行（库 ${DL} 行）`);
+  else if (!(normal.elapsedMs >= 0) || !(normal.elapsedMs < eventReadModel.FOLD_DEADLINE_MS)) bad("RM-21", `成功那次没报出「用了多少墙钟」或对不上默认死线：${String(normal.elapsedMs)}`);
+  else if (bitten.ok || bitten.reason !== "fold_timeout") bad("RM-21", `同一份库把死线压到 0.0001ms 仍返回 ok（reason=${bitten.reason}）—— 墙钟护栏根本不在，「默认没咬住」是恒真`);
+  else ok("RM-21", `${DL} 行、默认死线 ${eventReadModel.FOLD_DEADLINE_MS}ms：ok:true 读完全部 ${normal.count} 行，实际折叠 ${normal.elapsedMs}ms（余量 ${(eventReadModel.FOLD_DEADLINE_MS / Math.max(normal.elapsedMs, 0.1)).toFixed(1)}×）；同一库压到 0.0001ms → fold_timeout，护栏确实在跑`);
+  try {
+    fs.rmSync(dlRoot2, { recursive: true, force: true });
+  } catch {
+    /* 临时目录清不掉不影响结论 */
+  }
+  }
 
   cleanupFlags();
   eventReadModel.closeAll();

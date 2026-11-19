@@ -39,17 +39,28 @@ const READ_FLAG = "BITBOT_EVENT_READ";
    `cached:true` —— 一次截断、永久失真，调用方（片11 的提交时基底）会拿它去合并。
    日志行数不是会话数决定的：回合流 turn_started/progress/turn_ended（§5.2，A1-2 同库）
    和每条 message_committed 都算行，10 万行是「天天用几个月」量级，不是理论值。 */
-const FOLD_PAGE_ROWS = 50000;
+/* 512 而不是 50000：折叠是超线性的（实测三点拟合 k≈9.68e-6 ms/行²：1502 行 22.5ms、
+   4502 行 196.1ms、9002 行 805ms），所以**一页的价钱取决于它落在第几行**。50000 行的页
+   在 5 万行那个量级上单页就是 ~24s 主进程冻结，而时间预算只能在页与页之间检查 ——
+   页太大 = 预算形同不存在（和 #83 里「预算只写在分页上限上」是同一类错）。
+   FOLD_DEADLINE_MS 是**一次读**允许花在折叠上的墙钟：读切换的护栏单位必须是毫秒，
+   不是行数 —— 行数那个护栏（FOLD_BUDGET_ROWS=500000）按同一拟合要 **40 分钟**才咬住，
+   它管的是「这份工作总量根本不合理」，不是「这次读会不会卡住界面」。 */
+const FOLD_PAGE_ROWS = 512;
 const FOLD_BUDGET_ROWS = 500000;
+const FOLD_DEADLINE_MS = 250;
 
 /**
  * 从 `fromSeq` 起分页把日志折进 `base`（base 为 null 即从 BASELINE 全量折）。
- * 只在「读到一页不满」时宣布看完；护栏咬住就如实报 `truncated:true`，调用方必须拒。
+ * 只在「读到一页不满」时宣布看完；额度咬住 → `stop:"budget"`，墙钟咬住 → `stop:"deadline"`，
+ * 两种都算 `truncated:true`，调用方必须拒。
  * 分页续折用的就是 #82 的 `fromState`，等值性由 RM-10/L 组钉着，不是假定。
  */
 function foldPages(log, opts = {}) {
   const page = Number(opts.pageSize) > 0 ? Number(opts.pageSize) : FOLD_PAGE_ROWS;
   const budget = Number(opts.maxRows || opts.limit) > 0 ? Number(opts.maxRows || opts.limit) : FOLD_BUDGET_ROWS;
+  const deadline = opts.deadlineMs === undefined ? FOLD_DEADLINE_MS : Number(opts.deadlineMs);
+  const t0 = process.hrtime.bigint();
   const { foldEvents } = require("./event_mirror");
   let folded = opts.base || null;
   let cursor = Number(opts.fromSeq) || 0;
@@ -58,15 +69,19 @@ function foldPages(log, opts = {}) {
     /* 单页取数按剩余额度夹紧：护栏必须是「行数上限」，不能只是「分页上限」——
        否则预算 5 行、页 50000 行时一次就把整份日志读走，护栏形同不存在（第一版踩过）。 */
     const want = Math.min(page, budget - rows);
-    if (want <= 0) return { folded, rows, cursor, truncated: true, budget };
+    if (want <= 0) return { folded, rows, cursor, truncated: true, stop: "budget", budget, elapsedMs: Number(process.hrtime.bigint() - t0) / 1e6 };
     const chunk = log.readAfter({ fromSeq: cursor, limit: want });
     rows += chunk.length;
     if (chunk.length) {
       folded = folded ? foldEvents(chunk, { fromState: folded }) : foldEvents(chunk);
       cursor = Number(chunk[chunk.length - 1].seq);
     }
-    if (chunk.length < want) return { folded, rows, cursor, truncated: false, budget };
-    if (rows >= budget) return { folded, rows, cursor: cursor, truncated: true, budget };
+    const elapsed = () => Number(process.hrtime.bigint() - t0) / 1e6;
+    /* 顺序是语义：先看「这一页没读满 = 折完了」，再看墙钟 —— 一趟刚好跑完的读不许被
+       预算说成截断（那会把一次正常的 ok:true 变成拒读）。 */
+    if (chunk.length < want) return { folded, rows, cursor, truncated: false, stop: "done", budget, elapsedMs: elapsed() };
+    if (deadline > 0 && elapsed() >= deadline) return { folded, rows, cursor, truncated: true, stop: "deadline", budget, deadline, elapsedMs: elapsed() };
+    if (rows >= budget) return { folded, rows, cursor, truncated: true, stop: "budget", budget, deadline, elapsedMs: elapsed() };
   }
 }
 
@@ -216,6 +231,7 @@ function readSurfaces(dataRoot, opts = {}) {
         count: slot.count,
         lastSeq,
         cached: true,
+        elapsedMs: slot.elapsedMs || 0,
       };
     }
     /* 折叠必须把游标之后的每一行都看完才敢宣布状态（#83）。
@@ -231,10 +247,13 @@ function readSurfaces(dataRoot, opts = {}) {
         base: slot.folded,
         pageSize: opts.pageSize,
         maxRows: opts.maxRows || opts.limit,
+        deadlineMs: opts.deadlineMs,
       });
       incremental = true;
-      // 增量读不全或折出异常：不许下结论，退回全量确认（全量也读不全时由下面统一拒）。
-      if (result.truncated || (result.folded.anomalies || []).length) result = null;
+      /* 增量折出异常：不许下结论，退回全量确认（全量也读不全时由下面统一拒）。
+         增量被预算截断则**不**回全量：截断那次的结论本来就是不 ok，而全量重折会把刚折好的
+         前缀再付一遍预算 —— 那样每次拒读都从头再来，收敛变成白烧钱。 */
+      if ((result.folded.anomalies || []).length) result = null;
     }
     if (!result) {
       result = foldPages(slot.log, {
@@ -242,19 +261,33 @@ function readSurfaces(dataRoot, opts = {}) {
         base: null,
         pageSize: opts.pageSize,
         maxRows: opts.maxRows || opts.limit,
+        deadlineMs: opts.deadlineMs,
       });
       incremental = false;
     }
     const folded = result.folded;
     if (result.truncated) {
-      // 读满护栏 = 没看完，不是「这张面就这些」。缓存作废，调用方按读不到降级。
-      slot.folded = null;
-      slot.lastSeq = -1;
+      /* 没看完 ≠ 「这张面就这些」：面绝不交出去，调用方按读不到降级。
+         但已经折出来的**前缀**是真的 —— 记在**它自己的游标**上（不是库的 lastSeq：
+         #83 的洞就是把截断面记到真游标上，一次截断、永久失真），当缓存也当检查点，
+         下一次读从这里续，拒读不白烧钱。
+         这一格不看 stride 节流：这次已经付完整个预算的墙钟，多写一份面是零头；
+         而且按 stride 落盘会活锁 —— 每趟只折得动 <stride 行时，游标永远不推进。 */
+      const prefix = folded && !(folded.anomalies || []).length ? folded : null;
+      slot.folded = prefix;
+      slot.lastSeq = prefix ? result.cursor : -1;
+      slot.count = incremental && prefix ? slot.count + result.rows : result.rows;
+      if (prefix && result.cursor > slot.persistedSeq && saveCheckpoint(file, result.cursor, prefix)) {
+        slot.persistedSeq = result.cursor;
+      }
       return {
         ok: false,
-        reason: "log_too_long",
+        reason: result.stop === "deadline" ? "fold_timeout" : "log_too_long",
         rowsRead: result.rows,
         maxRows: result.budget,
+        deadlineMs: result.deadline,
+        elapsedMs: Number(result.elapsedMs.toFixed(1)),
+        progressSeq: prefix ? result.cursor : null,
         lastSeq,
         file,
       };
@@ -271,6 +304,7 @@ function readSurfaces(dataRoot, opts = {}) {
     slot.lastSeq = lastSeq;
     slot.count = incremental ? prevCount + result.rows : result.rows;
     slot.incremental = incremental;
+    slot.elapsedMs = result.elapsedMs;
     /* 折干净了才落检查点（脏面绝不持久化 = 不把毒面写进盘上缓存）；写失败不改这次读的结论。
        节流看「距上次落盘新增了多少行」：落盘的价钱是一次整面序列化，冷启省下的价钱是重折这些行，
        stride 就是这两者之间的换算率 —— 所以它得是被量出来的，不是拍脑袋（见 §8.169）。 */
@@ -289,6 +323,7 @@ function readSurfaces(dataRoot, opts = {}) {
       lastSeq,
       foldPath: seeded ? "checkpoint" : incremental ? "incremental" : "full",
       checkpointSeq: slot.persistedSeq >= 0 ? slot.persistedSeq : null,
+      elapsedMs: Number(result.elapsedMs.toFixed(1)),
     };
   } catch (err) {
     dropCache(file);
@@ -310,6 +345,7 @@ module.exports = {
   READ_FLAG,
   FOLD_PAGE_ROWS,
   FOLD_BUDGET_ROWS,
+  FOLD_DEADLINE_MS,
   CHECKPOINT_STRIDE,
   eventReadEnabled,
   dbFilePath,

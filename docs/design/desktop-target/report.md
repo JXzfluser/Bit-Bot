@@ -13179,3 +13179,60 @@ sessions 偏差：日志 3 条 / JSON 3 条 · matched=2 mismatched=1 只在日�
 **回归**：`prove_event_read_model PASS=21 FAIL=0`、G-125 `PASS=42 FAIL=0 SKIP=1`、G-124 `PASS=38 FAIL=0 SKIP=0`、`prove_event_dual_write 31`、`prove_event_only 7`、RH `PASS=8`，`git status --porcelain data/` 空（检查点写在 `<dataRoot>/events/` 下、`/data/**/*.json` 已在 `.gitignore` 第 21 行）。
 
 **边界与尾账**：① 表里那个「每行」是当前规模的**平均**折价，折叠是超线性的（§8.168 指数 ~1.8），库到几万行时同样的 256 行滞后要多付好几倍 —— 探针末尾自己印了这条提示，换量级要重跑，不许沿用 256；② ⑤ 用的是「不同游标个数」这个代理量，不是磁盘字节数，真字节写放大只有上表那一格；③ RM-18 量的是读模型内部的滞后，不等于「用户开机时间」——开机总时长还要加上开库、`JSON.parse` 整面（15.5ms 里已含）与其余启动工作，没有单独量过真 app 开机；④ 盈亏平衡点是**时间**上的收支，没算 SSD 磨损/断电窗口，选 256 是留余量而不是取最优；⑤ §8.168 边界⑤ 欠的三处折叠状态合并（#84）本片没动，只落了 stride 扫参那一半。
+
+### 8.170 墙钟死线落地：把「折不动」从 40 分钟的白烧改成 250ms 的拒读 —— 前缀记在自己的游标上，拒读不白烧钱（RM 21→23，五格突变体各红一次，含两格突变体自身返工）（2026-11-20）
+
+**为什么还要再加一道墙钟（§8.169 之后剩下的那半）**
+
+§8.169 把落盘频率量成了 `CHECKPOINT_STRIDE=256`，但「一趟读最多折多少行」这件事上仍是只有行额度：`FOLD_BUDGET_ROWS=500000`。用 §8.165/8.168 的实数把它换算成时间：折叠成本对行数近似平方，拟合 k ≈ 9.68e-6 ms/行²（三个实测点：1502 行 22.5ms、4502 行 196.1ms、9002 行 805ms，都在 `scripts/probe_fold_checkpoint.mjs` 里量）。于是：
+
+- 单页 50000 行 ≈ **24.2 秒**主进程冻住 —— 这是 §8.168 之前 `FOLD_PAGE_ROWS` 的真实价钱；
+- 行额度 500000 行咬住之前 ≈ **40.3 分钟**主进程冻住 —— 行额度守的是「总共干了活没有」，完全不守「这次点了多久」。
+
+两条都不合格：读切换的第一约束是**延迟**，不是工作量。所以这一片把「量级」和「墙钟」分开钉：`FOLD_PAGE_ROWS` 50000→**512**（单页最坏 9002 行量级的 805ms 的 1/17，且 512 行本身在 6ms 内），另加 `FOLD_DEADLINE_MS = 250` 的墙钟，在**每折完一页之后**检查 —— 顺序是语义：先看这页是不是短的（看完了），再看墙钟，才不会出现「刚好折完最后一页但超时 → 明明读完却拒读」。
+
+**截断的那一趟折出来的是合法前缀，就记在它自己的游标上**
+
+这是 #83 那条口径（§8.83 的「截断状态不许记到库 lastSeq」）的安全推广：错的从来不是「折了一部分」，而是「把折了一部分说成折完了」。现在截断分支：
+
+- 把半截 folded 当缓存、把检查点**落在 `result.cursor`**（不是 lastSeq），并**绕过 stride 无条件落盘**；
+- 返回 `ok:false, reason:"fold_timeout"|"log_too_long"`，带 `rowsRead/maxRows/deadlineMs/elapsedMs/progressSeq`；
+- 成功路径也报 `elapsedMs`（缓存命中与实折两条路都报），否则「死线留了多少余量」这种话就没法断言。
+
+无条件落盘不是洁癖，是防活锁：若截断的前缀也按 stride（256 行）才落盘，那么「每趟只折得动 <256 行」的库就会**每趟从同一个游标重折、游标永不推进** —— 拒读变成原地白烧墙钟。这一条被 RM-20 钉住，并被突变体 P1 反证过（见下）。
+
+**对账尺不参与墙钟**
+
+`hosts/shared/surface_parity.js` 两处 fold 传 `deadlineMs: 0`：尺是离线诊断，它的护栏是行数（可复现、跨机器稳定）；把墙钟塞进尺会让「同一份日志两次量出同一个偏差」变成看机器心情。
+
+**门：`prove_event_read_model` 21→23 条，PASS=23 FAIL=0**
+
+- **RM-12 改写**（原口径「拒读之后重读必须重折全部」已经不成立，前缀保住后它反而错了）。换成精确关系：`reopen.count === rowsInDb + 3 - starved.progressSeq` —— 放开额度那趟**恰好只补前缀之后的剩余行**，外加面完整性（含拒读期间新增的 3 条会话、已删那条仍不在）。反向对照写在断言里：扔掉前缀 → 左边变成 `rowsInDb+3`；把前缀记到真 lastSeq（#83 原洞）→ `lateOf` 先红。
+- **RM-20**：1200 行、`pageSize:100, deadlineMs:0.0001`。断言链 = 截断读 `fold_timeout` → `progressSeq` 正好是第一页的 100 → **盘上检查点的 lastSeq === progressSeq**（前缀必须落盘）→ 换进程（`closeAll` 重开）只补 100 行且仍 ok:false → 游标严格前进 → 20 趟内收敛 ok:true → 面与全量逐 id 相等 → 收敛那趟读的行数 < 全量行数。实测读数：**12 趟严格前进后收敛，换进程从 100 续上只补 100 行，收敛那次补 1100 行**。
+- **RM-21**：同一份 1200 行走默认参数必须 ok:true 读完，且 `elapsedMs < 250`。实测 **6.7ms，余量 37.3×**。这一条带**反向对照**：同库把死线压到 0.0001ms 必须 `fold_timeout` —— 否则「默认没咬住」可能只是护栏根本不在（恒真）。反向对照先跑、并在跑完清掉它落的检查点，否则正常读会从 100 行续上、`count` 不再是全量。
+
+**五格突变体：`scripts/mutate_read_model_deadline.sh`（每格跑完自动还原源码）**
+
+| 突变体 | 结果 |
+| --- | --- |
+| P1 截断前缀按 stride 才落盘（活锁） | PASS=22 FAIL=1，红项 RM-20 |
+| P2 截断前缀记到库 lastSeq（#83 原洞） | PASS=22 FAIL=1，红项 RM-20 |
+| P3 截断当看完（返回 ok:true） | PASS=20 FAIL=3，红项 RM-12 RM-20 RM-21 |
+| P4 墙钟护栏整个摘掉 | PASS=21 FAIL=2，红项 RM-20 RM-21 |
+| P5 默认死线调成 0.001ms（咬在日常量级） | PASS=19 FAIL=4，红项 RM-11 RM-12 RM-20 RM-21 |
+
+**这两格突变体自身返过工，按原样记：**
+
+1. **P1 第一版是假绿。** 我原本写的条件是 `lastSeq - slot.persistedSeq >= CHECKPOINT_STRIDE`，但 `lastSeq` 是**库的**最后 seq，夹具里 1201 ≥ 256 第一趟就成立 → 照样落盘 → 整门 PASS=23 FAIL=0，什么都没红。这条「活锁」当时只是我的推测，没被证。改成按**游标自己的推进**卡额度（`result.cursor - slot.persistedSeq >= CHECKPOINT_STRIDE`）之后，每趟只推进 100 行 < 256 → 永不落盘 → RM-20 红。**教训照旧：写突变体后先看它是否真改变了被断言的那个状态，再引用。**
+2. **P5 第一版把整门跑崩，不是跑红。** 默认死线被调到 0.001ms 后，RM-20 在 `prove_event_read_model.mjs:607` 抛 `TypeError: Cannot read properties of undefined (reading 'sessions')` —— 前置的全量 scratch 读被拒了，而 `wantIds` 在「scratch 不 ok 就先红」这条断言**之前**就被算了。门崩时只红 RM-11/RM-12，RM-21 根本没跑到，所以那次的「红」不能用来给 RM-21 作证。改成 `scratchDl.ok ? JSON.stringify(...) : null` 后，P5 老实红 4 条（含 RM-21）——**门自己的夹具不成立时也必须报红，不许抛**。
+
+**邻门回归（同一份源码，突变脚本还原后）**
+
+`prove_event_read_model` PASS=23 FAIL=0 ｜ `prove_surface_parity` PASS=42 FAIL=0 SKIP=1 ｜ `prove_kp09_event_only_concurrency` PASS=38 FAIL=0 SKIP=0 ｜ `prove_event_dual_write` PASS=31 FAIL=0 ｜ `prove_event_only` PASS=7 FAIL=0 ｜ `prove_report_history_intact` PASS=8 FAIL=0。G-65 的 RM 条数是锚点动态 `grep -c '^ok RM'` 取的，21→23 不用改矩阵；矩阵里「六臂」等措辞未动。
+
+**这一片没覆盖什么（不许读成「读切换的抖动都收口了」）**
+
+- 只治了「太长折不动」这一族；**折叠被毒成 `fold_anomalies` 之后仍没有产品内自愈路径**（#80 原样挂着，只能人工删库）。
+- 尺的运行时接线仍未授权（#81：翻默认双写 / 接显式诊断入口，二选一），G-125 仍 SKIP=1。
+- 尺读日志的 `limit 100000` 价钱没量过（#84 后半：三处折叠状态收拢）也没动。
+- 死线 250ms 是**从延迟约束倒推**选的，不是从「用户能忍受多少」测出来的；RM-21 只证明它现在不咬在 1200 行上，余量 37.3×。
