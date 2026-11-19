@@ -422,6 +422,99 @@ const onRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-on-"));
   }
 }
 
+/* ===== RM-13..RM-17：折检查点是**派生态**，不是第二份真源（#82 后半 / §8.168）=====
+ * 检查点存在的唯一理由：冷进程不再从 seq=1 重折全量（真两进程实测 1501 会话 / 4502 行：
+ * 195.9ms → 3.4ms）。代价与风险是「盘上多了一份面」，所以判据按四条钉：
+ * 等值、坏/外来/超前的一律不用、只读消费方不建库、脏面绝不落盘。 */
+{
+  cleanupFlags();
+  const ckRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-ckpt-"));
+  const ckDb = path.join(ckRoot, "events", "desktop-events.sqlite");
+  fs.mkdirSync(path.dirname(ckDb), { recursive: true });
+  const openLog2 = require(path.join(ROOT, "hosts/shared/event_log.js")).openEventLog;
+  const envRead = { BITBOT_EVENT_READ: "1" };
+  const hc = openLog2({ file: ckDb, actor: "rm-ckpt" });
+  for (let i = 0; i < 6; i += 1) {
+    hc.append({ sessionId: "system", kind: "session_created", payload: { surface: "sessions", session: { id: `sess-ck${i}`, title: `检查点 ${i}` } } });
+  }
+  const ckSeq = hc.lastSeq();
+  hc.close();
+  const cacheFile = eventReadModel.checkpointPathFor(ckDb);
+  const keyOfFace = (r) => JSON.stringify(r.ok ? { s: r.sessions, r2: r.rooms, a: r.approvals } : { bad: r.reason });
+
+  /* RM-13：落下检查点 → 新进程起手必须续折、等值、真少读，且第二次读仍是进程内 cached。 */
+  eventReadModel.closeAll();
+  fs.rmSync(cacheFile, { force: true });
+  const first = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead, checkpointStride: 1 });
+  const wrote = fs.existsSync(cacheFile);
+  eventReadModel.closeAll();
+  const seeded = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead, checkpointStride: 1 });
+  const seeded2 = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead, checkpointStride: 1 });
+  fs.rmSync(cacheFile, { force: true });
+  eventReadModel.closeAll();
+  const fromScratch = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead });
+  if (first.foldPath !== "full" || !wrote) bad("RM-13", `首读没走全量或没落检查点（path=${first.foldPath} 落盘=${wrote}）——后面每条都是恒真`);
+  else if (seeded.foldPath !== "checkpoint") bad("RM-13", `新进程起手没走检查点（foldPath=${seeded.foldPath}）`);
+  else if (keyOfFace(seeded) !== keyOfFace(fromScratch)) bad("RM-13", "检查点续折出来的面与全量折不等值");
+  else if (!(seeded.count < fromScratch.count)) bad("RM-13", `续折那次读了 ${seeded.count} 行、全量 ${fromScratch.count} 行 —— 没真的少读`);
+  else if (!seeded2.cached) bad("RM-13", "同进程第二次读没走进程内缓存（seeded 标记没清 = 每次都说自己是检查点起手）");
+  else ok("RM-13", `落检查点 → 新进程 foldPath=checkpoint 只读 ${seeded.count}/${fromScratch.count} 行、面与全量逐字段相等、第二次读 cached:true`);
+
+  /* RM-14：检查点是垃圾 → 当它不存在。缓存坏了绝不能变成拒读。 */
+  fs.writeFileSync(cacheFile, "{ 这不是 JSON");
+  eventReadModel.closeAll();
+  const corrupt = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead });
+  if (!corrupt.ok || corrupt.foldPath !== "full" || keyOfFace(corrupt) !== keyOfFace(fromScratch)) bad("RM-14", `垃圾检查点没被无视：ok=${corrupt.ok} path=${corrupt.foldPath}`);
+  else ok("RM-14", "检查点是半截 JSON → 当它不存在，照样全量折出同一份面（派生态坏了不升级成读不到）");
+
+  /* RM-15：外来的面 / 比库还新的游标，两种都不许用；且读完落回真实游标（不许永久毒死这条路）。 */
+  fs.writeFileSync(cacheFile, JSON.stringify({
+    dbFile: "/tmp/别的库.sqlite",
+    lastSeq: 1,
+    folded: { sessions: { version: 1, active_id: "", sessions: [] }, rooms: { version: 1, rooms: [] }, approvals: [], anomalies: [] },
+  }));
+  eventReadModel.closeAll();
+  const foreign = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead, checkpointStride: 1 });
+  const afterForeign = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+  good_lastSeq_bump: {
+    const good = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+    good.lastSeq = 999999;
+    fs.writeFileSync(cacheFile, JSON.stringify(good));
+  }
+  eventReadModel.closeAll();
+  const future = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead, checkpointStride: 1 });
+  const afterFuture = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+  if (foreign.foldPath !== "full" || keyOfFace(foreign) !== keyOfFace(fromScratch)) bad("RM-15", `别的数据根的检查点被当成本库的面用了（path=${foreign.foldPath}）`);
+  else if (future.foldPath !== "full" || keyOfFace(future) !== keyOfFace(fromScratch)) bad("RM-15", `比库还新的检查点被用了（path=${future.foldPath}）`);
+  else if (afterForeign.lastSeq !== ckSeq || afterFuture.lastSeq !== ckSeq) bad("RM-15", `读完之后检查点没退回真实游标：${afterForeign.lastSeq}/${afterFuture.lastSeq} vs ${ckSeq} —— 一次错位就永久不再落盘`);
+  else ok("RM-15", `外来 dbFile 与 lastSeq=999999 两种检查点都被拒，面按全量折出、落盘退回真实游标 ${ckSeq}`);
+
+  /* RM-16：只读消费方不建库（no_db 那格在碰检查点之前就返回）。 */
+  const noDbRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-nodeb-"));
+  const noDbFile = path.join(noDbRoot, "events", "desktop-events.sqlite");
+  const miss = eventReadModel.readSurfaces(noDbRoot, { file: noDbFile, env: envRead, checkpointStride: 1 });
+  if (miss.ok || miss.reason !== "no_db") bad("RM-16", `没库时读数不对：${JSON.stringify(miss)}`);
+  else if (fs.existsSync(noDbFile) || fs.existsSync(eventReadModel.checkpointPathFor(noDbFile))) bad("RM-16", "读路径把库或检查点建出来了 —— 只读消费方变成了写者");
+  else ok("RM-16", "没库 → no_db，且不建库、不建检查点文件（读路径仍不是写者）");
+
+  /* RM-17：顺序是语义 —— 折出不干净的那次绝不落盘。 */
+  const src = fs.readFileSync(path.join(ROOT, "hosts/shared/event_read_model.js"), "utf8");
+  const iAnom = src.indexOf('reason: "fold_anomalies"');
+  const iSave = src.indexOf("if (lastSeq - slot.persistedSeq >= stride");
+  if (!(iAnom > 0 && iSave > iAnom)) bad("RM-17", "落检查点那一格排在了 fold_anomalies 拒绝之前 —— 毒面会被写进盘上缓存");
+  else ok("RM-17", `落检查点排在 fold_anomalies 之后（第 ${iAnom} 字符 vs 第 ${iSave} 字符），折不干净那次不落盘`);
+
+  cleanupFlags();
+  eventReadModel.closeAll();
+  for (const d of [ckRoot, noDbRoot]) {
+    try {
+      fs.rmSync(d, { recursive: true, force: true });
+    } catch {
+      /* 临时目录清不掉不影响结论 */
+    }
+  }
+}
+
 /* ===== RM-06：日志坏了要说话（垃圾字节 + anomaly 两条路） ===== */
 {
   // 6a：库文件塞垃圾 → open/read 失败 → 回退 JSON，stderr 有说明

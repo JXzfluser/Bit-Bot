@@ -83,6 +83,53 @@ function dbFilePath(dataRoot) {
 /* 每个库文件一个缓存槽：{ log, lastSeq, folded }。进程内复用，进程退出即释放。 */
 const cacheByFile = new Map();
 
+/* #82 后半：把「折干净的前缀」落一份**可丢弃的检查点**，让冷进程不必从 seq=1 重折全量。
+   三条口径写死在这里，避免它被当成第二份真源：
+   1) 它是**派生态**，不是账：内容只可能是「本库 seq<=ckptSeq 的折叠结果」，删掉只是慢一次；
+      读路径永不因为检查点存在而相信它 —— 用完还要折后缀，折出 anomaly 就回全量。
+   2) 绝不拿它建库：库不存在时（no_db）在读它之前就返回，所以只读消费方仍不是写者。
+   3) 落盘按「距上次持久化新增多少行」节流（默认 2000 行），且写失败绝不影响这次读的结果。 */
+const CHECKPOINT_STRIDE = 2000;
+const CHECKPOINT_MAX_BYTES = 64 * 1024 * 1024;
+
+function checkpointPathFor(file) {
+  return path.join(path.dirname(file), "desktop-events.fold-cache.json");
+}
+
+/** 读检查点；任何不合格都返回 null（= 冷启动照旧全量折），绝不抛。 */
+function loadCheckpoint(file) {
+  try {
+    const target = checkpointPathFor(file);
+    if (path.resolve(target) === path.resolve(file)) return null;
+    const raw = JSON.parse(fs.readFileSync(target, "utf8"));
+    if (!raw || raw.dbFile !== path.resolve(file)) return null;
+    const ckSeq = Number(raw.lastSeq);
+    if (!Number.isFinite(ckSeq) || ckSeq < 0) return null;
+    const f = raw.folded;
+    if (!f || !f.sessions || !Array.isArray(f.sessions.sessions) || !f.rooms || !Array.isArray(f.rooms.rooms)) return null;
+    if (!Array.isArray(f.approvals)) return null;
+    if (Array.isArray(f.anomalies) && f.anomalies.length) return null;
+    return { lastSeq: ckSeq, folded: f };
+  } catch (_e) {
+    return null;
+  }
+}
+
+/** 原子写检查点；失败静默（下次还是全量折，不假装成功）。 */
+function saveCheckpoint(file, lastSeq, folded) {
+  try {
+    const payload = JSON.stringify({ dbFile: path.resolve(file), lastSeq, folded });
+    if (Buffer.byteLength(payload) > CHECKPOINT_MAX_BYTES) return false;
+    const target = checkpointPathFor(file);
+    const tmp = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, payload);
+    fs.renameSync(tmp, target);
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
 function dropCache(file) {
   const slot = cacheByFile.get(file);
   if (slot) {
@@ -134,13 +181,23 @@ function readSurfaces(dataRoot, opts = {}) {
         file,
       };
     }
-    slot = { log: handle, lastSeq: -1, folded: null, count: 0 };
+    slot = { log: handle, lastSeq: -1, folded: null, count: 0, persistedSeq: -1, seeded: false };
+    const ck = loadCheckpoint(file);
+    /* 检查点的 seq 比库还大 = 库被换过/截短过（seq 可能已被另一份日志复用）：直接不用它。 */
+    if (ck && ck.lastSeq <= handle.lastSeq()) {
+      slot.folded = ck.folded;
+      slot.lastSeq = ck.lastSeq;
+      slot.persistedSeq = ck.lastSeq;
+      slot.seeded = true;
+    }
     cacheByFile.set(file, slot);
   }
 
   try {
     const lastSeq = slot.log.lastSeq();
-    if (slot.folded && slot.lastSeq === lastSeq) {
+    const seeded = slot.seeded;
+    slot.seeded = false;
+    if (slot.folded && slot.lastSeq === lastSeq && !seeded) {
       return {
         ok: true,
         file,
@@ -160,7 +217,7 @@ function readSurfaces(dataRoot, opts = {}) {
        增量路径永远没有权力单独宣布「这份日志不干净」。 */
     let result = null;
     let incremental = false;
-    if (slot.folded && lastSeq > slot.lastSeq) {
+    if (slot.folded && lastSeq >= slot.lastSeq) {
       result = foldPages(slot.log, {
         fromSeq: slot.lastSeq,
         base: slot.folded,
@@ -206,6 +263,12 @@ function readSurfaces(dataRoot, opts = {}) {
     slot.lastSeq = lastSeq;
     slot.count = incremental ? prevCount + result.rows : result.rows;
     slot.incremental = incremental;
+    /* 折干净了才落检查点（脏面绝不持久化 = 不把毒面写进盘上缓存）；按新增行数节流，
+       写失败不改这次读的结论。 */
+    const stride = Number(opts.checkpointStride) > 0 ? Number(opts.checkpointStride) : CHECKPOINT_STRIDE;
+    if (lastSeq - slot.persistedSeq >= stride && saveCheckpoint(file, lastSeq, folded)) {
+      slot.persistedSeq = lastSeq;
+    }
     return {
       ok: true,
       file,
@@ -215,7 +278,8 @@ function readSurfaces(dataRoot, opts = {}) {
       anomalies,
       count: result.rows,
       lastSeq,
-      foldPath: incremental ? "incremental" : "full",
+      foldPath: seeded ? "checkpoint" : incremental ? "incremental" : "full",
+      checkpointSeq: slot.persistedSeq >= 0 ? slot.persistedSeq : null,
     };
   } catch (err) {
     dropCache(file);
@@ -237,9 +301,11 @@ module.exports = {
   READ_FLAG,
   FOLD_PAGE_ROWS,
   FOLD_BUDGET_ROWS,
+  CHECKPOINT_STRIDE,
   eventReadEnabled,
   dbFilePath,
   foldPages,
+  checkpointPathFor,
   readSurfaces,
   closeAll,
 };
