@@ -112,15 +112,37 @@ function createSessionStore(repoRoot, opts = {}) {
   }
 
   function saveEventOnly(state) {
-    const nextText = JSON.stringify(state, null, 2);
     const def = eventMirror.surfaceOf(storePath);
     const m = mirror();
-    if (legacyBasePending) {
-      m.commitText(def, null, lastLoadedText); // 基底导入（从 BASELINE，prevText=null）
-      legacyBasePending = false;
-    }
-    m.commitText(def, lastLoadedText, nextText);
-    lastLoadedText = nextText;
+    /* KP-09 片11：提交前在跨进程锁里重取基底 —— 群面 `requireWritableRooms()` 的同一条纪律。
+       `load()` 到落库之间别的进程可能已经写了会话，拿自己那份陈旧基底做 diff 就会把别人的行
+       从花名册里抹掉（真并发实测三次全是这个形状，§8.150）。四条合并规则与文件模式共用一个核心，
+       所以两条路不会漂成两种语义。 */
+    withFaceLock(storePath, () => {
+      const hit = eventReadModel.readSurfaces(dataRoot);
+      let base = lastLoadedText;
+      let mine = state;
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        const fresh = hit.sessions;
+        if (fresh && Array.isArray(fresh.sessions)) {
+          mine = mergeAgainstFace(state, fresh, lastLoadedText);
+          base = JSON.stringify(fresh, null, 2);
+        }
+      } else if ((!hit.ok && hit.reason !== "no_db") || (hit.anomalies || []).length > 0) {
+        const err = new Error(
+          `sessions 写入被拦：提交时事件折叠不可用（${(hit.anomalies && hit.anomalies[0]) || hit.reason || "fold_unavailable"}）`,
+        );
+        err.code = "SESSION_FOLD_BLOCKED";
+        throw err;
+      }
+      const nextText = JSON.stringify(mine, null, 2);
+      if (legacyBasePending) {
+        m.commitText(def, null, base); // 基底导入（从 BASELINE，prevText=null）
+        legacyBasePending = false;
+      }
+      m.commitText(def, base, nextText);
+      lastLoadedText = nextText;
+    });
   }
 
   /** EVENT_ONLY 的「从 BASELINE 播种」：与导入脚本共用同一语义（prevText=null）。 */
@@ -401,17 +423,23 @@ function createSessionStore(repoRoot, opts = {}) {
   }
 
   function mergeSessionsAgainstDisk(state) {
-    if (!state || !Array.isArray(state.sessions)) return state;
     let disk = null;
     try { disk = JSON.parse(fs.readFileSync(storePath, "utf8")); } catch (_) { return state; }
-    if (!disk || !Array.isArray(disk.sessions)) return state;
+    return mergeAgainstFace(state, disk, mergeBaseText);
+  }
+
+  /* KP-09 片11：合并的核心与「另一份是什么来源」无关 —— 文件模式拿 sessions.json，
+     EVENT_ONLY 拿折叠出来的当前面。四条规则原样共用，不然两条路会漂成两种语义。 */
+  function mergeAgainstFace(state, other, baseText) {
+    if (!state || !Array.isArray(state.sessions)) return state;
+    if (!other || !Array.isArray(other.sessions)) return state;
     let baseSessions = new Map();
-    if (mergeBaseText) {
+    if (baseText) {
       let base = null;
-      try { base = JSON.parse(mergeBaseText); } catch (_) { return state; }
+      try { base = JSON.parse(baseText); } catch (_) { return state; }
       baseSessions = new Map(((base && base.sessions) || []).filter((s) => s && s.id).map((s) => [s.id, s]));
     }
-    const diskById = new Map(disk.sessions.filter((s) => s && s.id).map((s, i) => [s.id, { s, i }]));
+    const diskById = new Map(other.sessions.filter((s) => s && s.id).map((s, i) => [s.id, { s, i }]));
     /* 顺序按「我这轮的那份」走：create() 是新会话插到最前，侧栏次序由它决定 ——
        若先走盘上的行再把我的新行追加在后面，单写者（盘上就是上一刻我自己写的）也会被
        改成「新建的会话排到最后」，事件 fold 与快照就再也对不上（DW-03 少一条 entity_order_changed、
@@ -430,7 +458,7 @@ function createSessionStore(repoRoot, opts = {}) {
       merged.push(b && JSON.stringify(b) === JSON.stringify(m) ? hit.s : m);
       placed.add(m.id);
     }
-    for (const d of disk.sessions) {
+    for (const d of other.sessions) {
       if (!d || !d.id || placed.has(d.id)) continue;
       // 基底里有 = 我删的（不复活）；基底里没有 = 别人刚建的，留在盘上、按盘上的位置归位。
       if (baseSessions.has(d.id)) continue;

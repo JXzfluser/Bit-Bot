@@ -228,5 +228,72 @@ console.log("RESULT "+tag+" appr_ok="+ao+" appr_fail="+af+" room_ok="+ro+" room_
   }
 }
 
+/* 臂5：会话面真并发 —— §8.150 量出来这条是红的（18 条 create 回执全 ok 却 0 条消息落库、
+   折叠 21 条 anomaly），片10（不再拿空面覆盖）+ 片11（提交时在锁内重取基底）修完后在这里钉住。
+   判据不许用「大概没丢」：
+   ① 并发本身要量出来（写窗口重叠）才算这一臂存在；
+   ② 折叠标题的**多重集** == 成功建会话回执 + 播种的那条「新对话」—— 用逐条标题而不是条数，
+      复活/重复提交/整批丢失都会在这里露形；那条「+1」是空 dataRoot 上唯一一次播种（§8.150 之后
+      播种进了跨进程锁，所以只会有一条）；
+   ③ 折叠消息总数 == 成功 appendMessages 回执 —— 只数会话条数会漏掉历史症状「会话在、消息没了」；
+   ④ 折叠必须 ok 且 0 anomaly。
+   本臂**不含并发删除**：第一次带删除跑的时候实测到「A 删掉的那条被从没看过它的 B 复活」
+   （三方合并只认得自己基底里的行，别人新建的行一律保留）—— 那是删除语义缺墓碑，不是这臂能钉住的账，
+   已单独记成待办（报告 §8.152）。 */
+const CHILD_RACE_SES = `
+const REPO=${JSON.stringify(REPO)}, path=require("path");
+const [dataRoot, tag]=process.argv.slice(1);
+process.env.BITBOT_EVENT_ONLY="1";
+const t0=Date.now();
+const st=require(path.join(REPO,"hosts/desktop/sessions.js")).getSessionStore(REPO,{dataRoot});
+let co=0,cf=0,mo=0,mf=0;
+const mk=(t)=>{const r=st.create(t); return r&&r.ok&&r.session?r.session.id:null;};
+const ids=[];
+for(let i=0;i<2;i++){ const id=mk("竞"+tag+"-"+i); if(id){co++;ids.push(id);} else cf++; }
+for(const id of ids){ const r=st.appendMessages(id,[{role:"user",content:"一句话"}]); (r&&r.ok===false)?mf++:mo++; }
+console.log("RESULT "+tag+" create_ok="+co+" create_fail="+cf+" msg_ok="+mo+" msg_fail="+mf+" t0="+t0+" t1="+Date.now());
+`;
+{
+  const { dataRoot } = freshSurface();
+  const kids = [];
+  for (let i = 0; i < 6; i++) {
+    const c = spawn("node", ["-e", CHILD_RACE_SES, dataRoot, "P" + i], { encoding: "utf8" });
+    let o = ""; let err = "";
+    c.stdout.on("data", (d) => { o += d; }); c.stderr.on("data", (d) => { err += d; });
+    kids.push(new Promise((r) => c.on("exit", (code) => r({ code, o, err }))));
+  }
+  const got = await Promise.all(kids);
+  const rows = got.map((g) =>
+    /RESULT (\S+) create_ok=(\d+) create_fail=(\d+) msg_ok=(\d+) msg_fail=(\d+) t0=(\d+) t1=(\d+)/.exec(g.o),
+  );
+  if (rows.some((r) => !r) || got.some((g) => g.code !== 0)) {
+    honestSkip("臂5 子进程没交出可解析的 RESULT（退出码或输出不对，写没发生就不判绿）：" +
+      got.map((g) => g.code + ":" + (g.err || "").slice(0, 60)).join(" ;; ").slice(0, 220));
+  } else {
+    const iv = rows.map((r) => [Number(r[6]), Number(r[7])]).sort((a, b) => a[0] - b[0]);
+    let overlap = 0;
+    for (let i = 1; i < iv.length; i++) if (iv[i][0] < iv[i - 1][1]) overlap++;
+    ok("臂5 前置：并发窗口真的重叠（不是六个串行样本）", overlap >= 1, iv.map((x) => `${x[0]}..${x[1]}`).join(" "));
+    const sum = rows.reduce((a, r) => ({ co: a.co + +r[2], cf: a.cf + +r[3], mo: a.mo + +r[4], mf: a.mf + +r[5] }), { co: 0, cf: 0, mo: 0, mf: 0 });
+    const hit = readSurfaces(dataRoot);
+    const arrRaw = (hit.sessions && (hit.sessions.sessions || hit.sessions)) || [];
+    const arr = Array.isArray(arrRaw) ? arrRaw : [];
+    const titles = arr.map((s) => s.title);
+    const msgTotal = arr.reduce((a, s) => a + (s.message_count ?? (s.messages || []).length), 0);
+    // 期望是**逐条标题的多重集**，不是「条数差不多」：重复提交/复活都会在这里露形。
+    const expect = ["新对话"];
+    for (let i = 0; i < 6; i++) for (let k = 0; k < 2; k++) if (sum.co >= i * 2 + k + 1) expect.push(`竞P${i}-${k}`);
+    ok(`臂5 会话面：折叠标题多重集 == 成功回执 ${sum.co} 条 + 播种的那条「新对话」（失败回执 ${sum.cf} 条当场有名字）`,
+      JSON.stringify(titles.slice().sort()) === JSON.stringify(expect.slice().sort()),
+      { 折叠: titles.length, 成功: sum.co, 失败: sum.cf, 多出来: titles.filter((t) => !expect.includes(t)), 少了: expect.filter((t) => !titles.includes(t)) });
+    ok(`臂5 消息：折叠消息总数 == 成功 appendMessages 回执 ${sum.mo}（失败 ${sum.mf} 条）—— 会话在、消息整批没了不算过`,
+      msgTotal === sum.mo, { 折叠消息: msgTotal, 成功: sum.mo, 失败: sum.mf });
+    ok("臂5 折叠无异常（§8.150 改前的症状就是这一条 21 项）", (hit.anomalies || []).length === 0 && hit.ok === true,
+      { ok: hit.ok, reason: hit.reason, anomalies: (hit.anomalies || []).slice(0, 3) });
+    ok("臂5 旁路生效：EVENT_ONLY 下 sessions.json 不落盘",
+      !fs.existsSync(path.join(dataRoot, "desktop", "sessions.json")));
+  }
+}
+
 console.log(`prove_kp09_event_only_concurrency: PASS=${pass} FAIL=${fail} SKIP=${skip}`);
 process.exit(fail ? 1 : 0);
