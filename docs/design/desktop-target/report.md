@@ -12747,3 +12747,50 @@ G-124 仍未在任何全量矩阵里真跑。
 产品没有任何复原路径，只能人工删事件库；这条单独立账（#80），要的是「重锚（re-anchor）一次整面快照」这种带明确授权口径的机制，
 不是再把封堵关掉。② `emit()`（回合生命周期）仍是单条 `append` —— 它一次只落一条，没有半提交形状，本轮不动。
 ③ 本轮没重跑全量矩阵，矩阵项数不变（臂8 是第 1 条门里的第 8 臂）。④ G-124 仍未在任何全量矩阵里真跑。
+
+## 8.156 #80 的取证：Grok 把「派生态怎么复原」拆成四个各自独立、各自记账的机制；照这个形状，我们的自愈端要拆成两条（含一条我们根本没有的对账尺）（2026-11-19）
+
+**取证方法先声明局限：** 这一节是**静态 bundle 取证** —— 对 `/Applications/Grok Bot.app/Contents/Resources/app.asar`（58 MB）做
+字节级 grep 取到的原文片段，**不是活体测量**：本轮没有在 Grok 上做过故障注入，也没量到这几条各自的触发频率。
+结论只到「这些机制在代码里存在、且字段形状如下」，不外推到「它们一定按某节奏跑」。
+
+**四条机制，逐字：**
+
+1. **自动重同步（replica 层）**：`replica_resync:{kind,replica,outcome,attempts,durationMs,bufferOverflowed,epochChanged}`；
+   副本对象自己带 `status=`synced`|`resyncing`、`resyncRequests`、`attemptCounter`、`bufferOverflows`、`currentResyncAttemptId`，
+   判据里 attempt 是按 id 对的（`e.attemptId===n.currentResyncAttemptId`），并且唤醒也重取：
+   `window.addEventListener(`pageshow`,this.scheduleResync), document.addEventListener(`visibilitychange`,this.handleVisibilityCha…)`；
+   服务端还能直接下发一个效果命令 `{kind:"resync"}` / `{kind:"resync-host-mirror",…}`。
+   读取层同形：`{settledAtMs, reread:null}` + `i.read.isReread …(i.read.controller?.abort(), l.refresh())`。
+2. **停放而不是删除（park）**：`send_journal_restore:{kind,outcome,phase,ageMs,recordCount}` 的 outcome 闭集含 `parked`；
+   条目级停放带时间戳 `Dt({agentId:i,entryId:e,fromAgentId:i,pagesRequested:1,parkedAtMs:u.clock.now()})`；
+   分流逻辑是 `if(a.kind===`park`)return c(n,`parked`),!1; c(n,`live`); for(let e of a.evict)c(e,`parked`)`。
+   升级路径同一哲学：`parkedInstaller(){return this.options.appImage??…}`、`reportDesktopEdgeFailure("update","kept-zip",n)` —— 装不上的包**留着**，不删。
+3. **对账尺（我们最缺的一条）**：`transcript_store_parity` 的三个计数直接决定日志级别 ——
+   `let t=e.mismatched>0||e.missing>0||e.extra>0; return{event:BA.TRANSCRIPT_PARITY_EVENT,level:t?"warn":"info",…}`；
+   校验侧要求 `Mn(e.agentId)!==null && xRe(e)`，即每条对账读数必须挂在一个具体 agent 上。
+4. **授权恢复（整仓）**：`AdminRestoreSandBoxStoreSnapshot`，请求带 `auth_id / flavor / manifest_version_id`，
+   响应是 `started / reason / operation_id / current_e…` —— 整份 store 的复原是**带身份、带理由、带可追溯 operation id 的 admin 调用**，不是自动。
+
+**为什么第 1 条不能照搬（这是本轮最重要的一条推断，且能证伪）：** Grok 的本地状态是 **replica**，真源在上游，所以「重同步」= 再读一遍上游，
+可以自动、可以按 attempts 重试。我们 `BITBOT_EVENT_ONLY=1` 之下**事件日志本身就是真源**，没有更上游可回读 —— 于是臂6 那种毒面在今天的架构里
+只剩两条路：把历史删了（违反「停放而不是删除」，也违反 §8.155 立的目的），或从某个可信点重锚（第 4 条的形状）。
+这条推断的可证伪点是：若哪天给日志加了一个上游真源（服务端下发整面），第 1 条就变成可照搬的，#80 可以降级成自动重同步。
+
+**逐条对照我们的现状：**
+
+| Grok 的机制 | 我们 | 差距 |
+|---|---|---|
+| 停放而非删除（条目级 + `parkedAtMs`） | **部分已有**：片7/片8 的 `.corrupt-<UTC>` 证据改名 + 不覆盖（§8.74 那条「坏面先留证据」） | 粒度差一档：我们是整份文件级，Grok 是 `entryId` 级带时间戳 |
+| 对账尺 `mismatched/missing/extra` → warn | **没有**。我们有 `anomalies[]`（`event_read_model.js:120-125`：非空即把整面降成 `ok:false`），但它是「一次性拒写理由」，不是三个可比计数，也没有 warn 级留痕 | 新开 #81：把折叠的偏差量成 `{mismatched,missing,extra}` 计数并留痕；**这条比 #80 更靠前**——没有对账数，授权重锚时没人知道要锚什么 |
+| 授权恢复（`auth_id`+`reason`+`operation_id`） | **没有**，就是 #80 | 证据把 #80 的口径钉成 admin 级：**必须带授权、必须回一个可追溯 id 和一句 reason**，不是把封堵关掉 |
+| 自动重同步 | 架构上不适用（见上） | 记为「若引入上游真源则改用这条」 |
+
+**由证据收敛出来的 #80 契约（不再靠猜）：** ① 复锚写的是**一条新的整面快照事件**（词表里今天没有：`diffSurface(def, null, 文本)` 只是把整面摊成一串
+`session_created`，仍然要求历史能折），折叠遇到它就从该点重折，**旧事件一条不删**（停放而非删除）；② 复锚必须走片12b 的 `appendBatch`（原子）；
+③ 复锚必须带 reason 并回一个 operation id，且**上屏**（同一条面上不能有两个来源却互相矛盾的数）；④ 触发只能是显式入口，不能是「读到 `ok:false` 就自动重锚」——
+那等于把 §8.151 的 fail-open 从后门放回来。
+
+**口径边界与剩下的账：** ① 本轮**没动任何代码**，纯取证；门与 PASS 数不变（G-124 仍八臂 PASS=38）。② #80 的描述按本节改写（授权口径来源改成逐字证据）。
+③ 新开 #81（对账尺），并把「折叠偏差目前没有可比计数、也没有留痕级别」记为它的第一条待量事实。④ 未做活体故障注入，
+Grok 这几条的实际触发条件与频率是**未测**；`mismatched/missing/extra` 三者的精确定义（谁和谁比）本轮没量到，标为待取证。⑤ 本轮没重跑全量矩阵。
