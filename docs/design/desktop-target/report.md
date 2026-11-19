@@ -12794,3 +12794,31 @@ G-124 仍未在任何全量矩阵里真跑。
 **口径边界与剩下的账：** ① 本轮**没动任何代码**，纯取证；门与 PASS 数不变（G-124 仍八臂 PASS=38）。② #80 的描述按本节改写（授权口径来源改成逐字证据）。
 ③ 新开 #81（对账尺），并把「折叠偏差目前没有可比计数、也没有留痕级别」记为它的第一条待量事实。④ 未做活体故障注入，
 Grok 这几条的实际触发条件与频率是**未测**；`mismatched/missing/extra` 三者的精确定义（谁和谁比）本轮没量到，标为待取证。⑤ 本轮没重跑全量矩阵。
+
+## 8.157 §8.156 里标成「未量到」的对账尺定义，这一轮量到了：比的是 gateway 与 store 两个来源，读数里还带一个 `painted`（#81 的口径据此改写，我在 #81 里先猜的那版作废）（2026-11-19）
+
+**逐字（同一只 asar，静态取证）：** 记录校验器要求九个字段全部到位 ——
+`return p(e)?C(e.gatewayEntries)&&C(e.storeEntries)&&C(e.matched)&&C(e.mismatched)&&C(e.missing)&&C(e.extra)&&C(e.staleTail)`
+`&&typeof e.readReason=="string"&&Cm.has(e.readReason)&&typeof e.painted=="boolean":!1`（`Cm`/`_Re`/`PAt` 是 `readReason` 的闭集枚举）；
+出口是 `…filter(m=>!o.has(m)).length; return{gatewayEntries:n.length,storeEntries:e.length,matched:i,mismatched:l,missing:u,extra:c,staleTail:s}`。
+
+**这三件事是原本节的新知识，之前我只是照字段名推：**
+1. **比的是两个来源，不是「历史 vs 现状」**：`gatewayEntries`（流/网关那侧给了多少条）对 `storeEntries`（本地仓里存了多少条），
+   `extra`/`missing` 是这两个 id 集合的**差集长度**（`filter(m=>!o.has(m)).length`），`matched`/`mismatched` 是交集上的字段一致与否。
+   → 对账尺的定义是「同一份数据两条取数路径的集合差」，不是「派生态自洽性检查」。臂6 那种「顺序指向不存在的实体」在这套口径里属于
+   `mismatched`/自洽性，**不是** `extra`——我 #81 里写的三档口径（extra=幽灵 id 等）**作废**，见本节末。
+2. **`staleTail` 单列**：落后多少条是分开的数，不并进 missing —— 「慢」和「缺」是两个量。我们这边对应物是现成的：折叠 `lastSeq` 减渲染游标。
+3. **`painted` 是一个布尔字段，且和 readReason 一起进校验**：这条记录必须同时回答「为什么读的」（闭集枚举）和**「读到的东西上屏了没有」**。
+   这条正是记忆里那句「用户看得见但以为是产品行为的问题」被产品自己制度化 —— 漂移只有影响到画面才算一条完整读数。
+
+**据此 #81 的口径改成（两源 + 三计数 + 两标注）：** 我们的两条取数路径是 **`fold(events)`** 与 **渲染端实际画出的行**（双写模式下再加一条 JSON 旁路作第三方）；
+`matched`=两边都有且字段一致、`mismatched`=两边都有但字段不一致、`missing`=折叠有屏上没有、`extra`=屏上有折叠里没有、
+`staleTail`=事件尾与渲染游标的 seq 差、`readReason` 直接扩我们已有的 `source`（`events`/`json`/`events_anomalies`，`sessions.js:189`）**成闭集枚举**、
+`painted` 照抄语义。判据不变：非零即 warn 级留痕 + 跨面可见；夹具必须能证伪，且按 §8.155 的教训用「确实留过东西」的突变体验灵敏度。
+
+**仍未测（不假装量到）：** ① `readReason` 闭集的具体成员没逐字抄到（只量到它存在且要求 `typeof==="string"`）；
+② 采样时机与频率（`w8t=6e4` 这个 60s 常量出现在同一段附近，但**没有证据**说它就是这条尺的节拍，标为待证）；
+③ 活体 Grok 上从未触发过这条尺（本轮仍是静态取证，没有故障注入）。
+
+**口径边界：** ① 本轮没动代码，门与 PASS 不变（G-124 八臂 PASS=38）。② #81 描述已按本节改写，并逐字作废其中我猜的第一版三档口径。
+③ 未重跑全量矩阵。④ 分支现领先 origin 21 个本地提交，**推送仍未获授权**。
