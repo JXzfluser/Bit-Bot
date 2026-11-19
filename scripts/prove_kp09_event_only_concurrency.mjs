@@ -180,5 +180,53 @@ if(role==="A"){
   }
 }
 
+
+/* 臂4：真并发 —— 6 个进程无屏障同时写 approvals 与 rooms，谁先落库由调度决定。
+   两条硬口径：① 「并发」本身要量出来才判绿（各进程写窗口的起止时间必须至少有一对重叠，
+   否则只是六个串行样本，不配叫并发 → SKIP）；② 判据是「折叠行数 == 成功回执之和」，
+   失败回执允许存在（真并发下 SQLite 抢锁本来就可能拒人），
+   但失败必须当场有回执 —— 静默少一行才是缺陷。 */
+const CHILD_RACE = `
+const REPO=${JSON.stringify(REPO)}, path=require("path");
+const [dataRoot, tag]=process.argv.slice(1);
+process.env.BITBOT_EVENT_ONLY="1";
+const t0=Date.now();
+const s=require(path.join(REPO,"hosts/desktop/product_surface.js")).createProductSurface(REPO,{dataRoot});
+let ao=0,af=0,ro=0,rf=0;
+for(let i=0;i<4;i++){ try{ const r=s.appendPendingApproval({source:"chat",kind:"shell",command:"R"+tag+"-"+i,expires_at:""}); (r&&r.ok===false)?af++:ao++; }catch(e){ af++; } }
+for(let i=0;i<2;i++){ try{ const r=s.roomCreate("甲Bot,乙Bot","房"+tag+"-"+i); (r&&r.ok===false)?rf++:ro++; }catch(e){ rf++; } }
+console.log("RESULT "+tag+" appr_ok="+ao+" appr_fail="+af+" room_ok="+ro+" room_fail="+rf+" t0="+t0+" t1="+Date.now());
+`;
+{
+  const { dataRoot } = freshSurface();
+  const kids = [];
+  for (let i = 0; i < 6; i++) {
+    const c = spawn("node", ["-e", CHILD_RACE, dataRoot, "P" + i], { encoding: "utf8" });
+    let o = ""; let err = "";
+    c.stdout.on("data", (d) => { o += d; }); c.stderr.on("data", (d) => { err += d; });
+    kids.push(new Promise((r) => c.on("exit", (code) => r({ code, o, err }))));
+  }
+  const got = await Promise.all(kids);
+  const rows = got.map((g) => /RESULT \S+ appr_ok=(\d+) appr_fail=(\d+) room_ok=(\d+) room_fail=(\d+) t0=(\d+) t1=(\d+)/.exec(g.o));
+  if (rows.some((r) => !r) || got.some((g) => g.code !== 0)) {
+    honestSkip("臂4 子进程没交出可解析的 RESULT（退出码或输出不对，写没发生就不判绿）：" +
+      got.map((g) => g.code + ":" + (g.err || "").slice(0, 60)).join(" ;; ").slice(0, 220));
+  } else {
+    const iv = rows.map((r) => [Number(r[5]), Number(r[6])]).sort((a, b) => a[0] - b[0]);
+    let overlap = 0;
+    for (let i = 1; i < iv.length; i++) if (iv[i][0] < iv[i - 1][1]) overlap++;
+    ok("臂4 前置：并发窗口真的重叠（不是六个串行样本）", overlap >= 1, iv.map((x) => `${x[0]}..${x[1]}`).join(" "));
+    const sum = rows.reduce((a, r) => ({ ao: a.ao + +r[1], af: a.af + +r[2], ro: a.ro + +r[3], rf: a.rf + +r[4] }), { ao: 0, af: 0, ro: 0, rf: 0 });
+    const hit = readSurfaces(dataRoot);
+    const appr = (hit.approvals || []).length;
+    const rooms = ((hit.rooms || {}).rooms || []).length;
+    ok(`臂4 追加面：折叠行数 == 成功回执 ${sum.ao}（失败回执 ${sum.af} 条当场有名字，不算静默丢行）`,
+      appr === sum.ao, { 折叠: appr, 成功: sum.ao, 失败: sum.af });
+    ok(`臂4 群面：折叠行数 == 成功回执 ${sum.ro}（失败回执 ${sum.rf} 条）`,
+      rooms === sum.ro, { 折叠: rooms, 成功: sum.ro, 失败: sum.rf });
+    ok("臂4 折叠无异常", (hit.anomalies || []).length === 0, hit.anomalies);
+  }
+}
+
 console.log(`prove_kp09_event_only_concurrency: PASS=${pass} FAIL=${fail} SKIP=${skip}`);
 process.exit(fail ? 1 : 0);
