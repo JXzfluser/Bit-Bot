@@ -13236,3 +13236,15 @@ sessions 偏差：日志 3 条 / JSON 3 条 · matched=2 mismatched=1 只在日�
 - 尺的运行时接线仍未授权（#81：翻默认双写 / 接显式诊断入口，二选一），G-125 仍 SKIP=1。
 - 尺读日志的 `limit 100000` 价钱没量过（#84 后半：三处折叠状态收拢）也没动。
 - 死线 250ms 是**从延迟约束倒推**选的，不是从「用户能忍受多少」测出来的；RM-21 只证明它现在不咬在 1200 行上，余量 37.3×。
+
+### 8.171 拒读理由上屏：墙钟落地后「折叠不可用」这句把三种下一步不同的事说成了一句（2026-11-20）
+
+§8.170 给折叠加了墙钟和额度，于是 `readSurfaces` 的失败回执第一次有了**三种形状**：`fold_timeout`（这次没折完、下次能续）、`log_too_long`（超过单次额度，同样能续）、anomaly（库里对不上，续不了）。而产品里把折叠失败转成人话的两处，都写的是同一句 `(probe.anomalies && probe.anomalies[0]) || probe.reason || "fold_unavailable"` —— 结果用户屏幕上看到的是 `事件折叠不可用（fold_timeout）`：一个 reason code，既没说「等一下就自愈」，也没说「这是 #80 那种毒面」。**同一个屏上两个来源能分开的数字被合成一句**，按本仓已立的规矩（跨进程状态必须上屏、含糊理由算界面缺陷），这是 §8.170 自己开的洞，不是历史遗留。
+
+改动（`hosts/desktop/sessions.js:107` 新增 `foldWhy(hit)`，三处调用点接上；`hosts/desktop/product_surface.js:133` 群/Bot 面同款映射）：anomaly 优先原样上报；`fold_timeout` 说成「日志读了 N 行没在 M ms 内折完，已折到第 P 行，下次读接着折」；`log_too_long` 说成「日志超过单次额度 N 行，已折到第 P 行」；都不认识才退回 reason code。前缀「事件折叠不可用」逐字保留，臂6 的文本判据不受扰动。三处读数（`rowsRead`/`deadlineMs`/`progressSeq`/`maxRows`）全部来自 §8.170 成功路径就开始报的那些字段，没有新增常量。
+
+实测门（改完当场跑，不引用改前状态）：`prove_kp09_event_only_concurrency` **PASS=38 FAIL=0 SKIP=0**、`prove_surface_parity` **PASS=42 FAIL=0 SKIP=1**（那 1 格 SKIP 仍是 #81 开机接线未获授权，不是本轮弄红的）、`prove_event_only` **PASS=7 FAIL=0**、`prove_event_dual_write` **PASS=31 FAIL=0**。
+
+**欠账照实记（未测 ≠ 已收）：本轮只钉住了 anomaly 那一支的用户可见文本**——臂6 的幽灵顺序夹具走的正是 anomaly 分支，改坏 `foldWhy` 的第一支会让它红。`fold_timeout` / `log_too_long` 两支的**句子本身没有门**：要在 store 写口上确定性造出超时，需要一份能真把 250ms 撞穿的库（按 §8.170 拟合 ≈ 5000 行量级），门里不值得付这个价钱；正确做法是给写口一条可注入死线的夹具路径，归 **#85**。这两支在**读模型层**有判据（RM-20/RM-21 逐字对上 `fold_timeout`、前缀游标、续折行数），所以 reason 字段是真的、只是那句人话没被钉。
+
+现账：本提交落盘后分支领先 origin **34** 个提交，推送仍未获授权；#81 二选一（翻默认双写 / 接显式诊断入口）与 #80（毒面自愈端）仍等用户裁决。

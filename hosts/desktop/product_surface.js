@@ -130,7 +130,12 @@ function createProductSurface(repoRoot, opts = {}) {
       const probe = eventReadModel.readSurfaces(DATA_ROOT);
       const unreadable = (!probe.ok && probe.reason !== "no_db") || (probe.anomalies || []).length > 0;
       if (unreadable) {
-        const why = (probe.anomalies && probe.anomalies[0]) || probe.reason || "fold_unavailable";
+        const why = (probe.anomalies && probe.anomalies[0]) ||
+          (probe.reason === "fold_timeout"
+            ? `日志读了 ${probe.rowsRead} 行没在 ${probe.deadlineMs}ms 内折完，已折到第 ${probe.progressSeq} 行，下次读接着折`
+            : probe.reason === "log_too_long"
+              ? `日志超过单次额度 ${probe.maxRows} 行，已折到第 ${probe.progressSeq} 行`
+              : probe.reason || "fold_unavailable");
         const err = new Error(`eventOnlyWrite：${def.surface} 的基底读不动（${why}），拒绝整面替换`);
         err.code = "EVENT_PREV_UNREADABLE";
         throw err;

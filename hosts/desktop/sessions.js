@@ -105,6 +105,19 @@ function createSessionStore(repoRoot, opts = {}) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   };
   const eventOnlySaid = new Set();
+  /* 拒读的理由必须分开报：超时/超额是「这次没折完、下次能续」，anomaly 是「库里对不上」，
+     三者的下一步完全不同 —— 合成一句「折叠不可用」就是把机制藏回屏幕后面（#80 要靠这句分辨）。 */
+  function foldWhy(hit) {
+    const an = (hit.anomalies || [])[0];
+    if (an) return an;
+    if (hit.reason === "fold_timeout") {
+      return `日志读了 ${hit.rowsRead} 行没在 ${hit.deadlineMs}ms 内折完，已折到第 ${hit.progressSeq} 行，下次读接着折`;
+    }
+    if (hit.reason === "log_too_long") {
+      return `日志超过单次额度 ${hit.maxRows} 行，已折到第 ${hit.progressSeq} 行`;
+    }
+    return hit.reason || "fold_unavailable";
+  }
   function sayOnce(key, line) {
     if (eventOnlySaid.has(key)) return;
     eventOnlySaid.add(key);
@@ -130,7 +143,7 @@ function createSessionStore(repoRoot, opts = {}) {
         }
       } else if ((!hit.ok && hit.reason !== "no_db") || (hit.anomalies || []).length > 0) {
         const err = new Error(
-          `sessions 写入被拦：提交时事件折叠不可用（${(hit.anomalies && hit.anomalies[0]) || hit.reason || "fold_unavailable"}）`,
+          `sessions 写入被拦：提交时事件折叠不可用（${foldWhy(hit)}）`,
         );
         err.code = "SESSION_FOLD_BLOCKED";
         throw err;
@@ -244,7 +257,7 @@ function createSessionStore(repoRoot, opts = {}) {
           const recheck = eventReadModel.readSurfaces(dataRoot);
           if ((recheck.anomalies || []).length > 0 || recheck.count > 0) {
             if (!recheck.ok || (recheck.anomalies || []).length) {
-              foldBlocked = `事件折叠不可用（${(recheck.anomalies && recheck.anomalies[0]) || recheck.reason || "fold_unavailable"}）`;
+              foldBlocked = `事件折叠不可用（${foldWhy(recheck)}）`;
               sayOnce("block-recheck", `[sessions] BITBOT_EVENT_ONLY：${foldBlocked}——播种复核后按只读处理\n`);
               return empty();
             }
@@ -270,8 +283,7 @@ function createSessionStore(repoRoot, opts = {}) {
         }
         if (!attempt.ok && attempt.reason === "read_disabled") break;
       }
-      const why =
-        (attempt.anomalies && attempt.anomalies[0]) || attempt.reason || "fold_unavailable";
+      const why = foldWhy(attempt);
       foldBlocked = `事件折叠不可用（${why}）`;
       sayOnce(
         `block-${String(why).slice(0, 20)}`,
