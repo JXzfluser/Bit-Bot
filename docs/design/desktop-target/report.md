@@ -12527,3 +12527,47 @@ A 证明行数判据不是摆设，C 证明并发前置不是摆设，B 证明�
 - **`kill -9` 落在两次写之间**仍未测：片7 那套只在文件模式证过，EVENT_ONLY 侧的撕裂窗口还空着。
 - 本轮没在 mac 重跑全量矩阵；G-124 的锚点文本从「三条臂」同步成「四条臂」（`bash -n` 通过），
   矩阵**项数不变**（还是正臂 1 + 夹具 1 = +2），PASS 数从 11 涨到 15 不触碰项数。
+
+## 8.150 sessions 面真并发量出来了：不是绿的——读失败被当成「没有会话」，整面被覆盖；本轮把这一半堵死，剩下的洞记成 片11（2026-11-19）
+
+§8.149 留的那句「臂4 只覆盖 approvals + rooms，sessions 面的跨进程真并发未测」这轮补测了。
+探针留在仓里：`scripts/probe_kp09_sessions_real_concurrency.mjs`（6 进程 × 各 3 次 create + 3 次 appendMessages，
+无屏障，同一个 dataRoot；它**不是门**，是取数工具，判据在下面逐条写明）。
+
+**改动前实测（同一形状跑 1 次）：** 六个子进程回执 `create_ok=18/18`、`msg_ok=0/18`；
+每个子进程 stderr 都打了 `[sessions] BITBOT_EVENT_ONLY：事件读模型不可用（fold_anomalies）——按空库处理，写入继续`；
+最后 `readSurfaces` 返回 `ok:false reason:"fold_anomalies"`，**anomalies 21 条**，折叠里会话数 **0**。
+写窗口的起止时间实测重叠（跨度 21 ms，重叠对数 ≥5），所以这不是「其实没并发」。
+
+**机制（读代码定位，不是猜）：** `hosts/desktop/sessions.js` 的 `load()` 在 EVENT_ONLY 下只认
+`hit.ok && !hit.anomalies.length && hit.count > 0` 这一条读路；折叠一旦不可用就落到 `seedEventOnly()`，
+而它以 `prevText=null` 提交 —— 那是**从 BASELINE 起算的整面替换**。于是「这次读不动」被翻译成
+「这张面是空的」，紧接着用一张空面盖掉别人刚写的会话。这正好违反同文件 :144 自己写的规矩
+（「绝不把读失败当成『没有会话』」），也违反片7/片8 对坏数据的处理口径（坏面改名留证，不覆盖）。
+`msg_ok=0` 是同一条的下游症状：播种出来的 state 里只有新的「新对话」，进程自己刚 create 的那条已经不在它眼前。
+
+**改动一（只读降级 + 拒绝回执）：** 折叠不可用且**库有内容**（`anomalies.length>0 || count>0`）时，
+先重试 6×15 ms（对方事务可能刚落），仍折不动就不写、不播种，`load()` 返回内存态空面并置 `foldBlocked`；
+`save()` 撞上有 `foldBlocked` 就抛 `SESSION_FOLD_BLOCKED`，导出层把七个写方法
+（create/setActive/appendMessages/rename/remove/react/removeMessage）的这一个异常统一转成
+`{ok:false, error:"fold_blocked", detail}` —— 调用方拿得到回执，界面不会把拒绝画成成功。
+真·空库（`count===0` 且无 anomaly）仍照旧播种。
+**同探针复测：** anomalies 21 → **3**，`create_ok` 18 → 2（其余当场被拒并有回执），`msg_ok` 仍 0。
+
+**改动二（播种进跨进程锁）：** 两个进程同时判「库空」各播一次 BASELINE，后一次抹掉前一次的花名册 ——
+这是坏面的第一击。现在「空库」这个结论必须在 `withFaceLock(storePath, …)` 里复核一遍才允许播种。
+**同探针复测 3 次：** `create_ok` = 8 / 4 / 5（共 18），`msg_ok` = 3 / 0 / 3（共 18），
+但三次折叠**仍有 3~4 条 anomaly**、会话数仍为 0 —— **所以这一半没修完，不能报绿**。
+
+**剩余的洞（片11，形状已经钉准）：** sessions 面的写口**提交时不重取基底**。`create()` 的形状是
+`load() → mutate → save()`，`load()` 确实从折叠重取，但取到落之间没有跨进程独占；两个进程各自读到同一份基底，
+后提交的那条 diff 把花名册按自己那份基底重写，于是别人的实体还在库里、花名册里却没有它
+（anomaly 原文两种：「顺序里没有这些 id，但它们还在库里」「顺序指向不存在的实体」）。
+群面已经证明这条路走得通：`requireWritableRooms()` 在每次 mutation 开头从折叠重取并刷缓存；
+sessions 面要的是同一条纪律，外加把「diff→commit」纳入同一把锁。这需要改 store 的写路形状，不是今晚能安全落下的量，
+按规矩记成待办而**不是**把探针塞进 G-124 当绿臂。
+
+**回归：** `node scripts/prove_kp09_event_only_concurrency.mjs` 仍 `PASS=15 FAIL=0 SKIP=0`（臂1~4 一条没退）；
+两种模式下的常规单进程会话路径实测未变（`EVENT_ONLY=0` 与 `=1`：create ok、append ok、会话数 2、标题「甲,新对话」）。
+`withFaceLock` 在 EVENT_ONLY 里新增的调用只在播种那一条路，常态不经过。
+本轮未重跑全量矩阵；G-124 的锚点与项数未动（sessions 面真并发**没有**进门，因为它还没绿）。

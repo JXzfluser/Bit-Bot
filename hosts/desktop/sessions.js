@@ -97,6 +97,13 @@ function createSessionStore(repoRoot, opts = {}) {
      顺序事件指向幽灵实体（EO-05 抓出来的）。所以首次写必须先从 BASELINE
      把基底导进去（与导入脚本同一语义），再落 delta。 */
   let legacyBasePending = false;
+  /* KP-09 片10：折叠读不出来（并发写撞坏/读模型报错）时，这里记下原因，
+     写路一律拒绝 —— 原先这条路是「按空库处理，写入继续」，等于把一次读失败
+     变成一次整面覆盖，别的进程刚写的会话当场没了。 */
+  let foldBlocked = null;
+  const sleepSync = (ms) => {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  };
   const eventOnlySaid = new Set();
   function sayOnce(key, line) {
     if (eventOnlySaid.has(key)) return;
@@ -168,6 +175,7 @@ function createSessionStore(repoRoot, opts = {}) {
     // 从事件折叠/播种/坏文件那几条路填出来的基底不是这张面的盘上现状，
     // 拿它做三方合并会把「别人删掉的会话」复活。
     mergeBaseText = null;
+    foldBlocked = null;
     if (eventOnly()) {
       const hit = eventReadModel.readSurfaces(dataRoot);
       if (hit.ok && !hit.anomalies.length && hit.count > 0) {
@@ -199,12 +207,55 @@ function createSessionStore(repoRoot, opts = {}) {
         legacyBasePending = true;
         return stateFromJsonText(legacyText);
       }
-      if (hit.ok && hit.anomalies.length) {
-        sayOnce("ano-sessions", `[sessions] BITBOT_EVENT_ONLY：事件折叠有异常（${hit.anomalies[0]}）——按空库处理，写入继续\n`);
-      } else if (!hit.ok && hit.reason !== "no_db" && hit.reason !== "read_disabled") {
-        sayOnce(`rm-sessions-${hit.reason}`, `[sessions] BITBOT_EVENT_ONLY：事件读模型不可用（${hit.reason}${hit.error ? ": " + hit.error : ""}）——按空库处理，写入继续\n`);
+      /* 只有「库真没内容」（没建库 / 一条事件都没有）才允许从 BASELINE 播种。
+         库有内容却折不动 —— 多个进程同时写这张面时最容易撞到这里 —— 先短促重试
+         （对方的事务可能刚落库）；仍折不动就把这张面当只读：写路口当场拒绝并给回执。
+         原来是「按空库处理，写入继续」，那等于把一次读失败变成一次整面覆盖，
+         别的进程刚写进去的会话当场消失（报告 §8.150 实测：18 条 create 回执全 ok、
+         18 条消息全拒、折叠 21 条 anomaly）。 */
+      const liveLog = (hit.anomalies || []).length > 0 || hit.count > 0;
+      /* 播种是整面替换（prevText=null = 从 BASELINE 起算），两个进程同时判「库空」
+         各播一次，后一次会把前一次的花名册抹掉 —— 真并发实测的第一条坏面就是这么来的。
+         所以「空库」这个判断要在跨进程锁里复核一遍，只有复核仍空才允许播种。 */
+      if (!liveLog) {
+        return withFaceLock(storePath, () => {
+          const recheck = eventReadModel.readSurfaces(dataRoot);
+          if ((recheck.anomalies || []).length > 0 || recheck.count > 0) {
+            if (!recheck.ok || (recheck.anomalies || []).length) {
+              foldBlocked = `事件折叠不可用（${(recheck.anomalies && recheck.anomalies[0]) || recheck.reason || "fold_unavailable"}）`;
+              sayOnce("block-recheck", `[sessions] BITBOT_EVENT_ONLY：${foldBlocked}——播种复核后按只读处理\n`);
+              return empty();
+            }
+            const raw = recheck.sessions;
+            if (!Array.isArray(raw.sessions) || !raw.sessions.length) return seedEventOnly();
+            if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+            lastLoadedText = JSON.stringify(raw);
+            return ensureMessageIds(raw);
+          }
+          return seedEventOnly();
+        });
       }
-      return seedEventOnly();
+      let attempt = hit;
+      for (let tries = 0; tries < 6; tries++) {
+        sleepSync(15);
+        attempt = eventReadModel.readSurfaces(dataRoot);
+        if (attempt.ok && !attempt.anomalies.length && attempt.count > 0) {
+          const raw = attempt.sessions;
+          if (!Array.isArray(raw.sessions) || !raw.sessions.length) return seedEventOnly();
+          if (!raw.active_id) raw.active_id = raw.sessions[0].id;
+          lastLoadedText = JSON.stringify(raw);
+          return ensureMessageIds(raw);
+        }
+        if (!attempt.ok && attempt.reason === "read_disabled") break;
+      }
+      const why =
+        (attempt.anomalies && attempt.anomalies[0]) || attempt.reason || "fold_unavailable";
+      foldBlocked = `事件折叠不可用（${why}）`;
+      sayOnce(
+        `block-${String(why).slice(0, 20)}`,
+        `[sessions] BITBOT_EVENT_ONLY：${foldBlocked}——本次按只读处理，写入一律拒绝并给回执（不再拿空面覆盖别人的会话）\n`,
+      );
+      return empty();
     }
     if (!fs.existsSync(storePath)) {
       const seed = empty();
@@ -396,6 +447,11 @@ function createSessionStore(repoRoot, opts = {}) {
 
   function save(state) {
     if (eventOnly()) {
+      if (foldBlocked) {
+        const err = new Error(`sessions 写入被拦：${foldBlocked}`);
+        err.code = "SESSION_FOLD_BLOCKED";
+        throw err;
+      }
       saveEventOnly(state);
       return;
     }
@@ -625,7 +681,7 @@ function createSessionStore(repoRoot, opts = {}) {
     return { ok: true, session_id: sid, removed: mid };
   }
 
-  return {
+  const api = {
     storePath,
     list,
     get,
@@ -639,6 +695,22 @@ function createSessionStore(repoRoot, opts = {}) {
     react,
     removeMessage,
   };
+  /* KP-09 片10：面被拦成只读时，写方法给的是回执而不是异常 ——
+     调用方看得见「这条没写进去」，界面才不会把拒绝画成成功。 */
+  for (const name of ["create", "setActive", "appendMessages", "rename", "remove", "react", "removeMessage"]) {
+    const fn = api[name];
+    api[name] = (...args) => {
+      try {
+        return fn(...args);
+      } catch (e) {
+        if (e && e.code === "SESSION_FOLD_BLOCKED") {
+          return { ok: false, error: "fold_blocked", detail: String(e.message) };
+        }
+        throw e;
+      }
+    };
+  }
+  return api;
 }
 
 module.exports = { createSessionStore, getSessionStore };

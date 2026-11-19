@@ -5389,6 +5389,9 @@ else
 fi
 rm -f scripts/.g124-mut.mjs /tmp/g124-mut.log
 echo "  · G-124 口径（诚实）：四条臂覆盖 approvals 追加面 + rooms 整面替换面 + sessions 会话面"
+echo "  · G-124 未覆盖（别读成并发的账全清）：sessions 面**真并发**实测仍是坏面——写口提交时不重取基底，"
+echo "    别人的会话被花名册盖掉（§8.150，取数工具 scripts/probe_kp09_sessions_real_concurrency.mjs，它不是门）；"
+echo "    已修的是另一半：折叠读不动时不再「按空库处理、写入继续」，改成拒绝并给 fold_blocked 回执。"
 echo "    （臂1 同进程双实例、臂2/臂3 跨进程文件屏障强制交错、臂4 真并发 6 进程无屏障抢锁）；"
 echo "    锚点 PASS>=7，四臂全绿实测 PASS=15；臂4 的并发是真的量出来的（六个写窗口必须重叠），"
 echo "    回执不可解析一律 SKIP（SKIP≠0 在锚点里就是不过）；"
