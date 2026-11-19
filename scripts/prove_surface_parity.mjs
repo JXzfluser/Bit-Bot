@@ -138,8 +138,83 @@ r = parity.auditSurfaces({ dataRoot: root });
 ok("G1 JSON 侧坏 → no_reading（不静默当空面）", sess().kind === "no_reading", JSON.stringify(sess()));
 ok("G2 两因并列时 why 把两侧都点出来", /日志侧/.test(sess().why) || /JSON/.test(sess().why), String(sess().why));
 
-honestSkip("真装机默认配置下的运行时留痕",
-  "双写默认关（event_mirror.js:454）→ 默认装机上三张面全是 no_reading；本门只在打开 BITBOT_EVENT_DUAL_WRITE 后有运行时价值，接线 main.js 要等默认翻面，否则每次开机三条 warn");
+
+/* ── 判据 H：尺必须是一条能当场敲的命令，不只是门里的函数 ─────────────
+   按「可感面」的规矩：工具在干净 shell 里跑出来之前不算交付。这里刻意用最小 env
+   （只有 PATH/HOME），免得靠门禁进程自己继承的 BITBOT_* 把命令蒙对。 */
+import { spawnSync } from "node:child_process";
+
+const hRoot = freshRoot();
+process.env.BITBOT_EVENT_DUAL_WRITE = "1";
+const hStore = createSessionStore(repoRoot, { dataRoot: hRoot });
+hStore.create("PW 甲");
+hStore.create("PW 乙");
+const hSj = path.join(hRoot, "desktop", "sessions.json");
+const ho = JSON.parse(fs.readFileSync(hSj, "utf8"));
+ho.sessions[0].title = "PW 命令行走查过的标题";
+fs.writeFileSync(hSj, JSON.stringify(ho));
+
+const bareEnv = { PATH: process.env.PATH, HOME: process.env.HOME };
+const cli = (args) =>
+  spawnSync(process.execPath, [path.join(repoRoot, "scripts", "diagnose_surfaces.mjs"), ...args], {
+    encoding: "utf8",
+    env: { ...bareEnv, BITBOT_EVENT_DUAL_WRITE: "1" },
+  });
+const run = cli([hRoot]);
+const outLines = (run.stdout || "").split("\n");
+ok("H1 干净 env 里命令跑通（exit 0）且三张面都出一行",
+  run.status === 0 && outLines.filter((l) => /\[surface-parity\]/.test(l)).length === 3,
+  `status=${run.status} ${(run.stderr || "").slice(0, 120)}`);
+ok("H2 命令自己就说出了偏差处数并点名 title（不是只给函数用的数）",
+  /偏差 1 处/.test(run.stdout) && /title/.test(run.stdout), run.stdout.split("\n").filter((l) => /偏差 1 处|sessions/.test(l)).join(" ⏎ ").slice(0, 220));
+const jsonRun = cli([hRoot, "--json"]);
+let parsed = null;
+try {
+  parsed = JSON.parse(jsonRun.stdout);
+} catch (_e) {
+  parsed = null;
+}
+ok("H3 --json 可解析，且 drift 与模块同数（同一屏两个来源不许互相矛盾）",
+  parsed !== null && parsed.drift === parity.auditSurfaces({ dataRoot: hRoot }).drift && parsed.records.length === 3,
+  jsonRun.stdout.slice(0, 120));
+ok("H4 dbPresent 用库文件事实而不是环境变量推（上一版拿 env 推，临时光库里明明读到数却报 dualWriteOff:true）",
+  parsed !== null && parsed.dbPresent === true, JSON.stringify(parsed && { dbPresent: parsed.dbPresent }));
+
+/* 只读自证：命令在没有库的 dataRoot 上跑完，绝不把库建出来（dev 的 dataRoot 就是仓库 data/，
+   一次误建就是把夹具堆进用户看得见的数据那一类事故）。 */
+const roRoot = freshRoot();
+fs.mkdirSync(path.join(roRoot, "desktop"), { recursive: true });
+fs.writeFileSync(path.join(roRoot, "desktop", "sessions.json"), JSON.stringify({ version: 1, active_id: "", sessions: [] }));
+const roRun = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "diagnose_surfaces.mjs"), roRoot], {
+  encoding: "utf8",
+  env: bareEnv,
+});
+/* 判据必须钉在「那句装机级说明」独有的短语上。上一版判 /不是「一致」/ —— 每条面行里本来就有
+   「这不是「一致」，别当干净读」，于是把说明整段删掉判据照样绿（实测 PASS=26 FAIL=0），
+   这条当时是恒真的。换成只在说明行出现的「也不是故障」。 */
+ok("H5 没开双写时命令仍跑通，且打出装机级说明（无读数不是故障）",
+  roRun.status === 0 && /也不是故障/.test(roRun.stdout), roRun.stdout.slice(-200));
+ok("H6 尺是只读的：跑完仍不创建 events/ 目录（误建就会污染用户看得见的数据）",
+  !fs.existsSync(path.join(roRoot, "events")), fs.readdirSync(roRoot).join(","));
+
+/* H4b：env 与现实必须分得开 —— 开着双写开关但这个 dataRoot 里没有库时，
+   报的得是「没库」这个事实。少了这条，H4 只能抓「字段丢了」，抓不到「拿 env 推」。 */
+const lie = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "diagnose_surfaces.mjs"), roRoot, "--json"], {
+  encoding: "utf8",
+  env: { ...bareEnv, BITBOT_EVENT_DUAL_WRITE: "1" },
+});
+let lieParsed = null;
+try {
+  lieParsed = JSON.parse(lie.stdout);
+} catch (_e) {
+  lieParsed = null;
+}
+ok("H4b 开关开着但库里没东西 → dbPresent=false（照事实报，不照环境变量报）",
+  lieParsed !== null && lieParsed.dbPresent === false,
+  JSON.stringify(lieParsed && { dbPresent: lieParsed.dbPresent, drift: lieParsed.drift }));
+
+honestSkip("真装机默认配置下的开机留痕",
+  "双写默认关（event_mirror.js:454）→ 默认装机上三张面全是 no_reading。尺已能当场敲（`node scripts/diagnose_surfaces.mjs`，H 组钉住），但开机自动留痕仍没接：默认配置下每次启动三条 warn 等于把尺的空转说成用户故障。要成运行时护栏，得先二选一（都要授权）：翻默认双写 / 接显式诊断入口");
 
 try {
   store.close?.();
