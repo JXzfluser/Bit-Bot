@@ -318,6 +318,20 @@ ok("L6 没写就读 = reused（新读 0 行）且偏差不许比全量多出一�
   inc6.foldMode === "reused" && inc6.foldRows === 0 && inc6.drift === full6.drift && inc6.drift > 0,
   JSON.stringify({ mode: inc6.foldMode, rows: inc6.foldRows, drift: inc6.drift, full: full6.drift }));
 
+/* L8/L9（#83）：读满护栏时尺子必须报「没读数」，不能拿截断面算 drift。
+   先清缓存：L8 要从冷槽起，否则 L6 留下的槽与库里 lastSeq 相同，L9 的「reused」是正常命中，
+   不是污染 —— L9 第一版就把这两件事混了（实测 `{"mode":"reused","rows":0,"drift":7,"full":7}`
+   被判成红），照实记。清完之后：截断那次读**不许**把缓存焐起来，紧接着放开额度必须真折。 */
+parity.resetFoldCache();
+const trunc = parity.auditSurfaces({ dataRoot: lRoot, incremental: false, limit: 1 });
+ok("L8 额度咬住时不许报 drift：foldMode=truncated、三张面全 no_reading（少掉的实体不是「只在 JSON 侧」的偏差）",
+  trunc.foldMode === "truncated" && trunc.noReading === 3 && trunc.drift === 0 && trunc.foldRows <= 1,
+  JSON.stringify({ mode: trunc.foldMode, noReading: trunc.noReading, drift: trunc.drift, rows: trunc.foldRows }));
+const afterTrunc = parity.auditSurfaces({ dataRoot: lRoot });
+ok("L9 截断读数不许焐热缓存：紧接着放开额度必须真折（foldMode=full 且读到行），偏差与全量一致",
+  afterTrunc.foldMode === "full" && afterTrunc.foldRows >= 1 && afterTrunc.drift === full6.drift,
+  JSON.stringify({ mode: afterTrunc.foldMode, rows: afterTrunc.foldRows, drift: afterTrunc.drift, full: full6.drift }));
+
 honestSkip("真装机默认配置下的开机留痕",
   "双写默认关（event_mirror.js:454）→ 默认装机上三张面全是 no_reading。尺已能当场敲（`node scripts/diagnose_surfaces.mjs`，H 组钉住），但开机自动留痕仍没接：默认配置下每次启动三条 warn 等于把尺的空转说成用户故障。要成运行时护栏，得先二选一（都要授权）：翻默认双写 / 接显式诊断入口");
 

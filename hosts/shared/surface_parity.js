@@ -23,8 +23,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const { foldEvents } = require("./event_mirror");
-const { dbFilePath } = require("./event_read_model");
+const { dbFilePath, foldPages } = require("./event_read_model");
 const { openEventLog } = require("./event_log");
 
 /** 这条尺比的那一对是谁 —— 单值标签，语义照 §8.159：给「配对」命名，不是「走了哪条读路」。 */
@@ -195,11 +194,15 @@ function resetFoldCache() {
   foldCacheByFile.clear();
 }
 
+/* 尺子的折叠同样必须「看完才报」（#83）：读满上限时旧实现拿前 N 行当整份日志算集合差，
+   报出来的 drift 是**截断造成的假偏差**（少掉的那批实体会同时进「只在 JSON」侧）。
+   现在分页折到底；护栏咬住就 foldMode="truncated" 且不折（→ 三张面如实 no_reading）。 */
 function fullFold(db, limit) {
   const handle = openEventLog({ file: db, actor: "surface-parity" });
   try {
-    const all = handle.readAfter({ fromSeq: 0, limit });
-    return { folded: foldEvents(all), rowsRead: all.length, lastSeq: handle.lastSeq(), mode: "full" };
+    const r = foldPages(handle, { fromSeq: 0, maxRows: limit });
+    if (r.truncated) return { folded: null, rowsRead: r.rows, lastSeq: handle.lastSeq(), mode: "truncated" };
+    return { folded: r.folded, rowsRead: r.rows, lastSeq: handle.lastSeq(), mode: "full" };
   } finally {
     try {
       handle.close();
@@ -220,12 +223,12 @@ function cachedFoldOf(db, limit) {
       return { folded: slot.folded, rowsRead: 0, mode: "reused", lastSeq };
     }
     if (continuable) {
-      const rows = handle.readAfter({ fromSeq: slot.lastSeq, limit });
       try {
-        const inc = foldEvents(rows, { fromState: slot.folded });
-        if (!inc.anomalies || inc.anomalies.length === 0) {
-          foldCacheByFile.set(db, { lastSeq, folded: inc });
-          return { folded: inc, rowsRead: rows.length, mode: "incremental", lastSeq };
+        const inc = foldPages(handle, { fromSeq: slot.lastSeq, base: slot.folded, maxRows: limit });
+        if (inc.truncated) return fullFold(db, limit);
+        if (inc.folded.anomalies && inc.folded.anomalies.length === 0) {
+          foldCacheByFile.set(db, { lastSeq, folded: inc.folded });
+          return { folded: inc.folded, rowsRead: inc.rows, mode: "incremental", lastSeq };
         }
         /* 增量报异常不用它下结论：退回全量折取完整名单（保守 = 让全量说话）。 */
       } catch (_e) {
@@ -233,6 +236,7 @@ function cachedFoldOf(db, limit) {
       }
     }
     const r = fullFold(db, limit);
+    if (r.mode === "truncated") return { folded: null, rowsRead: r.rowsRead, mode: "truncated", lastSeq: r.lastSeq };
     if (r.folded.anomalies && r.folded.anomalies.length === 0) {
       foldCacheByFile.set(db, { lastSeq: r.lastSeq, folded: r.folded });
     } else {
@@ -273,8 +277,10 @@ function auditSurfaces(opts = {}) {
     } else {
       res = cachedFoldOf(db, limit);
     }
-    folded = res.folded.anomalies && res.folded.anomalies.length ? null : res.folded;
-    foldMode = folded ? res.mode : "fold_anomalies";
+    /* 截断（读满护栏）与折不动一样：没有可信的面，三张面一律走 no_reading。
+       绝不拿「前 N 行折出来的面」算集合差 —— 少掉的那批实体会被记成「只在 JSON 侧」的假偏差。 */
+    folded = res.folded && (!res.folded.anomalies || res.folded.anomalies.length === 0) ? res.folded : null;
+    foldMode = res.mode === "truncated" ? "truncated" : folded ? res.mode : "fold_anomalies";
     foldRows = res.rowsRead;
     lastSeq = res.lastSeq;
   }

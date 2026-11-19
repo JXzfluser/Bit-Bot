@@ -31,6 +31,45 @@ const path = require("path");
 
 const READ_FLAG = "BITBOT_EVENT_READ";
 
+/* 单次折叠的取数窗口与总量护栏（#83）。窗口只决定「一次往内存里读多少行」；
+   **折完的判据是「有一页没读满」，不是「读满了一个上限」**。默认口径以前是一次
+   `limit: 100000` 的读：读满就把它当整份日志 —— 探针（scripts/probe_read_model_row_cap.mjs）
+   在 25 行的库上喂 limit=5 量到：`ok:true`、12 条会话只剩 3 条、已 `entity_removed` 的那条
+   复活，而且这份截断状态按**真实 lastSeq** 写进缓存，同进程之后不管放开多大上限都是
+   `cached:true` —— 一次截断、永久失真，调用方（片11 的提交时基底）会拿它去合并。
+   日志行数不是会话数决定的：回合流 turn_started/progress/turn_ended（§5.2，A1-2 同库）
+   和每条 message_committed 都算行，10 万行是「天天用几个月」量级，不是理论值。 */
+const FOLD_PAGE_ROWS = 50000;
+const FOLD_BUDGET_ROWS = 500000;
+
+/**
+ * 从 `fromSeq` 起分页把日志折进 `base`（base 为 null 即从 BASELINE 全量折）。
+ * 只在「读到一页不满」时宣布看完；护栏咬住就如实报 `truncated:true`，调用方必须拒。
+ * 分页续折用的就是 #82 的 `fromState`，等值性由 RM-10/L 组钉着，不是假定。
+ */
+function foldPages(log, opts = {}) {
+  const page = Number(opts.pageSize) > 0 ? Number(opts.pageSize) : FOLD_PAGE_ROWS;
+  const budget = Number(opts.maxRows || opts.limit) > 0 ? Number(opts.maxRows || opts.limit) : FOLD_BUDGET_ROWS;
+  const { foldEvents } = require("./event_mirror");
+  let folded = opts.base || null;
+  let cursor = Number(opts.fromSeq) || 0;
+  let rows = 0;
+  for (;;) {
+    /* 单页取数按剩余额度夹紧：护栏必须是「行数上限」，不能只是「分页上限」——
+       否则预算 5 行、页 50000 行时一次就把整份日志读走，护栏形同不存在（第一版踩过）。 */
+    const want = Math.min(page, budget - rows);
+    if (want <= 0) return { folded, rows, cursor, truncated: true, budget };
+    const chunk = log.readAfter({ fromSeq: cursor, limit: want });
+    rows += chunk.length;
+    if (chunk.length) {
+      folded = folded ? foldEvents(chunk, { fromState: folded }) : foldEvents(chunk);
+      cursor = Number(chunk[chunk.length - 1].seq);
+    }
+    if (chunk.length < want) return { folded, rows, cursor, truncated: false, budget };
+    if (rows >= budget) return { folded, rows, cursor: cursor, truncated: true, budget };
+  }
+}
+
 function eventReadEnabled(env) {
   const e = env || process.env;
   // EVENT_ONLY 隐含「读事件」：事件库是唯一真源，读必然走折叠。
@@ -114,39 +153,58 @@ function readSurfaces(dataRoot, opts = {}) {
         cached: true,
       };
     }
-    /* 增量折叠（#82 / §8.165）：日志只追加、seq 不复用，所以「上次折干净的状态 ⊕ 之后的新行」
+    /* 折叠必须把游标之后的每一行都看完才敢宣布状态（#83）。
+       增量（#82 / §8.165）：日志只追加、seq 不复用，所以「上次折干净的状态 ⊕ 之后的新行」
        与「从头折全部」必须得到同一份面。省下的正是每次操作那一格全量折（2000 会话实测 330ms）。
        只在 lastSeq 往前走时续折；库被换掉（seq 倒退/归零）就回全量。折出异常一律回全量确认，
        增量路径永远没有权力单独宣布「这份日志不干净」。 */
-    let rows;
-    let folded;
+    let result = null;
     let incremental = false;
     if (slot.folded && lastSeq > slot.lastSeq) {
-      rows = slot.log.readAfter({ fromSeq: slot.lastSeq, limit: opts.limit || 100000 });
+      result = foldPages(slot.log, {
+        fromSeq: slot.lastSeq,
+        base: slot.folded,
+        pageSize: opts.pageSize,
+        maxRows: opts.maxRows || opts.limit,
+      });
       incremental = true;
-      try {
-        folded = require("./event_mirror").foldEvents(rows, { fromState: slot.folded });
-      } catch (_e) {
-        folded = null;
-      }
-      if (folded && (folded.anomalies || []).length) folded = null;
+      // 增量读不全或折出异常：不许下结论，退回全量确认（全量也读不全时由下面统一拒）。
+      if (result.truncated || (result.folded.anomalies || []).length) result = null;
     }
-    if (!folded) {
-      rows = slot.log.readAfter({ fromSeq: 0, limit: opts.limit || 100000 });
-      folded = require("./event_mirror").foldEvents(rows);
+    if (!result) {
+      result = foldPages(slot.log, {
+        fromSeq: 0,
+        base: null,
+        pageSize: opts.pageSize,
+        maxRows: opts.maxRows || opts.limit,
+      });
       incremental = false;
+    }
+    const folded = result.folded;
+    if (result.truncated) {
+      // 读满护栏 = 没看完，不是「这张面就这些」。缓存作废，调用方按读不到降级。
+      slot.folded = null;
+      slot.lastSeq = -1;
+      return {
+        ok: false,
+        reason: "log_too_long",
+        rowsRead: result.rows,
+        maxRows: result.budget,
+        lastSeq,
+        file,
+      };
     }
     const anomalies = folded.anomalies || [];
     if (anomalies.length) {
       // 日志折不干净：缓存作废，让调用方降级回 JSON。绝不把半折叠状态当真。
       slot.folded = null;
       slot.lastSeq = -1;
-      return { ok: false, reason: "fold_anomalies", anomalies, count: rows.length, file };
+      return { ok: false, reason: "fold_anomalies", anomalies, count: result.rows, file };
     }
     const prevCount = slot.count;
     slot.folded = folded;
     slot.lastSeq = lastSeq;
-    slot.count = incremental ? prevCount + rows.length : rows.length;
+    slot.count = incremental ? prevCount + result.rows : result.rows;
     slot.incremental = incremental;
     return {
       ok: true,
@@ -155,7 +213,7 @@ function readSurfaces(dataRoot, opts = {}) {
       rooms: clone(folded.rooms),
       approvals: clone(folded.approvals),
       anomalies,
-      count: rows.length,
+      count: result.rows,
       lastSeq,
       foldPath: incremental ? "incremental" : "full",
     };
@@ -177,8 +235,11 @@ function closeAll() {
 
 module.exports = {
   READ_FLAG,
+  FOLD_PAGE_ROWS,
+  FOLD_BUDGET_ROWS,
   eventReadEnabled,
   dbFilePath,
+  foldPages,
   readSurfaces,
   closeAll,
 };

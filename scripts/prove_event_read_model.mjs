@@ -353,6 +353,75 @@ const onRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-on-"));
   }
 }
 
+/* ===== RM-11 / RM-12：读必须「看完」才敢宣布状态（#83）=====
+ * 旧实现是一次 `readAfter({limit: 100000})`：读满上限也当整份日志。探针
+ * （scripts/probe_read_model_row_cap.mjs）在 25 行的库上喂 limit=5 量到 `ok:true` +
+ * 12 条会话只剩 3 条 + 已删的那条复活，而且这份截断面按**真实 lastSeq** 进了缓存，
+ * 之后同进程放开额度仍 `cached:true` —— 一次截断、永久失真。EVENT_ONLY 下写口的
+ * 提交时基底（片11）走的就是这个口，所以这不是「显示少几条」而是会拿去合并。 */
+{
+  cleanupFlags();
+  const capRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-cap-"));
+  const capFile = path.join(capRoot, "events", "desktop-events.sqlite");
+  fs.mkdirSync(path.dirname(capFile), { recursive: true });
+  const openLog = require(path.join(ROOT, "hosts/shared/event_log.js")).openEventLog;
+  const DELETED = "sess-del0000001";
+  const TOTAL = 12;
+  const h = openLog({ file: capFile, actor: "rm-cap" });
+  for (let i = 0; i < TOTAL; i += 1) {
+    const id = i === 0 ? DELETED : `sess-${String(i).padStart(10, "0")}`;
+    h.append({ sessionId: "system", kind: "session_created", payload: { surface: "sessions", session: { id, title: `会话 ${i}` } } });
+  }
+  h.append({ sessionId: "system", kind: "entity_removed", payload: { surface: "sessions", entity_id: DELETED } });
+  const rowsInDb = TOTAL + 1;
+  h.close();
+  process.env.BITBOT_EVENT_READ = "1";
+  const envOnly = { BITBOT_EVENT_READ: "1" };
+
+  /* RM-11：小页必须一页页折到底，结果与整份折完等值（分页不许丢行、不许把删除丢掉）。 */
+  eventReadModel.closeAll();
+  const paged = eventReadModel.readSurfaces(capRoot, { file: capFile, env: envOnly, pageSize: 4 });
+  eventReadModel.closeAll();
+  const single = eventReadModel.readSurfaces(capRoot, { file: capFile, env: envOnly });
+  const idsOf = (r) => (r.sessions.sessions || []).map((s) => s.id).sort();
+  if (!paged.ok) bad("RM-11", `分页读被拒（reason=${paged.reason}）——夹具不成立`);
+  else if (paged.count !== rowsInDb) bad("RM-11", `pageSize=4 只读了 ${paged.count} 行，库里 ${rowsInDb} 行 —— 没折到底`);
+  else if (idsOf(paged).length !== TOTAL - 1 || idsOf(paged).includes(DELETED)) bad("RM-11", `分页折出来的面不对：${idsOf(paged).length} 条（应 ${TOTAL - 1}）/ 已删那条在=${idsOf(paged).includes(DELETED)}`);
+  else if (JSON.stringify(idsOf(paged)) !== JSON.stringify(idsOf(single))) bad("RM-11", "分页与整份折完不等值");
+  else ok("RM-11", `pageSize=4 逐页折完 ${rowsInDb} 行 → ${TOTAL} 条会话、最后一条 entity_removed 生效，与整份折逐 id 相等`);
+
+  /* RM-12：额度咬住 = 没看完 = 必须拒，且**热槽**上也不许留下任何痕迹。
+     热槽才是历史上真被毒死的那一格：旧实现把截断折出来的面连同**真实 lastSeq** 写进缓存，
+     之后同进程放开额度仍是 cached:true（探针 P2）。冷槽那条断言验不到这件事——
+     第一版 RM-12 就是冷槽，突变体「删掉 truncated 分支」当场溜过（PASS=14 FAIL=0），照实记。 */
+  eventReadModel.closeAll();
+  const warm = eventReadModel.readSurfaces(capRoot, { file: capFile, env: envOnly });
+  const h2 = openLog({ file: capFile, actor: "rm-cap-warm" });
+  for (let i = 0; i < 3; i += 1) {
+    h2.append({ sessionId: "system", kind: "session_created", payload: { surface: "sessions", session: { id: `sess-late${i}`, title: `迟到 ${i}` } } });
+  }
+  h2.close();
+  const starved = eventReadModel.readSurfaces(capRoot, { file: capFile, env: envOnly, pageSize: 4, maxRows: 2 });
+  const reopen = eventReadModel.readSurfaces(capRoot, { file: capFile, env: envOnly });
+  const lateOf = (r) => (r.sessions.sessions || []).filter((s) => String(s.id).startsWith("sess-late")).length;
+  if (!warm.ok) bad("RM-12", `焐热缓存那次读就失败（reason=${warm.reason}）——夹具不成立`);
+  else if (starved.ok) bad("RM-12", `额度 2 行、拒读期间又落了 3 行却返回 ok:true —— 「读不全」又被翻译成「状态就是这样」`);
+  else if (starved.reason !== "log_too_long") bad("RM-12", `拒读的理由不是 log_too_long：${starved.reason}`);
+  else if (starved.rowsRead > starved.maxRows) bad("RM-12", `拒读那次读了 ${starved.rowsRead} 行，比额度 ${starved.maxRows} 还多 —— 额度不是内存护栏`);
+  else if (!reopen.ok || reopen.cached) bad("RM-12", `拒完之后放开额度仍不重读（ok=${reopen.ok} cached=${reopen.cached}）—— 缓存没作废`);
+  else if (lateOf(reopen) !== 3) bad("RM-12", `重读回来的面里有 ${lateOf(reopen)}/3 条拒读期间落库的新会话 —— 热槽被截断状态毒死了`);
+  else if (reopen.count !== rowsInDb + 3 || idsOf(reopen).includes(DELETED)) bad("RM-12", `重读回来的面不完整（${reopen.count} 行 / 已删那条在=${idsOf(reopen).includes(DELETED)}）`);
+  else ok("RM-12", `热槽 + 额度咬住 → ok:false/log_too_long（读 ${starved.rowsRead}/${starved.maxRows} 行，不超额）；放开额度重读回 ${reopen.count} 行、含拒读期间的 3 条新会话、已删那条仍不在`);
+
+  cleanupFlags();
+  eventReadModel.closeAll();
+  try {
+    fs.rmSync(capRoot, { recursive: true, force: true });
+  } catch {
+    /* 临时目录清不掉不影响结论 */
+  }
+}
+
 /* ===== RM-06：日志坏了要说话（垃圾字节 + anomaly 两条路） ===== */
 {
   // 6a：库文件塞垃圾 → open/read 失败 → 回退 JSON，stderr 有说明

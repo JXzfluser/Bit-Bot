@@ -13093,3 +13093,31 @@ sessions 偏差：日志 3 条 / JSON 3 条 · matched=2 mismatched=1 只在日�
 **回归（热路径改动，全跑）：** `prove_event_dual_write` 31/0、`prove_event_only` 7/0、`prove_event_read_model` **12/0**、`prove_surface_parity` **40/0/1**、`prove_kp09_event_only_concurrency` **38/0/0**（八臂含臂6 幽灵顺序，等值未破）。开发数据根 `data/` 经 `git status --porcelain data/` 确认未动。
 
 **口径边界与剩下的账：** ① 等值判据都在**追加型**新行上测；「新行里带删除」的形状靠 `entity_removed` 分支本身（臂7 已钉折叠侧语义），未在增量路径单列。② 冷读那 0.28s 没解决，快照/检查点事件（§8.156 在 Grok 看到的那族机制）才是它的解，仍是 #82 的后半。③ 尺与读模型各有一份按 `lastSeq` 的缓存，两份实现形状相近但不同源（`foldCacheByFile` vs `cacheByFile`）——**已知重复，未合并**，合并前要先把两边的等值判据都搬过去。④ G-125 仍 `SKIP=1`，故仍未进门阵脚本（锚点要 `FAIL=0 SKIP=0`）。⑤ 未重跑全量矩阵；未做真开机截图。⑥ 本提交落盘后分支领先 origin 29 个本地提交（上一条实测 28，先量后写），推送仍未获授权。
+
+### 8.167 #83：读模型把「读满上限」当成「读完日志」——截断状态还按真 lastSeq 进缓存（实测复现 + 分页折到底 + 四把突变体）
+
+**触发**：#82 落地后回读 `event_read_model.js` 的取数那一格，看到 `readAfter({ fromSeq: 0, limit: opts.limit || 100000 })` —— 读满 100000 行时没有任何地方问「后面还有没有」。这与片10/10b 立的规矩同形（「读不到」≠「没账」），但比它更糟：不是拒读，是**宣布一份假状态**。
+
+**取证（`scripts/probe_read_model_row_cap.mjs`，临时 dataRoot，改前实跑）**：25 行库（12 建 + 12 改 + 1 删），喂 `limit=5` →
+`ok=true count=5 lastSeq=25`、面里 **12 条会话只剩 3 条**、`entity_removed` 删掉的那条 **复活**（丢 8 条）；
+同进程放开上限再读 → `cached=true`，仍是那 3 条 —— 截断折出来的面是按**真实 lastSeq** 存的，之后不管给多大上限都命中缓存，**一次截断、永久失真**。清缓存 + 不限行 → 25 行 / 11 条 / 删除生效（对照组）。
+这条不是学术形状：日志行数由**对话量**决定（回合流 turn_started/progress/turn_ended 与每条 message_committed 同库，§5.2/A1-2），不是由会话数决定；且 EVENT_ONLY 下 `sessions.js:122` 的**提交时基底**（片11 用来防丢更新的那次折叠）就走这个口 —— 一份截断基底会被拿去三方合并。
+
+**修法**：新 `foldPages(log, {fromSeq, base, pageSize, maxRows})`（页 50000、额度 500000），**「看完」的判据是「有一页没读满」而不是「读满了一个上限」**；分页续折复用 #82 的 `fromState`（等值性由 RM-10/L 组钉着）。额度咬住 → `ok:false reason:"log_too_long"` + **缓存作废**，调用方按读不到降级（`readFromEvents` 的 `source=hit.reason` 分支，不会当成空面）。尺（`surface_parity.js`）同一把 `foldPages`：截断时 `foldMode="truncated"` 且三张面一律 `no_reading` —— 少掉的实体从前会被记成「只在 JSON 侧」的**假偏差**，现在如实报没读数。
+
+**门的增量（实测）**：RM 门 12→**14**（RM-11 小页折到底与整份逐 id 等值 / RM-12 热槽额度咬住必拒 + 不超额 + 放开额度读回含拒读期间 3 条新会话）；G-125 40→**42**（L8 截断不许报 drift / L9 截断不许焐缓存）。回归：kp09 **38/0/0**、双写 **31**、event_only **7**、RH **8**、`diagnose_surfaces.mjs` 仍退出码 0（默认装机三行「无读数」）。G-65 矩阵锚点的项数是 `grep -c '^ok RM'` 现算的，不钉字面量，故 12→14 不需改矩阵。
+
+**突变体表（每一条都要真红过）**：
+
+| 突变体 | 结果 |
+| --- | --- |
+| M-A 读满一页就宣称看完（退回旧实现） | `FAIL=2`（RM-11 只读 4/13 行 + RM-12 ok:true） |
+| M-B 单页不按剩余额度夹紧 | `FAIL=1`（RM-12：额度 2 行却读了 12 行还当看完） |
+| M-C 整格删掉 truncated 拒读 | `FAIL=1` |
+| M-D 照样拒读、但把截断面按真 lastSeq 留在缓存 | `FAIL=1`（RM-12 `reopen.cached=true`） |
+| M-E 撤掉尺上空面守卫 | 门崩在 `TypeError: Cannot read properties of null`（红，但不是干净 FAIL 行） |
+| M-F 尺把截断折当完整面返回并焐缓存 | `FAIL=2`（L8 mode=full/drift=7 假偏差 + L9 reused 0 行） |
+
+**两次自证不了的绿，照实记**：① M-D 第一版是**空突变体** —— 我把缓存赋值插在 truncated 分支**之前**，而分支里原有的 `slot.folded=null` 两行照样执行，于是 `PASS=14 FAIL=0`；插到分支内部才红。② RM-12 第一版用**冷槽**验「拒完不污染」，而冷槽上截断分支根本还没写过缓存，同一突变体当场溜过（`PASS=14`）；改成「先读热槽 → 再落 3 行 → 小额度拒读 → 放开额度必须读到这 3 行」才有牙。L9 也连错两版（把 L6 留下的正常 `reused` 当污染；又对 1 行小库断言 `foldRows>1`）。**口径：判据必须指出「哪个状态只有这条判据能看到」，突变体必须先自证它会改变行为再引用。**
+
+**边界与后账**：① 500000 行是护栏不是无限 —— EVENT_ONLY 下日志长到那里会**拒写**（`fold_blocked` 回执）而不是给假面，这让 #82 后半（快照/检查点事件）从「省 0.28s 冷启动」升级成「这条路的必然下一步」，也让 #80（折叠坏掉之后的授权重锚）多一个触发条件；② 默认装机仍是文件模式，读侧不走这条；③ 尺的**增量中途截断**（`cachedFoldOf` 的 `inc.truncated → 退回 fullFold`）没有活体判据，M-F 打的是 `fullFold` 那一格 —— 照实记，不留「已覆盖」的错觉；④ 臂7 压的折叠侧删除语义没被本次改动触碰（等值性由 RM-10/L 组守着），#79 那条「load 若改成进程内缓存」的口径不变。
