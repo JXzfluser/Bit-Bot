@@ -12822,3 +12822,80 @@ Grok 这几条的实际触发条件与频率是**未测**；`mismatched/missing/
 
 **口径边界：** ① 本轮没动代码，门与 PASS 不变（G-124 八臂 PASS=38）。② #81 描述已按本节改写，并逐字作废其中我猜的第一版三档口径。
 ③ 未重跑全量矩阵。④ 分支现领先 origin 21 个本地提交，**推送仍未获授权**。
+
+## 8.158 对账尺再收一格：`readReason` 的闭集里只有一个成员（`server-tail`），`painted` 在那个产生点是硬编码 true —— §8.157 里我把这两个字段当「读路枚举」和「量出来的画面状态」的两处**逐字作废**（2026-11-19）
+
+**逐字（同一只 asar，静态取证；本轮仍未做活体故障注入）：** 枚举表 `v2=["server-tail"]`（同一张表在重复打包的模块里分别是 `ai=` / `Vfe=` / `mre=[`server-tail`]`），
+唯一的产生点是
+`function kee(n){let e=vEe(n.gatewayPage);return e==null||e.length===0?null:{agentId:n.agentId,...xee(e,n.serverPage.entries),readReason:"server-tail",painted:!0}}`。
+
+**这一条把我上一节的两处推断打掉，按规矩逐字作废（不改写 §8.157 原文，新开本节）：**
+
+1. §8.157 写「**比的是两个来源**：`gatewayEntries`（流/网关那侧给了多少条）对 `storeEntries`（**本地仓里存了多少条**）」。
+   前半仍然成立（确实是两份不同来源的分页条目在比：`vEe(n.gatewayPage)` 对 `n.serverPage.entries`），
+   但「其中一份是本地持久仓」这半**作废为未证**：`xee` 的两个入参都是**分页条目数组**，哪个落到 `gatewayEntries`、哪个落到 `storeEntries`，
+   本轮没量到（想读 `xee` 函数头时全 bundle 扫描超时，已放弃而不是猜）。字段名里的 "store" 不足以当证据。
+2. §8.157 写「`readReason` 直接扩我们已有的 `source`（`events`/`json`/`events_anomalies`）**成闭集枚举**」——**作废**。
+   实测 `readReason` 不是「这次走了哪条读路」的多值枚举，闭集里只有一个成员；它是给这条对账记录**命名「比的是哪一对」**的单值标签。
+   同一句里 `painted:!0` 是**硬编码**，不是从渲染端取回来的状态——所以 §8.157 说的「一条读数必须同时回答上屏了没有」在**这个产生点**上并未成立，
+   成立的是「记录里有这个字段、且校验要求它是布尔」。这是同一类教训的第二次命中：**读到字段名不等于读到机制**（§8.155 那条是对行数判据，这条是对字段语义）。
+
+**量到的新事实，对 #81 有直接影响：** `e==null||e.length===0?null:…` —— 这条尺在**窗口为空时根本不产出记录**，而不是产出一条全 0 的记录。
+于是任何反向对照夹具都不能拿空库当「一致」的证据：「没有读数」和「读数为 0」在判据里必须是两个不同的态，
+否则就是 §8.155 那类「坏条目根本不入库 → 判据恒真」的假夹具换了个形状重现。
+
+**#81 的口径据此再改（第三次收窄，前两次的作废都在上面）：** 两源取 **`fold(events)` 的窗口** 与 **渲染端实际画出的窗口**（这是我们的「一对」，
+对应标签自己命名，例如 `fold-vs-painted`；**不要**把我们的 `source` 冒充成 Grok 的 `readReason`，两者语义不同）；
+`painted` 若要照抄就必须**真的**从渲染端取，不接受写死 true；空窗口必须显式产出「无读数」态并进判据。
+
+**仍未测（不补推断）：** ① `xee` 的参数→字段映射（上面第 1 条）；② 这条尺的采样时机与频率 —— 上一节提到的 `w8t=6e4` **证据力已撤销**：
+标识符 `w8t` 在 bundle 里是同名复用，另有一处是 React 渲染辅助函数（`function w8t(e,t){let n=id(e);switch(n){case`published`:return jsx(…)}`），
+所以那个 6e4 与这条尺无关；③ 活体 Grok 从未触发过这条尺；④ 除 `server-tail` 之外是否还存在别的产生点（只量到一个）。
+
+**口径边界：** ① 本轮没动代码，门与 PASS 不变（G-124 八臂 PASS=38）。② #81 描述已按本节第三次改写。③ 未重跑全量矩阵。
+④ 分支领先 origin 22 个本地提交，推送仍未获授权。
+
+## 8.159 §8.158 标为「没量到」的 `xee` 参数→字段映射，同一轮后台扫描落地了：六个计数逐个可解码，且 `storeEntries` 装的是 **serverPage**（不是本地仓）——§8.157 那句「本地仓里存了多少条」在这里彻底作废（2026-11-19）
+
+**逐字（函数体，三个同名 `xee` 里的第三个；调用点仍是 §8.158 的 `kee`）：**
+
+```
+function xee(n,e){let t=new hl(e),o=new hl(n),s=0
+  for(let m of [...n].reverse()){if(t.has(m))break;s+=1}
+  let i=0,l=0,u=0
+  for(let m of n.slice(0,n.length-s)){let S=t.find(m)
+    S===void 0?u+=1 : Iee(S)===Iee(m)?i+=1 : wee(m)||wee(S)?s+=1 : l+=1}
+  let d=e.findIndex(m=>o.has(m)),c=e.slice(Math.max(d,0)).filter(m=>!o.has(m)).length
+  return{gatewayEntries:n.length,storeEntries:e.length,matched:i,mismatched:l,missing:u,extra:c,staleTail:s}}
+```
+
+调用点：`xee(vEe(n.gatewayPage), n.serverPage.entries)` —— **第一参数是 gatewayPage 的条目，第二参数是 serverPage 的条目**。
+
+**据此逐字作废：** §8.157 我写「`storeEntries`＝**本地仓里存了多少条**」，§8.158 我把它收窄成「哪个参数落到哪个字段未量到」。
+现在量到了：`storeEntries:e.length`，而 `e` 是**第二参数＝`serverPage.entries`**。所以这个字段名里的 "store" **不指本地持久仓**，
+它指服务端那一页。这条尺比的是**同一段转录的两个服务端视图**（`gatewayPage` 流尾 vs `serverPage` 分页取回），
+不是「仓 vs 流」，更不是「派生态 vs 真源」。→ §8.156/§8.157 里「两条取数路径」的说法仍然成立，但两条都在**服务端侧**，
+我之前给它挂的「本地派生态漂移」含义**作废**。
+
+**六个计数的实测语义（方向感很重要，`missing` 与直觉相反）：**
+
+| 字段 | 实测算法 | 读法 |
+|---|---|---|
+| `staleTail`(s) | 从 `n` 尾部倒走，撞到第一个「serverPage 里有」的 id 就停；此后主循环里碰到 `wee()` 为真的条目还会继续 +1 | gateway 尾端比 server 页**多出/未落**的那一截长度 |
+| `missing`(u) | 主循环里 `t.find(m)===void 0` | **gateway 有、server 页没有**（不是「该有却没有」的那个方向） |
+| `matched`(i) | `Iee(S)===Iee(m)` | 两边都有，且经 `Iee` 投影后相等 |
+| `mismatched`(l) | 两边都有、投影不等、且两边都不是 `wee()` 为真 | 真正的字段级分歧 |
+| `extra`(c) | 先找 server 页里第一个「gateway 也有」的条目下标 `d`，再数 `d` 之后 id 不在 gateway 集合里的条数 | server 页在共同锚点之后**多出来**的条目 |
+| `readReason` / `painted` | §8.158：单值标签 `"server-tail"`；`painted` 在该点硬编码 true | 见 §8.158，本轮不改 |
+
+**未量到（不当已知）：** `Iee` 投影的是什么字段（id？内容哈希？修订号？）与 `wee` 判的是什么（省略条目？墓碑？），本轮没读它们的定义；
+`hl` 只量到「是个带 `has` 和 `find` 的集合状对象」。这三者决定了 `matched`/`mismatched` 的实际严格度，#81 若要照抄必须**自己定义**这三者，
+不能引用 Grok 的名字当作已证语义。
+
+**对 #81 的最终影响（第三次收窄之后再补一条方向性提醒）：** 我们的两源仍然是 `fold(events)` 与渲染端画出的窗口，
+但**不能**照抄 Grok 的方向语义：它的 `missing` 是「A 有 B 没有」里 A＝更新的那一侧（gateway 流尾）。
+我们的对应口径要显式写成 `{在折叠不在屏上: n, 在屏上不在折叠: n}` 两个具名字段，
+避免把 `missing`/`extra` 这两个反向词直接搬过来造成误读——这是同屏两个来源的数字互相矛盾的那类坑，只是发生在日志字段层面。
+
+**口径边界：** ① 本轮没动代码，G-124 仍八臂 PASS=38。② #81 已按 §8.158+§8.159 更新（含三个未定义符号须自定）。
+③ 未重跑全量矩阵。④ 分支领先 origin 23 个本地提交，推送仍未获授权。
