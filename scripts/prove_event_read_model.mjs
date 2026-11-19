@@ -476,7 +476,7 @@ const onRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-on-"));
   eventReadModel.closeAll();
   const foreign = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead, checkpointStride: 1 });
   const afterForeign = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
-  good_lastSeq_bump: {
+  {
     const good = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
     good.lastSeq = 999999;
     fs.writeFileSync(cacheFile, JSON.stringify(good));
@@ -497,12 +497,88 @@ const onRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-on-"));
   else if (fs.existsSync(noDbFile) || fs.existsSync(eventReadModel.checkpointPathFor(noDbFile))) bad("RM-16", "读路径把库或检查点建出来了 —— 只读消费方变成了写者");
   else ok("RM-16", "没库 → no_db，且不建库、不建检查点文件（读路径仍不是写者）");
 
-  /* RM-17：顺序是语义 —— 折出不干净的那次绝不落盘。 */
-  const src = fs.readFileSync(path.join(ROOT, "hosts/shared/event_read_model.js"), "utf8");
-  const iAnom = src.indexOf('reason: "fold_anomalies"');
-  const iSave = src.indexOf("if (lastSeq - slot.persistedSeq >= stride");
-  if (!(iAnom > 0 && iSave > iAnom)) bad("RM-17", "落检查点那一格排在了 fold_anomalies 拒绝之前 —— 毒面会被写进盘上缓存");
-  else ok("RM-17", `落检查点排在 fold_anomalies 之后（第 ${iAnom} 字符 vs 第 ${iSave} 字符），折不干净那次不落盘`);
+  /* RM-18：检查点必须**跟得上**日志（#84 的 stride 扫参在此落地成判据）。
+     RM-13/15/16 全传了 checkpointStride:1，默认节流那一格从没跑过 = 自证；而默认值 2000 在
+     4502 行的库上让冷进程最坏重折 87.1ms，只为省一次 0.50ms 的写（盈亏平衡点是 11 行）。
+     判据用关系不用单点：写 900 行、每 30 行读一次 → 盘上游标必须存在、单调不减、
+     落后真游标不到一个 stride，且新进程续折的行数要正好等于这个落后量。 */
+  const lagRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-lag-"));
+  const lagDb = path.join(lagRoot, "events", "desktop-events.sqlite");
+  fs.mkdirSync(path.dirname(lagDb), { recursive: true });
+  const lagCk = eventReadModel.checkpointPathFor(lagDb);
+  const strideNow = eventReadModel.CHECKPOINT_STRIDE;
+  const hl = openLog2({ file: lagDb, actor: "rm-lag" });
+  const cursors = [];
+  for (let i = 0; i < 900; i += 1) {
+    hl.append({ sessionId: "system", kind: "session_created", payload: { surface: "sessions", session: { id: `sess-lag${i}`, title: `滞后 ${i}` } } });
+    if (i % 30 !== 29) continue;
+    const r = eventReadModel.readSurfaces(lagRoot, { file: lagDb, env: envRead });
+    cursors.push(r.ok ? r.checkpointSeq : `read_failed:${r.reason}`);
+  }
+  hl.close();
+  const finalRead = eventReadModel.readSurfaces(lagRoot, { file: lagDb, env: envRead });
+  const onDisk = fs.existsSync(lagCk) ? JSON.parse(fs.readFileSync(lagCk, "utf8")) : null;
+  const lagRows = onDisk ? finalRead.lastSeq - onDisk.lastSeq : null;
+  eventReadModel.closeAll();
+  const seededLag = eventReadModel.readSurfaces(lagRoot, { file: lagDb, env: envRead });
+  const regressed = cursors.some((c, i) => i > 0 && typeof c === "number" && typeof cursors[i - 1] === "number" && c < cursors[i - 1]);
+  /* 落盘次数也要有下界：只在「新增 >= stride」时落，所以 900 行最多 ⌈900/stride⌉ 个不同游标。
+     没有这一格，「每次读都重写一遍整面」（写放大无界）也是绿的 —— 尺子得两头都有牙。 */
+  const distinct = new Set(cursors.filter((c) => typeof c === "number")).size;
+  const maxSaves = Math.ceil(900 / strideNow);
+  if (!finalRead.ok) bad("RM-18", `900 行的库读失败：${finalRead.reason}`);
+  else if (!onDisk) bad("RM-18", `默认节流（stride=${strideNow}）下写了 900 行还是没有检查点 —— 冷进程永远要从 seq=1 重折`);
+  else if (!(lagRows >= 0 && lagRows < strideNow)) bad("RM-18", `检查点落后真游标 ${lagRows} 行，不在 [0,${strideNow}) 内 —— 冷启动的价钱没有上界`);
+  else if (regressed) bad("RM-18", `盘上游标出现回退：${cursors.join(",")}`);
+  else if (distinct > maxSaves) bad("RM-18", `900 行里落了 ${distinct} 次盘，超过节流允许的 ${maxSaves} 次 —— 写放大没被咬住，热路径在替冷启动买单`);
+  else if (seededLag.foldPath !== "checkpoint" || seededLag.count !== lagRows) bad("RM-18", `新进程续折 ${seededLag.count} 行 / 盘上落后 ${lagRows} 行 / path=${seededLag.foldPath} —— 三者必须咬合`);
+  else ok("RM-18", `900 行、每 30 行一读：落后 ${lagRows} 行 < stride=${strideNow}、${distinct} 次落盘 ≤ ${maxSaves}、游标单调不减，新进程 foldPath=checkpoint 正好折这 ${lagRows} 行（冷启价钱与写放大两头都有界）`);
+  try {
+    fs.rmSync(lagRoot, { recursive: true, force: true });
+  } catch {
+    /* 临时目录清不掉不影响结论 */
+  }
+
+  /* RM-19：落盘失败只当「这次没有优化」，且不许留孤儿 tmp；有新行时还要再试（不许永久毒死）。
+     这里传 checkpointStride:1 是要造「这次一定要落盘」的前置 —— 本条判的是失败面，节流由 RM-18 判。 */
+  const ckDir = path.dirname(cacheFile);
+  const tmpLitter = () => fs.readdirSync(ckDir).filter((n) => n.endsWith(".tmp"));
+  fs.rmSync(cacheFile, { force: true, recursive: true });
+  fs.mkdirSync(cacheFile); /* 检查点位置放一个非空目录：write tmp 会成功、rename 必失败 */
+  fs.writeFileSync(path.join(cacheFile, "block"), "x");
+  eventReadModel.closeAll();
+  const blocked = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead, checkpointStride: 1 });
+  /* 孤儿 tmp 必须在失败当下采样：tmp 名字按 pid 定，后面那次成功的落盘会 rename 掉同一个路径，
+     事后再看目录永远是干净的 —— K2 突变体（删掉清理那三行）第一次就是这样漏过去的。 */
+  const litterBlocked = tmpLitter();
+  fs.rmSync(path.join(cacheFile, "block"), { force: true });
+  fs.rmdirSync(cacheFile);
+  const h9 = openLog2({ file: ckDb, actor: "rm-ckpt" });
+  h9.append({ sessionId: "system", kind: "session_created", payload: { surface: "sessions", session: { id: "sess-ck9", title: "写失败之后新增的行" } } });
+  h9.close();
+  const retry = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead, checkpointStride: 1 });
+  const retryOnDisk = fs.existsSync(cacheFile) ? JSON.parse(fs.readFileSync(cacheFile, "utf8")) : null;
+  eventReadModel.closeAll();
+  const afterRetry = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead });
+  if (!blocked.ok || blocked.foldPath !== "full" || blocked.checkpointSeq !== null) bad("RM-19", `落盘被挡住时读数不对：${JSON.stringify({ ok: blocked.ok, path: blocked.foldPath, seq: blocked.checkpointSeq })}`);
+  else if (keyOfFace(blocked) !== keyOfFace(fromScratch)) bad("RM-19", "落盘失败把这次读的面也弄坏了");
+  else if (litterBlocked.length) bad("RM-19", `写失败当下留下了孤儿 tmp：${litterBlocked.join(",")}（KP-09 片7 同一形状）`);
+  else if (retry.checkpointSeq === null || !retryOnDisk || retryOnDisk.lastSeq !== retry.lastSeq) bad("RM-19", `一次写失败永久毒死了这条路：有新行后 checkpointSeq=${String(retry.checkpointSeq)}`);
+  else if (afterRetry.foldPath !== "checkpoint") bad("RM-19", `补写好的检查点下个进程没吃到：path=${afterRetry.foldPath}`);
+  else ok("RM-19", `rename 挡住时：读数仍正确、checkpointSeq=null、失败当下零孤儿 tmp；来新行后再试一次就补上（${retry.checkpointSeq} 行），下个进程 foldPath=checkpoint`);
+
+  /* RM-17：折不干净的那次绝不落盘 —— 改成行为判据（原来是 indexOf 源码片段，
+     上一版我把那行代码改了就假红，正是 G-40 说的「锚点钉散文」）。 */
+  const beforePoison = fs.readFileSync(cacheFile, "utf8");
+  const h8 = openLog2({ file: ckDb, actor: "rm-ckpt" });
+  h8.append({ sessionId: "system", kind: "kind_from_the_future", payload: { surface: "sessions" } });
+  h8.close();
+  eventReadModel.closeAll();
+  const poisoned = eventReadModel.readSurfaces(ckRoot, { file: ckDb, env: envRead });
+  const stillSame = fs.readFileSync(cacheFile, "utf8");
+  if (poisoned.ok || poisoned.reason !== "fold_anomalies") bad("RM-17", `未知 kind 应该拒读：${JSON.stringify({ ok: poisoned.ok, reason: poisoned.reason })}`);
+  else if (stillSame !== beforePoison) bad("RM-17", "折出不干净的面之后仍然写了检查点 —— 毒面被写进盘上缓存");
+  else ok("RM-17", "fold_anomalies 那次拒读且检查点逐字节未变（脏面不落盘，靠行为判，不靠源码片段）");
 
   cleanupFlags();
   eventReadModel.closeAll();

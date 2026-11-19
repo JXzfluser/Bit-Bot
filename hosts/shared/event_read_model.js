@@ -89,7 +89,12 @@ const cacheByFile = new Map();
       读路径永不因为检查点存在而相信它 —— 用完还要折后缀，折出 anomaly 就回全量。
    2) 绝不拿它建库：库不存在时（no_db）在读它之前就返回，所以只读消费方仍不是写者。
    3) 落盘按「距上次持久化新增多少行」节流（默认 2000 行），且写失败绝不影响这次读的结果。 */
-const CHECKPOINT_STRIDE = 2000;
+/* 落一次检查点的价钱 = 一次整面序列化 + 原子写；不落 = 下个冷进程多折 stride 行。
+   256 是量出来的（scripts/probe_checkpoint_save_cost.mjs，4502 行的库）：
+   一次落盘 0.50ms（面 211KB）、冷折 0.0436ms/行 → 纯时间盈亏平衡在 11 行，
+   取 256 时冷启最坏多折 11.2ms（原值 2000 = 87.1ms）、摊到每行 0.0019ms、每行写放大 0.83KB。
+   折叠是超线性的，库到几万行这一格要多大重跑探针（见 §8.169 的边界）。 */
+const CHECKPOINT_STRIDE = 256;
 const CHECKPOINT_MAX_BYTES = 64 * 1024 * 1024;
 
 function checkpointPathFor(file) {
@@ -117,15 +122,18 @@ function loadCheckpoint(file) {
 
 /** 原子写检查点；失败静默（下次还是全量折，不假装成功）。 */
 function saveCheckpoint(file, lastSeq, folded) {
+  const target = checkpointPathFor(file);
+  const tmp = `${target}.${process.pid}.tmp`;
   try {
     const payload = JSON.stringify({ dbFile: path.resolve(file), lastSeq, folded });
     if (Buffer.byteLength(payload) > CHECKPOINT_MAX_BYTES) return false;
-    const target = checkpointPathFor(file);
-    const tmp = `${target}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, payload);
     fs.renameSync(tmp, target);
     return true;
   } catch (_e) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch (_e2) { /* 清不掉不追究 */ }
     return false;
   }
 }
@@ -263,11 +271,12 @@ function readSurfaces(dataRoot, opts = {}) {
     slot.lastSeq = lastSeq;
     slot.count = incremental ? prevCount + result.rows : result.rows;
     slot.incremental = incremental;
-    /* 折干净了才落检查点（脏面绝不持久化 = 不把毒面写进盘上缓存）；按新增行数节流，
-       写失败不改这次读的结论。 */
+    /* 折干净了才落检查点（脏面绝不持久化 = 不把毒面写进盘上缓存）；写失败不改这次读的结论。
+       节流看「距上次落盘新增了多少行」：落盘的价钱是一次整面序列化，冷启省下的价钱是重折这些行，
+       stride 就是这两者之间的换算率 —— 所以它得是被量出来的，不是拍脑袋（见 §8.169）。 */
     const stride = Number(opts.checkpointStride) > 0 ? Number(opts.checkpointStride) : CHECKPOINT_STRIDE;
-    if (lastSeq - slot.persistedSeq >= stride && saveCheckpoint(file, lastSeq, folded)) {
-      slot.persistedSeq = lastSeq;
+    if (lastSeq - slot.persistedSeq >= stride) {
+      if (saveCheckpoint(file, lastSeq, folded)) slot.persistedSeq = lastSeq;
     }
     return {
       ok: true,
