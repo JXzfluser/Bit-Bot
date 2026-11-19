@@ -355,5 +355,70 @@ console.log("RESULT "+tag+" create_ok="+co+" create_fail="+cf+" msg_ok="+mo+" ms
   }
 }
 
+/* 臂7：删除与提交的交错**用屏障钉死**（§8.152 的「并发删除被复活」是随机撞窗口撞到的，
+   机制当时只是推断）。这一段要的是确定性形状：B 在 X 还活着的时候读到它、并提交过一次，
+   A 随后删掉 X，B 再提交一次 —— 复活只可能发生在 B 的第二次提交，而它一定发生。
+   前置自证：B 必须**真的见过 X**（把读数写进文件，没见到就整臂 SKIP，不判绿），
+   否则「X 不在折叠里」是恒真。判据三条：X 没回来、B 那行没被顺手删掉、B 的消息一条不少。
+   群面没有这一臂：产品侧根本没有删除群的入口（roomCreate/roomRename/roomMembersUpdate/
+   roomLibraryAdd 里没有任何 delete），无路径可撞 —— 别把它读成「群面删除也证过了」。 */
+const CHILD_DEL = `
+const REPO=${JSON.stringify(REPO)}, path=require("path"), fs=require("fs");
+const [dataRoot, role, dir]=process.argv.slice(1);
+process.env.BITBOT_EVENT_ONLY="1";
+const st=require(path.join(REPO,"hosts/desktop/sessions.js")).getSessionStore(REPO,{dataRoot});
+const wait=(f,ms)=>{const t=Date.now();while(!fs.existsSync(f)){if(Date.now()-t>ms)throw new Error("屏障超时 "+f);}};
+const X="甲-要删掉";
+if(role==="A"){
+  const r=st.create(X); if(!r||!r.ok) throw new Error("A 建哨兵失败 "+JSON.stringify(r).slice(0,120));
+  const id=r.session.id;
+  fs.writeFileSync(path.join(dir,"DEL_alive"),"1");
+  wait(path.join(dir,"DEL_B_done"),40000);
+  const d=st.remove(id); if(!d||d.ok===false) throw new Error("A 删哨兵失败 "+JSON.stringify(d).slice(0,120));
+  fs.writeFileSync(path.join(dir,"DEL_gone"),"1");
+} else {
+  wait(path.join(dir,"DEL_alive"),40000);
+  // 见没见过 X，写进文件当自证（不是判据）：没见过就说明交错没成立，门该 SKIP 而不是判绿
+  const seen=(st.list().sessions||[]).some((s)=>s.title===X)?"Y":"n";
+  fs.writeFileSync(path.join(dir,"DEL_saw"),seen);
+  const c=st.create("乙-留着"); if(!c||!c.ok) throw new Error("B 建自己的会话失败");
+  const bid=c.session.id;
+  st.appendMessages(bid,[{role:"user",content:"第一条"}]);
+  fs.writeFileSync(path.join(dir,"DEL_B_done"),"1");
+  wait(path.join(dir,"DEL_gone"),40000);
+  st.appendMessages(bid,[{role:"user",content:"第二条"}]); // ← 删除之后的第二次提交：复活只可能从这里出来
+}
+`;
+{
+  const { root, dataRoot } = freshSurface();
+  const child = (role) => spawn("node", ["-e", CHILD_DEL, dataRoot, role, root], { encoding: "utf8" });
+  const spin = (c) => { let err = ""; c.stderr.on("data", (d) => { err += d; });
+    return { code: new Promise((r) => c.on("exit", r)), err: () => err }; };
+  const A = spin(child("A"));
+  const B = spin(child("B"));
+  const barrier = (f, ms = 45000) => { const t = Date.now(); while (!fs.existsSync(f)) { if (Date.now() - t > ms) return false; } return true; };
+  const sawFile = path.join(root, "DEL_saw");
+  if (!barrier(sawFile)) honestSkip("臂7 B 连「读一次面」都没做到（前置不成立）：" + B.err().slice(0, 160));
+  else if (fs.readFileSync(sawFile, "utf8") !== "Y") honestSkip("臂7 交错没成立：B 没在 X 活着时读到它（实得 " + fs.readFileSync(sawFile, "utf8") + "）——不判绿");
+  else {
+    const [aCode, bCode] = [await A.code, await B.code];
+    if (aCode !== 0 || bCode !== 0) honestSkip(`臂7 子进程非零退出（甲 ${aCode} / 乙 ${bCode}）：${(A.err() + B.err()).slice(0, 200)}`);
+    else {
+      const hit = readSurfaces(dataRoot);
+      const arrRaw = (hit.sessions && (hit.sessions.sessions || hit.sessions)) || [];
+      const arr = Array.isArray(arrRaw) ? arrRaw : [];
+      const titles = arr.map((s) => s.title);
+      const msgs = arr.reduce((a, s) => a + (s.message_count ?? (s.messages || []).length), 0);
+      ok("臂7 前置自证：B 第二次提交确实晚于 A 的删除（屏障已生效）", fs.existsSync(path.join(root, "DEL_gone")));
+      ok("臂7 删除不被复活：折叠标题多重集 == 播种 + 乙那条（甲-要删掉 不许回来）",
+        JSON.stringify(titles.slice().sort()) === JSON.stringify(["乙-留着", "新对话"].sort()),
+        { 折叠: titles, 复活: titles.includes("甲-要删掉") });
+      ok("臂7 乙的行没被顺手抹掉（消息两条都在）", msgs === 2 && titles.includes("乙-留着"), { 消息: msgs, 折叠: titles });
+      ok("臂7 折叠无异常且 ok", hit.ok === true && (hit.anomalies || []).length === 0,
+        { ok: hit.ok, reason: hit.reason, anomalies: (hit.anomalies || []).slice(0, 3) });
+    }
+  }
+}
+
 console.log(`prove_kp09_event_only_concurrency: PASS=${pass} FAIL=${fail} SKIP=${skip}`);
 process.exit(fail ? 1 : 0);
