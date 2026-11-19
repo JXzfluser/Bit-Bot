@@ -114,9 +114,28 @@ function readSurfaces(dataRoot, opts = {}) {
         cached: true,
       };
     }
-
-    const rows = slot.log.readAfter({ fromSeq: 0, limit: opts.limit || 100000 });
-    const folded = require("./event_mirror").foldEvents(rows);
+    /* 增量折叠（#82 / §8.165）：日志只追加、seq 不复用，所以「上次折干净的状态 ⊕ 之后的新行」
+       与「从头折全部」必须得到同一份面。省下的正是每次操作那一格全量折（2000 会话实测 330ms）。
+       只在 lastSeq 往前走时续折；库被换掉（seq 倒退/归零）就回全量。折出异常一律回全量确认，
+       增量路径永远没有权力单独宣布「这份日志不干净」。 */
+    let rows;
+    let folded;
+    let incremental = false;
+    if (slot.folded && lastSeq > slot.lastSeq) {
+      rows = slot.log.readAfter({ fromSeq: slot.lastSeq, limit: opts.limit || 100000 });
+      incremental = true;
+      try {
+        folded = require("./event_mirror").foldEvents(rows, { fromState: slot.folded });
+      } catch (_e) {
+        folded = null;
+      }
+      if (folded && (folded.anomalies || []).length) folded = null;
+    }
+    if (!folded) {
+      rows = slot.log.readAfter({ fromSeq: 0, limit: opts.limit || 100000 });
+      folded = require("./event_mirror").foldEvents(rows);
+      incremental = false;
+    }
     const anomalies = folded.anomalies || [];
     if (anomalies.length) {
       // 日志折不干净：缓存作废，让调用方降级回 JSON。绝不把半折叠状态当真。
@@ -124,9 +143,11 @@ function readSurfaces(dataRoot, opts = {}) {
       slot.lastSeq = -1;
       return { ok: false, reason: "fold_anomalies", anomalies, count: rows.length, file };
     }
+    const prevCount = slot.count;
     slot.folded = folded;
     slot.lastSeq = lastSeq;
-    slot.count = rows.length;
+    slot.count = incremental ? prevCount + rows.length : rows.length;
+    slot.incremental = incremental;
     return {
       ok: true,
       file,
@@ -136,6 +157,7 @@ function readSurfaces(dataRoot, opts = {}) {
       anomalies,
       count: rows.length,
       lastSeq,
+      foldPath: incremental ? "incremental" : "full",
     };
   } catch (err) {
     dropCache(file);

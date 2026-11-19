@@ -180,32 +180,103 @@ function levelOf(rec) {
     : "info";
 }
 
+/** 增量折叠缓存槽：`{ lastSeq, folded }`（#82 / §8.165：尺和产品读路径付的是同一次全量折，
+ *  2000 会话实测 330ms，接进任何反复调用的入口前必须先让它只折新行）。
+ *  只缓存**折干净**的结果；带 anomalies 的起点会往下毒，`foldEvents` 现在也会直接拒。 */
+const foldCacheByFile = new Map();
+
+/* 缓存本体绝不交出去：调用方（以及下面的逐实体比较）可能原地改它。 */
+function cloneFold(v) {
+  return JSON.parse(JSON.stringify(v));
+}
+
+/** 测试用：清掉增量缓存（避免下一条判据读到上一条的槽）。 */
+function resetFoldCache() {
+  foldCacheByFile.clear();
+}
+
+function fullFold(db, limit) {
+  const handle = openEventLog({ file: db, actor: "surface-parity" });
+  try {
+    const all = handle.readAfter({ fromSeq: 0, limit });
+    return { folded: foldEvents(all), rowsRead: all.length, lastSeq: handle.lastSeq(), mode: "full" };
+  } finally {
+    try {
+      handle.close();
+    } catch (_e) {
+      /* 读数已经拿到，关不掉不动这条记录 */
+    }
+  }
+}
+
+function cachedFoldOf(db, limit) {
+  const handle = openEventLog({ file: db, actor: "surface-parity" });
+  try {
+    const lastSeq = handle.lastSeq();
+    const slot = foldCacheByFile.get(db);
+    /* 库被换掉/重建时 seq 会倒退或错位：那种情况绝不续折，直接全量重来。 */
+    const continuable = slot && slot.folded && Number.isFinite(lastSeq) && lastSeq >= slot.lastSeq;
+    if (continuable && lastSeq === slot.lastSeq) {
+      return { folded: slot.folded, rowsRead: 0, mode: "reused", lastSeq };
+    }
+    if (continuable) {
+      const rows = handle.readAfter({ fromSeq: slot.lastSeq, limit });
+      try {
+        const inc = foldEvents(rows, { fromState: slot.folded });
+        if (!inc.anomalies || inc.anomalies.length === 0) {
+          foldCacheByFile.set(db, { lastSeq, folded: inc });
+          return { folded: inc, rowsRead: rows.length, mode: "incremental", lastSeq };
+        }
+        /* 增量报异常不用它下结论：退回全量折取完整名单（保守 = 让全量说话）。 */
+      } catch (_e) {
+        /* fromState 被拒或状态形状变了：同样退回全量 */
+      }
+    }
+    const r = fullFold(db, limit);
+    if (r.folded.anomalies && r.folded.anomalies.length === 0) {
+      foldCacheByFile.set(db, { lastSeq: r.lastSeq, folded: r.folded });
+    } else {
+      foldCacheByFile.delete(db);
+    }
+    return { folded: r.folded, rowsRead: r.rowsRead, mode: continuable ? "full_refold" : "full", lastSeq: r.lastSeq };
+  } finally {
+    try {
+      handle.close();
+    } catch (_e) {
+      /* 读数已经拿到，关不掉不动这条记录 */
+    }
+  }
+}
+
 /**
  * 三条面各出一条读数。
- * @param {{dataRoot:string, limit?:number}} opts
- * @returns {{records:object[], warnLines:string[], levels:string[], drift:number, noReading:number}}
+ * @param {{dataRoot:string, limit?:number, incremental?:boolean}} opts
+ *   `incremental:false` 强制每次全量折（等值判据用它做对照，不是留给用户的开关）。
+ * @returns {{records:object[], warnLines:string[], levels:string[], drift:number, noReading:number,
+ *            foldMode:string, foldRows:number, lastSeq:number}}
  */
 function auditSurfaces(opts = {}) {
   const dataRoot = String(opts.dataRoot || "");
   if (!dataRoot) throw new Error("auditSurfaces: 需要 dataRoot");
   let folded = null;
+  let foldMode = "no_db";
+  let foldRows = 0;
+  let lastSeq = -1;
   const db = dbFilePath(dataRoot);
   if (db && fs.existsSync(db)) {
-    // 直读日志再折，不走 readSurfaces：那个口在没开 BITBOT_EVENT_READ_FROM_LOG 时
-    // 直接返回 read_disabled —— 对账要的是「日志侧到底折出什么」，与读切换开关无关。
-    let handle = null;
-    try {
-      handle = openEventLog({ file: db, actor: "surface-parity" });
-      folded = foldEvents(handle.readAfter({ fromSeq: 0, limit: Number(opts.limit) > 0 ? Number(opts.limit) : 100000 }));
-    } catch (_e) {
-      folded = null;
-    } finally {
-      try {
-        if (handle) handle.close();
-      } catch (_e) {
-        /* 读数已经拿到，关不掉不动这条记录 */
-      }
+    // 直读日志再折，不走 readSurfaces：那个口在没开 BITBOT_EVENT_READ 时直接返回
+    // read_disabled —— 对账要的是「日志侧到底折出什么」，与读切换开关无关（判据 F2 钉的就是这条）。
+    const limit = Number(opts.limit) > 0 ? Number(opts.limit) : 100000;
+    let res;
+    if (opts.incremental === false) {
+      res = fullFold(db, limit);
+    } else {
+      res = cachedFoldOf(db, limit);
     }
+    folded = res.folded.anomalies && res.folded.anomalies.length ? null : res.folded;
+    foldMode = folded ? res.mode : "fold_anomalies";
+    foldRows = res.rowsRead;
+    lastSeq = res.lastSeq;
   }
 
   const records = SURFACES.map((def) => auditSurface(dataRoot, def, folded));
@@ -215,9 +286,12 @@ function auditSurfaces(opts = {}) {
     records,
     warnLines,
     levels,
+    foldMode,
+    foldRows,
+    lastSeq,
     drift: records.reduce((n, r) => (r.kind === "reading" ? n + r.mismatched + r.inFoldNotJson + r.inJsonNotFold : n), 0),
     noReading: records.filter((r) => r.kind === "no_reading").length,
   };
 }
 
-module.exports = { READ_REASON, SURFACES, auditSurface, auditSurfaces, formatWarn, levelOf };
+module.exports = { READ_REASON, SURFACES, auditSurface, auditSurfaces, formatWarn, levelOf, resetFoldCache };

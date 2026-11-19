@@ -58,13 +58,27 @@ function surfaceOfRow(state, sessionId) {
 /**
  * events（按 seq 的任意顺序都行）→ { sessions, rooms, approvals, anomalies }。
  * anomalies 非空即「这份日志折不干净」，调用方必须降级，绝不能把半折叠状态当真。
+ *
+ * `opts.fromState`（增量折叠，#82）：把上一次**折干净**（0 anomaly）的结果当起点，
+ * 本次只喂 `seq` 更大的新行。日志只追加、`seq` 不复用（docs/events.md §3），所以「旧行的效果」
+ * 已经在 fromState 里、新行不会回头改它 —— 这就是增量与全量等值的依据，不是我以为它等值。
+ * 起点必须是无异常的整份状态：半折叠状态续下去会把毒面藏进缓存，所以带 anomalies 的起点直接拒。
  */
-function foldEvents(rows) {
-  const state = {
-    sessions: clone(BASELINE.sessions),
-    rooms: clone(BASELINE.rooms),
-    approvals: [],
-  };
+function foldEvents(rows, opts = {}) {
+  if (opts.fromState && Array.isArray(opts.fromState.anomalies) && opts.fromState.anomalies.length) {
+    throw new Error("foldEvents: fromState 带 anomalies，折不干净的起点不许续折");
+  }
+  const state = opts.fromState
+    ? {
+        sessions: clone(opts.fromState.sessions),
+        rooms: clone(opts.fromState.rooms),
+        approvals: clone(opts.fromState.approvals || []),
+      }
+    : {
+        sessions: clone(BASELINE.sessions),
+        rooms: clone(BASELINE.rooms),
+        approvals: [],
+      };
   const listName = (surface) => (surface === "rooms" ? "rooms" : "sessions");
 
   // approvals 这张面本身就是数组，sessions/rooms 是 {version, …:[…]} 的 store

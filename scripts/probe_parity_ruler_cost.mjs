@@ -107,12 +107,12 @@ console.log(
 );
 const [cloneMs] = ms(() => JSON.parse(JSON.stringify(post.sessions)));
 console.log(
-  `   命中路径花在哪，当场量：整份 sessions 深拷贝实测 ${cloneMs.toFixed(1)}ms，` +
-    `对上缓存命中那 ${hitMs.toFixed(1)}ms —— 差额 ${Math.max(0, hitMs - cloneMs).toFixed(1)}ms 才是别的开销。` +
-    `写后那 ${postMs.toFixed(1)}ms 含全量重折（#82 要治的就是这一格）。`,
+  `   命中路径花在哪，当场量：整份 sessions 深拷贝实测 ${cloneMs.toFixed(1)}ms，对上缓存命中那 ${hitMs.toFixed(1)}ms。` +
+    `写后再读那 ${postMs.toFixed(1)}ms 走的是哪条路，读数自己说：foldPath=${post.foldPath}` +
+    `（full=全量重折，incremental=只折新行；#82 治的就是这一格）。`,
 );
 readModel.closeAll();
 
 const again = breakdown();
-console.log(`同一库连跑第二次：auditSurfaces ${again.auditMs.toFixed(1)}ms（事件 ${again.events}）—— 尺每次调用都重新开库+全量读，没有复用句柄。`);
+console.log(`同一库连跑第二次：auditSurfaces ${again.auditMs.toFixed(1)}ms（事件 ${again.events}）—— 尺的缓存按 lastSeq 往前走，第二次只折新行（#82）。`);
 fs.rmSync(root, { recursive: true, force: true });

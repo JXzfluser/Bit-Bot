@@ -305,6 +305,54 @@ const onRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-on-"));
   else ok("RM-05", `冷读→命中缓存→返回值可变但不污染→写入后 lastSeq ${r3.lastSeq}→${r4.lastSeq} 失效并读到新消息`);
 }
 
+/* ===== RM-10：增量折叠必须和全量折出同一份面（#82 / §8.165 的「写后读 330ms」那一格）=====
+ * 这条门只回答一个问题：读模型为了省时间改成「上次干净状态 ⊕ 新行」之后，
+ * 交出去的面有没有和从头折的不一样。等值不成立时，省下的时间不作数。 */
+{
+  cleanupFlags();
+  const incRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-rm-inc-"));
+  process.env.BITBOT_EVENT_DUAL_WRITE = "1";
+  eventMirror.closeAllMirrors();
+  eventReadModel.closeAll();
+  const ssI = makeSessions(incRoot);
+  const fi = dbFileFor(incRoot);
+  for (let i = 0; i < 3; i += 1) ssI.create(`增量 ${i}`);
+  process.env.BITBOT_EVENT_READ = "1";
+  const cold = eventReadModel.readSurfaces(incRoot, { file: fi });
+  const c4 = ssI.create("增量 3");
+  const inc = eventReadModel.readSurfaces(incRoot, { file: fi });
+  eventReadModel.closeAll();
+  const full = eventReadModel.readSurfaces(incRoot, { file: fi });
+  const keyOf = (r) => JSON.stringify({ s: r.sessions, r: r.rooms, a: r.approvals });
+  if (!c4.ok) bad("RM-10", "第四步写入没成（夹具是空的，不判绿）");
+  else if (!cold.ok || cold.foldPath !== "full") bad("RM-10", `冷读不该是增量：${JSON.stringify({ ok: cold.ok, path: cold.foldPath })}`);
+  else if (inc.foldPath !== "incremental") bad("RM-10", `写一条之后没走增量（foldPath=${inc.foldPath}）`);
+  else if (!(inc.count > 0 && inc.count < cold.count)) bad("RM-10", `增量那次读了 ${inc.count} 行，全量是 ${cold.count} 行 —— 没真的少读`);
+  else if (keyOf(inc) !== keyOf(full)) bad("RM-10", "增量折出来的面与全量不等：省下的时间不作数");
+  else ok("RM-10", `冷读 full(${cold.count} 行) → 写一条走 incremental(新读 ${inc.count} 行) → 与 closeAll 之后全量折逐字段相等`);
+
+  /* 脏起点不许当基底：折干净是续折的前提，带 anomalies 的 fromState 必须被 foldEvents 拒掉，
+     否则毒面会被缓存藏起来（臂6 那套「库有账但折不动」的证据就永远出不了缓存）。 */
+  const fold = require(path.join(ROOT, "hosts/shared/event_mirror.js")).foldEvents;
+  let dirtyErr = null;
+  try {
+    fold([], { fromState: { sessions: { sessions: [] }, rooms: { rooms: [] }, approvals: [], anomalies: ["脏"] } });
+  } catch (err) {
+    dirtyErr = String((err && err.message) || err);
+  }
+  if (!dirtyErr || !/anomalies/.test(dirtyErr)) bad("RM-10b", `带 anomalies 的起点没被拒：${dirtyErr}`);
+  else ok("RM-10b", "折不干净的起点被 foldEvents 当场拒绝（毒面不许进缓存当前缀）");
+
+  cleanupFlags();
+  eventMirror.closeAllMirrors();
+  eventReadModel.closeAll();
+  try {
+    fs.rmSync(incRoot, { recursive: true, force: true });
+  } catch {
+    /* 临时目录清不掉不影响结论 */
+  }
+}
+
 /* ===== RM-06：日志坏了要说话（垃圾字节 + anomaly 两条路） ===== */
 {
   // 6a：库文件塞垃圾 → open/read 失败 → 回退 JSON，stderr 有说明

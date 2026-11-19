@@ -235,11 +235,96 @@ ok("K3 语义没被形状改动偷走：丢 id 的异常文案仍由 order 分�
   /顺序里没有这些 id，但它们还在库里/.test(orderBody) && /ghosts/.test(orderBody),
   "缺 anomaly 文案即说明改动顺手砍掉了校验");
 
+/* ── 判据 L：增量折叠必须和全量折出同一个东西（#82 / §8.165 的成本换算换来的这一片）────
+   成本是这条线的动机（2000 会话实测写后读 330.2ms，命中只有 0.8ms），但判据不测时间：
+   测「续折出来的读数，与从头折的读数，逐字段相等」。等值不成立时增量就是错的读数，省下的时间不作数。 */
+ok("L0 前置自证：尺导出了 resetFoldCache（没有它，下面每条都会被上一条的缓存槽污染）",
+  typeof parity.resetFoldCache === "function", typeof parity.resetFoldCache);
+parity.resetFoldCache();
+const lRoot = freshRoot();
+const lStore = createSessionStore(repoRoot, { dataRoot: lRoot });
+lStore.create("LW 甲");
+lStore.create("LW 乙");
+const fullFirst = parity.auditSurfaces({ dataRoot: lRoot, incremental: false });
+const incFirst = parity.auditSurfaces({ dataRoot: lRoot });
+ok("L1 首折必须真走全量并数到行（没有这个对照，后面「少读了」这句话是空的）",
+  incFirst.foldMode === "full" && incFirst.foldRows > 0 && fullFirst.foldRows === incFirst.foldRows,
+  JSON.stringify({ mode: incFirst.foldMode, rows: incFirst.foldRows, full: fullFirst.foldRows }));
+lStore.create("LW 丙");
+const inc2 = parity.auditSurfaces({ dataRoot: lRoot });
+ok("L2 写一条之后确实只读新行（foldMode=incremental 且 foldRows < 全量行数）",
+  inc2.foldMode === "incremental" && inc2.foldRows < fullFirst.foldRows + 3 && inc2.foldRows < incFirst.foldRows + 3,
+  JSON.stringify({ mode: inc2.foldMode, rows: inc2.foldRows, first: incFirst.foldRows }));
+const cmpKey = (x) =>
+  x.records
+    .map((z) => [z.kind, z.surface, z.foldEntries, z.jsonEntries, z.matched, z.mismatched, z.inFoldNotJson, z.inJsonNotFold, z.firstDiff].join("|"))
+    .join("\n");
+const fullNow = parity.auditSurfaces({ dataRoot: lRoot, incremental: false });
+ok("L3 增量读数与全量读数逐字段相等（等值是比出来的，不是我推出来的）",
+  cmpKey(inc2) === cmpKey(fullNow) && inc2.drift === fullNow.drift,
+  `inc=${cmpKey(inc2).slice(0, 240)}\nfull=${cmpKey(fullNow).slice(0, 240)}`);
+
+const { foldEvents } = require(path.join(repoRoot, "hosts/shared/event_mirror.js"));
+let dirtyThrew = null;
+try {
+  foldEvents([], { fromState: { sessions: { sessions: [] }, rooms: { rooms: [] }, approvals: [], anomalies: ["上一轮就没折干净"] } });
+} catch (err) {
+  dirtyThrew = String((err && err.message) || err);
+}
+ok("L4 起点带 anomalies 的续折必须被拒（折不干净的历史不许当基底，否则毒面被缓存藏起来）",
+  !!dirtyThrew && /anomalies/.test(dirtyThrew), dirtyThrew);
+
+/* L7：缓存必须**往前走**。必须排在 L5 之前：L5 删过 events/ 之后，同进程的镜像句柄还指着被删掉的 inode，
+   store 再写多少条都不会落到盘上的库里（第一版 L7 就死在这里，读数全是 reused/0 行）。
+   只测「这一次读得少」抓不到「槽永远停在第一次那一版」——那种实现的增量会随时间长大，成本优势悄悄没了，
+   但 L2/L3 照样绿（实测 M2 就是这么溜过去的：去掉增量路径的 foldCacheByFile.set 后 PASS=38 FAIL=0，判据对它完全无感）。*/
+lStore.create("LW 戊");
+const a7 = parity.auditSurfaces({ dataRoot: lRoot });
+lStore.create("LW 己");
+const b7 = parity.auditSurfaces({ dataRoot: lRoot });
+ok("L7 连写两条：每次新读的行数都等于「这一条派出的事件数」，两次必须相等（缓存没往前走就会一次比一次大）",
+  a7.foldMode === "incremental" && b7.foldMode === "incremental" && a7.foldRows > 0 && b7.foldRows === a7.foldRows,
+  JSON.stringify({ a: [a7.foldMode, a7.foldRows], b: [b7.foldMode, b7.foldRows] }));
+const full7 = parity.auditSurfaces({ dataRoot: lRoot, incremental: false });
+ok("L7b 缓存往前走之后，读数仍与全量逐字段相等（推进不能靠少算）",
+  cmpKey(b7) === cmpKey(full7) && b7.drift === full7.drift,
+  `inc=${cmpKey(b7).slice(0, 240)}\nfull=${cmpKey(full7).slice(0, 240)}`);
+
+
+/* 库重建后 seq 会倒退：续折会把新库的头几行加到旧世界上，读数看着「有账」其实全是幽灵。
+   这里**直接建一个小库**，不用 store 再写一条来重建：同进程里镜像句柄还指着被删掉的 inode，
+   写出去的文件在盘上不存在 —— 第一版就是这么错的（L5/L6 双双拿到 no_db，两侧都「一致」，
+   判据看着过了其实是空的）。这条坑的形状和 §8.161 D0 前置自证同一个：夹具自己不成立就别判绿。 */
+const dbL = path.join(lRoot, "events", "desktop-events.sqlite");
+fs.rmSync(path.dirname(dbL), { recursive: true, force: true });
+const evLog = require(path.join(repoRoot, "hosts/shared/event_log.js"));
+{
+  const h = evLog.openEventLog({ file: dbL, actor: "gate-L5" });
+  h.append({ sessionId: "system", kind: "session_created", payload: { surface: "sessions", session: { id: "sess-l5new", title: "LW 重建" } } });
+  h.close();
+}
+const inc5 = parity.auditSurfaces({ dataRoot: lRoot });
+const full5 = parity.auditSurfaces({ dataRoot: lRoot, incremental: false });
+ok("L5 前置自证：重建出来的小库确实在盘上、且 seq 比缓存里的小（否则这条只是恒真）",
+  fs.existsSync(dbL) && inc5.lastSeq >= 1 && inc5.lastSeq < 9 && inc5.foldRows === 1,
+  JSON.stringify({ lastSeq: inc5.lastSeq, rows: inc5.foldRows, mode: inc5.foldMode }));
+ok("L5 库重建（seq 倒退）后绝不续折：foldMode 不是 incremental，读数与全量一致，且真报出偏差",
+  inc5.foldMode !== "incremental" && cmpKey(inc5) === cmpKey(full5) && inc5.drift > 0,
+  JSON.stringify({ mode: inc5.foldMode, drift: inc5.drift, full: full5.drift }));
+
+const inc6 = parity.auditSurfaces({ dataRoot: lRoot });
+const full6 = parity.auditSurfaces({ dataRoot: lRoot, incremental: false });
+ok("L6 没写就读 = reused（新读 0 行）且偏差不许比全量多出一个（防「拿旧状态当新状态」造出假 drift）",
+  inc6.foldMode === "reused" && inc6.foldRows === 0 && inc6.drift === full6.drift && inc6.drift > 0,
+  JSON.stringify({ mode: inc6.foldMode, rows: inc6.foldRows, drift: inc6.drift, full: full6.drift }));
+
 honestSkip("真装机默认配置下的开机留痕",
   "双写默认关（event_mirror.js:454）→ 默认装机上三张面全是 no_reading。尺已能当场敲（`node scripts/diagnose_surfaces.mjs`，H 组钉住），但开机自动留痕仍没接：默认配置下每次启动三条 warn 等于把尺的空转说成用户故障。要成运行时护栏，得先二选一（都要授权）：翻默认双写 / 接显式诊断入口");
 
 try {
   store.close?.();
+  lStore.close?.();
+  fs.rmSync(lRoot, { recursive: true, force: true });
   fs.rmSync(root, { recursive: true, force: true });
   fs.rmSync(empty, { recursive: true, force: true });
 } catch (_e) {
