@@ -91,6 +91,28 @@ console.log(
     `（1.0=线性，2.0=平方）。线性外推在超线性数据上不成立，所以这里不报「每千条多少毫秒」。`,
 );
 
+/* 产品热路径：`event_read_model.readSurfaces` 带 lastSeq 缓存，量三态 ——
+   冷读（全量折）/ 命中缓存（不折但要深拷贝整份状态交给 read-modify-write 调用方）/
+   写一次之后再读（缓存必然失效）。第三态就是用户每点一次要付的钱。 */
+const readModel = require(path.join(repoRoot, "hosts/shared/event_read_model.js"));
+process.env.BITBOT_EVENT_READ = "1";
+const [coldMs, cold] = ms(() => readModel.readSurfaces(root, { env: process.env }));
+const [hitMs, hit] = ms(() => readModel.readSurfaces(root, { env: process.env }));
+store.create("热路径探针 触发一次写");
+const [postMs, post] = ms(() => readModel.readSurfaces(root, { env: process.env }));
+console.log(
+  `产品读热路径（readSurfaces，会话 ${created} / 事件 ${breakdown().events}）：` +
+    `冷读 ${coldMs.toFixed(1)}ms(ok=${cold.ok}) | 缓存命中 ${hitMs.toFixed(1)}ms(cached=${hit.cached}) | ` +
+    `写后再读 ${postMs.toFixed(1)}ms(cached=${post.cached})`,
+);
+const [cloneMs] = ms(() => JSON.parse(JSON.stringify(post.sessions)));
+console.log(
+  `   命中路径花在哪，当场量：整份 sessions 深拷贝实测 ${cloneMs.toFixed(1)}ms，` +
+    `对上缓存命中那 ${hitMs.toFixed(1)}ms —— 差额 ${Math.max(0, hitMs - cloneMs).toFixed(1)}ms 才是别的开销。` +
+    `写后那 ${postMs.toFixed(1)}ms 含全量重折（#82 要治的就是这一格）。`,
+);
+readModel.closeAll();
+
 const again = breakdown();
 console.log(`同一库连跑第二次：auditSurfaces ${again.auditMs.toFixed(1)}ms（事件 ${again.events}）—— 尺每次调用都重新开库+全量读，没有复用句柄。`);
 fs.rmSync(root, { recursive: true, force: true });
