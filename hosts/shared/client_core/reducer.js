@@ -107,8 +107,9 @@ function foldEvents(rows) {
       const arr = bucket(p.surface) || [];
       const byId = new Map(arr.map((e) => [String(e.id), e]));
       const wanted = (p.ids || []).map(String);
+      const wantedSet = new Set(wanted);
       const reordered = wanted.map((id) => byId.get(id));
-      const lost = [...byId.keys()].filter((id) => !wanted.includes(id));
+      const lost = [...byId.keys()].filter((id) => !wantedSet.has(id));
       if (lost.length) anomalies.push(`seq=${row.seq}: ${p.surface} 的顺序里没有这些 id，但它们还在库里：${lost.join(",")}`);
       const ghosts = wanted.filter((id) => !byId.has(id));
       if (ghosts.length) anomalies.push(`seq=${row.seq}: ${p.surface} 的顺序指向不存在的实体：${ghosts.join(",")}`);

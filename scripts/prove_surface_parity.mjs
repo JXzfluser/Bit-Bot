@@ -213,6 +213,28 @@ ok("H4b 开关开着但库里没东西 → dbPresent=false（照事实报，不�
   lieParsed !== null && lieParsed.dbPresent === false,
   JSON.stringify(lieParsed && { dbPresent: lieParsed.dbPresent, drift: lieParsed.drift }));
 
+/* ── 判据 K：折叠器热路径形状 ─────────────────────────────────────────
+   为什么这条属于这把尺：`auditSurfaces` 和产品的 `readSurfaces`/`load()` 过的是同一个
+   `foldEvents`。§8.164 实测到折叠是超线性的（会话 500→1000，fold 21.7→82.4ms；×2 事件 ×3.8 时间），
+   其中一格是 `entity_order_changed` 分支里 `wanted.includes(id)` —— 每条建会话都派一条顺序事件，
+   于是在 growing 的名单上做 O(N) 次 O(N) 成员检查。改成 Set 后同规模 fold 从 336.7ms 掉到 82.4ms（4.1×）。
+   本组**不证时间**（计时判据在 CI 上会抖，不在这里赌），只钉「这一处不许退回数组成员检查」这个形状。 */
+const reducerSrc = fs.readFileSync(path.join(repoRoot, "hosts/shared/client_core/reducer.js"), "utf8");
+const oStart = reducerSrc.indexOf('kind === "entity_order_changed"');
+const oEnd = reducerSrc.indexOf('kind === "entity_removed"', oStart);
+ok("K0 前置自证：order 分支在 reducer 里找得到（找不到就整组不作数，别拿空串判绿）",
+  oStart > 0 && oEnd > oStart, `oStart=${oStart} oEnd=${oEnd}`);
+const orderBody = oStart > 0 && oEnd > oStart ? reducerSrc.slice(oStart, oEnd) : "";
+ok("K1 order 分支里不许出现 `wanted.includes(`（数组成员检查在每事件 O(N) 循环里=平方级）",
+  !/wanted\s*\.\s*includes\s*\(/.test(orderBody),
+  orderBody.split("\n").filter((l) => l.includes("includes")).join(" | "));
+ok("K2 order 分支必须用 Set 做名单成员判断（正向形状，防「删掉 includes 但也没建索引」）",
+  /new Set\(\s*wanted\s*\)/.test(orderBody) && /wantedSet\.has\(/.test(orderBody),
+  orderBody.split("\n").filter((l) => /Set|wantedSet/.test(l)).join(" | "));
+ok("K3 语义没被形状改动偷走：丢 id 的异常文案仍由 order 分支产出（lost 那条 push 还在）",
+  /顺序里没有这些 id，但它们还在库里/.test(orderBody) && /ghosts/.test(orderBody),
+  "缺 anomaly 文案即说明改动顺手砍掉了校验");
+
 honestSkip("真装机默认配置下的开机留痕",
   "双写默认关（event_mirror.js:454）→ 默认装机上三张面全是 no_reading。尺已能当场敲（`node scripts/diagnose_surfaces.mjs`，H 组钉住），但开机自动留痕仍没接：默认配置下每次启动三条 warn 等于把尺的空转说成用户故障。要成运行时护栏，得先二选一（都要授权）：翻默认双写 / 接显式诊断入口");
 
