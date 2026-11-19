@@ -420,5 +420,96 @@ if(role==="A"){
   }
 }
 
+/* 臂8：一次面提交在事件库里必须是**原子的**（片12b）。
+   起因是逐条 append：每条自己一个事务，而一次「建会话」要派 created+order+activated 三条，
+   `kill -9` 落在中间就是半提交 —— 半提交里「顺序指向不存在的实体」那一支正是臂6 那种
+   永久毒面（片10/10b 之后每个写者都被拒）。所以两道各自正确的决定合起来会造出一个死面。
+   夹具不用 kill -9 赌时序：往库里挂一个 AFTER INSERT 触发器，让它在这批的第 2 条上 RAISE(ABORT)。
+   这样产品自己的提交路径必然断在中间 —— 判据三条：抛异常、**事件行数一格没多**（半提交就是在这里露形）、
+   折叠还 ok（没被毒）。拆掉触发器后同一条建会话必须照常落 ≥2 条事件（反向对照，防三条判据恒真）。 */
+{
+  const { dataRoot } = freshSurface();
+  const { DatabaseSync } = require("node:sqlite");
+  const dbFile = path.join(dataRoot, "events", "desktop-events.sqlite");
+  const st = require(path.join(REPO, "hosts/desktop/sessions.js")).createSessionStore(REPO, { dataRoot });
+  const warm = st.create("臂8 播种"); // 先确保库与表存在，并让面非空
+  if (!warm || !warm.ok || !fs.existsSync(dbFile)) {
+    honestSkip("臂8 前置没成立（播种会话没写成或库文件不在），不拿这次运行判绿");
+  } else {
+    const admin = new DatabaseSync(dbFile);
+    const count = () => admin.prepare("select count(*) as n from events").get().n;
+    const n0 = count();
+    /* 炸在这批的第 2 条：AFTER INSERT 里新行已经计数，所以条件是 n0+2 ——
+       第一版写成 n0+1，等于炸掉第一条，逐条落库与整批事务都留 0 行，那条原子性判据就是假的
+       （突变体当场验不出来，靠突变体才发现）。 */
+    admin.exec(`CREATE TRIGGER gate_torn AFTER INSERT ON events
+      WHEN (SELECT count(*) FROM events) = ${n0 + 2}
+      BEGIN SELECT RAISE(ABORT, 'gate_torn_second_row'); END;`);
+    let threw = "";
+    try { st.create("臂8 撕裂测试"); } catch (e) { threw = String((e && e.message) || e).slice(0, 60); }
+    const n1 = count();
+    const hit = readSurfaces(dataRoot);
+    ok("臂8 前置自证：产品提交路径确实在这批中途被炸（没炸就说明夹具没生效，不判绿）", /gate_torn_second_row/.test(threw), threw || "没抛异常");
+    ok(`臂8 原子性：中途炸掉后事件行数一格没多（前后都是 ${n0} 行；逐条落库会留下半提交）`, n1 === n0, { 之前: n0, 之后: n1 });
+    ok("臂8 半提交不许毒面：炸完之后折叠仍 ok 且 0 anomaly", hit.ok === true && (hit.anomalies || []).length === 0,
+      { ok: hit.ok, reason: hit.reason, anomalies: (hit.anomalies || []).slice(0, 2) });
+    const arrRaw = (hit.sessions && (hit.sessions.sessions || hit.sessions)) || [];
+    const titles = Array.isArray(arrRaw) ? arrRaw.map((s) => s.title) : [];
+    ok("臂8 撕裂不许在面上留下半条会话：折叠里没有「臂8 撕裂测试」", !titles.includes("臂8 撕裂测试"), titles);
+    admin.exec("DROP TRIGGER gate_torn;");
+    const after = st.create("臂8 拆夹具后重建");
+    const n2 = count();
+    ok("臂8 反向对照：拆掉触发器后同一条建会话照常落库，且一批就不止一条事件（证明上面几条不是恒真）",
+      after && after.ok === true && n2 - n1 >= 2, { 回执: after && after.ok, 新增事件: n2 - n1 });
+    /* 灵敏度实测（别把臂8 读成「原子性被动态验证过」）：
+       - 「退回逐条 append」的突变体：只有**静态形状**那条翻红（FAIL=1），两条动态行数判据仍绿；
+       - 「appendBatch 去掉 BEGIN」的突变体：三条全绿 —— 也就是说这两条动态判据今天**证明不了自己灵敏**，
+         真正压住原子性的是静态判据 + 读代码得到的事务形状。原因未定位，先如实记下，别拿它们当护栏。 */
+    /* 上面那条对「commitText 退回逐条 append」**不灵敏**（实测：突变后仍然 5 行 → 绿），
+       所以原子性由下面两条压：① 批量口自己的全成/全不成（动态）；② 落库口必须走批量口（静态形状，
+       和 SW-24 同一类尺子）。触发器那条留着的价值是「产品路径中途炸完，面仍折得动」。 */
+    const { openEventLog } = require(path.join(REPO, "hosts/shared/event_log.js"));
+    const h = openEventLog({ file: dbFile, actor: "gate-arm8" });
+    /* 第二条必须在**落库那一刻**炸，这条判据才有意义：第一版塞的是「缺 sessionId」那种
+       入参校验失败 —— 它压根没进 SQL，开不开事务都留 0 行，突变体（appendBatch 去掉 BEGIN）
+       实测照样全绿，等于没测。所以这里也用触发器，把炸点放在第二条 INSERT 上。 */
+    const before = h.count();
+    admin.exec(`CREATE TRIGGER gate_torn2 AFTER INSERT ON events
+      WHEN (SELECT count(*) FROM events) = ${before + 2}
+      BEGIN SELECT RAISE(ABORT, 'gate_torn_second_row'); END;`);
+    let seamThrew = "";
+    try {
+      h.appendBatch([
+        { sessionId: "system", kind: "store_state_changed", payload: { surface: "sessions", fields: { a: 1 } } },
+        { sessionId: "system", kind: "store_state_changed", payload: { surface: "sessions", fields: { b: 2 } } },
+      ]);
+    } catch (e) { seamThrew = String(e && e.message).slice(0, 50); }
+    admin.exec("DROP TRIGGER gate_torn2;");
+    const afterBatch = h.count();
+    ok(`臂8 批量口原子性（炸点放在第二条 INSERT）：整批回滚，第一条不许留下（前后都是 ${before} 行）`,
+      /gate_torn_second_row/.test(seamThrew) && afterBatch === before, { 之前: before, 之后: afterBatch, 抛: seamThrew });
+    const twoOk = h.appendBatch([
+      { sessionId: "system", kind: "store_state_changed", payload: { surface: "sessions", fields: { c: 3 } } },
+      { sessionId: "system", kind: "store_state_changed", payload: { surface: "sessions", fields: { d: 4 } } },
+    ]);
+    ok("臂8 批量口反向对照：夹具拆掉后两条都合法时整批照常落库（防上一条恒真）",
+      twoOk.length === 2 && h.count() === afterBatch + 2, { 回执: twoOk.length, 行数: h.count() });
+    const mirrorSrc = fs.readFileSync(path.join(REPO, "hosts/shared/event_mirror.js"), "utf8");
+    const logSrc = fs.readFileSync(path.join(REPO, "hosts/shared/event_log.js"), "utf8");
+    const ctBody = mirrorSrc.slice(mirrorSrc.indexOf("function commitText("), mirrorSrc.indexOf("function noteFailure"));
+    const cBody = mirrorSrc.slice(mirrorSrc.indexOf("  function commit("), mirrorSrc.indexOf("function commitText"));
+    ok("臂8 静态形状：两张面的落库口都走 appendBatch，不再逐条 append（退回逐条即红）",
+      /h\.appendBatch\(/.test(ctBody) && !/h\.append\(/.test(ctBody) &&
+      /h\.appendBatch\(/.test(cBody) && !/h\.append\(\{/.test(cBody),
+      { commitText: /h\.append(Batch)?\(/.exec(ctBody)?.[0], commit: /h\.append(Batch)?\(/.exec(cBody)?.[0] });
+    ok("臂8 静态形状：appendBatch 真的开事务（IMMEDIATE 起、失败必 ROLLBACK）",
+      /BEGIN IMMEDIATE/.test(logSrc.slice(logSrc.indexOf("function appendBatch"), logSrc.indexOf("function appendBatch") + 900)) &&
+      /ROLLBACK/.test(logSrc.slice(logSrc.indexOf("function appendBatch"), logSrc.indexOf("function appendBatch") + 900)),
+      logSrc.slice(logSrc.indexOf("function appendBatch"), logSrc.indexOf("function appendBatch") + 260).replace(/\s+/g, " "));
+    h.close();
+    admin.close();
+  }
+}
+
 console.log(`prove_kp09_event_only_concurrency: PASS=${pass} FAIL=${fail} SKIP=${skip}`);
 process.exit(fail ? 1 : 0);
