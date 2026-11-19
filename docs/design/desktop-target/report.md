@@ -12571,3 +12571,24 @@ sessions 面要的是同一条纪律，外加把「diff→commit」纳入同一�
 两种模式下的常规单进程会话路径实测未变（`EVENT_ONLY=0` 与 `=1`：create ok、append ok、会话数 2、标题「甲,新对话」）。
 `withFaceLock` 在 EVENT_ONLY 里新增的调用只在播种那一条路，常态不经过。
 本轮未重跑全量矩阵；G-124 的锚点与项数未动（sessions 面真并发**没有**进门，因为它还没绿）。
+
+## 8.151 同一个 fail-open 在共用落库口也有：`prev==null` 会被当成「这张面没账」，于是从 BASELINE 整面替换（预防性封堵，四道事件门回归全绿）（2026-11-19）
+
+§8.150 定位到会话面的「读不动 → 播种空面」之后，顺着同一个形状查了另两面共用的写口 `eventOnlyWrite()`：
+`prev` 取不到时走 `prevTextFor()`，而后者在 `!(hit.ok && !anomalies && count>0)` 时**一律返回 null**；
+拿着 null 的 prev 交给 `commitText(def, null, nextText)` 就是**从 BASELINE 起算的整面替换**。
+也就是说并发写撞出一次折叠 anomaly，下一次首写就会把「我读不到」实现成「这张面是空的」，
+把别人的行从唯一真源里抹掉 —— 和会话面那条是同一个洞，只是入口不同。
+`surfaceEmptyInDb()` 里那句注释「折不动：按没账处理」（:106）说明这个含糊是有意写下的，今天看它错了：
+**读不到和没账是两件事**，前者不能授权一次覆盖。
+
+改法：`prev` 仍为 null 时补一次探测读，只要「不是干净的没账」（`!ok` 且原因不是 `no_db`，或有 anomaly）
+就抛 `EVENT_PREV_UNREADABLE` 拒绝提交；冷启动（库还不存在 / 一条事件没有）照旧允许从 BASELINE 起算。
+**诚实的口径边界：** 这一条是**预防性封堵**——会话面那条触发路径是实测出来的（§8.150 的 21 条 anomaly），
+但共用口这条今天**没有门能钉住它**（要稳定造出「库有账且折不动」得先有并发写者恰好读到半提交，
+现有四道事件门都不制造那个瞬间）。所以不宣称已证，只把它列为待办：需要一个「折叠不可用时的写口」夹具
+（可参照片7 的确定性写失败注入那条路）。
+
+**回归（同机连跑）：** `prove_kp09_event_only_concurrency` PASS=15 FAIL=0 SKIP=0（臂1~4 未退）；
+`prove_event_dual_write` PASS=31 FAIL=0；`prove_event_only` PASS=7 FAIL=0；`prove_event_read_model` PASS=10 FAIL=0。
+本轮未重跑全量矩阵。
