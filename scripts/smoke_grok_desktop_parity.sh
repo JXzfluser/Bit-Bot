@@ -5388,9 +5388,9 @@ else
   ok "G-124 反向夹具真红：期望被换掉即判红（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g124-mut.log | tail -1)）"
 fi
 rm -f scripts/.g124-mut.mjs /tmp/g124-mut.log
-echo "  · G-124 口径（诚实）：两条臂覆盖 approvals 追加面 + rooms 整面替换面（同进程双实例、跨进程文件屏障强制交错）；"
-echo "    sessions 面的跨进程交错不在这条门里（每进程各持一个 store，写序另测），"
-echo "    真并发随机撞窗口与 kill -9 落在两次写之间亦未覆盖 —— 见交付报告 §8.145 末段。"
+echo "  · G-124 口径（诚实）：三条臂覆盖 approvals 追加面 + rooms 整面替换面 + sessions 会话面"
+echo "    （臂1 同进程双实例、臂2/臂3 跨进程文件屏障强制交错；锚点 PASS>=7 在三门全绿时实测 11）；"
+echo "    真并发随机撞窗口与 kill -9 落在两次写之间仍未覆盖 —— 见交付报告 §8.148。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo

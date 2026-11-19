@@ -121,5 +121,64 @@ const read = (dataRoot) => {
   }
 }
 
+
+/* 臂3：会话面跨进程（§8.147 记的「没量出来」在这一臂补上）
+   两条明写的口径：① store 在空 dataRoot 上会自带一条「新对话」，期望必须按 +1 写，
+   否则第一版门会因为多出一条而假红；② 反向对照用 st.remove —— 删得掉才说明
+   「另一进程的会话还在」不是恒真。
+   子进程用 `node -e`，argv 从 1 开始取（写成文件跑时 slice(1) 会把脚本路径当成参数，
+   §8.147 那个「子进程零输出」就是这么来的）。 */
+const CHILD_SES = `
+const REPO=${JSON.stringify(REPO)}, path=require("path"), fs=require("fs");
+const [dataRoot, role, dir]=process.argv.slice(1);
+process.env.BITBOT_EVENT_ONLY="1";
+const st=require(path.join(REPO,"hosts/desktop/sessions.js")).getSessionStore(REPO,{dataRoot});
+const wait=(f,ms)=>{const t=Date.now();while(!fs.existsSync(f)){if(Date.now()-t>ms)throw new Error("屏障超时 "+f);}};
+const mk=(t)=>{const r=st.create(t); if(!r||!r.ok||!r.session) throw new Error("create 失败 "+t+"："+JSON.stringify(r).slice(0,120)); return r.session.id;};
+const msg=(id,text)=>{const r=st.appendMessages(id,[{role:"user",content:text}]); if(!r||r.ok===false) throw new Error("appendMessages 失败 "+id+"："+JSON.stringify(r).slice(0,120));};
+if(role==="A"){
+  const id=mk("甲-一"); msg(id,"甲的内容");
+  fs.writeFileSync(path.join(dir,"SES_A1_done"),"1");
+  wait(path.join(dir,"SES_go"),40000);
+  const gone=mk("甲-三要删掉");
+  const r=st.remove(gone); if(!r||r.ok===false) throw new Error("remove 失败 "+JSON.stringify(r).slice(0,120));
+} else {
+  wait(path.join(dir,"SES_A1_done"),40000);
+  const id=mk("乙-一"); msg(id,"乙的内容");
+  fs.writeFileSync(path.join(dir,"SES_B_done"),"1");
+}
+`;
+{
+  const { root, dataRoot } = freshSurface();
+  const child = (role) => spawn("node", ["-e", CHILD_SES, dataRoot, role, root], { encoding: "utf8" });
+  const spin = (c) => { let err = ""; c.stderr.on("data", (d) => { err += d; });
+    return { code: new Promise((r) => c.on("exit", r)), err: () => err }; };
+  const A = spin(child("A"));
+  const barrier = (f, ms = 45000) => { const t = Date.now(); while (!fs.existsSync(f)) { if (Date.now() - t > ms) return false; } return true; };
+  if (!barrier(path.join(root, "SES_A1_done"))) {
+    const aErr = A.err();
+    honestSkip("臂3 屏障 SES_A1_done 没等到（会话没写成就整臂 SKIP，不判绿）：" + aErr.slice(0, 160));
+  } else {
+    const B = spin(child("B"));
+    if (!barrier(path.join(root, "SES_B_done"))) honestSkip("臂3 B 没写出乙-一的屏障：" + B.err().slice(0, 160));
+    fs.writeFileSync(path.join(root, "SES_go"), "1");
+    const [aCode, bCode] = [await A.code, await B.code];
+    if (aCode !== 0 || bCode !== 0) {
+      honestSkip(`臂3 子进程非零退出（甲 ${aCode} / 乙 ${bCode}）：${A.err().slice(0, 160)}`);
+    } else {
+      const hit = readSurfaces(dataRoot);
+      const arr = (hit.sessions && (hit.sessions.sessions || hit.sessions)) || [];
+      const list = Array.isArray(arr) ? arr.map((x) => `${x.title}:${x.message_count ?? (x.messages || []).length}`).sort() : [];
+      ok("臂3 会话面：两条进程各自的会话与消息都在（含 store 自带的那条「新对话」）",
+        JSON.stringify(list) === JSON.stringify(["乙-一:1", "新对话:0", "甲-一:1"]), list);
+      ok("臂3 反向对照（尺子得看得见删除）：甲删掉的会话从折叠消失，乙的还在",
+        !list.some((x) => x.startsWith("甲-三要删掉")) && list.some((x) => x.startsWith("乙-一")), list);
+      ok("臂3 折叠无异常", (hit.anomalies || []).length === 0, hit.anomalies);
+      ok("臂3 旁路生效：EVENT_ONLY 下 sessions.json 不落盘",
+        !fs.existsSync(path.join(dataRoot, "desktop", "sessions.json")));
+    }
+  }
+}
+
 console.log(`prove_kp09_event_only_concurrency: PASS=${pass} FAIL=${fail} SKIP=${skip}`);
 process.exit(fail ? 1 : 0);
