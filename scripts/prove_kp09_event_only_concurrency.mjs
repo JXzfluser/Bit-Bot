@@ -295,5 +295,65 @@ console.log("RESULT "+tag+" create_ok="+co+" create_fail="+cf+" msg_ok="+mo+" ms
   }
 }
 
+/* 臂6：折叠不可用时的写口行为 —— §8.151 把那条封堵叫「预防性、今天没有门钉得住」，
+   这一臂就是那件夹具，把口径钉成实测。夹具是确定性的：往事件库直接追加一条
+   `entity_order_changed{surface:"sessions",ids:["sess-dead0000"]}`（顺序指向不存在的实体），
+   readSurfaces 立刻稳定返回 ok:false reason:"fold_anomalies"。
+   实测到的三条形状，逐条判：
+   ① 会话面写口 = 拒写 + 回执 `{ok:false,error:"fold_blocked"}`（片10）；
+   ② 群面**冷基底**（新 surface 实例、prev 缓存空）= 抛 EVENT_PREV_UNREADABLE（片10b）——
+      注意只对冷缓存生效：同一实例里已经写过一次的面，prev 来自自己上一次提交，走的是增量，
+      不会被拦（那是对的，拦了就成了恒真）；
+   ③ 两次拒绝之后事件库行数**一格没多** —— 拒了却不许偷偷整面替换。
+   另有一条实测事实记在这里备查：追加面（approvals）自带 prevText（next = prev + 一行），
+   折叠坏了也照样写得进去且不会覆盖别人 —— 所以它不在本臂的拒绝判据里。 */
+{
+  const { dataRoot } = freshSurface();
+  const surface = M.createProductSurface(REPO, { dataRoot });
+  const { openEventLog } = require(path.join(REPO, "hosts/shared/event_log.js"));
+  const { DatabaseSync } = require("node:sqlite");
+  const dbFile = path.join(dataRoot, "events", "desktop-events.sqlite");
+  const count = () => new DatabaseSync(dbFile).prepare("select count(*) as n from events").get().n;
+  // 先让面上有账（也确保库存在）
+  const seedRoom = surface.roomCreate("甲Bot,乙Bot", "夹具前就有群");
+  if (!seedRoom || !seedRoom.ok || !fs.existsSync(dbFile)) {
+    honestSkip("臂6 前置没成立（建群回执或事件库文件不在），不拿这次运行判绿");
+  } else {
+    openEventLog({ file: dbFile, actor: "gate-arm6" }).append({
+      sessionId: "system", kind: "entity_order_changed", payload: { surface: "sessions", ids: ["sess-dead0000"] },
+    });
+    const broken = readSurfaces(dataRoot);
+    if (broken.ok !== false || !(broken.anomalies || []).some((a) => a.includes("顺序指向不存在的实体"))) {
+      honestSkip("臂6 夹具没能造出「库有账但折不动」（" + JSON.stringify(broken.reason) + "）——这件夹具本身失效，不判绿");
+    } else {
+      pass++;
+      console.log("  ✓ 臂6 夹具自证：注入一条幽灵顺序后 readSurfaces 稳定 ok:false + 「顺序指向不存在的实体」");
+      const n0 = count();
+      const st = require(path.join(REPO, "hosts/desktop/sessions.js")).createSessionStore(REPO, { dataRoot });
+      const ses = st.create("坏折叠下建的会话");
+      ok("臂6 会话面：折叠坏时写口给的是拒绝回执，不是 ok:true",
+        ses && ses.ok === false && ses.error === "fold_blocked", ses);
+      let threw = "";
+      try {
+        M.createProductSurface(REPO, { dataRoot }).roomCreate("甲Bot,乙Bot", "坏折叠下建的群");
+      } catch (e) { threw = String((e && e.code) || e && e.message); }
+      ok("臂6 群面（冷基底）：折叠坏时提交被拦成 EVENT_PREV_UNREADABLE", threw === "EVENT_PREV_UNREADABLE", threw || "没抛异常");
+      const n1 = count();
+      ok(`臂6 拒而不覆盖：两次被拦的写一格事件都没落（前后都是 ${n0} 行）`, n1 === n0, { 之前: n0, 之后: n1 });
+      // 反向对照：干净库上同样的两件写必须成功 —— 证明上面三条不是恒真。
+      const ctl = freshSurface();
+      const ctlSurface = M.createProductSurface(REPO, { dataRoot: ctl.dataRoot });
+      const okRoom = ctlSurface.roomCreate("甲Bot,乙Bot", "干净库上的群");
+      const ctlStore = require(path.join(REPO, "hosts/desktop/sessions.js")).createSessionStore(REPO, { dataRoot: ctl.dataRoot });
+      const okSes = ctlStore.create("干净库上的会话");
+      const ctlCount = new DatabaseSync(path.join(ctl.dataRoot, "events", "desktop-events.sqlite"))
+        .prepare("select count(*) as n from events").get().n;
+      ok("臂6 反向对照：干净折叠下同样的两件写都成功且事件确实入库",
+        okRoom && okRoom.ok === true && okSes && okSes.ok === true && ctlCount > 0,
+        { room: okRoom && okRoom.ok, ses: okSes && okSes.ok, 事件行: ctlCount });
+    }
+  }
+}
+
 console.log(`prove_kp09_event_only_concurrency: PASS=${pass} FAIL=${fail} SKIP=${skip}`);
 process.exit(fail ? 1 : 0);
