@@ -5408,6 +5408,28 @@ echo "    追加面（approvals）自带 prevText 所以折叠坏了也照样写
 echo "    回执不可解析一律 SKIP（SKIP≠0 在锚点里就是不过）；"
 echo "    仍未覆盖：kill -9 落在两次写之间、臂4 里的 sessions 面 —— 见交付报告 §8.149。"
 
+echo "== G-125 锚点覆盖尺（谁看守「门的断言有没有人看守」）=="
+if timeout 600 node scripts/prove_anchor_coverage.mjs > /tmp/g125-probe.log 2>&1; then
+  ok "G-125 AC 覆盖尺 exit 0（$(tail -1 /tmp/g125-probe.log)）"
+else
+  bad "G-125 AC 覆盖尺红（见 /tmp/g125-probe.log）"
+fi
+# 锚点钉 [$g125_id] 编号（契约写在尺头注释里）：尺的措辞可以改，编号和「这条真的绿过」不能消失。
+for g125_id in AC-01 AC-02 AC-03 AC-04 AC-05 AC-06; do
+  if grep -q "\[$g125_id\]" /tmp/g125-probe.log 2>/dev/null; then
+    ok "G-125 GP-AC $g125_id：锚点跑到绿行"
+  else
+    bad "G-125 GP-AC $g125_id 没跑出绿行（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+# 计数锚点：绿行条数与总结行一起钉 —— 删一条断言或让它静默 SKIP 都拦得住（矩阵里第一条 B 类看守）。
+if [ "$(grep -c '^  ✓' /tmp/g125-probe.log)" -ge 6 ] \
+   && grep -q "PASS=6 FAIL=0 SKIP=0" /tmp/g125-probe.log; then
+  ok "G-125 GP-AC 计数钉：绿行 $(grep -c '^  ✓' /tmp/g125-probe.log) ≥ 6 且 FAIL=0 SKIP=0"
+else
+  bad "G-125 GP-AC 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g125-probe.log)、$(tail -1 /tmp/g125-probe.log)（期望 PASS=6 FAIL=0 SKIP=0）"
+fi
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
