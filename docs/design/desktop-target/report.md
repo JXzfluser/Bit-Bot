@@ -13444,3 +13444,39 @@ node scripts/e2e_grok_desktop_spec.mjs
 **现账**：本轮改动 = `hosts/desktop/ui_chrome.css`（三处上限 640→558.4 + 注释出处修正与作废说明）、`scripts/e2e_grok_desktop_spec.mjs`（§4.4 探针三档 + SP 编号）、`scripts/smoke_grok_desktop_parity.sh`（G-127 段）、`scripts/prove_anchor_coverage.mjs`（ratchet 77）、本报告。**待办新增**：#88 关闭；观感回归（真机截图对比 558.4 下的长回复与代码块行）与「其余 30 条断言编号化」转入 #85。
 
 **边界 / 本轮未做**：① AC-02 的「日志→门」关联正则只认 `prove*/diagnose*` 文件名，`e2e_*` 的编号族（SP）不在它的看守范围 —— 本轮接进去的编号契约目前靠矩阵自身的锚点钉着，尺不会替它对账；扩正则牵动 AC-01/AC-03 读数，属 #85 的活，写在这里不当已做。② spec 门其余 30 条断言仍是散文（C-11 那类一改措辞就假红的形状）。③ 用户气泡那一侧只量了底色/字色/圆角/内高光，`u.w` 进快照但不钉 —— 用户列宽的真源读数本轮没独立出处，不硬判。④ 未跑整条矩阵；G-127 的 harness 只证明这段逻辑与锚点通。⑤ 这格从 640 收到 558.4 是**观感可见**的改动（每行字数 −约 13%），只验了 computed 与三条渲染门，没做逐屏截图对比；要看真效果得开一次 app 目测。⑥ §8.97 那张实测表其余行未复核，本轮只对「640 上限」这一句给了出处与作废。
+
+### 8.179 640 为什么能在两把尺子下面活下来：我方快照的 `messageColumn.maxWidthRule` 采的根本不是气泡，而是行/面板的四个读数 —— 探针换成与真源同量纲后，逐字段对照当场对上（558.4 / 534.398）（2026-11-21）
+
+**问题**：§8.178 把 640 收回真源 558.4 之后，剩一个更贵的问题没答：**这个数不是没人对照过**。`docs/design/desktop-target/reference/` 里两份快照一直在做同键 diff（`scripts/delta_emit_regions.mjs` 的行「消息列宽列 max」），Grok 侧给 `558.4px`，我方侧给的是什么，为什么从没红过。
+
+**机制（读代码 + 实跑量出来的，不是推测）**：`scripts/bb_spec_capture.mjs` 在 `messageColumn.maxWidthRule` 这个键下交的是一个**对象**——`{cssMaxWidth: "760px", contentMaxVar: "760px", resolved: 760, msgMaxWidth: "100%"}`，四项全部采自 `#log` 容器和 `.msg` 行，**没有一项是气泡**（气泡是 `.msg.assistant .body`，同一个函数里第 305 行早就有 `aBody` 这个变量，只是这个探针没用它）。真源侧 `scripts/grok_real_spec_capture.mjs:290` 在同名键下交的是 `STYLE(msg,["maxWidth"]).maxWidth`，即气泡的 computed 值。于是同一个键名装的是两种东西：
+
+- `delta_emit_regions.mjs:69` 拿它做逐字段对照，两侧形状不同（对象 vs 字符串），打出来永远是「不相等」的噪声，谁也不会把它当「差 202px」的信号读；
+- `grok_acceptance_expectations.mjs:98` 的 `parseFloat(GROK.messageColumn.maxWidthRule)` 算出期望 `maxWidth: band(558.4, 2)`，但**这份期望 JSON 目前没有任何门在消费**（`grep -rn "acceptance-expectations" scripts/` 只命中生成脚本自己与两处文档提及）——它就是待办 #9（W2「三门改读真源期望 JSON」）没做完的那半。
+
+也就是说：真值一直在盘上、期望一直在生成，唯独「我方读数」这一格从源头就采错了节点。640 不是躲过了对照，是**对照的那把尺子量的不是这个位置**。
+
+**本轮改动（一处探针）**：`scripts/bb_spec_capture.mjs` 的 `messageColumn` 探针——
+- `maxWidthRule` 改成气泡的 computed `max-width` 原值（与真源同量纲、同键名同语义）；
+- 新增 `maxWidthPx`：`min()` 表达式里的 px 项取最小值，给数值对照用（computed 值在 Chromium 里保留 `min(...)` 表达式，`parseFloat` 拿不到数）；
+- 原来那四项**没删**，挪到 `rowMaxWidthProbe` 下（它们描述的是行/面板，本身有用，只是不该占着 `maxWidthRule` 这个键名）；
+- 选择器说明表里 `messageColumn` 一行补上「maxWidthRule=.msg.assistant .body」。
+- 消费方核查：`grep -rn "cssMaxWidth|contentMaxVar|rowMaxWidthProbe" scripts/` 除本脚本外 0 命中，改形状不会撞既有门。
+
+**改完重采（真 Electron 1040×760、force-light、独立 user-data-dir）前后逐字**：
+
+| 字段 | 改前（我方快照） | 改后（我方快照） | 真源 |
+| --- | --- | --- | --- |
+| `messageColumn.maxWidthRule` | `{cssMaxWidth:"760px",contentMaxVar:"760px",resolved:760,msgMaxWidth:"100%"}` | `"min(558.4px, 100%)"` | `"558.4px"` |
+| `messageColumn.maxWidthPx` | （无此字段） | `558.4` | （558.4） |
+| `messageColumn.codeBlock.width` | `616px` | `534.398px` | `534.4` |
+
+`codeBlock.width` 是这条链上最硬的一格自证：它不是我改的字段，是同一份渲染里代码块的实际宽度，640 上限那版是 616（= 640 − 24 内边距），收到 558.4 后自动变成 534.398 —— 与真源 534.4 差 0.002px（设备像素取整），**两个独立节点同时落到真源的位置上**，说明 §8.178 那三处 CSS 改的是同一个约束、没有改错地方。
+
+**对照表现在的读数（逐字）**：`node scripts/delta_emit_regions.mjs` → `| 消息列宽列 max | 558.4px | min(558.4px, 100%) | 差 |`；`node scripts/grok_delta_report.mjs` → `| \`maxWidthRule\` | 558.4 | min(558.4px, 100%) |`。数值已等、文本仍标「差」——因为真源是裸 `558.4px`、我方是 `min(558.4px, 100%)`（窄窗时要跟着 100% 收缩，这是有意保留的自适应）。**没有**为了让表变绿去改 CSS 或把「差」洗成「等」；数值那一格由 `maxWidthPx` 给出。
+
+**观感复核（本轮做了，不是只验 computed）**：重采同时出图 `/tmp/bb_ref/06-chat-pane.png`，终帧目测——含代码块的回复吃满 558.4 上限、代码行 `git checkout -b merge/main` / `gh pr merge 128 --admin` 无横向滚动条；短句回复「GitHub 授权已生效，正在确认推送代理状态。」按内容收缩成独立小气泡；用户气泡右对齐不变；hover 操作列与气泡之间没有碰撞。这是 §8.178 边界⑤欠的那张图，本轮补上。
+
+**现账**：本轮改动 = `scripts/bb_spec_capture.mjs`（探针节点改对 + `maxWidthPx`/`rowMaxWidthProbe`）、`docs/design/desktop-target/reference/bb-real-spec.json`（重采）、本报告。**这份快照的 diff 里还带着一次更早的重采**：工具条 `count` 34→62、新增 `canvas-open-btn` 等条目——那是当前产品的真实内容（不是我造的数），一并进快照；读它时按「最近一次真开机采集」理解，不要当成 §8.178 那轮的产物。
+
+**边界 / 本轮未做**：① 期望 JSON 仍然没有门在消费——`scripts/grok_acceptance_expectations.mjs` 生成的 `assistant.maxWidth = 558.4±2` 至今只是文件，把三条渲染门改成读它仍是 #9（W2），本轮只把「我方读数」接对，没动门。② `delta_emit_regions` 的对照仍是字符串相等，`min(558.4px, 100%)` vs `558.4px` 恒显「差」；要它按数值判等得先给这类自适应值定一条「取 min() 里的 px 项」的通用口径，属表尺自己的契约变更，没顺手改。③ `rowMaxWidthProbe` 里 `resolved: 760` 是 `#log` 的宽度，与真源 `rowWidth: 728` 不同源（真源那格采的是消息行），本轮没重定义它，只在标题注释里说清它不是气泡。④ 未跑整条矩阵，也未重跑 `e2e_grok_desktop_spec`（它测的是渲染 DOM，与本快照探针无耦合）。⑤ 快照是**派生态证据**，不是门禁输入：它自己不会红，除非有人把它接进门（见①）。
