@@ -2501,24 +2501,29 @@ body.grok-ui .msg.user .msg-status { display: flex; justify-content: flex-end; m
    ============================================================================
 
    真机（replica/screens/grok-regenerate.png）与 CDP 实测
-   （docs/design/desktop-target/alignment-delta-v1.md §4.4）说的是三层收敛：
-   面板 760 → 消息行 728（两侧各 16）→ 气泡 min(640px, 100%)。
+   （docs/design/desktop-target/alignment-delta-v1.md §4.4，逐字读数见
+   reference/grok-real-spec.json 的 messageColumn.maxWidthRule = "558.4px"）说的是三层收敛：
+   面板 760 → 消息行 728（两侧各 16）→ 气泡 min(558.4px, 100%)。
+   —— 这一版之前这里写的是 min(640px, 100%)，并把出处也写成「§4.4 说的」；§4.4 从没说过 640，
+   真源 artifact 里没有任何 640（只有我方 bb-real-spec.json / grok-spec-computed.json 有）。
+   640 由此变成一条没人看守的自拟值，2026-11-20 由 `e2e_grok_desktop_spec` 的 §4.4 探针
+   重锚（长文案饱和度 + 短句收缩两档一起量）后才量出来（§8.178）。
    我们这里前两层早就对了，第三层没做 —— assistant 的 .body 是
    flex: 1 1 100%，于是每条回复都铺满整列，右侧一半是空气。这才是
    「看起来不像 Grok」的主因，不是圆角也不是颜色。
 
    卡片类不参与收缩：协作汇总 / 需要你确认 / 失败卡 / 媒体是「面板」，
-   不是「一句话的回复」，把它们压到 640 会把分组行挤断。
+   不是「一句话的回复」，把它们压到 558.4 会把分组行挤断。
 
    群聊另外两处：说话人/时间原来 prepend 进 .body（气泡里面），真源在气泡
    上方一行；用户气泡的内边距原来 14/18，真源 7/12。 */
 
-/* assistant 消息改 grid：第一列是气泡（按内容收缩、上限 640），第二列给 hover
+/* assistant 消息改 grid：第一列是气泡（按内容收缩、上限 558.4），第二列给 hover
    操作条 —— Grok 真机（grok-regenerate.png）的 ghost 图标条就贴在气泡右侧，
    底部与气泡下缘对齐，不是白底药丸也不是沉在气泡下面的一行。
-   列宽用 fit-content(640px) 而不是 minmax(0, 640px)：后者在“maximize tracks”
-   阶段会把剩余空间全分给第一列，短回复的气泡也会撑到 640（实测 603.4），
-   看起来还是「铺满」；fit-content 才是「内容多宽就多宽，最多 640」。
+   列宽用 fit-content(558.4px) 而不是 minmax(0, 558.4px)：后者在“maximize tracks”
+   阶段会把剩余空间全分给第一列，短回复的气泡也会撑到上限（640 上限那版实测 603.4），
+   看起来还是「铺满」；fit-content 才是「内容多宽就多宽，最多 558.4」。
    身份头 / 引用条 / 表情行 / 群身份行都横跨两列（1 / -1）。
    卡片类不参与（:not 链与上面一致）。
    :not(.debug-only) 不是装饰：这一条有 7 个类选择器，特异性把 index.html 里
@@ -2527,7 +2532,7 @@ body.grok-ui .msg.user .msg-status { display: flex; justify-content: flex-end; m
    （屏上出现 routine-cn-…/cron 原文）。调试行只该在 dev-mode 里现身。 */
 body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media):not(.debug-only) {
   display: grid;
-  grid-template-columns: fit-content(640px) max-content;
+  grid-template-columns: fit-content(558.4px) max-content;
   column-gap: 8px;
   align-items: start;
 }
@@ -2540,14 +2545,16 @@ body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error
 }
 body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .body {
   grid-column: 1;
-  max-width: min(640px, 100%);
+  max-width: min(558.4px, 100%);
 }
 /* 含代码块 / 表格的回复：滚动容器的固有宽度不可靠（实测被按 0 计），交给
    fit-content 会把气泡压到「正文那一行」的宽度（实测 283px），代码只好横向
-   滚动。真机那个 640 上限本来也是为这类内容准备的 —— 这类行直接吃满上限。 */
+   滚动。这类行直接吃满上限 —— 上限取真源 messageColumn.maxWidthRule=558.4px，
+   与 §4.4 那档「代码块 534.4 = 558.4 − 24」同源（早先这里写「真机那个 640」，
+   真源 artifact 里没有 640，见上方作废）。 */
 body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media):has(.bb-codeblock),
 body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media):has(table) {
-  grid-template-columns: min(640px, 100%) max-content;
+  grid-template-columns: min(558.4px, 100%) max-content;
 }
 body.grok-ui .msg.assistant:not(.room-report):not(.room-confirm):not(.room-error):not(.media) > .msg-actions {
   grid-column: 2;

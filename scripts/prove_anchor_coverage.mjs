@@ -32,7 +32,7 @@ const PINNED_C_GATES = 88; /* 2026-11-20 实测：编号族认出后 101→98，
 /* AC-06 的 ratchet：完全没有负向/反向对照的份数上限。同样只许往下改。 */
 const PINNED_NO_NEGCTRL = 48; /* 2026-11-20 实测 48 份 */
 /* AC-07 的 ratchet：任何 CI 路径都不跑的门数上限。只许往下改。 */
-const PINNED_ORPHAN_GATES = 78; /* 2026-11-20 首测 86；把 8 条已验证绿的真渲染门接进 G-46 后 78 */
+const PINNED_ORPHAN_GATES = 77; /* 2026-11-20 首测 86；接回 G-46 的 8 条真渲染门后 78；再接回 G-127 的 spec 门后 77 */
 
 let pass = 0, fail = 0, skip = 0;
 const ok = (m) => { pass++; console.log("  ✓ " + m); };

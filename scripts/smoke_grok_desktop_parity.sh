@@ -5471,6 +5471,43 @@ echo "    各自继续管产品缓存与尺缓存那半；SKIP 是开机接线�
 echo "    本轮统一的一处分歧：尺的缓存处原要求 anomalies 字段存在才肯缓存，产品与尺的 audit 处把缺字段当干净，"
 echo "    统一到宽的一侧（3/4 处如此，且 foldPages 返回体始终带该字段）—— 口径写在 fold_state 头注释里，不是悄悄选边。"
 
+echo "== G-127 Grok 真源规格门（§4.4 消息列重锚 + 编号契约 SP-01..05）=="
+echo "  · 这条门原本也是孤门（AC-07 读出来的）。它此前唯一红的那条「消息文字列 558.4」量到 62 —— 是探针往 #log 塞 5 个字符的合成 .body 再量宽度，"
+echo "    量到的是**收缩宽**不是夹位。重锚后同时量两档：长文案的饱和宽 + 短句的收缩宽 + computed max-width（§8.178）。"
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g127_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g127_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 ${g127_xvfb[@]+"${g127_xvfb[@]}"} node scripts/e2e_grok_desktop_spec.mjs > /tmp/g127-spec.log 2>&1; then
+    ok "G-127 e2e_grok_desktop_spec 全绿（$(tail -1 /tmp/g127-spec.log)）"
+  else
+    bad "G-127 e2e_grok_desktop_spec 红（见 /tmp/g127-spec.log；$(tail -1 /tmp/g127-spec.log)）"
+  fi
+  # 锚点只钉 ✓ 行里出现的 [SP-nn]：编号只加在 ok() 文案上，红行没有编号 —— 漏一条就是这条锚点红。
+  for g127_id in SP-01 SP-02 SP-03 SP-04 SP-05; do
+    if grep -q "\[$g127_id\]" /tmp/g127-spec.log 2>/dev/null; then
+      ok "G-127 GP-SP $g127_id：锚点跑到绿行"
+    else
+      bad "G-127 GP-SP $g127_id 没跑出绿行（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+    fi
+  done
+  if [ "$(grep -c '^  ✓' /tmp/g127-spec.log)" -ge 35 ] \
+     && grep -q "PASS=35 FAIL=0 SKIP=0" /tmp/g127-spec.log; then
+    ok "G-127 GP-SP 计数钉：绿行 $(grep -c '^  ✓' /tmp/g127-spec.log) ≥ 35 且 PASS=35 FAIL=0 SKIP=0"
+  else
+    bad "G-127 GP-SP 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g127-spec.log)、$(tail -1 /tmp/g127-spec.log)（期望 PASS=35 FAIL=0 SKIP=0）"
+  fi
+else
+  bad "G-127 没 Electron 可起 —— 这条门必须有真渲染读数（SKIP≠过，按 §8.162 的口径直接判红）"
+fi
+echo "  · G-127 口径（诚实）：SP-01..05 只覆盖 §4.4 的气泡五档（平面块 / 墨 6% 字阶 / 行宽 728 / 文字列饱和 558.4 / 用户气泡反转）；"
+echo "    其余 30 条断言仍是散文锚点（属 #85 的活），本轮没顺手编号，别读成整门已编号。"
+echo "    列宽这条本轮同时改了产品：ui_chrome.css 的 assistant 上限从自拟 640px 收回真源 558.4px（三处），"
+echo "    同轮重跑 artifacts 9/0、chatsurface 13/0、stream_typing 9/0 —— 代码块行为没回退（283px 那个坑仍在 :has() 分支里堵着）。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

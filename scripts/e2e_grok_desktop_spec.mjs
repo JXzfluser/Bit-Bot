@@ -460,20 +460,28 @@ async function setTheme(win, mode) {
     const bubble = await win.evaluate(() => {
       const log = document.getElementById("log");
       if (!log) return { missing: true };
-      const as = document.createElement("div");
-      as.className = "msg assistant";
-      as.innerHTML = '<div class="role">assistant</div><div class="body">probe</div>';
-      const us = document.createElement("div");
-      us.className = "msg user";
-      us.innerHTML = '<div class="body">probe</div><div class="msg-status">✓</div>';
-      log.appendChild(as);
+      const mk = (cls, html) => {
+        const d = document.createElement("div");
+        d.className = cls;
+        d.innerHTML = html;
+        return d;
+      };
+      /* 两条助手行：短的那条量的是「随内容收缩」，长的那条才逼得出 max-width。
+         §4.4 的 558.4 是**夹位**，不是行宽 —— 只喂 5 个字去断言它，量到的是探针自己造的值。 */
+      const asShort = mk("msg assistant", '<div class="role">assistant</div><div class="body">probe</div>');
+      const asLong = mk("msg assistant", '<div class="role">assistant</div><div class="body">' + "字".repeat(400) + "</div>");
+      const us = mk("msg user", '<div class="body">probe</div><div class="msg-status">✓</div>');
+      log.appendChild(asShort);
+      log.appendChild(asLong);
       log.appendChild(us);
-      const ab = as.querySelector(".body");
+      const ab = asShort.querySelector(".body");
+      const lb = asLong.querySelector(".body");
       const ub = us.querySelector(".body");
       const sa = getComputedStyle(ab);
       const su = getComputedStyle(us);
       const sb = getComputedStyle(ub);
       const ra = ab.getBoundingClientRect();
+      const rl = lb.getBoundingClientRect();
       const ru = us.getBoundingClientRect();
       const out = {
         assistant: {
@@ -482,6 +490,9 @@ async function setTheme(win, mode) {
           radius: parseFloat(sa.borderTopLeftRadius),
           bg: sa.backgroundColor,
           w: Math.round(ra.width),
+          longW: Math.round(rl.width),
+          longWExact: rl.width,
+          maxW: sa.maxWidth,
           size: sa.fontSize,
           weight: sa.fontWeight,
           lh: sa.lineHeight,
@@ -495,7 +506,8 @@ async function setTheme(win, mode) {
         },
         rowW: Math.round(log.getBoundingClientRect().width - parseFloat(getComputedStyle(log).paddingLeft) - parseFloat(getComputedStyle(log).paddingRight)),
       };
-      as.remove();
+      asShort.remove();
+      asLong.remove();
       us.remove();
       return out;
     });
@@ -504,19 +516,19 @@ async function setTheme(win, mode) {
     else {
       const a = bubble.assistant, u = bubble.user;
       (a.borderTopWidth === "0px" && a.boxShadow === "none" && a.radius === 18 && a.w > 0)
-        ? ok(`assistant bubble is a flat block (0 border, no shadow, radius ${a.radius}px = --radius-bubble)`)
+        ? ok("[SP-01] assistant bubble is a flat block (0 border, no shadow, radius ${a.radius}px = --radius-bubble)")
         : bad("assistant bubble chrome drifted (§4.4 wants 18)", JSON.stringify(a));
       (a.bg === "rgba(28, 28, 28, 0.06)" && a.size === "14px" && Number(a.weight) === 420 && a.lh === "20px")
-        ? ok("assistant bubble = ink 6% / 14px-420-lh20 (§4.4)")
+        ? ok("[SP-02] assistant bubble = ink 6% / 14px-420-lh20 (§4.4)")
         : bad("assistant bubble fill or type drifted (§4.4 wants ink .06 / 14-420-20)", JSON.stringify(a));
       (bubble.rowW === 728)
-        ? ok("message row is 728px inside the 760 pane (§4.4)")
+        ? ok("[SP-03] message row is 728px inside the 760 pane (§4.4)")
         : bad("message row width drifted (§4.4 wants 728)", bubble.rowW);
-      (a.w === 558 && Math.abs(a.w - 558.4) <= 1)
-        ? ok(`message text column is ${a.w}px (§4.4 = 558.4)`)
-        : bad("message text column drifted (§4.4 wants 558.4)", a.w);
+      (a.maxW.includes("558.4px") && Math.abs(a.longW - 558.4) <= 1 && a.w < 558.4)
+        ? ok(`[SP-04] message text column saturates at ${a.longW}px (max-width ${a.maxW}); short row shrink-wraps to ${a.w}px (§4.4 = 558.4)`)
+        : bad("message text column drifted (§4.4 wants max-width 558.4，且长句宽度必须夹在同一值、短句要真的更窄)", JSON.stringify({ maxW: a.maxW, longW: a.longW, shortW: a.w }));
       (u.bg === "rgb(28, 28, 28)" && u.color === "rgb(255, 255, 255)" && u.radius === "18px" && /inset/.test(u.shadow))
-        ? ok("user bubble = near-black + white + inset highlights + 18 all corners (§4.4)")
+        ? ok("[SP-05] user bubble = near-black + white + inset highlights + 18 all corners (§4.4)")
         : bad("user bubble drifted (§4.4 wants #1c1c1c / white / 18 / inset)", JSON.stringify(u));
     }
 
