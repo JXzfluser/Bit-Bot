@@ -24,6 +24,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { dbFilePath, foldPages } = require("./event_read_model");
+const foldState = require("./fold_state");
 const { openEventLog } = require("./event_log");
 
 /** 这条尺比的那一对是谁 —— 单值标签，语义照 §8.159：给「配对」命名，不是「走了哪条读路」。 */
@@ -220,7 +221,7 @@ function cachedFoldOf(db, limit) {
     const lastSeq = handle.lastSeq();
     const slot = foldCacheByFile.get(db);
     /* 库被换掉/重建时 seq 会倒退或错位：那种情况绝不续折，直接全量重来。 */
-    const continuable = slot && slot.folded && Number.isFinite(lastSeq) && lastSeq >= slot.lastSeq;
+    const continuable = foldState.canContinue(slot, lastSeq);
     if (continuable && lastSeq === slot.lastSeq) {
       return { folded: slot.folded, rowsRead: 0, mode: "reused", lastSeq };
     }
@@ -228,7 +229,7 @@ function cachedFoldOf(db, limit) {
       try {
         const inc = foldPages(handle, { fromSeq: slot.lastSeq, base: slot.folded, maxRows: limit, deadlineMs: 0 });
         if (inc.truncated) return fullFold(db, limit);
-        if (inc.folded.anomalies && inc.folded.anomalies.length === 0) {
+        if (foldState.isClean(inc.folded)) {
           foldCacheByFile.set(db, { lastSeq, folded: inc.folded });
           return { folded: inc.folded, rowsRead: inc.rows, mode: "incremental", lastSeq };
         }
@@ -239,7 +240,7 @@ function cachedFoldOf(db, limit) {
     }
     const r = fullFold(db, limit);
     if (r.mode === "truncated") return { folded: null, rowsRead: r.rowsRead, mode: "truncated", lastSeq: r.lastSeq };
-    if (r.folded.anomalies && r.folded.anomalies.length === 0) {
+    if (foldState.isClean(r.folded)) {
       foldCacheByFile.set(db, { lastSeq: r.lastSeq, folded: r.folded });
     } else {
       foldCacheByFile.delete(db);
@@ -281,7 +282,7 @@ function auditSurfaces(opts = {}) {
     }
     /* 截断（读满护栏）与折不动一样：没有可信的面，三张面一律走 no_reading。
        绝不拿「前 N 行折出来的面」算集合差 —— 少掉的那批实体会被记成「只在 JSON 侧」的假偏差。 */
-    folded = res.folded && (!res.folded.anomalies || res.folded.anomalies.length === 0) ? res.folded : null;
+    folded = foldState.isClean(res.folded) ? res.folded : null;
     foldMode = res.mode === "truncated" ? "truncated" : folded ? res.mode : "fold_anomalies";
     foldRows = res.rowsRead;
     lastSeq = res.lastSeq;

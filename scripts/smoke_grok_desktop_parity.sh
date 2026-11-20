@@ -5443,6 +5443,34 @@ else
   bad "G-125 GP-AC 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g125-probe.log)、$(tail -1 /tmp/g125-probe.log)（期望 PASS=6 FAIL=0 SKIP=0）"
 fi
 
+echo "== G-126 折叠续折判据的单一出处（#84：一条规则不许有两份近似副本）=="
+if timeout 300 node scripts/prove_fold_state_owner.mjs > /tmp/g126-probe.log 2>&1; then
+  ok "G-126 FP 单写者尺 exit 0（$(tail -1 /tmp/g126-probe.log)）"
+else
+  bad "G-126 FP 单写者尺红（见 /tmp/g126-probe.log）"
+fi
+# 锚点钉 [FP-nn] 编号（契约写在尺头注释里）：判据表可以改措辞，编号和「这条真的绿过」不能消失。
+for g126_id in FP-01 FP-02 FP-03 FP-04 FP-05 FP-06 FP-07; do
+  if grep -q "\[$g126_id\]" /tmp/g126-probe.log 2>/dev/null; then
+    ok "G-126 GP-FP $g126_id：锚点跑到绿行"
+  else
+    bad "G-126 GP-FP $g126_id 没跑出绿行（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+if [ "$(grep -c '^  ✓' /tmp/g126-probe.log)" -ge 7 ] \
+   && grep -q "PASS=7 FAIL=0 SKIP=0" /tmp/g126-probe.log; then
+  ok "G-126 GP-FP 计数钉：绿行 $(grep -c '^  ✓' /tmp/g126-probe.log) ≥ 7 且 FAIL=0 SKIP=0"
+else
+  bad "G-126 GP-FP 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g126-probe.log)、$(tail -1 /tmp/g126-probe.log)（期望 PASS=7 FAIL=0 SKIP=0）"
+fi
+echo "  · G-126 口径（诚实）：FP-01/02 是静态层（两个消费方 require(./fold_state)、内联判据 0 处）；"
+echo "    FP-03..06 是语义层（canContinue 五格真值表、isClean 四格、prefixOf 的前缀游标、invalidate 原地重置）；"
+echo "    FP-07 是反向对照（把 \`>=\` 写成 \`>\` 后「同 seq」这格必须翻）—— 突变体在内存里，不落盘、不改源码。"
+echo "    端到端行为不在这条门里：RM 组（prove_event_read_model PASS=23）与 L 组（prove_surface_parity PASS=42 SKIP=1）"
+echo "    各自继续管产品缓存与尺缓存那半；SKIP 是开机接线那条，别读成这条门也 SKIP。"
+echo "    本轮统一的一处分歧：尺的缓存处原要求 anomalies 字段存在才肯缓存，产品与尺的 audit 处把缺字段当干净，"
+echo "    统一到宽的一侧（3/4 处如此，且 foldPages 返回体始终带该字段）—— 口径写在 fold_state 头注释里，不是悄悄选边。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

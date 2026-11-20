@@ -13365,3 +13365,48 @@ sessions 偏差：日志 3 条 / JSON 3 条 · matched=2 mismatched=1 只在日�
 **边界 / 本轮未做**：① 78 条孤门里绝大多数是 `prove_*.js`/`.sh` 的旧 GP 逐条门（P0 时代形状），本轮只挑「真渲染 + 当场验证绿 + 与 Grok 对标直接相关」的 8 条接线，其余按 AC-07 ratchet 钉住不涨；要清得逐条判「还成立吗、要不要留」，属逐族工。② 传递接线把「非注释行里出现文件名」当成跑过 —— 若某条已接线的门只是**列出**一批门名（清单型 lint），会低估孤门数，方向是偏乐观，写清在这里。③ 锚点仍只要求 `\[$gXX_id\]` 出现在日志任意行，`✗` 行同样满足 —— 恒红方向抓不住，需改成钉 `✓ [ID]`（改法要同步改尺的 `anchId` 正则，否则编号族整族读空，§8.175 边界③的旧坑）。④ 用户本轮点头的 **#84（收拢三处折叠状态）未开工**：预算先给了这条能把「报告引用过的证据」变成 CI 证据的落地项。⑤ 仍未本地跑整条矩阵。
 
 **现账**：本轮改动 = `prove_anchor_coverage.mjs`（AC-07/AC-08 + 两条接线口径修正 + ratchet 78）、`smoke_grok_desktop_parity.sh`（G-46 循环 +6 名、modal 一条、G-125 锚点循环 AC-01..08）、`e2e_desktop_team_ui.mjs`（T-10a 判据）。§8.175 之后那 3 个提交已按授权推送（`0642978..c039dc7`），CI 的 G-41/G-44/G-125 全量读数待 run 结束后回填；本提交落盘后再次领先 origin，推送另问。
+
+### 8.177 #84 落地：折叠的「准入判据」从 8 处内联收成 fold_state 一处 —— 新门 G-126（FP-01..07）实测 PASS=7、矩阵块 harness 9/0；两处分歧各自统一到哪一侧、为什么不能各留各的（2026-11-20）
+
+**这一条改的是什么（用户可感面）**：屏幕上的会话/群/待审批三张面都从事件日志折出来，折的时候有两道"能不能信这份状态"的判断 —— ①「这份缓存能不能接着往上折」②「折出来的状态干不干净」。这两道判断在产品读路径、对账尺、以及盘上检查点里**各写了一份近似副本**：判的是同一件事，写法不同，于是一边改了另一边不会跟着红。改动后可感命令：
+
+```
+node scripts/prove_fold_state_owner.mjs        # → PASS=7 FAIL=0 SKIP=0（0.04s）
+bash scripts/smoke_grok_desktop_parity.sh       # → 新增 G-126 段：9 条 ok（1 条 exit + 7 条编号锚点 + 1 条计数钉）
+```
+
+**动手前实测是 8 处内联、6 种写法**（逐字抄自 `git diff`，行号是改动前的）：
+
+| # | 位置 | 原话 |
+| --- | --- | --- |
+| 1 | `event_read_model.js` loadCheckpoint | `if (Array.isArray(f.anomalies) && f.anomalies.length) return null;` |
+| 2 | `event_read_model.js` 内存槽续折 | `if (slot.folded && lastSeq >= slot.lastSeq) {` |
+| 3 | `event_read_model.js` 折脏即弃 | `if ((result.folded.anomalies \|\| []).length) result = null;` |
+| 4 | `event_read_model.js` 前缀准入 | `const prefix = folded && !(folded.anomalies \|\| []).length ? folded : null;` |
+| 5 | `surface_parity.js` 尺槽续折 | `const continuable = slot && slot.folded && Number.isFinite(lastSeq) && lastSeq >= slot.lastSeq;` |
+| 6 | `surface_parity.js` 增量缓存准入 | `if (inc.folded.anomalies && inc.folded.anomalies.length === 0) {` |
+| 7 | `surface_parity.js` 全量缓存准入 | `if (r.folded.anomalies && r.folded.anomalies.length === 0) {` |
+| 8 | `surface_parity.js` auditSurface | `folded = res.folded && (!res.folded.anomalies \|\| res.folded.anomalies.length === 0) ? res.folded : null;` |
+
+现在这 8 处全部走 `hosts/shared/fold_state.js` 的四个出口（`canContinue` / `isClean` / `prefixOf` / `invalidate`）。**交出来的只有判据**：两侧内存槽的形状、深拷贝、检查点的落盘与读盘字段校验、两侧护栏（尺按行、产品按 250ms 墙钟）都留在各自文件里 —— 那些是各存储自己的事，不是同一条规则。
+
+**两处真实分歧，各自怎么统一（写清楚，不是悄悄选边）**：
+
+1. **`canContinue` 要不要判 `Number.isFinite(lastSeq)`**：产品没判（2 号），尺判了（5 号）。统一到**严**那一侧。理由是这条判据的失效方向是"拿一份对不上的状态续折"，而 `lastSeq` 一旦是 `NaN`，`NaN >= x` 恒假 → 旧代码只是恰好落到全量折；显式判完之后，"库里 lastSeq 读成非数"这件事在两个消费方里同一次红。
+2. **`isClean` 把「缺 `anomalies` 字段」当干净还是不干净**：3 处（产品 3/4 号 + 尺 8 号 + 检查点 1 号）把缺字段当干净，2 处（尺 6/7 号）要求字段存在才肯缓存。统一到**宽**那一侧，因为 `foldEvents`/`foldPages` 的返回体**始终带**这个字段，缺它只可能是自造夹具；把"字段缺失"翻成"不干净"会让夹具写错时的表现是"缓存永远不生效 → 全量折 → 门仍然绿"，那是一次静默的性能回退。这条口径连同理由写在 `fold_state.js` 头注释，并由 FP-04 的四格真值表钉住（`null`→假、缺字段→真、空数组→真、带 anomaly→假）。
+
+**为什么"各留各的"不比"统一"安全**：#83 那个洞（读满护栏的截断状态按**库的** `lastSeq` 进缓存 = 一次截断永久失真，见 §8.166 之后的那片修复）正是"两个消费方同一件事写两遍"的产物 —— 修的时候只可能修到你正在看的那一处。8.177 之后，改准入判据只有一个地方能改；想另起一份内联判据，FP-02 直接红。
+
+**门（G-126 = `scripts/prove_fold_state_owner.mjs`）分三层，每条都写清规则与目标**：
+
+- 静态层 **FP-01/02** —— 两个消费方必须 `require("./fold_state")`；消费方文件里五条正则各自命中数必须为 0。FP-02 加了一层**探针自证**：每条正则先要咬得住上表里抄下来的那句原话（`re.test(sample)`），否则整条 FP-02 判红并报「判据正则对自己抄下的历史写法不敏感（先怀疑探针）」—— 上一版正是这样揪出漏钉的第 4 种写法（8 号 `!x.anomalies ||`），当时正则全对但覆盖面不全，门会恒真通过。
+- 语义层 **FP-03..06** —— `canContinue` 五格真值表（同 seq / 前进 / 倒退 / 空槽 / 非有限数）、`isClean` 四格、`prefixOf` 只认前缀自己的游标（干净前缀交出 `seq=40` 而不是库尾；脏前缀与无结果一律 `null`）、`invalidate` 原地重置且返回同一引用（旁字段 `count` 不动 —— 持有方不需要重新接线）。
+- 灵敏度 **FP-07** —— 反向对照：把 `>=` 写成 `>` 之后，"同 seq"这一格从 `true` 翻成 `false`，证明 FP-03 对这一字之差有牙。突变体在内存里，不落盘、不改源码。
+
+**无回归（同轮重跑，不是推断）**：`prove_event_read_model` PASS=23 FAIL=0（含 RM-13 检查点那组）、`prove_surface_parity` PASS=42 FAIL=0 **SKIP=1**、`prove_event_dual_write` PASS=31 FAIL=0。那条 SKIP 是 §8.161 记的「开机自动留痕没接线」，与本轮无关，**别读成这条门也 SKIP**；尺的等值判据（增量折与全量折的偏差必须一致，L9「截断读数不许焐热缓存」）仍然全绿，说明 8 处改判据是行为等价的改写，不是换了语义。新门跑满 0.04s，进矩阵的成本可忽略。
+
+**矩阵与锚点（AC-02 这条契约当场兑现了一次红）**：G-126 段照 G-125 形状写 —— exit 看守 + `for g126_id in FP-01..FP-07` 编号锚点 + 计数钉 `PASS=7 FAIL=0 SKIP=0`。首版编号做成 `ok("01", …)`、由打印端拼成 `[FP-01]`，`prove_anchor_coverage` 的 **AC-02 立刻报「矩阵锚了点上门里没有的号 FP-01..FP-07」** —— 尺认的是**门源码里的编号实参**（`ok("[FP-01] …")` 或 `, "FP-01"`），不是输出里拼出来的串。改成 `ok("[FP-nn] …")` 后：AC-02 编号族 4 族一一对应 `g41(7), g44(7), g125(8), g126(7)`，AC-01 断言合计 1335→1342（+7），AC-07 孤门 **仍 78**（新门已接线，不新增孤门），AC-03/06 ratchet 88/48 持平，尺自身 PASS=8 FAIL=0 SKIP=0。这条正是 §8.175 想要的效果：新登记的编号契约若漏钉锚点，覆盖尺会自己红。
+
+**本轮踩的第二个坑（逐字记，别再犯）**：为把 `"01"` 批量换成 `"[FP-01] "`，用了一次 `perl -pi -e` 改含中文的行，把 `ok("[FP-01] "两个消费方…")` 的引号配错了（`node --check` 当场 SyntaxError，且 `const ok` 那行被误删）。**含中文的行不做批量正则改写**这条禁令本轮又兑了一次现；改用整文件重写 + 单条 Edit 才干净。改动只在门自己的探针文件里，源码与消费方未被波及，`prove_event_read_model` 23/0 是重跑过的。
+
+**边界 / 本轮未做**：① 这条门只守**判据同源**，不守行为：缓存本体（槽形状、深拷贝、检查点字段校验）仍在各自文件里，改坏了得靠 RM/L 两组各自的红。② FP-07 是内存突变体，只证明判据表灵敏；「源码被人改成另一条规则时矩阵抓不抓得住」归 AC-05 与 G-41 那类落盘突变体管，这条门没有替代它。③ 检查点还留着自己的准入另一半（`dbFile` 必须等于当前库、sessions/rooms/approvals 三张面的形状），那是**读盘形状校验**、不是续折判据，本轮刻意没并进 `fold_state`；要不要并，属 #84 之后的口径问题，不当已做。④ 未跑整条矩阵（本地全量另计），G-126 的 harness 只证明这段脚本逻辑通、锚点都能钉上。⑤ §8.176 边界④里那句「#84 未开工」到本条作废：#84 已按用户点头的范围落地，剩下的是上面①③两条明确未覆盖的口径。

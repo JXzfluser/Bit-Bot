@@ -28,6 +28,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const foldState = require("./fold_state");
 
 const READ_FLAG = "BITBOT_EVENT_READ";
 
@@ -128,7 +129,7 @@ function loadCheckpoint(file) {
     const f = raw.folded;
     if (!f || !f.sessions || !Array.isArray(f.sessions.sessions) || !f.rooms || !Array.isArray(f.rooms.rooms)) return null;
     if (!Array.isArray(f.approvals)) return null;
-    if (Array.isArray(f.anomalies) && f.anomalies.length) return null;
+    if (!foldState.isClean(f)) return null;
     return { lastSeq: ckSeq, folded: f };
   } catch (_e) {
     return null;
@@ -241,7 +242,7 @@ function readSurfaces(dataRoot, opts = {}) {
        增量路径永远没有权力单独宣布「这份日志不干净」。 */
     let result = null;
     let incremental = false;
-    if (slot.folded && lastSeq >= slot.lastSeq) {
+    if (foldState.canContinue(slot, lastSeq)) {
       result = foldPages(slot.log, {
         fromSeq: slot.lastSeq,
         base: slot.folded,
@@ -253,7 +254,7 @@ function readSurfaces(dataRoot, opts = {}) {
       /* 增量折出异常：不许下结论，退回全量确认（全量也读不全时由下面统一拒）。
          增量被预算截断则**不**回全量：截断那次的结论本来就是不 ok，而全量重折会把刚折好的
          前缀再付一遍预算 —— 那样每次拒读都从头再来，收敛变成白烧钱。 */
-      if ((result.folded.anomalies || []).length) result = null;
+      if (!foldState.isClean(result.folded)) result = null;
     }
     if (!result) {
       result = foldPages(slot.log, {
@@ -273,7 +274,7 @@ function readSurfaces(dataRoot, opts = {}) {
          下一次读从这里续，拒读不白烧钱。
          这一格不看 stride 节流：这次已经付完整个预算的墙钟，多写一份面是零头；
          而且按 stride 落盘会活锁 —— 每趟只折得动 <stride 行时，游标永远不推进。 */
-      const prefix = folded && !(folded.anomalies || []).length ? folded : null;
+      const prefix = foldState.isClean(folded) ? folded : null;
       slot.folded = prefix;
       slot.lastSeq = prefix ? result.cursor : -1;
       slot.count = incremental && prefix ? slot.count + result.rows : result.rows;
@@ -295,8 +296,7 @@ function readSurfaces(dataRoot, opts = {}) {
     const anomalies = folded.anomalies || [];
     if (anomalies.length) {
       // 日志折不干净：缓存作废，让调用方降级回 JSON。绝不把半折叠状态当真。
-      slot.folded = null;
-      slot.lastSeq = -1;
+      foldState.invalidate(slot);
       return { ok: false, reason: "fold_anomalies", anomalies, count: result.rows, file };
     }
     const prevCount = slot.count;
