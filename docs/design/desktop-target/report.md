@@ -13547,3 +13547,17 @@ node scripts/e2e_grok_desktop_spec.mjs
 **实测账**：spec 门 `PASS=35 FAIL=0 SKIP=0`（35 格一格没少，只是三格的判据换了来源）；负向对照＝临时把 `grok-acceptance-expectations.json` 挪走再放回，当场 `PASS=32 FAIL=3`，红的正是 composer 宽、SP-03、SP-04 三格——三处都真在消费期望文件，不是把 band 拿去做装饰；新鲜度门 `prove_expectations_fresh: PASS=5 FAIL=0 SKIP=0`（EF-02 逐字节 9356B 相同＝派生表和盘上没分叉）；孤门尺 `prove_anchor_coverage: PASS=8 FAIL=0`，AC-02 仍 5 族、AC-03 C 类 88 持平、AC-06 无对照 48 持平、AC-07 孤门 77 持平。
 
 **边界 / 本轮未做**：① SP-01/02/05 的字面量（radius 18、`rgba(28,28,28,.06)`、14-420-20、用户气泡反转）还在 #9 排队，EF-05 现在只钉三个宽度。② `sideMargin:16` 已进期望表，但**门里没人判它**——写进派生表不等于判到，没接线就不算数。③ 没重跑 G-127 / G-128 的矩阵 harness 段，本轮只改门内判据与 EF-05 内部逻辑；矩阵锚 `for g127_id in SP-01..SP-05` 只 grep 编号，✓ 文案变化不碰锚点（#66 那条教训的反向确认）。④ 期望表的真源快照仍是 2026-10-24 抓的，本轮没有重采 Grok；EF-02 保证的是「派生自盘上真源」，不是「盘上真源是今天的」（§8.181 边界①同一句话）。
+
+### 8.184 W2 第三格顺手挖出派生表的节点错位：真源里 20px 和 22px 都是对的（气泡容器 / 正文段落），期望表却只挂了正文那一格 —— 直接照表改判据就会假红；拆开两格后 SP-02 读容器 20px，35/0、EF 5/0（2026-11-21）
+
+**这一步是怎么触发的**：把 SP-02 的 `a.lh === "20px"` 换成读期望时，最自然的写法是取派生表里已有的 `bubble.lineHeight`——而那格的值是 **22px**（生成器写的是 `GROK.bubbleText.lineHeight`）。照表改，门当场就会红。于是先对真源：`grok-real-spec.json` 里 `bubble.lineHeight = "20px"`（气泡容器 computed 出来的）和 `bubbleText.lineHeight = "22px"`（选择器 `.sand-message-prose p`，正文段落）**两个都是真读数，来自两个不同节点**。派生表把正文那格挂在了 `bubble.lineHeight` 这个看起来属于气泡的键下。
+
+**为什么以前没暴露**：门探针读的是气泡容器（`getComputedStyle(assistantBubble)`），字面量钉的 20px 恰好等于容器真值，判据「碰巧对」。风险在另一头——同一族的正文行高从来没进过任何判据，而派生表里那个键名会诱导下一个接 W2 的人拿 22 去判容器（假红），或者拿容器的 20 赦免正文（假绿）。这是 §8.179「探针采错节点」的期望侧版本：上次是探针读错行/面板，这次是派生表把两个节点压成一键。
+
+**落地**：
+- `scripts/grok_acceptance_expectations.mjs`：`bubble` 族拆出 `containerLineHeight`（取 `GROK.bubble.lineHeight`）与 `textLineHeight`（取 `GROK.bubbleText.lineHeight`），旧键 `lineHeight` 保持指向正文那格，既有消费方一个字节都不变；键旁写明「同一族两个节点」的来历。
+- `scripts/e2e_grok_desktop_spec.mjs`：SP-02 的底色改读 `bubble.assistantBackground`、行高改读 `bubble.containerLineHeight`；绿行的 ✓ 直接把来源打出来（`…底色与容器行高来自 grok-acceptance-expectations.json bubble.assistantBackground / bubble.containerLineHeight，正文行高另记 bubble.textLineHeight`），红的时候把读不到的期望值一起打出来。
+
+**实测账**：`e2e_grok_desktop_spec: PASS=35 FAIL=0 SKIP=0`（格子数不变，SP-02 逐字 `✓ [SP-02] assistant bubble = rgba(28, 28, 28, 0.06) / 14px-420-lh20px …`）；重生成期望后 `prove_expectations_fresh: PASS=5 FAIL=0 SKIP=0`（EF-02 逐字节相同＝盘上就是最新派生物，新两格也进了同一份文件）。
+
+**边界 / 本轮未做**：① **正文 22px 仍然没有门判**——我方探针只读到气泡容器一级，没有 prose 级探针，所以这一格现在是「记录下来了」而不是「接进判据」；不能算已对标。② SP-02 的 `14px` 与 `420` 仍是字面量，和 SP-01/05 一起在 #9 排队。③ EF-05 只钉住三个宽度与 558.4 两处的手抄回长，`assistantBackground` / `containerLineHeight` 哪天退回字面量没人拦。④ 同族多节点这件事只查了 lineHeight 一处；`bubble.fontSize` 一族（真源 `bubble` 与 `bubbleText` 都报 14px，这轮恰好相等）没做同样拆分——两个节点值相等时错位是潜伏的，需要一次逐族审计而不是等它撞红。⑤ 没重跑矩阵与 G-127/G-128 harness 段。

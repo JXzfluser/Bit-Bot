@@ -87,6 +87,11 @@ const E = {
     padding: GROK.bubble.padding,
     fontSize: band(num(GROK.bubbleText.fontSize), 0),
     lineHeight: GROK.bubbleText.lineHeight,
+    /* 同一族里 20 与 22 都是真读数，来自两个不同节点：`bubble` 是**气泡容器** computed 出来的
+       line-height，`bubbleText`（`.sand-message-prose p`）是**正文段落**的。派生表以前只带正文那一格，
+       而门里的 SP-02 判的是容器那一格 —— 不拆开就会拿正文的数赦免容器（§8.179 探针节点错位的期望侧版本）。 */
+    containerLineHeight: GROK.bubble.lineHeight,
+    textLineHeight: GROK.bubbleText.lineHeight,
     assistantBackground: GROK.bubble.backgroundColor,
     userBackground: GROK.bubbleVariants?.[1]?.backgroundColor,
     userColor: GROK.bubbleVariants?.[1]?.color,

@@ -49,6 +49,10 @@ const EXPECT_BAND = (keys) => {
 const EXPECT_COMPOSER_W = EXPECT_BAND(["composer", "width"]);
 const EXPECT_ROW_W = EXPECT_BAND(["messageRow", "rowWidth"]);
 const EXPECT_PANE_W = EXPECT_BAND(["messageRow", "paneWidth"]);
+/* §8.184：SP-02 的底色与**容器**行高也从期望读。派生表曾经只带正文段落的行高（22px），
+   而这一格探针读的是气泡容器（真源同一张表里是 20px）—— 用字面量时这个错位看不出来。 */
+const EXPECT_ASSISTANT_BG = (EXPECT_NODE && EXPECT_NODE.bubble && EXPECT_NODE.bubble.assistantBackground) || null;
+const EXPECT_CONTAINER_LH = (EXPECT_NODE && EXPECT_NODE.bubble && EXPECT_NODE.bubble.containerLineHeight) || null;
 const inBand = (v, band) => !!(band && Number.isFinite(Number(v)) && Number(v) >= band.min && Number(v) <= band.max);
 const bandNote = (label, band) =>
   `（期望来自 ${path.basename(EXPECT_FILE)} ${label}=${band ? band.eq : "读不到"}，带 ${band ? `${band.min}..${band.max}` : "读不到"}）`;
@@ -549,9 +553,9 @@ async function setTheme(win, mode) {
       (a.borderTopWidth === "0px" && a.boxShadow === "none" && a.radius === 18 && a.w > 0)
         ? ok("[SP-01] assistant bubble is a flat block (0 border, no shadow, radius ${a.radius}px = --radius-bubble)")
         : bad("assistant bubble chrome drifted (§4.4 wants 18)", JSON.stringify(a));
-      (a.bg === "rgba(28, 28, 28, 0.06)" && a.size === "14px" && Number(a.weight) === 420 && a.lh === "20px")
-        ? ok("[SP-02] assistant bubble = ink 6% / 14px-420-lh20 (§4.4)")
-        : bad("assistant bubble fill or type drifted (§4.4 wants ink .06 / 14-420-20)", JSON.stringify(a));
+      (a.bg === EXPECT_ASSISTANT_BG && a.size === "14px" && Number(a.weight) === 420 && a.lh === EXPECT_CONTAINER_LH)
+        ? ok(`[SP-02] assistant bubble = ${a.bg} / ${a.size}-${a.weight}-lh${a.lh} (§4.4；底色与容器行高来自 ${path.basename(EXPECT_FILE)} bubble.assistantBackground / bubble.containerLineHeight，正文行高另记 bubble.textLineHeight)`)
+        : bad(`assistant bubble fill or type drifted (§4.4 期望：底色 ${EXPECT_ASSISTANT_BG ?? "读不到"} / 容器行高 ${EXPECT_CONTAINER_LH ?? "读不到"} / 14-420)`, JSON.stringify(a));
       (inBand(bubble.rowW, EXPECT_ROW_W) && inBand(bubble.paneW, EXPECT_PANE_W))
         ? ok(`[SP-03] message row is ${bubble.rowW}px inside the ${bubble.paneW}px pane (§4.4)${bandNote("messageRow.rowWidth", EXPECT_ROW_W)}${bandNote("messageRow.paneWidth", EXPECT_PANE_W)}`)
         : bad(`message row width drifted (§4.4 要的是期望带内的行宽与面板宽)${bandNote("messageRow.rowWidth", EXPECT_ROW_W)}${bandNote("messageRow.paneWidth", EXPECT_PANE_W)}`, JSON.stringify({ rowW: bubble.rowW, paneW: bubble.paneW, band: EXPECT_ROW_W, paneBand: EXPECT_PANE_W, expectFile: EXPECT_FILE }));

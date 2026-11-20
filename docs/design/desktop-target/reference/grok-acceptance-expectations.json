@@ -163,6 +163,8 @@
       "measured": 14
     },
     "lineHeight": "22px",
+    "containerLineHeight": "20px",
+    "textLineHeight": "22px",
     "assistantBackground": "rgba(28, 28, 28, 0.06)",
     "userBackground": "rgb(28, 28, 28)",
     "userColor": "rgb(255, 255, 255)",
