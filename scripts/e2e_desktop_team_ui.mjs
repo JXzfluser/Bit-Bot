@@ -273,10 +273,16 @@ async function shutdown(app) {
     const members0 = await win.evaluate(() => ({
       rows: document.querySelectorAll("#ri-member-list .ri-member").length,
       delDisabled: Array.from(document.querySelectorAll("#ri-member-list .ri-member-del")).map((b) => b.disabled),
-      hasAvatar: Array.from(document.querySelectorAll("#ri-member-list .ri-member .ri-av svg")).length,
+      /* fillAvatarGlyph 只在品牌 Bot 上画 <svg>，其余画首字母（BOT_BRAND_SVGS 未命中）。
+         上一版只数 `.ri-av svg`，于是任何非品牌夹具都读出 hasAvatar=0 —— 门在量渲染器
+         的一个分支，不是量「成员行有没有头像」。这里量不变量：有 .ri-av、且里面有东西。 */
+      hasAvatar: Array.from(document.querySelectorAll("#ri-member-list .ri-member .ri-av"))
+        .filter((el) => el.querySelector("svg, img") || String(el.textContent || "").trim().length > 0).length,
+      hasColor: Array.from(document.querySelectorAll("#ri-member-list .ri-member .ri-av"))
+        .filter((el) => { const c = getComputedStyle(el).backgroundColor; return c && c !== "rgba(0, 0, 0, 0)" && c !== "transparent"; }).length,
     }));
-    members0.rows === 2 && members0.hasAvatar === 2 && members0.delDisabled.every(Boolean)
-      ? ok("T-10a 成员段列出 2 位成员（各带头像）；2 人是下限 → 移除按钮置灰")
+    members0.rows === 2 && members0.hasAvatar === 2 && members0.hasColor === 2 && members0.delDisabled.every(Boolean)
+      ? ok("T-10a 成员段列出 2 位成员（各带头像：字形 + 底色都在）；2 人是下限 → 移除按钮置灰")
       : bad("T-10a 成员行渲染不对", JSON.stringify(members0));
 
     await win.click("#ri-member-add");

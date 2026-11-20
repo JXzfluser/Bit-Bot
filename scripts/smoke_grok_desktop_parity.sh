@@ -1901,7 +1901,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g46_xvfb=(xvfb-run -a)
   fi
-  for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity stream_typing; do
+  for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity stream_typing artifacts bottom_archive chatsurface room_orchestration shell_v2 team_ui unread_summary; do
     log=/tmp/g46-$g.log
     pkill -9 -f "dist/[e]lectron" 2>/dev/null
     sleep 1
@@ -1911,6 +1911,19 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
       bad "G-46 e2e_desktop_${g}（见 ${log}；$(tail -1 "$log")）"
     fi
   done
+  # §8.176：这条门原本在任何 CI 路径里都没有（孤门尺 AC-07 读出来的）。它量的是五个
+  # 弹层关闭钮在真渲染里是否还是同一套 Grok 幽灵圆钮 —— 源码 lint 看不见 computed 值。
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node scripts/e2e_modal_computed.mjs > /tmp/g46-modal.log 2>&1; then
+    ok "G-46 e2e_modal_computed 全绿（$(grep -c '✓' /tmp/g46-modal.log) 项，$(tail -1 /tmp/g46-modal.log)）"
+  else
+    bad "G-46 e2e_modal_computed（见 /tmp/g46-modal.log；$(tail -1 /tmp/g46-modal.log)）"
+  fi
+  grep -q "close buttons share colour" /tmp/g46-modal.log 2>/dev/null \
+    && ok "G-46 弹层关闭钮：五枚同色（一条 .bb-close 规则，不是五条 per-id）" \
+    || bad "G-46 modal close contract missing"
+
   grep -q "S-02 同 UD 只活着一个主进程" /tmp/g46-single_instance.log 2>/dev/null \
     && grep -q "S-03 第一个实例窗口仍在前台" /tmp/g46-single_instance.log 2>/dev/null \
     && ok "G-46 单实例：同 UD 第二实例被锁挡住并唤起已有窗口（用户双击两次只开一个）" \
@@ -5415,7 +5428,7 @@ else
   bad "G-125 AC 覆盖尺红（见 /tmp/g125-probe.log）"
 fi
 # 锚点钉 [$g125_id] 编号（契约写在尺头注释里）：尺的措辞可以改，编号和「这条真的绿过」不能消失。
-for g125_id in AC-01 AC-02 AC-03 AC-04 AC-05 AC-06; do
+for g125_id in AC-01 AC-02 AC-03 AC-04 AC-05 AC-06 AC-07 AC-08; do
   if grep -q "\[$g125_id\]" /tmp/g125-probe.log 2>/dev/null; then
     ok "G-125 GP-AC $g125_id：锚点跑到绿行"
   else

@@ -31,6 +31,8 @@ const MATRIX = "scripts/smoke_grok_desktop_parity.sh";
 const PINNED_C_GATES = 88; /* 2026-11-20 实测：编号族认出后 101→98，`_a` 族按条目数补足后 88 */
 /* AC-06 的 ratchet：完全没有负向/反向对照的份数上限。同样只许往下改。 */
 const PINNED_NO_NEGCTRL = 48; /* 2026-11-20 实测 48 份 */
+/* AC-07 的 ratchet：任何 CI 路径都不跑的门数上限。只许往下改。 */
+const PINNED_ORPHAN_GATES = 78; /* 2026-11-20 首测 86；把 8 条已验证绿的真渲染门接进 G-46 后 78 */
 
 let pass = 0, fail = 0, skip = 0;
 const ok = (m) => { pass++; console.log("  ✓ " + m); };
@@ -263,6 +265,110 @@ else ok("[AC-03] C 类 " + cGates + " = 上限 " + PINNED_C_GATES + "（持平�
   if (noNeg.length > PINNED_NO_NEGCTRL) bad("[AC-06] 无负向对照的份数不得超过 " + PINNED_NO_NEGCTRL, "实测 " + noNeg.length);
   else if (noNeg.length < PINNED_NO_NEGCTRL) ok("[AC-06] 无负向对照 " + noNeg.length + " < 上限 " + PINNED_NO_NEGCTRL + "（往下调常量）");
   else ok("[AC-06] 无负向对照 " + noNeg.length + " = 上限 " + PINNED_NO_NEGCTRL);
+}
+
+/* AC-07：孤门 —— 门写了、报告里拿它当过证据，但任何 CI 路径都不跑它。
+ *
+ *   缘起（2026-11-20）：按字面文件名数「谁调用 e2e_*」读出 15 个孤门，实际是 10 个 ——
+ *   G-46 的 `for g in … ; do node "scripts/e2e_desktop_$g.mjs"` 把 8 条门的文件名拼在变量里
+ *   （token_parity/quit/command_channel/…），字面 grep 一条也看不见。所以这条尺必须自己
+ *   展开循环，否则它给的不是「有没有人跑」而是「有没有人按某种写法跑」。
+ *   同一条教训也说明 AC-01 的门发现正则（只认字面 prove|diagnose）对 27 条 e2e 门是瞎的 ——
+ *   那一半的锚点覆盖仍未量，写在这里不当已知。
+ *
+ *   接线口径：矩阵里字面出现 / 循环展开后出现 / workflow 或 package.json 里出现 /
+ *   被某个已接线的脚本在非注释行里按文件名调用（传递接线）。
+ *   注释里提一句不算跑过 —— 上一版就是这样把 e2e_desktop_token_parity 当成「docs 引用」的。
+ *
+ * AC-08：反向对照 —— 把一条已知孤门假装塞进矩阵，孤门数必须 -1 且它自己出清单。 */
+{
+  const dir = path.join(REPO, "scripts");
+  const gateNames = fs.readdirSync(dir).filter((f) => /^(prove|e2e|diagnose)_[\w.-]+\.(mjs|js|sh)$/.test(f));
+
+  function wiredSet(matrixText) {
+    const wired = new Set();
+    for (const m of matrixText.matchAll(/node\s+"?([\w./-]*\/)?([\w.-]+\.(?:mjs|js|sh))"?/g)) {
+      if (!m[2].includes("$")) wired.add(m[2]);
+    }
+    /* for VAR in a b c; do … node "scripts/pre$VAR.suf" … —— 在循环头之后 12 行内找拼名调用 */
+    for (const m of matrixText.matchAll(/for\s+(\w+)\s+in\s+([^\n;]+);?\s*do\b/g)) {
+      const v = m[1];
+      const tail = matrixText.slice(m.index).split("\n").slice(0, 12).join("\n");
+      const t = /node\s+"([^"]*\$\{?V\}?[^"]*\.(?:mjs|js|sh))"/.source.replace("V", v);
+      const call = new RegExp(t).exec(tail);
+      if (!call) continue;
+      for (const it of m[2].trim().split(/\s+/)) {
+        wired.add(path.basename(call[1].replace(new RegExp("\\$\\{?" + v + "\\}?"), it)));
+      }
+    }
+    return wired;
+  }
+
+  let ciText = "";
+  for (const pj of ["package.json", "hosts/desktop/package.json"]) {
+    const abs = path.join(REPO, pj);
+    if (fs.existsSync(abs)) ciText += fs.readFileSync(abs, "utf8");
+  }
+  const wfDir = path.join(REPO, ".github/workflows");
+  for (const f of fs.readdirSync(wfDir)) ciText += fs.readFileSync(path.join(wfDir, f), "utf8");
+
+  /* 传递接线：从矩阵/workflow 直接接的门出发，看它们的源码里有没有按文件名跑别的门。
+     只看非注释行，行首 /* 与 // 都不算。
+     .sh 也要展开 —— 仓里成对写着的 prove_X.js + prove_X.sh 是「外壳调内层」的形状，
+     上一版只走 .mjs/.js，结果接了 .sh 的那批 .js 全被读成孤门（首测 87 个里 30+ 是这样来的）。 */
+  function expand(seed) {
+    const queue = [...seed];
+    const seen = new Set(queue);
+    while (queue.length) {
+      const n = queue.shift();
+      const abs = path.join(REPO, "scripts", path.basename(n));
+      if (!fs.existsSync(abs) || !/\.(mjs|js|sh)$/.test(n)) continue;
+      for (const ln of fs.readFileSync(abs, "utf8").split("\n")) {
+        if (/^\s*(\/\/|\*|\/\*|#)/.test(ln)) continue;
+        for (const cand of gateNames) {
+          if (seen.has(cand) || !ln.includes(cand)) continue;
+          seen.add(cand);
+          queue.push(cand);
+        }
+      }
+    }
+    return seen;
+  }
+
+  const wired = expand(new Set([...wiredSet(s0), ...gateNames.filter((n) => ciText.includes(n))]));
+  const orphans = gateNames.filter((n) => !wired.has(n));
+  const orphanClauses = orphans.reduce((a, n) => a + (fs.existsSync(path.join(dir, n)) ? gateStats("scripts/" + n).clauses : 0), 0);
+  console.log("  · 矩阵+CI 接线的门 " + wired.size + " 个 / scripts 下共 " + gateNames.length
+    + " 个 gate 形状文件；孤门 " + orphans.length + " 个、合计断言 " + orphanClauses + " 条");
+  if (all) console.log("  · 孤门清单：" + (orphans.join(", ") || "（空）"));
+
+  if (orphans.length > PINNED_ORPHAN_GATES) {
+    bad("[AC-07] 没人跑的门不得超过 " + PINNED_ORPHAN_GATES,
+      "实测 " + orphans.length + "：" + orphans.slice(0, 6).join(", ") + (orphans.length > 6 ? " …" : "")
+      + " —— 这些门的绿灯不会让任何 CI 变红");
+  } else if (orphans.length < PINNED_ORPHAN_GATES) {
+    ok("[AC-07] 孤门 " + orphans.length + " < 上限 " + PINNED_ORPHAN_GATES + "（把常量改成 " + orphans.length + " 钉住成果）");
+  } else {
+    ok("[AC-07] 孤门 " + orphans.length + " = 上限 " + PINNED_ORPHAN_GATES + "（持平；每接一条往下调）");
+  }
+
+  /* AC-08 反向对照：拿清单里第一条真孤门，在矩阵文本上假装加一行 `node scripts/X.mjs`，
+     它必须离开孤门集。上一版是把门名塞进 G-46 的 `for g in` 循环，但那个循环会给名字加
+     e2e_desktop_ 前缀和 .mjs 后缀 —— 拿 diagnose_surfaces.mjs 去塞只拼出
+     e2e_desktop_diagnose_surfaces.mjs.mjs，假装接线没做成，读出的还是 87。 */
+  if (!orphans.length) sk("[AC-08] 没有孤门可做反向对照", "孤门清零后这条改判据：假装删一条已接线的门，它应当变孤门");
+  else {
+    const probe = orphans[0];
+    const mutated = s0 + '\nnode scripts/' + probe + ' > /tmp/ac08-mutation.log 2>&1\n';
+    const w2 = expand(new Set([...wiredSet(mutated), ...gateNames.filter((n) => ciText.includes(n))]));
+    const o2 = gateNames.filter((n) => !w2.has(n));
+    if (o2.length === orphans.length - 1 && !o2.includes(probe)) {
+      ok("[AC-08] 反向对照：把 " + probe + " 假装接进矩阵 → 孤门 " + orphans.length + " 掉到 " + o2.length
+        + "，且它自己出清单（尺对「没人跑」灵敏）");
+    } else {
+      bad("[AC-08] 反向对照读数不对", probe + " 接线后 orphans=" + o2.length + " 含" + probe + "=" + o2.includes(probe));
+    }
+  }
 }
 
 console.log("\nprove_anchor_coverage: PASS=" + pass + " FAIL=" + fail + " SKIP=" + skip);
