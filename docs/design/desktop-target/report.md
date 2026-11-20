@@ -13248,3 +13248,19 @@ sessions 偏差：日志 3 条 / JSON 3 条 · matched=2 mismatched=1 只在日�
 **欠账照实记（未测 ≠ 已收）：本轮只钉住了 anomaly 那一支的用户可见文本**——臂6 的幽灵顺序夹具走的正是 anomaly 分支，改坏 `foldWhy` 的第一支会让它红。`fold_timeout` / `log_too_long` 两支的**句子本身没有门**：要在 store 写口上确定性造出超时，需要一份能真把 250ms 撞穿的库（按 §8.170 拟合 ≈ 5000 行量级），门里不值得付这个价钱；正确做法是给写口一条可注入死线的夹具路径，归 **#85**。这两支在**读模型层**有判据（RM-20/RM-21 逐字对上 `fold_timeout`、前缀游标、续折行数），所以 reason 字段是真的、只是那句人话没被钉。
 
 现账：本提交落盘后分支领先 origin **34** 个提交，推送仍未获授权；#81 二选一（翻默认双写 / 接显式诊断入口）与 #80（毒面自愈端）仍等用户裁决。
+
+### 8.172 CI 首跑对账：G-58 的 KR-07「语义不变」一直是假红 —— 门禁把臂标签塞进了 argv，归一清不掉（pass=11 fail=1 → 12/0，两格突变体各红一次）（2026-11-20）
+
+`92c9d56` 推上去后 Desktop Parity Matrix 第一次真跑（run 44695756303，1h5m，失败）。**先说被这条矩阵兑现的账**：§8.170/§8.171 台账里那句「新门从未在全量矩阵真跑」现在有了数 —— CI 上 **G-124 八臂 PASS=38 FAIL=0 SKIP=0**、G-122 30/0、G-123 18/0、G-121 19/0，八臂在 Linux+Xvfb 上不抖；整条 `smoke_grok_desktop_parity` 为 **PASS=962 FAIL=12**，红项共 10 个 G 编号（G-16、G-24、G-41、G-47、G-53、G-58、G-71、G-89、G-101、G-103）。
+
+本轮修的是 **G-58 的两条红**，而且它们是同一个真缺陷的两个症状。G-58 里有两条判据：`✗ 常驻内核契约（pass=11 fail=1）` 和 `✗ 对照锚点缺失（KR-03 反向对照 / KR-07 语义不变）`。锚点的定义是 `grep -q '^ok KR-03' && grep -q '^ok KR-07'`（`scripts/smoke_grok_desktop_parity.sh:2826`），所以第二条红不是锚点坏了，只是 KR-07 没绿的回声 —— **一条缺陷被记成两条红，对账时不能当两条修**。
+
+**机制（本地同样复现，不是 CI 专属）**：KR-07 的口径写在标题里 ——「同一份 argv，两条路产出的回合 JSON 归一后相同」。可 `runSeries(tag,…)` 把臂标签拼进了 argv：`sessionId:"kr-"+tag`、`turnId:"kr-"+tag+"-"+slug(text)`。内核回执的 `effects[].id` 是 `${turnId}:${kind}:${index}`，于是常驻臂产出 `kr-res-ListMachines:machines_list:0`、对照臂产出 `kr-leg-ListMachines:machines_list:0`；而归一函数只清顶层键 `turn_id/session_id/…` 和「8 位以上十六进制」串（`:61`、`:69`），臂标签既不是被 drop 的键、也不是 hex，**清不掉**。结果这条判据从来不是「换进程改了语义吗」，而是「门禁自己给两条臂起了不同名字吗」——它**永远不可能绿**，而且拿着两份不同 argv 的差去宣称语义变化。这是「夹具自己不成立」这一族的第 7 次复发，方向相反：前 6 次是夹具恒真（绿得没有意义），这次是夹具恒红（红得没有意义）。两侧都算自证失败。
+
+**修法按判据原话，不放宽判据**：`tag` 只用于分 dataRoot，argv 里 `sessionId:"kr-series"`、`turnId:"kr-"+slug(text)` 逐字对齐；比较之前加一道**前置**（`prove_kernel_resident.mjs:210`），若两条臂的 `turnId/sessionId/botId` 有任何一项不同，直接 `bad` 并点名差在哪，不许拿差值当语义证据，也不许抛（门自己的夹具不成立必须报红）。实测 **pass=11 fail=1 → pass=12 fail=0**，连跑两次不抖。
+
+**灵敏度（`scripts/mutate_kernel_resident_kr07.sh`，跑完自动还原）**：M1 把臂标签塞回 turnId → `FAIL KR-07 — 夹具前提不成立：两条臂喂的 argv 不同（{"text":"ListMachines","resident":"kr-res-ListMachines","legacy":"kr-leg-ListMach…`，pass=11 fail=1；M2 让常驻臂取到隔壁那条的结果（argv 仍逐字相同、输出真的不同）→ `FAIL KR-07 — 有 3 条结果不一致`，pass=11 fail=1。两格各打中一道防线：M1 证明前置有牙、M2 证明归一比较不是只看 `ok` 字段。**文案与锚点的安全性核对过**：G-58 锚点只 grep `^ok KR-0X` 的编号，不钉散文，所以本轮改 ok 文本不会再开一条 G-40 式的假红。
+
+**剩余 8 条红的分类（已取 artifact 逐项日志，非猜测）**：G-41 `M41 契约 7/7 全绿 + 4 个 GP-M41 锚点全绿，红的是矩阵里单独那步 negative control`（本地 `prove_m41_cn` 同 7/0，所以差在矩阵侧的负向对照步骤）；G-101 `prove_qr_code` 本地 **12/0** 而 CI **5/1**（读数形状就不一样，先怀疑 CI 探针而不是产品）；G-53 UJ `PASS=71 FAIL=1`，红项是「成员列表问答 `{answeredMembers:false,allNames:false,txt:""}`」；G-89/G-103 是锚点找不到（日志里已自述「门把 BP-06/07 合并输出成 'BP-06/07'」，属 G-40 同族）；G-16 `bytes=11305`、G-24 结构契约、G-47 `prove_android_build PASS=0 FAIL=1 SKIP=0`（同批 Android APK workflow 却 success）；G-71 「有已跟踪文件被本轮门禁改动了」= 门禁写进用户看得见的数据那一条。
+
+**本轮没做的事**：没在本地跑整条 1 小时矩阵（单门 + 突变体已覆盖 KR-07 这条路径），G-41/G-101/G-53 的分类只到「CI 读数与本地读数不同」这一层，机制未定。现账：本提交落盘后分支领先 origin **1** 个提交（本轮已推 CI 验）；#81 二选一与 #80 授权仍挂着。

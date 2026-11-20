@@ -125,18 +125,23 @@ async function main() {
     const runner = createTurnRunner(ROOT, { dataRoot, kernelBin: BIN });
     const results = [];
     for (const text of texts) {
+      /* KR-07 的口径是「同一份 argv」：tag 只用来分 dataRoot，绝不进 sessionId/turnId。
+         第一版把臂标签写进 turnId（kr-res-… / kr-leg-…），而回执 effects[].id 会把 turnId
+         原样带出来 —— 归一只清顶层 turn_id 和 8 位以上十六进制，臂标签清不掉，于是这条
+         判据拿两份**不同的 argv** 去比「语义不变」，永远红。夹具自己不成立时必须报红。 */
+      const argv = {
+        botId: "kr-bot",
+        sessionId: "kr-series",
+        turnId: "kr-" + slug(text),
+        timeoutMs: 45000,
+      };
       let r;
       try {
-        r = await runner.runTurn(text, {
-          botId: "kr-bot",
-          sessionId: "kr-" + tag,
-          turnId: "kr-" + tag + "-" + slug(text),
-          timeoutMs: 45000,
-        });
+        r = await runner.runTurn(text, argv);
       } catch (e) {
         r = { ok: false, threw: true, error: String((e && e.message) || e) };
       }
-      results.push({ text, r });
+      results.push({ text, r, argv });
     }
     const info = {
       localSpawns: runner.localSpawns(),
@@ -209,14 +214,30 @@ async function main() {
   }
   /* ---- KR-07 语义不变：同一句话，常驻前后产出同一份回合结果 ---- */
   {
-    const diff = [];
+    /* 前置：两条臂的 argv 必须逐字相同（只有 dataRoot 不同）。不同就是夹具坏了，
+       报红并点名，不许拿「两份不同输入的差」当「换进程改了语义」的证据，也不许抛。 */
+    const skew = [];
     for (let i = 0; i < TEXTS.length; i++) {
-      const a = sig(residentRun.results[i].r);
-      const b = sig(legacyRun.results[i].r);
-      if (a !== b) diff.push({ text: TEXTS[i], resident: a.slice(0, 300), legacy: b.slice(0, 300) });
+      const x = residentRun.results[i].argv;
+      const y = legacyRun.results[i].argv;
+      if (x.turnId !== y.turnId || x.sessionId !== y.sessionId || x.botId !== y.botId) {
+        skew.push({ text: TEXTS[i], resident: x.turnId, legacy: y.turnId });
+      }
     }
-    if (diff.length === 0) {
-      ok("KR-07", "同一批 " + TEXTS.length + " 句话：常驻与每轮 spawn 的归一结果逐条相同（换进程不换语义）");
+    const diff = [];
+    if (skew.length === 0) {
+      for (let i = 0; i < TEXTS.length; i++) {
+        const a = sig(residentRun.results[i].r);
+        const b = sig(legacyRun.results[i].r);
+        if (a !== b) diff.push({ text: TEXTS[i], resident: a.slice(0, 300), legacy: b.slice(0, 300) });
+      }
+    }
+    if (skew.length > 0) {
+      bad("KR-07", "夹具前提不成立：两条臂喂的 argv 不同（" + JSON.stringify(skew[0]) +
+        "）—— 「同一份 argv 语义不变」必须先把 argv 钉成同一份，否则比的是臂标签不是产品");
+    } else if (diff.length === 0) {
+      ok("KR-07", "同一批 " + TEXTS.length + " 句话：两条臂 argv 逐字相同（turnId/sessionId/botId 都一致），" +
+        "常驻与每轮 spawn 的归一结果逐条相同（换进程不换语义）");
     } else {
       bad("KR-07", "有 " + diff.length + " 条结果不一致：" + JSON.stringify(diff[0]));
     }
