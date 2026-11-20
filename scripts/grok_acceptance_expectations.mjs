@@ -105,6 +105,13 @@ const E = {
     maxWidth: band(parseFloat(GROK.messageColumn.maxWidthRule), 2),
     codeBlockWidth: band(num(GROK.messageColumn.codeBlock.width), 2),
   },
+  /* 消息行/面板：§4.4 的 728 与 SP-03、§4.3 的 composer 728 都钉这个，
+     以前只活在门源码的字面量里（真源有数、期望文件没这一格，门就没人能核对它）。 */
+  messageRow: {
+    rowWidth: band(num(GROK.messageColumn.rowWidth), 2),
+    paneWidth: band(num(GROK.messageColumn.paneWidth), 2),
+    sideMargin: band(num(GROK.messageColumn.sideMargin), 0),
+  },
   accountPopup: {
     width: band(num(GROK.accountPopup.container.width), 2),
     height: band(num(GROK.accountPopup.container.height), 2),

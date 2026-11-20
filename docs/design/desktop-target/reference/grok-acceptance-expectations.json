@@ -198,6 +198,26 @@
       "measured": 534.4
     }
   },
+  "messageRow": {
+    "rowWidth": {
+      "eq": 728,
+      "min": 726,
+      "max": 730,
+      "measured": 728
+    },
+    "paneWidth": {
+      "eq": 760,
+      "min": 758,
+      "max": 762,
+      "measured": 760
+    },
+    "sideMargin": {
+      "eq": 16,
+      "min": 16,
+      "max": 16,
+      "measured": 16
+    }
+  },
   "accountPopup": {
     "width": {
       "eq": 228,

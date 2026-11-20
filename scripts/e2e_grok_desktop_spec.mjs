@@ -38,6 +38,20 @@ const EXPECT_BUBBLE_MAXW = (() => {
   const b = EXPECT_NODE && EXPECT_NODE.bubble && EXPECT_NODE.bubble.maxWidth;
   return b && Number.isFinite(b.eq) && Number.isFinite(b.min) && Number.isFinite(b.max) ? b : null;
 })();
+/* W2 第二格（§8.183）：两个 728 也改读期望带 —— composer 的宽来自 `composer.width`，
+   消息行的宽来自 `messageRow.rowWidth`（真源里这是两格独立的读数，以前在门源码里是同一个手抄字面量）。
+   取不到带就是 null，配合 inBand 一律 bad：没有期望，这条断言等于没做事。 */
+const EXPECT_BAND = (keys) => {
+  let n = EXPECT_NODE;
+  for (const k of keys) n = n && n[k];
+  return n && Number.isFinite(n.eq) && Number.isFinite(n.min) && Number.isFinite(n.max) ? n : null;
+};
+const EXPECT_COMPOSER_W = EXPECT_BAND(["composer", "width"]);
+const EXPECT_ROW_W = EXPECT_BAND(["messageRow", "rowWidth"]);
+const EXPECT_PANE_W = EXPECT_BAND(["messageRow", "paneWidth"]);
+const inBand = (v, band) => !!(band && Number.isFinite(Number(v)) && Number(v) >= band.min && Number(v) <= band.max);
+const bandNote = (label, band) =>
+  `（期望来自 ${path.basename(EXPECT_FILE)} ${label}=${band ? band.eq : "读不到"}，带 ${band ? `${band.min}..${band.max}` : "读不到"}）`;
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
 let PASS = 0, FAIL = 0, SKIP = 0;
@@ -386,9 +400,9 @@ async function setTheme(win, mode) {
     (composer.rowH === 44)
       ? ok("composer pill is 44px tall (§4.3)")
       : bad("composer height drifted (§4.3 wants 44)", composer.rowH);
-    (composer.rowW === 728)
-      ? ok("composer pill is 728px wide (§4.3)")
-      : bad("composer width drifted (§4.3 wants 728)", composer.rowW);
+    inBand(composer.rowW, EXPECT_COMPOSER_W)
+      ? ok(`composer pill is ${composer.rowW}px wide (§4.3)${bandNote("composer.width", EXPECT_COMPOSER_W)}`)
+      : bad(`composer width drifted (§4.3 要的是期望带内的宽度)${bandNote("composer.width", EXPECT_COMPOSER_W)}`, JSON.stringify({ rowW: composer.rowW, band: EXPECT_COMPOSER_W, expectFile: EXPECT_FILE }));
     (Math.abs(composer.attachLeft - 12) <= 1 && Math.abs(composer.sendRight - 8) <= 1)
       ? ok("＋ at left 12 / send at right 8 (§4.3 absolute placement)")
       : bad("composer button placement drifted (§4.3 wants 12 / 8)", JSON.stringify({ attachLeft: composer.attachLeft, sendRight: composer.sendRight }));
@@ -519,6 +533,9 @@ async function setTheme(win, mode) {
           w: Math.round(ru.width),
         },
         rowW: Math.round(log.getBoundingClientRect().width - parseFloat(getComputedStyle(log).paddingLeft) - parseFloat(getComputedStyle(log).paddingRight)),
+        /* 「728 装在 760 的面板里」以前只是散文；paneW 是真的把 padding 加回去读一次，
+           这样 SP-03 能同时核对期望的 messageRow.rowWidth 与 messageRow.paneWidth。 */
+        paneW: Math.round(log.getBoundingClientRect().width),
       };
       asShort.remove();
       asLong.remove();
@@ -535,9 +552,9 @@ async function setTheme(win, mode) {
       (a.bg === "rgba(28, 28, 28, 0.06)" && a.size === "14px" && Number(a.weight) === 420 && a.lh === "20px")
         ? ok("[SP-02] assistant bubble = ink 6% / 14px-420-lh20 (§4.4)")
         : bad("assistant bubble fill or type drifted (§4.4 wants ink .06 / 14-420-20)", JSON.stringify(a));
-      (bubble.rowW === 728)
-        ? ok("[SP-03] message row is 728px inside the 760 pane (§4.4)")
-        : bad("message row width drifted (§4.4 wants 728)", bubble.rowW);
+      (inBand(bubble.rowW, EXPECT_ROW_W) && inBand(bubble.paneW, EXPECT_PANE_W))
+        ? ok(`[SP-03] message row is ${bubble.rowW}px inside the ${bubble.paneW}px pane (§4.4)${bandNote("messageRow.rowWidth", EXPECT_ROW_W)}${bandNote("messageRow.paneWidth", EXPECT_PANE_W)}`)
+        : bad(`message row width drifted (§4.4 要的是期望带内的行宽与面板宽)${bandNote("messageRow.rowWidth", EXPECT_ROW_W)}${bandNote("messageRow.paneWidth", EXPECT_PANE_W)}`, JSON.stringify({ rowW: bubble.rowW, paneW: bubble.paneW, band: EXPECT_ROW_W, paneBand: EXPECT_PANE_W, expectFile: EXPECT_FILE }));
       /* SP-04 的期望从真源派生的 JSON 里读，不钉字面 558.4（§8.180 / W2 第一格）：
          640 那格能活两年，一半原因是「真值」和「门里的数」靠人手抄同源（§8.179）。
          读不到期望一律 bad —— SKIP≠过：没有期望，这条断言等于没做事。 */

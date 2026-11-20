@@ -101,11 +101,18 @@ if (fresh) {
   const handCopied = [
     [/maxW\.includes\(\s*["'`]558\.4/, 'a.maxW.includes("558.4px")'],
     [/Math\.abs\(a\.longW\s*-\s*558\.4\)/, "Math.abs(a.longW - 558.4) <= 1"],
+    /* §8.183 起，两个 728（composer 药丸宽 / SP-03 消息行宽）也进了同一判据：
+       真源里它们是 composer.width 与 messageRow.rowWidth 两格独立读数，手抄时却被写成同一个数。 */
+    [/bubble\.rowW === 728/, "bubble.rowW === 728"],
+    [/composer\.rowW === 728/, "composer.rowW === 728"],
   ].filter(([re, sample]) => re.test(sample) && re.test(src)).map(([re]) => re.source);
-  const consumes = /EXPECT_BUBBLE_MAXW/.test(src) && /cap\s*>=\s*band\.min/.test(src) && /cap\s*<=\s*band\.max/.test(src);
-  if (handCopied.length) bad("[EF-05] SP-04 的判据里又出现手抄字面量（期望必须来自 grok-acceptance-expectations.json）", handCopied.join(" / "));
-  else if (!consumes) bad("[EF-05] SP-04 没有按期望带判（缺 EXPECT_BUBBLE_MAXW 或 min/max 比较）");
-  else ok("[EF-05] SP-04 判据只读期望带（EXPECT_BUBBLE_MAXW + cap 落 min..max），手抄字面量 0 处（判据正则先自证咬得住 §8.178 那两行原话）");
+  const consumes =
+    /EXPECT_BUBBLE_MAXW/.test(src) && /cap\s*>=\s*band\.min/.test(src) && /cap\s*<=\s*band\.max/.test(src) &&
+    /EXPECT_ROW_W/.test(src) && /EXPECT_COMPOSER_W/.test(src) &&
+    /inBand\(bubble\.rowW/.test(src) && /inBand\(composer\.rowW/.test(src);
+  if (handCopied.length) bad("[EF-05] SP-03/SP-04 与 composer 宽的判据里又出现手抄字面量（期望必须来自 grok-acceptance-expectations.json）", handCopied.join(" / "));
+  else if (!consumes) bad("[EF-05] 判据没有全部按期望带判（缺 EXPECT_BUBBLE_MAXW / EXPECT_ROW_W / EXPECT_COMPOSER_W 或 min/max 比较）");
+  else ok("[EF-05] SP-03/SP-04 与 composer 宽都只读期望带（EXPECT_BUBBLE_MAXW + EXPECT_ROW_W + EXPECT_COMPOSER_W，inBand 落 min..max），手抄字面量 0 处（判据正则先自证咬得住 §8.178 与 §8.183 改前那四行原话）");
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

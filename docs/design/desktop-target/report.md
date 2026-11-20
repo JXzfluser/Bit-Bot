@@ -13533,3 +13533,17 @@ node scripts/e2e_grok_desktop_spec.mjs
 **顺带拿掉的一层危险**：这一格原本在收尾把开跑时的快照**写回仓库 `data/`**（`restore()`）。隔离之前，这意味着并发窗口里它会覆盖另一个实例（或用户）刚写的群面；现在写回的是自己那份副本，这层互相覆盖从判据路径里消失了。
 
 **边界 / 本轮未做**：① 没跑整条矩阵，只跑了这一格；`node --check` 通过。② 没做真并发验证（同时开两把这一格 + 一份外部整份写）——#73 的 G-124 八臂钉的是写口层，本条只证明**门禁之间不再共用基底**。③ 原始红只有历史日志那一份，今天没在真实并发下复现故障本身；能说清的是故障类（共用 `data/`）与它的消失条件，不能宣称已复现。④ 内核那条链路仍可能把 `data/llm/turns` 写进真实仓库（boot 门 `scripts/e2e_grok_desktop_boot.mjs:320-327` 记的同一口径：产物有两个合法落点），这一格不读 turns 所以不影响判据，但「门禁完全不碰用户看得见的数据」这句话还没到全绿，留作下一条。
+
+### 8.183 W2 第二格真的接上了：两个 728 从手抄字面量改成期望带（`composer.width` / `messageRow.rowWidth`+`paneWidth`），SP-03 第一次把面板宽读成判据 —— 挪走期望文件当场 FAIL=3（35/0 → 32/3），EF-05 从两行原话扩到四行 5/0（2026-11-21）
+
+**洞**：§8.180 只把 SP-04 一格换成读期望，剩下两处宽度仍是手抄：`bubble.rowW === 728`（SP-03）和 `composer.rowW === 728`（§4.3）。更根本的是**期望文件里根本没有消息行这一族**——真源 `grok-real-spec.json` 的 `messageColumn` 带着 `rowWidth:728 / paneWidth:760 / sideMargin:16` 三格读数，生成器一格都没派生。手抄在这里的代价不是「数字写死」这么简单：728 在门源码里是**同一个字面量重复两次**，在真源里却是 `composer.width` 与 `messageRow.rowWidth` **两格独立测量**；真源哪天重采出分叉（面板变宽而输入框没变），门会拿其中一格赦免另一格。这正是 §8.179 那条断链的第二个形状。
+
+**落地**：
+- `scripts/grok_acceptance_expectations.mjs`：bubble 之后新增 `messageRow` 族（`rowWidth` 带 `726..730`、`paneWidth` 带 `758..762`、`sideMargin` 钉死 16，容差与既有族同口径：宽度 ±2、单值 ±0）。重生成产物 9356B 一并提交。
+- `scripts/e2e_grok_desktop_spec.mjs`：补三个小工具 `EXPECT_BAND(keys)` / `inBand(v, band)` / `bandNote(label, band)`，composer 宽改读 `composer.width`，SP-03 改读 `messageRow.rowWidth` **且** `messageRow.paneWidth`。同时给气泡探针补一个真读数 `paneW`（把 `#log` 的 padding 加回去）——「728 装在 760 的面板里」这句从散文变成判据。
+- 出处上屏：绿的时候 ✓ 行自带来源（`… messageRow.rowWidth=728，带 726..730`），红的时候当场把 `band:null` 和 `expectFile` 的绝对路径一起打出来，不再让人猜是不是读到了旧期望。
+- `scripts/prove_expectations_fresh.mjs` EF-05：防回长的钉从两行原话扩到四行——除 §8.178 那两行 `558.4` 之外，新增 `bubble.rowW === 728`、`composer.rowW === 728` 这两条本轮改前的原话；消费侧同时要求 `EXPECT_ROW_W`、`EXPECT_COMPOSER_W` 与两处 `inBand(...)` 调用点都在，缺一个就红。
+
+**实测账**：spec 门 `PASS=35 FAIL=0 SKIP=0`（35 格一格没少，只是三格的判据换了来源）；负向对照＝临时把 `grok-acceptance-expectations.json` 挪走再放回，当场 `PASS=32 FAIL=3`，红的正是 composer 宽、SP-03、SP-04 三格——三处都真在消费期望文件，不是把 band 拿去做装饰；新鲜度门 `prove_expectations_fresh: PASS=5 FAIL=0 SKIP=0`（EF-02 逐字节 9356B 相同＝派生表和盘上没分叉）；孤门尺 `prove_anchor_coverage: PASS=8 FAIL=0`，AC-02 仍 5 族、AC-03 C 类 88 持平、AC-06 无对照 48 持平、AC-07 孤门 77 持平。
+
+**边界 / 本轮未做**：① SP-01/02/05 的字面量（radius 18、`rgba(28,28,28,.06)`、14-420-20、用户气泡反转）还在 #9 排队，EF-05 现在只钉三个宽度。② `sideMargin:16` 已进期望表，但**门里没人判它**——写进派生表不等于判到，没接线就不算数。③ 没重跑 G-127 / G-128 的矩阵 harness 段，本轮只改门内判据与 EF-05 内部逻辑；矩阵锚 `for g127_id in SP-01..SP-05` 只 grep 编号，✓ 文案变化不碰锚点（#66 那条教训的反向确认）。④ 期望表的真源快照仍是 2026-10-24 抓的，本轮没有重采 Grok；EF-02 保证的是「派生自盘上真源」，不是「盘上真源是今天的」（§8.181 边界①同一句话）。
