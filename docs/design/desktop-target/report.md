@@ -13517,3 +13517,19 @@ node scripts/e2e_grok_desktop_spec.mjs
 **踩到的一次假红（写进门头注释）**：EF-01..04 最初用模板字面量 `ok(\`[EF-01] …${x}\`)`，AC-02 当场报「矩阵锚了点上门里没有的号 EF-01,EF-02,EF-03,EF-04」——尺是从**源码字面量**提取门自己声明的编号，反引号里的编号它读不到。改成 `ok("[EF-01] …" + x)` 后 AC-02 绿。这是 §8.177 那条 perl 事故的同一课的另一半：编号契约能不能被机器看见，取决于写形式，不取决于人眼。
 
 **边界 / 本轮未做**：① 这条门保证「期望 = 当前盘上真源的派生物」，**不保证盘上真源是今天抓的**（`capturedAt` 仍是 2026-10-24）；重采节奏属真源侧纪律，没在这里假装管住。② EF-05 只守 SP-04 一条断言的形状；SP-01/02/03/05 与 `prove_m33_grokchrome.js` 的字面量仍在 #9 里排队。③ 未跑整条矩阵，G-128 harness 只证明这段逻辑与锚点通；`bash -n` 通过。④ `_gateConflicts` 那 5 格 ourCurrent 更新只是「我方现状」列，没有据此放宽任何期望带；冲突清单本身仍靠人读，没有门判它。
+
+### 8.182 P12 `room_not_found` 定位收口：不是路由缺陷，是这一格门禁和用户自己开着的 Bit Bot、别的门禁实例共用仓库 `data/` —— 按 `paths.js` 的契约铺隔离根后连跑两把 30/0，把两侧数据根分叉后当场掉回 1/3（2026-11-21）
+
+**原始红（逐字，来自 `/tmp/orphan_creator_pipeline.log`，§8.176 留的现场）**：`✗ P12 群里说出来的排程没有归到本群（面板看不见、也管不着） — {"orch12":{"ok":false,"error":"room_not_found"},"found":null,"newRows":[]}`，账是 `PASS=27 FAIL=1 SKIP=0`。今天串行跑这一格拿不到同一条红（`PASS=30 FAIL=0`），所以按纪律先不动判据，改查「为什么会时好时坏」——判据没变、代码没变、只有盘上的数据变过。
+
+**机制（不是猜的，逐层落到源码）**：这一格以前 `const D = (...p) => path.join(REPO, "data", ...p)`，启动 env 只有 `BITBOT_REPO_ROOT`，于是 dev 的 `DATA_ROOT = repoRoot/data`（`hosts/desktop/paths.js:109-118`）。app 写的 `data/desktop/rooms.json` 和门读的 `data/desktop/rooms.json` 是**同一个文件**，用户自己开着的 Bit Bot 也在同一份上整份写。`roomTurn` 的查找是按 `r.id`（`hosts/dist/box/product_surface.js:1946-1950`），键没变过；会变的是那份文件的内容：别的实例按前缀清夹具、或另一个进程的整份写把基底覆盖回去（就是 #69 / KP-09 片5 量过的形状，`§8.147`）。P1 刚建好的群，到 P12 用时已经不在群面上 → `room_not_found`。**结论：这一条不是产品路由缺陷，是门禁缺数据根隔离**（和 #46 那条 user-data-dir 未隔离同族）。
+
+**落地（`scripts/e2e_desktop_creator_pipeline.mjs:53-73`）**：`GATE_ROOT = mkdtemp` + `cmd` 软链 + 整份 `data/` 快照（排除 192MB 的 `data/tmp` 与一次历史 `import-backup-*`）+ 启动 env `BITBOT_DATA_ROOT=GATE_ROOT/data`，门侧 `D()` 走同一个 `DATA`；退出时删根。app 侧与门侧共用一个根变量，形状上就没法分叉。
+
+**第一版的假红，量到的正是产品契约（逐字）**：把 `BITBOT_DATA_ROOT` 直接指向一个空的临时目录，P1 当场 `✗ P1 bots.op create — {"ba":{"ok":false,"id":"","job":"","err":"kernel_crashed (pid=54007 in_flight=k1)"},…}`、`PASS=1 FAIL=3 SKIP=0`。这和 `scripts/e2e_desktop_turn_cancel.mjs:17-21` 记的「空根上内核几百毫秒就崩，根本走不到『回合在跑』」是同一个现象，这次拿到了原因：`hosts/desktop/paths.js:99-108` 明写 `BITBOT_DATA_ROOT` **必须是某个根的直接子目录**，因为内核 cwd = `dirname(DATA_ROOT)`（`hosts/shared/run_moon_turn.js:131-135` 同一句话），dev 的 `moon run cmd/desktop_turn` 和内核按相对路径写的 `data/workspace/uploads/...` 都从那个 cwd 解析。所以「根末段要叫 data、父目录要有 cmd」不是门禁的风格偏好，是产品契约——上一轮把它当环境限制绕开（改用仓库 data/），这轮按契约铺正。
+
+**实测账 + 负向对照**：① 隔离后连跑两把都是 `PASS=30 FAIL=0 SKIP=0`，P12 逐字 `✓ … 真的建成 cron=0 22 * * *、墙钟 22:00 的任务，并且归属就是本群（room_id=room-mwpi3v7s-61vdt）` / 第二把 `room_id=room-mwpi6i8k-hw8lq`——两把 id 不同，说明读的是真新状态而不是缓存里的旧绿。② 反向对照：把 `BITBOT_DATA_ROOT` 改成另一个临时目录、门仍读 `DATA`，当场 `PASS=1 FAIL=3 SKIP=0`，改回即 30/0——这条门的绿确实由「app 写的那个根 = 门读的那个根」撑着，不是自证循环。③ 用户可见数据面核对：两把跑完后 `data/desktop/rooms.json` 仍是 5 条群，两把的夹具 room id 在真实库里 grep 计数都是 0。
+
+**顺带拿掉的一层危险**：这一格原本在收尾把开跑时的快照**写回仓库 `data/`**（`restore()`）。隔离之前，这意味着并发窗口里它会覆盖另一个实例（或用户）刚写的群面；现在写回的是自己那份副本，这层互相覆盖从判据路径里消失了。
+
+**边界 / 本轮未做**：① 没跑整条矩阵，只跑了这一格；`node --check` 通过。② 没做真并发验证（同时开两把这一格 + 一份外部整份写）——#73 的 G-124 八臂钉的是写口层，本条只证明**门禁之间不再共用基底**。③ 原始红只有历史日志那一份，今天没在真实并发下复现故障本身；能说清的是故障类（共用 `data/`）与它的消失条件，不能宣称已复现。④ 内核那条链路仍可能把 `data/llm/turns` 写进真实仓库（boot 门 `scripts/e2e_grok_desktop_boot.mjs:320-327` 记的同一口径：产物有两个合法落点），这一格不读 turns 所以不影响判据，但「门禁完全不碰用户看得见的数据」这句话还没到全绿，留作下一条。
