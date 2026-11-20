@@ -1754,21 +1754,25 @@ if timeout 900 node scripts/prove_m41_cn.js > /tmp/g41-probe.log 2>&1; then
 else
   bad "G-41 M41 中英收尾契约（见 /tmp/g41-probe.log）"
 fi
-grep -q "channels-meta 前缀本地化" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 GP-M41：channels-meta workflows · → 工作流 ·" \
-  || bad "G-41 channels meta"
-grep -q "box-meta 前缀本地化" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 GP-M41：box-meta env · → 运行环境 ·" \
-  || bad "G-41 box meta"
-grep -q "cloud-meta 默认值不再外泄内部枚举" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 GP-M41：cloud-meta local_worker → 本地代理（枚举不外泄）" \
-  || bad "G-41 cloud-meta leak"
-grep -q "技术引用保留：ADR 0002 / ICS" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 GP-M41：技术引用保留 ADR 0002 / ICS（符合扫描排除规则）" \
-  || bad "G-41 technical ref drift"
-grep -q "负向对照：塞回 workflows ·" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 负向对照：塞回 workflows · → 本地化断言翻假（非恒真）" \
-  || bad "G-41 negative control"
+# 锚点钉的是 M41-0N 编号（契约写在 prove_m41_cn.js 头部注释里），不是那句中文。
+# 上一版钉散文：M46 把第 7 条措辞从「负向对照：塞回」改成「把字典词条塞回」，
+# 锚点当场变成恒红（G-40 同族，这次是反过来 —— 该红的没红过、该绿的恒红）。
+for g41_id in M41-01 M41-02 M41-03 M41-04 M41-05 M41-06 M41-07; do
+  case "$g41_id" in
+    M41-01) g41_lab="channels-meta workflows · → 工作流 ·" ;;
+    M41-02) g41_lab="box-meta env · → 运行环境 ·" ;;
+    M41-03) g41_lab="webhook meta copied → 已复制" ;;
+    M41-04) g41_lab="delivery meta last: → 最近：" ;;
+    M41-05) g41_lab="cloud-meta local_worker → 本地代理（枚举不外泄）" ;;
+    M41-06) g41_lab="技术引用保留 ADR 0002 / ICS（符合扫描排除规则）" ;;
+    M41-07) g41_lab="负向对照：塞回 workflows · → 本地化断言翻假（非恒真）" ;;
+  esac
+  if grep -q "\[$g41_id\]" /tmp/g41-probe.log 2>/dev/null; then
+    ok "G-41 GP-M41 $g41_id：$g41_lab"
+  else
+    bad "G-41 GP-M41 $g41_id 锚点没跑绿：$g41_lab"
+  fi
+done
 
 echo "== G-42 消息流排版（M42：居中列 + 气泡尾角 + 连续回合分组）=="
 if timeout 900 node scripts/prove_m42_stream.js > /tmp/g42-probe.log 2>&1; then
