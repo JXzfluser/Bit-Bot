@@ -11,7 +11,12 @@
     "title": "Grok Bot",
     "capturedAt": "2026-10-24T10:56:53.369Z",
     "source": "Grok Bot.app (CDP :9224, live renderer)",
-    "script": "scripts/grok_real_spec_capture.mjs"
+    "script": "scripts/grok_real_spec_capture.mjs",
+    "accountBarNotes": {
+      "layout": "0.75.5 底部 = 52px footer（padding 0 16 16）+ 248×36 行（gap 8）+ 账户胶囊 + 36 连接应用 + 36 更新钮。",
+      "dynamic": "有更新时第二颗是 36 蓝底（rgb(22,128,243)）更新钮；2026-10-24 无更新钮的抓取里是账户胶囊 171.5 + 68 的「连接应用」文字胶囊。",
+      "divergence": "我方按 D-1 用 accent 反色代替蓝色，且第一颗圆钮保留会话入口（Grok 的会话属于 Bot、不占侧栏）。"
+    }
   },
   "sidebar": {
     "width": {
@@ -325,7 +330,7 @@
     {
       "field": "sendButton.size",
       "grokWants": "28px",
-      "ourCurrent": "34px(50%)",
+      "ourCurrent": "28px(999px)",
       "blockers": [
         "ui_chrome.css #send 34px !important",
         "scripts/prove_m33_grokchrome.js:91-92 要求 index.html 出现字面 width:36px",
@@ -335,7 +340,7 @@
     {
       "field": "bubble.borderRadius",
       "grokWants": "18px",
-      "ourCurrent": "16px",
+      "ourCurrent": "18px",
       "blockers": [
         "e2e_grok_desktop_spec A10 断言 === 16",
         "--radius-bubble: 16px",
@@ -345,7 +350,7 @@
     {
       "field": "composer.borderRadius",
       "grokWants": "22px",
-      "ourCurrent": "24px",
+      "ourCurrent": "22px",
       "blockers": [
         "css 硬写 24（覆盖 --radius-composer: 22）",
         "e2e A5 只断言 radius>=20（放不住精确值）"
@@ -354,7 +359,7 @@
     {
       "field": "sessionRow.height",
       "grokWants": "54px",
-      "ourCurrent": "58",
+      "ourCurrent": "0",
       "blockers": [
         "e2e S3 断言区间 56-62",
         "layout-contract.md §3 合同行高"
@@ -363,7 +368,7 @@
     {
       "field": "字阶 12/16px",
       "grokWants": "分组/作者名 12px、行标题 16px（weight 420）",
-      "ourCurrent": "13.5px / 13px",
+      "ourCurrent": "16px / 13px",
       "blockers": [
         "ui-unified-spec §2.3 禁 11/12px",
         "prove_ui_tokens.js 字号白名单（T-3 行内 font-size 23<=24）"

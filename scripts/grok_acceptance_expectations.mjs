@@ -5,8 +5,8 @@
  * 从 reference/grok-real-spec.json 直接取出，落成 JSON，让新门只读这个文件；
  * 同时把「改这一值会让哪几条既有门红」的冲突显式列出来。
  *
- * 用法：node scripts/grok_acceptance_expectations.mjs [--write]
- *   不带 --write 只打印，不动任何文件。
+ * 用法：node scripts/grok_acceptance_expectations.mjs [--write] [--ref=DIR] [--out=FILE]
+ *   不带 --write 只打印，不动任何文件；--ref/--out 供新鲜度门在临时目录里重放生成。
  */
 import fs from "fs";
 import path from "path";
@@ -14,10 +14,17 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
-const REF = path.join(REPO, "docs/design/desktop-target/reference");
+/* --ref= / --out= 是给「期望新鲜度门」（scripts/prove_expectations_fresh.mjs）用的：
+   它要在临时目录里改真源再重新生成，证明源头的数真能流到期望里。
+   不带参数时行为与以前完全一致（读仓库 reference/，写同一目录）。 */
+const flag = (name, dflt) => {
+  const a = process.argv.find((s) => s.startsWith(`--${name}=`));
+  return a ? path.resolve(a.slice(name.length + 3)) : dflt;
+};
+const REF = flag("ref", path.join(REPO, "docs/design/desktop-target/reference"));
 const GROK = JSON.parse(fs.readFileSync(path.join(REF, "grok-real-spec.json"), "utf8"));
 const BB = JSON.parse(fs.readFileSync(path.join(REF, "bb-real-spec.json"), "utf8"));
-const OUT = path.join(REF, "grok-acceptance-expectations.json");
+const OUT = flag("out", path.join(REF, "grok-acceptance-expectations.json"));
 
 const px = (v) => (typeof v === "string" ? parseFloat(v) : v);
 const num = (v) => (typeof v === "number" ? v : px(v));

@@ -5508,6 +5508,34 @@ echo "    其余 30 条断言仍是散文锚点（属 #85 的活），本轮没�
 echo "    列宽这条本轮同时改了产品：ui_chrome.css 的 assistant 上限从自拟 640px 收回真源 558.4px（三处），"
 echo "    同轮重跑 artifacts 9/0、chatsurface 13/0、stream_typing 9/0 —— 代码块行为没回退（283px 那个坑仍在 :has() 分支里堵着）。"
 
+echo "== G-128 期望新鲜度门（§8.181：门读的期望必须是当前真源的派生物）=="
+echo "  · SP-04 改成读 grok-acceptance-expectations.json 之后留下的洞：没有任何东西看守这份 JSON 是否随两份 real-spec 重生成。"
+echo "    接入本轮第一次跑就当场量到陈旧（盘上 8523B vs 重生成 9035B）；差异全部落在 _gateConflicts[].ourCurrent 与 _measuredAt 备注，"
+echo "    断言带一格没动（bubble.maxWidth.eq 558.4 → 558.4），重生成后 EF-02 才转绿。"
+if node scripts/prove_expectations_fresh.mjs > /tmp/g128-exp.log 2>&1; then
+  ok "G-128 EF 期望新鲜度尺 exit 0（$(tail -1 /tmp/g128-exp.log)）"
+else
+  bad "G-128 EF 期望新鲜度尺红（见 /tmp/g128-exp.log；$(tail -1 /tmp/g128-exp.log)）"
+fi
+# 锚点只钉 ✓ 行里出现的 [EF-nn]：编号只加在 ok() 文案上，红行没有编号 —— 漏一条就是这条锚点红。
+for g128_id in EF-01 EF-02 EF-03 EF-04 EF-05; do
+  if grep -q "\[$g128_id\]" /tmp/g128-exp.log 2>/dev/null; then
+    ok "G-128 GP-EF $g128_id：锚点跑到绿行"
+  else
+    bad "G-128 GP-EF $g128_id 没跑出绿行（判据被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+if [ "$(grep -c '^  ✓' /tmp/g128-exp.log)" -ge 5 ] \
+   && grep -q "PASS=5 FAIL=0 SKIP=0" /tmp/g128-exp.log; then
+  ok "G-128 GP-EF 计数钉：绿行 $(grep -c '^  ✓' /tmp/g128-exp.log) ≥ 5 且 PASS=5 FAIL=0 SKIP=0"
+else
+  bad "G-128 GP-EF 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g128-exp.log)、$(tail -1 /tmp/g128-exp.log)（期望 PASS=5 FAIL=0 SKIP=0）"
+fi
+echo "  · G-128 口径（诚实）：EF-02 是**逐字节**比较而不是逐字段 —— 字段级比较会放过「生成逻辑改了但没人重跑」这一类漂移；"
+echo "    EF-04 是灵敏度对照（临时真源改成 640px → 期望必须跟着变 640），缺它的话 EF-02 只是两份文件互相印证；"
+echo "    EF-05 钉的是门源码的判据形状（不许再出现手抄 558.4 字面量），散文里提这个数字不算红。"
+echo "    真源本身的重采节奏不在这条门管辖内：它只保证「期望 = 当前盘上真源的派生物」，不保证盘上真源是今天抓的。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"
