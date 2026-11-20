@@ -1832,24 +1832,24 @@ if timeout 900 node scripts/prove_m44_header.js > /tmp/g44-probe.log 2>&1; then
 else
   bad "G-44 M44 header 契约（见 /tmp/g44-probe.log）"
 fi
-grep -q "实心 accent 填充" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 GP-M44：header 按钮 active 改实心 accent 填充（修 dead border-color）" \
-  || bad "G-44 active fill missing"
-grep -q "#header-actions button:active scale(0.96)" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 GP-M44：header 按钮 :active scale(0.96) 与 composer 节奏一致" \
-  || bad "G-44 header press missing"
-grep -q "reduced-motion 下 #header-actions" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 GP-M44：reduced-motion 归零 header 按压位移" \
-  || bad "G-44 rm header missing"
-grep -q "把 rail open 状态回写 gp-panel-btn" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 GP-M44：toggleComputerRail 把 open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合）" \
-  || bad "G-44 gp active sync missing"
-grep -q "M20 回归护栏：#header-actions 仍 justify-content: flex-end" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 M20 回归护栏：header-actions 对齐不破" \
-  || bad "G-44 M20 regression"
-grep -q "负向对照：塞回 dead border-color" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 负向对照：塞回 dead border-color → active 断言翻假（非恒真）" \
-  || bad "G-44 negative control"
+# 同 G-41：锚点钉 M44-0N 编号（编号契约写在 prove_m44_header.js 各段注释里），不钉散文。
+# 改前 6 条锚点全是散文，其中 M44-06（tools-toggle-btn 走 setPanel 单一状态源）无人看守。
+for g44_id in M44-01 M44-02 M44-03 M44-04 M44-05 M44-06 M44-07; do
+  case "$g44_id" in
+    M44-01) g44_lab="header 按钮 active 改实心 accent 填充（修 dead border-color）" ;;
+    M44-02) g44_lab="header 按钮 :active scale(0.96) 与 composer 节奏一致" ;;
+    M44-03) g44_lab="reduced-motion 归零 header 按压位移" ;;
+    M44-04) g44_lab="M20 回归护栏：header-actions 对齐不破" ;;
+    M44-05) g44_lab="rail open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合）" ;;
+    M44-06) g44_lab="tools-toggle-btn 点击走 setPanel 单一状态源" ;;
+    M44-07) g44_lab="负向对照：塞回 dead border-color → active 断言翻假（非恒真）" ;;
+  esac
+  if grep -q "\[$g44_id\]" /tmp/g44-probe.log 2>/dev/null; then
+    ok "G-44 GP-M44 $g44_id：$g44_lab"
+  else
+    bad "G-44 GP-M44 $g44_id 锚点没跑绿：$g44_lab"
+  fi
+done
 
 
 echo
