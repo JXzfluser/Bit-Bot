@@ -13480,3 +13480,19 @@ node scripts/e2e_grok_desktop_spec.mjs
 **现账**：本轮改动 = `scripts/bb_spec_capture.mjs`（探针节点改对 + `maxWidthPx`/`rowMaxWidthProbe`）、`docs/design/desktop-target/reference/bb-real-spec.json`（重采）、本报告。**这份快照的 diff 里还带着一次更早的重采**：工具条 `count` 34→62、新增 `canvas-open-btn` 等条目——那是当前产品的真实内容（不是我造的数），一并进快照；读它时按「最近一次真开机采集」理解，不要当成 §8.178 那轮的产物。
 
 **边界 / 本轮未做**：① 期望 JSON 仍然没有门在消费——`scripts/grok_acceptance_expectations.mjs` 生成的 `assistant.maxWidth = 558.4±2` 至今只是文件，把三条渲染门改成读它仍是 #9（W2），本轮只把「我方读数」接对，没动门。② `delta_emit_regions` 的对照仍是字符串相等，`min(558.4px, 100%)` vs `558.4px` 恒显「差」；要它按数值判等得先给这类自适应值定一条「取 min() 里的 px 项」的通用口径，属表尺自己的契约变更，没顺手改。③ `rowMaxWidthProbe` 里 `resolved: 760` 是 `#log` 的宽度，与真源 `rowWidth: 728` 不同源（真源那格采的是消息行），本轮没重定义它，只在标题注释里说清它不是气泡。④ 未跑整条矩阵，也未重跑 `e2e_grok_desktop_spec`（它测的是渲染 DOM，与本快照探针无耦合）。⑤ 快照是**派生态证据**，不是门禁输入：它自己不会红，除非有人把它接进门（见①）。
+
+### 8.180 W2 的第一格真的接上了：SP-04 的期望从 `grok-acceptance-expectations.json` 读，不再抄字面 558.4 —— 把期望文件挪走当场 FAIL=1（负向对照），装回来 35/0（2026-11-21）
+
+**为什么动这里**：§8.179 查出的两半成因里，「我方探针采错节点」已修；另一半是**期望 JSON 一直在生成、没有任何门消费**（W2 / 待办 #9）。SP-04 是本轮刚为 640 漂移新写的那条断言，它自己当时也写着字面量 `a.maxW.includes("558.4px")` —— 也就是说：修完漂移的那条门，用的仍是「人手抄真值进源码」这个会再漂移一次的形状。这一格先把它换成读派生期望。
+
+**改法（`scripts/e2e_grok_desktop_spec.mjs` 两处）**：
+1. 文件顶部读 `docs/design/desktop-target/reference/grok-acceptance-expectations.json`，取 `bubble.maxWidth`（`{eq:558.4, min:556.4, max:560.4, measured:558.4}`）；字段缺失或非有限数 → 期望记为 `null`，**不静默放行**。
+2. SP-04 判据改成三段：① 从 computed `max-width` 表达式里取 px 项当夹位 `cap`（`min(558.4px, 100%)` → 558.4）；② `cap` 落在期望带 `[min,max]` 内；③ 长句实测宽度与 `cap` 差 ≤1px、短句实测严格小于 `cap`。`cap` 由 CSS 计算值给出，不是源码里的常数。
+
+**实测（两次真开机，serial，中间 pkill）**：
+- 正常：`e2e_grok_desktop_spec: PASS=35 FAIL=0 SKIP=0`，SP-04 逐字 `message text column saturates at 558px (max-width min(558.4px, 100%)); short row shrink-wraps to 62px (期望来自 grok-acceptance-expectations.json bubble.maxWidth=558.4，带 556.4..560.4)`。总数仍是 35，矩阵 G-127 的 `PASS=35` 计数钉不用动。
+- **负向对照**：把期望文件临时挪走（`mv` → 跑 → 挪回，跑完 `git status` 对该文件无改动）→ `PASS=34 FAIL=1`，红的正是 SP-04，读数逐字 `message text column 不在期望带内（bubble.maxWidth=读不到，带 读不到…）— {"maxW":"min(558.4px, 100%)","longW":558,"shortW":62,"cap":558.4,…}`。这条证明门**真的在消费期望**：期望没了它就拒判，而不是拿源码里的字面量继续绿。按门禁纪律，负向对照在失败当下采样，读数原样留档。
+
+**现账**：本轮改动 = `scripts/e2e_grok_desktop_spec.mjs`（期望读取 + SP-04 带内判据）、本报告。W2 其余部分（另两条渲染门 `prove_m33_grokchrome.js` 的字面 36、以及把 sidebar/composer 族断言换成读期望）仍在 #9。
+
+**边界 / 本轮未做**：① 只有 SP-04 一条改成读期望，SP-01/02/03/05 仍是字面量（18、728、rgba 那几条）—— 同一文件里两种形状并存是**有意的过渡态**，不是已完成；#9 收口前别把「门已读真源」当现状讲。② 期望 JSON 本身是 2026-10-24 生成的（`_measuredAt`），它的数与当前 `grok-real-spec.json` 对得上（558.4/534.4），但**没有门看守它是否随真源重生成**；真源重采后忘跑 `--write` 会让这条门拿着旧期望判新产品，属 #9 的另一半。③ `cap` 用正则取 px 项，遇到 `calc()`/百分比夹位会取不到数 → 期望带判不了、直接红（宁可红也不放行）。④ 未跑整条矩阵；G-127 harness 的 35 计数由本次实跑覆盖。

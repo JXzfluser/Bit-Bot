@@ -24,6 +24,20 @@ import { electronLaunchEnv, electronUserDataDir, gateAppEnv, hasDisplay, killSta
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
+
+/* 真源派生的期望（`scripts/grok_acceptance_expectations.mjs --write` 的产物）：
+   门读它，而不是把 558.4 抄进源码。缺文件/缺字段都不静默放行（见 SP-04）。 */
+const EXPECT_FILE = path.join(REPO, "docs/design/desktop-target/reference/grok-acceptance-expectations.json");
+let EXPECT_NODE = null;
+try {
+  EXPECT_NODE = JSON.parse(fs.readFileSync(EXPECT_FILE, "utf8"));
+} catch (_e) {
+  EXPECT_NODE = null;
+}
+const EXPECT_BUBBLE_MAXW = (() => {
+  const b = EXPECT_NODE && EXPECT_NODE.bubble && EXPECT_NODE.bubble.maxWidth;
+  return b && Number.isFinite(b.eq) && Number.isFinite(b.min) && Number.isFinite(b.max) ? b : null;
+})();
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
 let PASS = 0, FAIL = 0, SKIP = 0;
@@ -524,9 +538,14 @@ async function setTheme(win, mode) {
       (bubble.rowW === 728)
         ? ok("[SP-03] message row is 728px inside the 760 pane (§4.4)")
         : bad("message row width drifted (§4.4 wants 728)", bubble.rowW);
-      (a.maxW.includes("558.4px") && Math.abs(a.longW - 558.4) <= 1 && a.w < 558.4)
-        ? ok(`[SP-04] message text column saturates at ${a.longW}px (max-width ${a.maxW}); short row shrink-wraps to ${a.w}px (§4.4 = 558.4)`)
-        : bad("message text column drifted (§4.4 wants max-width 558.4，且长句宽度必须夹在同一值、短句要真的更窄)", JSON.stringify({ maxW: a.maxW, longW: a.longW, shortW: a.w }));
+      /* SP-04 的期望从真源派生的 JSON 里读，不钉字面 558.4（§8.180 / W2 第一格）：
+         640 那格能活两年，一半原因是「真值」和「门里的数」靠人手抄同源（§8.179）。
+         读不到期望一律 bad —— SKIP≠过：没有期望，这条断言等于没做事。 */
+      const band = EXPECT_BUBBLE_MAXW;
+      const cap = Number(String(a.maxW).match(/(\d+(?:\.\d+)?)px/)?.[1]);
+      (band && Number.isFinite(cap) && cap >= band.min && cap <= band.max && Math.abs(a.longW - cap) <= 1 && a.w < cap)
+        ? ok(`[SP-04] message text column saturates at ${a.longW}px (max-width ${a.maxW}); short row shrink-wraps to ${a.w}px (期望来自 ${path.basename(EXPECT_FILE)} bubble.maxWidth=${band ? band.eq : "无"}，带 ${band ? `${band.min}..${band.max}` : "无"})`)
+        : bad(`message text column 不在期望带内（bubble.maxWidth=${band ? band.eq : "读不到"}，带 ${band ? `${band.min}..${band.max}` : "读不到"}；长句宽度须夹在同一值、短句要真的更窄）`, JSON.stringify({ maxW: a.maxW, longW: a.longW, shortW: a.w, cap, expectFile: EXPECT_FILE }));
       (u.bg === "rgb(28, 28, 28)" && u.color === "rgb(255, 255, 255)" && u.radius === "18px" && /inset/.test(u.shadow))
         ? ok("[SP-05] user bubble = near-black + white + inset highlights + 18 all corners (§4.4)")
         : bad("user bubble drifted (§4.4 wants #1c1c1c / white / 18 / inset)", JSON.stringify(u));
