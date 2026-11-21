@@ -5536,6 +5536,122 @@ echo "    EF-04 是灵敏度对照（临时真源改成 640px → 期望必须�
 echo "    EF-05 钉的是门源码的判据形状（不许再出现手抄 558.4 字面量），散文里提这个数字不算红。"
 echo "    真源本身的重采节奏不在这条门管辖内：它只保证「期望 = 当前盘上真源的派生物」，不保证盘上真源是今天抓的。"
 
+echo "== G-130 真·用户旅程 e2e(15 条孤儿门禁的归宿)=="
+# 缘起（2026-11-21）：AC-07 实测孤门里,e2e_desktop_* 这批**真·用户旅程**
+# 有 15 个从来没被任何 CI 路径跑过 —— 写了断言,但绿灯是假的。
+# 当天把环境打通(见 scripts/ci_e2e_env.sh)后当场量到:
+#   user_journeys 53/5、creator_pipeline 8/2、team_ui 17/1、
+#   room_orchestration 4/2、layout_target 14/0
+# ⇒ 96 条**真实旅程**断言,10 条红。那 10 条红就是产品缺陷清单 ——
+#   部件级门禁全绿抵不了它。
+# 环境不齐 ⇒ 下面整批 SKIP,并写明缺什么(SKIP ≠ PASS,别拿它当通过)。
+#
+# 门名必须**字面**出现在 `node scripts/<门名>.mjs` 上:AC-07 的接线口径只认
+# 字面文件名与特定拼名形态,写成 "scripts/$name.mjs" 等于没接线。
+G130_HAVE_ENV=0
+if [ -x hosts/desktop/node_modules/electron/dist/electron ] \
+   && [ -d hosts/desktop/node_modules/playwright-core ]; then
+  G130_HAVE_ENV=1
+fi
+g130_run() {
+  # $1=门名  $2=字面 node 命令
+  g130_log="/tmp/g130-$1.log"
+  if [ "$G130_HAVE_ENV" = 0 ]; then
+    echo "  · skip：$1 需要 electron dist + playwright-core（装法：bash scripts/ci_e2e_env.sh）"
+    return 0
+  fi
+  if command -v xvfb-run >/dev/null 2>&1; then
+    ELECTRON_DISABLE_SANDBOX=1 PLAYWRIGHT_CORE_PATH="$PWD/hosts/desktop/node_modules/playwright-core" \
+      timeout 900 xvfb-run -a $2 >"$g130_log" 2>&1
+  else
+    ELECTRON_DISABLE_SANDBOX=1 PLAYWRIGHT_CORE_PATH="$PWD/hosts/desktop/node_modules/playwright-core" \
+      timeout 900 $2 >"$g130_log" 2>&1
+  fi
+  g130_line="$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+ SKIP=[0-9]+' "$g130_log" | tail -1)"
+  if [ -z "$g130_line" ]; then
+    # 有些门缺环境时只打一行说明就 exit 0 ⇒ 那是 SKIP,不是红。
+    if grep -qiE 'skip|不可用|缺少|missing' "$g130_log"; then
+      echo "  · skip：$1 本机没跑（$(tail -1 "$g130_log")）"
+    else
+      bad "G-130 $1 没读出数字（见 $g130_log；$(tail -1 "$g130_log")）"
+    fi
+  elif echo "$g130_line" | grep -q 'FAIL=0'; then
+    ok "G-130 $1 $g130_line"
+  else
+    bad "G-130 $1 $g130_line（见 $g130_log）"
+    grep -E '✗' "$g130_log" | head -6 | sed 's/^/      /'
+  fi
+}
+g130_run e2e_desktop_user_journeys      node scripts/e2e_desktop_user_journeys.mjs
+g130_run e2e_desktop_creator_pipeline   node scripts/e2e_desktop_creator_pipeline.mjs
+g130_run e2e_desktop_team_ui            node scripts/e2e_desktop_team_ui.mjs
+g130_run e2e_desktop_room_orchestration node scripts/e2e_desktop_room_orchestration.mjs
+g130_run e2e_desktop_layout_target      node scripts/e2e_desktop_layout_target.mjs
+g130_run e2e_desktop_artifacts          node scripts/e2e_desktop_artifacts.mjs
+g130_run e2e_desktop_chatsurface        node scripts/e2e_desktop_chatsurface.mjs
+g130_run e2e_desktop_bottom_archive     node scripts/e2e_desktop_bottom_archive.mjs
+g130_run e2e_desktop_bot_group_menu     node scripts/e2e_desktop_bot_group_menu.mjs
+g130_run e2e_desktop_command_channel    node scripts/e2e_desktop_command_channel.mjs
+g130_run e2e_desktop_grok_import        node scripts/e2e_desktop_grok_import.mjs
+g130_run e2e_desktop_packaged           node scripts/e2e_desktop_packaged.mjs
+g130_run e2e_desktop_quit               node scripts/e2e_desktop_quit.mjs
+g130_run e2e_desktop_shell_v2           node scripts/e2e_desktop_shell_v2.mjs
+g130_run e2e_desktop_token_parity       node scripts/e2e_desktop_token_parity.mjs
+g130_run e2e_desktop_unread_summary     node scripts/e2e_desktop_unread_summary.mjs
+echo "  · G-130 口径（诚实）：这批是**真实用户旅程**（建团队/排程/编排/产物/多语言/崩溃恢复）；"
+echo "    红的门就是用户会撞上的问题 —— 不用「部件门禁全绿」去抵消它。"
+
+echo "== G-131 前几批(批 1~9 / D / E / F)的门 —— 它们此前**全是孤儿**=="
+# 缘起（2026-11-21）：AC-07 孤门清单里,下面这 40 个 prove_* 全是**孤儿** ——
+# 它们是批 1~9、批 D/E/F 做出来时加的门,写了断言,但**从来没被任何 CI 路径跑过**。
+# 也就是说那几批的质量保证是空的 —— 门禁存在,但绿灯是假的。
+# 这里接进来:门名必须**字面**出现在 node 命令上(AC-07 只认字面)。
+g130_run prove_room_dispatch node scripts/prove_room_dispatch.js
+g130_run prove_room_discretion node scripts/prove_room_discretion.js
+g130_run prove_team_brief node scripts/prove_team_brief.js
+g130_run prove_routine_dispatch node scripts/prove_routine_dispatch.js
+g130_run prove_approval_scope node scripts/prove_approval_scope.js
+g130_run prove_approve_cli node scripts/prove_approve_cli.js
+g130_run prove_account_email node scripts/prove_account_email.js
+g130_run prove_copy_contract node scripts/prove_copy_contract.js
+g130_run prove_i18n_render node scripts/prove_i18n_render.js
+g130_run prove_m51_chatsurface node scripts/prove_m51_chatsurface.js
+g130_run prove_effect_contract node scripts/prove_effect_contract.js
+g130_run prove_remote_turn node scripts/prove_remote_turn.js
+g130_run prove_device_keys node scripts/prove_device_keys.js
+g130_run prove_machine_identity node scripts/prove_machine_identity.js
+g130_run prove_memory_prompt node scripts/prove_memory_prompt.js
+g130_run prove_mobile_approval_client node scripts/prove_mobile_approval_client.js
+g130_run prove_ios_device_identity node scripts/prove_ios_device_identity.js
+g130_run prove_box_two_machines node scripts/prove_box_two_machines.js
+g130_run prove_agent_context node scripts/prove_agent_context.js
+g130_run prove_room_context node scripts/prove_room_context.js
+g130_run prove_room_single_routine node scripts/prove_room_single_routine.js
+g130_run prove_sandbox_secrets node scripts/prove_sandbox_secrets.js
+g130_run prove_p0_inbound_host_checks node scripts/prove_p0_inbound_host_checks.js
+g130_run prove_trace_replay node scripts/prove_trace_replay.js
+g130_run prove_product_tools node scripts/prove_product_tools.js
+g130_run prove_template_market_render node scripts/prove_template_market_render.js
+g130_run prove_gp135_skill_sources node scripts/prove_gp135_skill_sources.js
+g130_run prove_gp138_routine_interval node scripts/prove_gp138_routine_interval.js
+g130_run prove_gp140_shared_computer node scripts/prove_gp140_shared_computer.js
+g130_run prove_gp142_unreadable node scripts/prove_gp142_unreadable.js
+g130_run prove_gp156_routine_approval node scripts/prove_gp156_routine_approval.js
+g130_run prove_gp157_once_not_loop node scripts/prove_gp157_once_not_loop.js
+g130_run prove_gp158_routine_pause node scripts/prove_gp158_routine_pause.js
+g130_run prove_gp159_approval_window node scripts/prove_gp159_approval_window.js
+g130_run prove_gp161_routine_remove node scripts/prove_gp161_routine_remove.js
+g130_run prove_gp162_orphan_approval node scripts/prove_gp162_orphan_approval.js
+g130_run prove_gp163_room_attribution node scripts/prove_gp163_room_attribution.js
+g130_run prove_gp164_room_library node scripts/prove_gp164_room_library.js
+g130_run prove_m52_archive_bottom node scripts/prove_m52_archive_bottom.js
+g130_run prove_m52b_artifact_persist node scripts/prove_m52b_artifact_persist.js
+g130_run prove_m53_userbubble_order node scripts/prove_m53_userbubble_order.js
+g130_run prove_m53c_grok_task_import node scripts/prove_m53c_grok_task_import.js
+g130_run prove_m53d_grok_bot_import node scripts/prove_m53d_grok_bot_import.js
+echo "  · G-131 口径（诚实）：这批门多在批 1~9 时写成,当时**没人跑过**它们 ——"
+echo "    接进来之后它们第一次在 CI 里说话;红的门要先认清是「真缺陷」还是「判据过期」。"
+
 echo "== G-129 B-8 指挥台(团队四原语 + Task 实体)=="
 # 这三个门此前**不在任何 CI 路径** —— AC-07 实测孤门 80 > 基线 77:
 # 门存在、报告里拿它当过证据,但**没有任何 CI 路径会跑它** ⇒ 它的绿灯不会让任何 CI 变红。
