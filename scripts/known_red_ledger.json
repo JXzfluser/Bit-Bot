@@ -1,0 +1,570 @@
+{
+  "version": 1,
+  "updated": "2026-11-22",
+  "owner": "team/red-ledger",
+  "purpose": "「已知红清单」的可执行台账：L1 里真实存在的红，逐条落账（为什么红 / 谁修 / 怎么复现）。",
+  "readme": [
+    "这份台账回答三个问题：① 现在到底有几条红、每条为什么红；② 每条红现在还能不能复现（红被偷偷删掉或改文案 ⇒ 门会当场报）；③ 新冒出来的红有没有被落账（没落账 ⇒ 门会报「台账外的红（待归类）」）。",
+    "它**不**检查别的门禁的判据质量、不断言别的门禁的条数/覆盖率 —— 那是元工作门禁（这一类本轮起冻结，禁止新增）。本门只做一件事：把台账和「本轮矩阵真实打出来的红行」逐条对账。",
+    "kind 的四个取值：product = 真产品缺陷（用户会撞上的问题，必须排期修）；environment = 环境/机器不具备（显示器、时钟速度、依赖没装）；known-missing = 能力缺口（需要真机 / 真 provider / 平台专属产物）；gate-criterion = 门禁或矩阵自己的判据过期或漂移（产品没坏，红在尺上）。",
+    "「解释得通」不等于「不是产品的锅」：每条 kind 的判据都写在 reason/evidence 里，判据不成立时必须改判 product，不许用 known-missing 兜底。"
+  ],
+  "scope": {
+    "tier": "L1",
+    "baseline_command": "bash scripts/smoke_grok_desktop_parity.sh L1",
+    "baseline_result": "PASS=358 FAIL=20 SKIP=0",
+    "baseline_at": "2026-11-22",
+    "entry_count": 20,
+    "note": "基线是「全新数据根 + 无 DISPLAY」的 Linux 开发机实测值。台账的每一条都带 verify 段（怎么复现），因此换环境（CI 有 xvfb / macOS 有 dev 包 / 数据根已种过模板）也能逐条复现 —— 见每条的 conditional 说明。"
+  },
+  "kinds": {
+    "product": "真产品缺陷：用户会撞上的问题，需要排期修",
+    "environment": "环境/机器不具备：无显示器、机器慢、依赖没装 —— 不是产品的锅",
+    "known-missing": "能力缺口：需要真机 / 真 provider / 平台专属产物才能验",
+    "gate-criterion": "门禁或矩阵自己的判据过期/漂移：产品没坏，红在尺上"
+  },
+  "owner_vocabulary": {
+    "team/t3-gate-tiering": "门禁分层 / 矩阵接线这一摊的 owner（矩阵调用姿势、计数钉、分层归属）",
+    "team/red-ledger": "本台账的 owner（台账本身与对账门）",
+    "unassigned": "暂时没人认领 —— 必须写 owner_reason，说明为什么还没落到具体人"
+  },
+  "entries": [
+    {
+      "id": "prove_m20_ui.js#theme-tokens-drift",
+      "gate": "prove_m20_ui.js",
+      "matrix_line_prefix": "G-20 界面契约（见 /tmp/g20-probe.log）",
+      "kind": "gate-criterion",
+      "reason": "门判据写死了色值的**字面量**（--p-lt-text: #1c1c1c / --p-dk-text: #f5f5f5），而 W0 调色板收敛后这两个令牌已改成指向调色原语的别名（--p-lt-text: var(--p-lt-ink)；--p-dk-text: var(--p-lt-bg1)）。**解析后的值一模一样**，渲染出来的主题通道没漂移 —— 红的是门自己那条字面量正则，不是产品。",
+      "evidence": "实跑 node scripts/prove_m20_ui.js → 23 passed, 1 failed，唯一红行「✗ theme tokens — light/dark/force channels drifted」；同一次跑里 force-dark / force-light / prefers-color-scheme 四条 --text 通道断言与「壳层宽度…只在 ui_chrome.css 定义」全绿；逐条求值 hosts/desktop/ui_chrome.css：--p-lt-text → var(--p-lt-ink) → #1c1c1c、--p-dk-text → var(--p-lt-bg1) → #f5f5f5，与门期望的字面量逐位相同。",
+      "owner": "unassigned",
+      "owner_reason": "修法在 prove_m20_ui.js 的判据（改成比较解析后的值，或接受别名形态）—— 属 M20 那条线的门，本轮没人认领；台账先记着，等主控指派。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_m20_ui.js"
+        ],
+        "anchor": "theme tokens — light/dark/force channels drifted",
+        "note": "门跑在仓内源码上（纯静态断言），不需要显示器也不需要 Electron ⇒ 任何机器上都能复现。",
+        "log": "/tmp/g20-probe.log"
+      }
+    },
+    {
+      "id": "prove_m24_window.js#template-drift",
+      "gate": "prove_m24_window.js",
+      "matrix_line_prefix": "G-24 主窗口结构契约（见 /tmp/g24-probe.log）",
+      "kind": "gate-criterion",
+      "reason": "门在跑回合**之前**读 data/desktop/bot-templates.json（全新数据根上这个文件还不存在 ⇒ 读到 0 行），回合随后把内置种子落盘并返回 7 条目录 ⇒ 数量对不上判红。第二次跑文件已在就绿。⇒ 红的是门的读序，不是「Host 目录 ≠ 模板文件」这件事本身 —— 两者其实完全一致。",
+      "evidence": "首次实跑（全新 worktree，data/ 为空）：node scripts/prove_m24_window.js → PASS=28 FAIL=1，红行「✗ template drift — host catalog ≠ bot-templates.json」，同一次跑「✓ Host bot_templates_list 返回真实目录（7 个模板）」；复跑（文件已在）→ PASS=29 FAIL=0 全绿；另用探针把两边的 id 逐条打印：host = file = media-content-team, sales-outbound, talent-scout, paid-media, expense-manager, bug-reproduction, chief-of-staff ⇒ 没有第二份真相。",
+      "owner": "unassigned",
+      "owner_reason": "修法在 prove_m24_window.js 的读序（先跑回合再读文件，或把「文件还不存在」当成「即将被种子」处理）—— 属 M24 那条线的门，本轮没人认领。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "conditional": "只在**全新数据根**上出现（CI 每次都是干净 checkout ⇒ CI 上必红；本机第二次跑就绿）。",
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_m24_window.js"
+        ],
+        "sandbox": "fresh-data-root",
+        "anchor": "template drift — host catalog ≠ bot-templates.json",
+        "note": "复现办法：把门复制到一个临时沙箱（临时数据根 + 空的 data/desktop）里跑 —— 门读到的目录是空的、Host 返回 7 条 ⇒ 与干净 checkout 上的形态完全一致。沙箱跑完即删，不碰用户数据。",
+        "log": "/tmp/g24-probe.log"
+      }
+    },
+    {
+      "id": "prove_gp96_progress.js#GP-97-slow-provider",
+      "gate": "prove_gp96_progress.js",
+      "matrix_line_prefix": "G-76 prove_gp96_progress（见 /tmp/g76-gp96.log",
+      "kind": "environment",
+      "reason": "判据是「首个进度事件 <400ms 且落在回合前半程」—— 它量的是**机器/内核冷启动速度**，不是产品行为。本机每回合在模型调用发出之前要先花 1.1~2.8s（provider 请求最早 2213ms 才发出），首行必然 >400ms。而 §5.7 真正要的行为（provider 还在想的时候进度行已经可见）实测是**达标**的。门自己的注释也写明这条阈值是按机器负载调的。",
+      "evidence": "3 次独立实跑 node scripts/prove_gp96_progress.js：first/last = 1842/2716、1135/1993、1237/2089（稳定 >400ms，不是偶发）；另用自建探针（本地 HTTP server 记录 provider 请求/响应时刻）量到：provider 请求 2213ms 发出、3013ms 才响应，首个进度事件 2199ms ⇒ 进度行早于 provider 响应 814ms（思考期全程可见）；同一进程内第二轮仍是 1346ms 才出首行 ⇒ 这是**每回合**的 CLI 冷启动开销（moon run 起进程），不是偶发抖动。",
+      "owner": "unassigned",
+      "owner_reason": "要判「这算不算产品问题」得产品侧表态：真桌面 App 走常驻内核（不受这条每回合 spawn 开销影响），而这条门走的是 CLI 冷启动路径。本轮先按 environment 记账，等产品侧确认首屏反馈时延的口径。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_gp96_progress.js"
+        ],
+        "anchor": "GP-97 slow provider",
+        "note": "门自带的 stub 把 provider 响应按住 800ms；复现不依赖显示器，但依赖本机速度（更快的机器上这条可能自己就绿了 —— 那时台账该划掉它）。",
+        "log": "/tmp/g76-gp96.log"
+      },
+      "conditional": "只在本机（内核每回合冷启动 ~1.3~2.8s）出现；更快的机器上这条可能自己就绿了"
+    },
+    {
+      "id": "prove_app_identity.js#ID-14",
+      "gate": "prove_app_identity.js",
+      "matrix_line_prefix": "G-103 锚点没跑绿：ID-14",
+      "kind": "known-missing",
+      "reason": "这条断言要一份 **macOS 开发态应用包**（hosts/desktop/build/dev-app/Bit Bot.app 里 Resources/app 自给自足），而造包脚本 scripts/make_dev_app_bundle.sh 在非 macOS 上直接 exit 0（“非 macOS：菜单栏身份由窗口管理器决定，本脚本不适用”）⇒ Linux / CI 上永远造不出来，门只能 SKIP。SKIP ≠ PASS ⇒ 矩阵的锚点 grep 找不到绿行 ⇒ 红。不是产品缺陷，也不是 flaky。",
+      "evidence": "实跑 node scripts/prove_app_identity.js → PASS=29 FAIL=0，但输出里是「· ID-14 SKIP 还没造过 dev 应用包（先跑 scripts/make_dev_app_bundle.sh）」⇒ 矩阵用 grep 找 [ID-14] 的**绿行**，SKIP 行不带编号 ⇒ 锚点红。同一门里 ID-07 是同一个 SKIP，但矩阵没钉它，所以它不红。",
+      "owner": "unassigned",
+      "owner_reason": "补法要么给 Linux 也造一份等价的开发包（产物不同：macOS 靠 Info.plist，Linux 靠 electron 启动参数），要么把矩阵锚点改成「SKIP 也算验过（并写明 SKIP 的原因）」—— 两者都要主控拍板，本轮没动。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_app_identity.js"
+        ],
+        "anchor": "ID-14 SKIP 还没造过 dev 应用包",
+        "note": "在 macOS 且造过 dev 包（有包）时这条断言会真跑并可能变绿 —— 那时台账该改判或划掉；本门会把它报成「复现不出来」。",
+        "log": "/tmp/g103-app-identity.log"
+      },
+      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑"
+    },
+    {
+      "id": "prove_app_identity.js#ID-14b",
+      "gate": "prove_app_identity.js",
+      "matrix_line_prefix": "G-103 锚点没跑绿：ID-14b",
+      "kind": "known-missing",
+      "reason": "ID-14 的**负向对照**（注入对照：把 Resources/app 指到别处必须判红）—— 负向对照需要一份**真的**开发包才能喂，Linux 上没有 ⇒ 门自己 SKIP ⇒ 矩阵锚点红。与 ID-14 同因同源。",
+      "evidence": "实跑 node scripts/prove_app_identity.js 输出「· ID-14b SKIP 同上（负向对照没有真包可喂）」⇒ 矩阵 grep 找不到 [ID-14b] 的绿行 ⇒ 锚点红。",
+      "owner": "unassigned",
+      "owner_reason": "同 ID-14：补法要么给 Linux 造等价开发包，要么改矩阵锚点口径 —— 等主控拍板。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_app_identity.js"
+        ],
+        "anchor": "ID-14b SKIP 同上（负向对照没有真包可喂）",
+        "note": "同 ID-14：macOS 上有包时这条会真跑。",
+        "log": "/tmp/g103-app-identity.log"
+      },
+      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑"
+    },
+    {
+      "id": "prove_app_identity.js#ID-18",
+      "gate": "prove_app_identity.js",
+      "matrix_line_prefix": "G-103 锚点没跑绿：ID-18",
+      "kind": "known-missing",
+      "reason": "这条断言验「开发态应用包的图标 = 产品图标（不是 Electron 自带图标）」—— 同样要那份 macOS 开发包（造包脚本在非 macOS 上直接跳过）⇒ 门 SKIP ⇒ 矩阵锚点红。与 ID-14 同因同源。",
+      "evidence": "实跑 node scripts/prove_app_identity.js 输出「· ID-18 SKIP 还没造过 dev 应用包」⇒ 矩阵 grep 找不到 [ID-18] 的绿行 ⇒ 锚点红。",
+      "owner": "unassigned",
+      "owner_reason": "同 ID-14：补法要么给 Linux 造等价开发包，要么改矩阵锚点口径 —— 等主控拍板。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_app_identity.js"
+        ],
+        "anchor": "ID-18 SKIP 还没造过 dev 应用包",
+        "note": "同 ID-14：macOS 上有包时这条会真跑。",
+        "log": "/tmp/g103-app-identity.log"
+      },
+      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#G-109-gate",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 prove_connect_apps_rework（见 /tmp/g109-ca-rework.log",
+      "kind": "environment",
+      "reason": "这是**真渲染门**（起真 Electron 窗口看 DOM），而矩阵 L1 段是直接 `node scripts/prove_connect_apps_rework.mjs` 调用、**没有套 xvfb-run** ⇒ 无 $DISPLAY 的机器上 Electron 起不来（“Missing X server or $DISPLAY … The platform failed to initialize”），门整体抛错、一条断言都没跑到 ⇒ 门本身判红。产品没问题：同一条门在 xvfb 下 12 条断言全绿。",
+      "evidence": "实跑（无 DISPLAY）→ exit 1，日志里是 Electron 的 “Missing X server or $DISPLAY”；同一条门在 `xvfb-run -a node scripts/prove_connect_apps_rework.mjs` 下 exit 0、CA-00..CA-10 全绿。CI 里矩阵是 `xvfb-run -a bash scripts/smoke_grok_desktop_parity.sh` 包的 ⇒ CI 上这条门是绿的。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "修法在矩阵：① L1 段给真渲染门套 xvfb-run；或 ② 按分层口径把它挪到 L3（它会起 Electron，本来就不该在「不碰 Electron」的 L1 里）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "note": "复现时显式清掉 DISPLAY（env 里写 null = 删掉这个变量），所以有没有显示器都能复现这条环境型红。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-00",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-00",
+      "kind": "environment",
+      "reason": "CA 系列的锚点是矩阵对这条真渲染门逐条 grep 的绿行（“✓ CA-00”…）。门在无 $DISPLAY 时整体起不来 ⇒ 12 条 CA 锚点一条都拿不到绿行 ⇒ 锚点红。真渲染下 CA-00 全绿 ⇒ 不是产品缺陷。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”，输出里没有「✓ CA-00」；xvfb 下同一条门打印「✓ CA-00 账户菜单 → 连接应用 打开成功，目录已出卡片」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-00",
+        "note": "这条验的是「CA 锚点拿不到绿行的成因还在」；CA 锚点本身在有显示器时全绿。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-01",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-01",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-01 的绿行拿不到 ⇒ 锚点红；有显示器时 CA-01（每张卡只出现一次，DOM 卡片数 === 目录条数）实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-01 每张卡只出现一次：目录 5 条 → DOM 5 张」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-01",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-02",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-02",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-02 的绿行拿不到 ⇒ 锚点红；有显示器时 CA-02（分类只剩「全部 + 有内容的」）实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-02 分类只剩 全部 / 效率 / 通信，逐个点开都有内容」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-02",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-03",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-03",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-03 的绿行拿不到 ⇒ 锚点红；有显示器时 CA-03（装的应用只出现一次、总数守恒）实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-03 装了「plugin-slides」→ 只出现一次且进了「已连接」」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-03",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-04",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-04",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-04 的绿行拿不到 ⇒ 锚点红；有显示器时 CA-04（面板里没有渠道凭证，搬去设置页）实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-04 连接应用里已经没有渠道凭证…它现在在设置页」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-04",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-04b",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-04b",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-04b 的绿行拿不到 ⇒ 锚点红；有显示器时 CA-04b（13 个凭证字段搬到「设置 → 凭证」）实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-04b 13 个凭证字段搬到了 设置 → 凭证（默认收起…）」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-04b",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-05",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-05",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-05 的绿行拿不到 ⇒ 锚点红；有显示器时 CA-05（技能长在应用里、独立的技能列表必须不存在）实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-05 技能长在应用里：可用的工具（2） / 带来的技能（1）」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-05",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-06",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-06",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-06 的绿行拿不到 ⇒ 锚点红；有显示器时 CA-06（没有跨面板跳转、搜索只承诺搜应用）实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-06 面板里没有「Bot 模板」跨面板按钮…搜索框只承诺「搜索应用」」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-06",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-07",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-07",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-07 的绿行拿不到 ⇒ 锚点红；有显示器时 CA-07（展开的应用占满整行）实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-07 展开的应用占满整行（743px ≈ 网格 743px）」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-07",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-08",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-08",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-08（全程没有 pageerror）的绿行拿不到 ⇒ 锚点红；有显示器时实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-08 全程没有 pageerror」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-08",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-09",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-09",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-09（自检不碰用户真库，sha256 前后一致）的绿行拿不到 ⇒ 锚点红；有显示器时实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-09 自检全程没碰用户真库（rooms / sessions / bots 的 sha256 未变）」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-09",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_connect_apps_rework.mjs#CA-10",
+      "gate": "prove_connect_apps_rework.mjs",
+      "matrix_line_prefix": "G-109 锚点没跑绿：CA-10",
+      "kind": "environment",
+      "reason": "同 CA-00：门起不来 ⇒ CA-10（目录里有本项目的连接面：推特 / 邮件 / 会议纪要）的绿行拿不到 ⇒ 锚点红；有显示器时实测为绿。",
+      "evidence": "实跑（无 DISPLAY）→ 门抛 “Missing X server or $DISPLAY”；xvfb 下「✓ CA-10 目录里有本项目的连接面：另外补的三条 X（推特） / 邮件 / 会议纪要 都在」。",
+      "owner": "team/t3-gate-tiering",
+      "owner_reason": "同 G-109 那条：矩阵调用姿势（套 xvfb 或挪层）。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_connect_apps_rework.mjs"
+        ],
+        "env": {
+          "DISPLAY": null
+        },
+        "blocked_anchor": "CA-10",
+        "note": "同 CA-00。",
+        "log": "/tmp/g109-ca-rework.log",
+        "anchor_any": [
+          "Missing X server or $DISPLAY",
+          "Cannot find module 'playwright-core'"
+        ]
+      },
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+    },
+    {
+      "id": "prove_anchor_coverage.mjs#G-125-count-pin",
+      "gate": "prove_anchor_coverage.mjs",
+      "matrix_line_prefix": "G-125 GP-AC 计数钉红",
+      "kind": "gate-criterion",
+      "reason": "矩阵 G-125 段的**计数钉**还写着「PASS=6 FAIL=0 SKIP=0」，而门禁分层那轮把这条尺从 6 条断言（AC-01..AC-06）长到 8 条（加了 AC-07 孤门基线、AC-08 反向对照）⇒ 尺现在报 PASS=8，钉子没跟着改 ⇒ 计数钉红。红的不是产品，是矩阵自己的钉子过期了。",
+      "evidence": "实跑 node scripts/prove_anchor_coverage.mjs → PASS=8 FAIL=0 SKIP=0（AC-01..AC-08 全绿）；矩阵源码里的钉子仍是 grep -q \"PASS=6 FAIL=0 SKIP=0\" ⇒ 8 ≠ 6 ⇒ 红。修法：把钉子改成 8（属于改既有门禁判据，本轮按「不许改既有判据」的硬要求没动）。",
+      "owner": "team/main",
+      "owner_reason": "计数钉在矩阵的 G-125 段里，分层那轮改尺时漏改了它。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_anchor_coverage.mjs"
+        ],
+        "mode": "stale-pin",
+        "count_from_output": "prove_anchor_coverage: PASS=(\\d+) FAIL=0 SKIP=0",
+        "count_from_file": {
+          "file": "scripts/smoke_grok_desktop_parity.sh",
+          "pattern": "期望 PASS=(\\d+) FAIL=0 SKIP=0"
+        },
+        "note": "「尺报的条数 ≠ 矩阵钉的条数」就是这条红的定义；钉子一旦改对（8），这条就复现不出来 ⇒ 台账该划掉它。",
+        "log": "/tmp/g125-probe.log"
+      },
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已修：矩阵 G-125 段的计数钉从「PASS=6 FAIL=0 SKIP=0」改成「PASS=8 …」(2026-11-22)。⇒ 尺子从 6 条长到 8 条时钉子没跟上,这是一句**假话**(尺子报 8、钉子要 6)⇒ 钉子跟上真源,门槛从 6 提到 8 —— 这是**让判据变严**,不是放宽。"
+    }
+  ]
+}

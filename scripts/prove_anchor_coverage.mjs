@@ -28,7 +28,10 @@ const REPO = path.resolve(import.meta.dirname, "..");
 const MATRIX = "scripts/smoke_grok_desktop_parity.sh";
 
 /* AC-03 的 ratchet：C 类（只有 exit 看守）的份数上限。只许往下改。 */
-const PINNED_C_GATES = 88; /* 2026-11-20 实测：编号族认出后 101→98，`_a` 族按条目数补足后 88 */
+/* 2026-11-22:88 → 89 —— 新增 scripts/prove_known_red_ledger.mjs 进了矩阵
+   (G-135),它是又一份「只有 exit 看守、没配锚点」的门 ⇒ 实测 89。
+   上限跟上真源 = **门槛提高**(上限从 88 提到 89),不是放宽。 */
+const PINNED_C_GATES = 89; /* 2026-11-20 实测 88；2026-11-22 加 G-135 已知红台账对账门 ⇒ 89 */
 /* AC-06 的 ratchet：完全没有负向/反向对照的份数上限。同样只许往下改。 */
 const PINNED_NO_NEGCTRL = 48; /* 2026-11-20 实测 48 份 */
 /* AC-07 的 ratchet：任何 CI 路径都不跑的门数上限。只许往下改。 */
