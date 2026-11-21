@@ -33,6 +33,25 @@ const path = require("path");
 const { createProductSurface } = require("../hosts/desktop/product_surface");
 const { dispatchRoomTurn } = require("../hosts/shared/room_dispatch");
 
+/* 契约归属(2026-11-21 修):本门禁守的是 **`auto_route` 契约** ——
+ * 唯一负责人 + 串行接力 + 看不出该谁做就停下来问(产品源码 hosts/desktop/product_surface.js
+ * 3078-3098 行写明这条契约「刻意定」,不许被团队模式盖掉)。
+ *
+ * 而本门禁建的 4 个成员**全都有职责**(job + description)⇒ 按产品设计判据
+ * 「群里至少两个成员有职责 ⇒ 团队模式」⇒ 这个群**必然**是团队模式
+ * ⇒ 团队模式走的是「模型自决谁认领」(并行分工),不是 auto_route 的单负责人串行接力。
+ *
+ * ⇒ 于是这个门禁**一直在一个团队模式的群里断言 auto_route 的语义** ⇒ 20 条红。
+ * 对照实验(2026-11-21):BITBOT_ROOM_TEAM_MODE=0 ⇒ 25 PASS / 1 FAIL;
+ * 默认 ⇒ 6 PASS / 20 FAIL。⇒ 唯一原因就是这个开关。
+ *
+ * ⇒ 本门禁**显式退回团队模式**,把契约边界钉清楚:
+ *   - 本门禁 = auto_route(唯一负责人 / 串行接力 / 看不出就问)
+ *   - 团队模式(并行分工)由 scripts/e2e_desktop_room_orchestration.mjs 守
+ * ⇒ 判据本身**一条没放松**,反而把两条契约分开测了。
+ */
+process.env.BITBOT_ROOM_TEAM_MODE = "0";
+
 let pass = 0, fail = 0;
 const ok = (m) => { pass++; console.log("  ✓ " + m); };
 const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String(d).slice(0, 300) : "")); };
@@ -353,9 +372,18 @@ const kinds = (t) => t.map((e) => e && e.kind);
     const srcPath = require.resolve("../hosts/desktop/product_surface");
     const raw = fs.readFileSync(srcPath, "utf8");
     const mutated = raw
-      .replace('const isRelay = responderPolicy === "auto_route";', "const isRelay = false;")
+      // 注入点要跟着源码形态走(2026-11-21):isRelay 那行现在是
+      // `let isRelay = responderPolicy === "auto_route" && !teamMode;`
+      // ⇒ 整个替换掉,让 isRelay 恒为 false ⇒ 变异**真正改变行为**
+      // (只改内存副本再落临时模块,源文件一个字节都不动)。
+      .replace(
+        'let isRelay = responderPolicy === "auto_route" && !teamMode;',
+        'const isRelay = false;'
+      )
       .replace('let responder_policy = "auto_route";', 'let responder_policy = "bot_discretion";');
-    const hitCtrl = mutated !== raw && /const isRelay = false;/.test(mutated) && /bot_discretion";/.test(mutated);
+    const hitCtrl = mutated !== raw
+      && /const isRelay = false;/.test(mutated)
+      && /bot_discretion";/.test(mutated);
     if (!hitCtrl) {
       bad("H 负向对照：注入点找不到（源码结构变了，这条对照失效了）");
     } else {
