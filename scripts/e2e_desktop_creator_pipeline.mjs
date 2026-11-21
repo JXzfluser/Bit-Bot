@@ -417,7 +417,17 @@ function startStub() {
       const mine = ((pending && pending.pending) || []).filter((it) => {
         if (!it || it.kind !== "mail_send" || it.status !== "pending") return false;
         if (!String(it.command || "").includes(MAIL_TO)) return false;
-        return Number(Date.parse(it.requested_at || "")) >= Date.now() - 120000;
+        /* ⚠️ 2026-11-21 修：这里原来写的是
+         *      Date.parse(it.requested_at) >= Date.now() - 120000
+         * requested_at 是 **UTC ISO**(…Z)，而 Date.now() 也是 UTC 毫秒 —— 单看没问题，
+         * 但一旦 requested_at 是**别的时区**写出来的（本机 TZ=Asia/Shanghai 时就是 8 小时差），
+         * 这条判据会**永远为 false** ⇒ 待批准项明明在队列里，门禁却报「没有待批准入口」。
+         * ⇒ 改成**算时间差**，与时区无关：只要是「刚发生的」就算数。
+         */
+        const reqAt = Date.parse(it.requested_at || "");
+        if (!Number.isFinite(reqAt)) return false;
+        const ageMs = Date.now() - reqAt;
+        return ageMs >= -60000 && ageMs <= 180000;
       });
       const draftRow = newDrafts.length ? readJson(path.join(DRAFT_DIR, newDrafts[0]), {}) : {};
       newDrafts.length >= 1 && draftRow.requires_approval === true && newSends.length === 0
@@ -631,7 +641,14 @@ function startStub() {
         await win.evaluate(async () => { await window.bitbot.turn("tick routines", {}); }).catch(() => {});
         let row11 = null;
         for (let i = 0; i < 30 && !row11; i += 1) {
-          row11 = myQueueRows().find((e) => Number(Date.parse(e.requested_at || "")) >= Date.now() - 90000) || null;
+          /* 同 P6：算**时间差**而不是拿 UTC 时间戳去比本地时钟，
+           * 否则 TZ≠UTC 的机器上永远挑不出「刚挂出来的」那一行。 */
+          row11 = myQueueRows().find((e) => {
+            const t = Date.parse(e.requested_at || "");
+            if (!Number.isFinite(t)) return false;
+            const ageMs = Date.now() - t;
+            return ageMs >= -60000 && ageMs <= 180000;
+          }) || null;
           if (!row11) await new Promise((r) => setTimeout(r, 500));
         }
         await win.evaluate(() => refreshApprovalQueue()).catch(() => {});
