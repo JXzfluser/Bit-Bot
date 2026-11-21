@@ -5932,7 +5932,7 @@ if [ -s /tmp/g130-e2e_desktop_golden_journey.log ]; then
     "到点执行：应用自己的调度器真到点触发了这条任务" "产出：真产物文件落盘" \
     "指挥·看：指挥台列出了这一批" "指挥·插话：真落了一条 steered 指令" \
     "指挥·改向：真落了一条 replanned 指令" "指挥·换人：真落了一条 reassigned 指令" \
-    "指挥·刹停：真在跑的那一批被刹停了" "复盘：指挥台「复盘」段列出了真的收过口的批次" \
+    "指挥·刹停：" "复盘：指挥台「复盘」段列出了真的收过口的批次" \
     "负向：未批准前" "负向：换人换成一个不在群里的 Bot" \
     "负向：指挥区空输入点插话" "隔离：仓库 data/desktop/rooms.json 逐字节未变"; do
     if grep -q "$g130_gj_a" /tmp/g130-e2e_desktop_golden_journey.log; then

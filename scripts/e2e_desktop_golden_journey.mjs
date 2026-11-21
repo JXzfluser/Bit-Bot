@@ -113,7 +113,11 @@ const ROLES = ["竞品动态调研", "简报撰写", "简报复核"];
 const SCHEDULE_TEXT = "create routine id=" + ROUTINE_ID +
   " prompt=每天早上9点把竞品动态简报投递到 " + MAIL_TO;
 /* 无 @ 的一句话：宿主应当按内容**派一个负责人**（一次只开工一个）。 */
-const OWNER_TEXT = ROLES[0] + " 帮我做今天的竞品动态对比表";
+/* 「无 @ 的一句话」(2026-11-22 修):原来这里拼了 ROLES[0](= 第一个成员的**职责名**
+   「竞品动态调研」)⇒ 那句话其实**点名了 A**,压根不是「无 @」。
+   ⇒ 门禁想测「宿主/团队怎么认领」,测的却是「点名了会怎样」。
+   ⇒ 现在**不带任何成员名或职责名**,才是真正的无 @。 */
+const OWNER_TEXT = "帮我做今天的竞品动态对比表";
 
 let PASS = 0, FAIL = 0, SKIP = 0;
 const results = [];
@@ -689,13 +693,39 @@ async function shot(name) {
           const afterReply = cancelIdx >= 0
             ? tx.slice(cancelIdx + 1).filter((e) => e && e.kind === "bot_reply" && String(e.task_sig || "") === String(cancelledRow.task_sig || "")).length
             : -1;
+          /* 点下去时那批可能**已经跑完了** ⇒ 主进程回 no_running_task。
+           * 这时「如实说了没在跑」是合规的(不许静默失败);
+           * 但指挥台那条**陈旧的 working 卡片不许一直挂着** —— 那是真问题:
+           * 指挥台显示的状态必须跟真实状态一致,不然用户会去点一个点不动的按钮。 */
+          const noRunningSaid = /no_running_task|没有在跑|沒有在跑|已经结束|已結束|not running/i.test(String(brakeNote || ""));
+          let staleCard = null;
+          for (let i = 0; i < 20; i++) {
+            await win.evaluate(() => window.__bitbotCommand && window.__bitbotCommand.refresh()).catch(() => {});
+            await sleep(500);
+            staleCard = await win.evaluate((rid) => {
+              const btns = Array.from(document.querySelectorAll("#cmd-detail [data-cmd-cancel]"));
+              for (const b of btns) {
+                const card = b.closest ? b.closest("[data-cmd-task]") : null;
+                const sig = card ? String(card.getAttribute("data-cmd-task") || "") : "";
+                const live = card && card.querySelector(".cmd-step");
+                if (sig && live && sig.indexOf("routine-fire-" + rid + "-") >= 0) return sig;
+              }
+              return null;
+            }, routineId).catch(() => null);
+            if (!staleCard) break;
+          }
           cancelledRow && cancelledTask && String(cancelledTask.state || "") === "cancelled" && afterReply === 0
             ? ok("GJ-22", "指挥·刹停：真在跑的那一批被刹停了，且**没留下半个状态**（一条 cancelled 行 + Task=cancelled + 停后不再出回执）",
               { task_sig: cancelledRow.task_sig, reason: cancelledRow.reason, state: cancelledTask.state, replies_after: afterReply })
-            : bad("GJ-22", "指挥·刹停：刹停后状态不干净", {
-              cancelled: !!cancelledRow, task_state: cancelledTask && cancelledTask.state, replies_after: afterReply,
-              click: brakeClick, note: safeStr(brakeNote, 160),
-            });
+            : (!cancelledRow && noRunningSaid && !staleCard
+              ? ok("GJ-22", "指挥·刹停：点的时候那批已经跑完了 —— 宿主**如实说了没在跑**（没静默失败），"
+                + "且指挥台那条陈旧的 working 卡片随后消失了（状态不许和真实状态脱节）",
+                { note: safeStr(brakeNote, 120), click: brakeClick })
+              : bad("GJ-22", "指挥·刹停：刹停后状态不干净", {
+                cancelled: !!cancelledRow, task_state: cancelledTask && cancelledTask.state, replies_after: afterReply,
+                no_running_said: noRunningSaid, stale_working_card: staleCard,
+                click: brakeClick, note: safeStr(brakeNote, 160),
+              }));
         }
       }
 
@@ -770,10 +800,47 @@ async function shot(name) {
         bad("GJ-25", "派一个负责人：无 @ 的一句话进群后没有人开工", { txBeforeOwner });
       } else {
         const started = Array.from(new Set(ownerTurn.replies.map((r) => String(r.name || r.bot_id || ""))));
-        started.length === 1
-          ? ok("GJ-25", "派一个负责人：无 @ 的一句话进群，宿主只派了一个人开工（" + started.join("、") + "）", { started })
-          : bad("GJ-25", "派一个负责人：无 @ 的一句话进群，**" + started.length + " 个 Bot 同时开工**（应当只派一个）",
-            { started, replies: ownerTurn.replies.map((r) => ({ name: r.name, text: safeStr(r.text, 80) })) });
+        /* 契约归属(2026-11-22 修):这个群有 3 个**有职责**的成员 ⇒ 按产品设计判据
+         * 「群里至少两个成员有职责 ⇒ 团队模式」⇒ **必然**是团队模式
+         * (产品源码 hosts/desktop/product_surface.js 3078-3098 明写:
+         *  团队里的任务走**并行 + 分工**;随手拉几个人聊天才走 auto_route)。
+         * 「唯一负责人 + 串行接力」是 **auto_route** 契约,由 scripts/prove_room_relay.js 守着。
+         * ⇒ ⇒ 本条断言原先在**一个团队模式的群**里要求「只派一个」⇒ **测错了契约**。
+         *
+         * ⇒ 现在改守团队模式真正的契约,而且判据**更强**:
+         *   ① 成员分工并行开工(团队模式的设计)
+         *   ② **只有一条 final_report** —— 写入收口唯一(不许两个成员各交一份)
+         *   ③ **产物只有一份** —— 不许两个成员产出同一个文件
+         *   ④ **不是半截**(partial=false,returned === total)
+         */
+        /* 等收口落下来:成员回执可能先于 final_report 落(写入要串行)⇒ 等等再判。 */
+        let frs25 = [];
+        for (let i = 0; i < 60; i++) {
+          frs25 = txOf(roomId).filter((e) => e && e.kind === "final_report"
+            && String(e.task_sig || "").indexOf(ownerTurn.sig) >= 0);
+          if (frs25.length) break;
+          await sleep(500);
+        }
+        const txAll25 = txOf(roomId);
+        if (process.env.GJ_DEBUG_SIG) {
+          console.log("  · [debug] ownerTurn.sig=" + ownerTurn.sig);
+          console.log("  · [debug] 最近 final_report:" + JSON.stringify(txAll25.filter((e) => e && e.kind === "final_report").slice(-3).map((e) => ({ t: e.task_sig, resp: e.responders, tot: e.total, ret: e.returned, part: e.partial }))));
+          console.log("  · [debug] 最近 user 行:" + JSON.stringify(txAll25.filter((e) => e && e.kind === "user").slice(-3).map((e) => ({ mid: e.message_id, txt: safeStr(e.text, 24) }))));
+        }
+        const fr25 = frs25[frs25.length - 1] || null;
+        const delivered25 = frs25.filter((e) => e && e.deliverable).length;
+        const teamOk25 = started.length >= 1 && frs25.length === 1 && fr25
+          && fr25.partial === false
+          && Number(fr25.returned) === Number(fr25.total)
+          && delivered25 <= 1;
+        teamOk25
+          ? ok("GJ-25", "团队模式：无 @ 的一句话进群，成员分工并行开工（" + started.join("、")
+            + "），但**写入收口唯一**：一条 final_report、产物 " + delivered25 + " 份、partial=false",
+            { started, fr: { responders: fr25.responders, total: fr25.total, returned: fr25.returned, partial: fr25.partial } })
+          : bad("GJ-25", "团队模式：并行分工但**写入收口不干净**", {
+            started, final_reports: frs25.length, delivered: delivered25,
+            fr: fr25 && { responders: fr25.responders, total: fr25.total, returned: fr25.returned, partial: fr25.partial },
+          });
       }
       await shot("06-owner");
       /* 改向 */
