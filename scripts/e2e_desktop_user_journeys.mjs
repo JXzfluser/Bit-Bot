@@ -140,8 +140,20 @@ const PHPART = "把 " + X.name + " 和 " + F.name + " 拉到 " + TP + " 群";
 async function startStub({ port, record, failContains, reply }) {
   // 端口若被上一轮的残留占着 ⇒ 新 stub EADDRINUSE ⇒ 不打 ready 行 ⇒
   // 门禁报 "stub boot timeout" ⇒ 后面所有断言级联崩(看着像产品崩了)。
-  // 只 kill 不等 ⇒ 仍有进程退出窗口,照样 EADDRINUSE ⇒ 杀完**确认端口可绑**。
-  try { execSync('pkill -9 -f "openai_compat_stub.js" || true', { stdio: "ignore" }); } catch { /* ignore */ }
+  //
+  // ⚠️ 2026-11-21 修：这里原来按**脚本名**全量 pkill("openai_compat_stub.js")。
+  // 本门禁要起**两个** stub ⇒ 第二个启动时把**第一个**直接杀了 ⇒
+  // 于是 Host 连第一个 stub 时 ECONNREFUSED ⇒ provider 记录 0 条 ⇒
+  // 看起来像「消息没到 provider」,其实是 stub 被自己杀了。
+  // ⇒ 现在**只清本端口**上的残留(按端口找 PID),不碰别的 stub。
+  try {
+    const out = execSync("lsof -ti tcp:" + port + " 2>/dev/null || true", {
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString().trim();
+    for (const pid of out.split(/\s+/).filter(Boolean)) {
+      try { process.kill(Number(pid), "SIGKILL"); } catch { /* ignore */ }
+    }
+  } catch { /* 没有 lsof 就跳过 —— 随机端口撞车概率极低 */ }
   for (let i = 0; i < 40; i++) {
     const free = await new Promise((res) => {
       const srv = net.createServer();
@@ -346,6 +358,11 @@ const forbiddenHit = (text) => {
       });
     } catch (_) { /* 没有 stdout 也照样跑 —— 诊断通道是锦上添花 */ }
     win = await app.firstWindow({ timeout: 60000 });
+    /* 渲染层异常收集 —— 「发消息没反应」有时就是渲染层抛了(pageerror)。 */
+    if (!globalThis.__ujPageErrors) globalThis.__ujPageErrors = [];
+    try {
+      win.on("pageerror", (e) => globalThis.__ujPageErrors.push(String((e && e.message) || e)));
+    } catch (_) { /* ignore */ }
     await win.waitForSelector("#composer #text", { timeout: 60000 });
     await win.setViewportSize({ width: 1280, height: 800 });
     return win;
@@ -522,6 +539,12 @@ const forbiddenHit = (text) => {
 
   try {
     stubMain = await startStub({ port: P_MAIN, record: REC_MAIN, failContains: "名字：" + F.name });
+    /* 起了第一个之后**必须确认它还活着** —— 之前正是「后一个 stub 把前一个杀了」
+     * 这类问题,症状发生在几十秒后才炸,极难归因。 */
+    await new Promise((r) => setTimeout(r, 300));
+    if (stubMain.exitCode !== null || stubMain.signalCode !== null) {
+      throw new Error("stub " + P_MAIN + " 刚启动就死了(exit=" + stubMain.exitCode + ")");
+    }
     stubQwen = await startStub({ port: P_QWEN, record: REC_QWEN, reply: "UJQWEN-PROVIDER-REPLY 已收到" });
     await newWindow();
     ok("真 Electron 冷启动 + 两个本地 provider stub（" + P_MAIN + " / " + P_QWEN + "）就绪");
@@ -542,7 +565,41 @@ const forbiddenHit = (text) => {
          同时有「名字：<name>」。等待条件用记录条数，界面断言用「名字：」。 */
       const recBefore = readRecords(REC_MAIN).length;
       await openDm(idA, A.name);
+      /* 【诊断探针】发完立刻看渲染层状态 —— 提交这一步到底断在哪:
+       *   bubbles=0 ⇒ 消息**没进 DOM**(提交按钮没触发 / 事件没绑)
+       *   bubbles>0 但 provider 0 条 ⇒ 进了界面,**没进主进程**(IPC 断了)
+       *   pageerrors 非空 ⇒ 渲染层抛了(异常信息直接就在那)
+       */
+      /* 【IPC 直探】绕过渲染层直接调 window.bitbot.turn ⇒ 把「渲染层 ↔ 主进程」
+       * 这一跳单独隔离出来:
+       *   timeout ⇒ 主进程 handler 卡住(pending)
+       *   reject  ⇒ 主进程抛了(错误信息就在 e)
+       *   resolved⇒ 这一跳是通的 ⇒ 断点在渲染层的调用时机
+       */
+      const ipcProbe = await win.evaluate(async () => {
+        const p = window.bitbot.turn("你负责什么？", {}).then(
+          (v) => ({ ok: true, v: v && typeof v === "object" ? Object.keys(v).join(",") : String(v) }),
+          (e) => ({ ok: false, e: String((e && e.message) || e) })
+        );
+        const to = new Promise((r) => setTimeout(() => r({ timeout: true }), 25000));
+        return Promise.race([p, to]);
+      });
+      console.log("  · [IPC 直探] " + JSON.stringify(ipcProbe).slice(0, 320));
       await sendComposer("你负责什么？");
+      await new Promise((r) => setTimeout(r, 1500));
+      const probe = await win.evaluate(() => {
+        const body = document.body ? document.body.innerText : "";
+        return {
+          userBubbles: document.querySelectorAll(".msg.user").length,
+          allBubbles: document.querySelectorAll(".msg").length,
+          composerText: (document.querySelector("#composer #text") || {}).value || "",
+          tail: body.slice(-400),
+        };
+      });
+      console.log("  · [探针] userBubbles=" + probe.userBubbles + " allBubbles=" + probe.allBubbles
+        + " composerText=" + JSON.stringify(String(probe.composerText).slice(0, 40))
+        + " pageerrors=" + JSON.stringify((globalThis.__ujPageErrors||[]).slice(0,3)));
+      console.log("  · [探针] 界面尾部：" + String(probe.tail).replace(/\s+/g, " ").slice(0, 220));
       const gotA = await waitUntil(() => readRecords(REC_MAIN).length > recBefore, 150000);
       const recsA = readRecords(REC_MAIN).slice(recBefore);
       const lastA = recsA[recsA.length - 1] || null;
