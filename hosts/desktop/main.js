@@ -2961,7 +2961,16 @@ async function runRoomSynthesisTurn(botId, prompt, ctx) {
  */
 async function runRoomDecompositionProposal(input) {
   const opts = input || {};
-  if (process.env.BITBOT_ROOM_DECOMPOSE !== "1") {
+  // 默认**开**。
+  //
+  // 为什么改:并行分支一直有"模型提议分工"这条通路,但它默认是关的 ⇒
+  // 实际跑的是宿主启发式拆解(只在任务里**明写**「谁做什么」时才拆)
+  // ⇒ 用户说「一起把稿子写了」,拆不出来 ⇒ 几个成员各写一遍
+  // ⇒ 那叫**并行广播**,不叫团队。
+  //
+  // 代价:多一次模型调用。收益:并行第一次真的变成协作。
+  // 想退回老行为: BITBOT_ROOM_DECOMPOSE=0
+  if (process.env.BITBOT_ROOM_DECOMPOSE === "0") {
     return { subtasks: [] };
   }
   const candidates = Array.isArray(opts.candidates) ? opts.candidates : [];

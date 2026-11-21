@@ -18,6 +18,7 @@ const p0 = require("./p0_security");
 const { createRoomRuntime } = require("./room_runtime");
 const { dispatchRoomTurn } = require("./room_dispatch");
 const effectKinds = require("./effect_kinds");
+const { getEffectGate } = require("./effect_gate");
 const remoteTurn = require("./remote_turn");
 
 /* 「什么形状算密钥」是一份合同:内核(core/secret_shapes.mbt)、
@@ -789,14 +790,6 @@ function createHostFfi(repoRoot, opts = {}) {
    * 两处各自解析的话，同一屏上会出现两个互相对不上的技能数（§8.133 的残账）。
    * 每条给出两个独立答案：能不能进模型（modelSkip）、能不能被用户点名（userSkip）。
    */
-  /** KP-10 片3：界面上那句技能数只在 Host 拼一次。渲染端拿到的就是成品字符串，
-   *  它再数就会数出第二个口径（片2 之前「屏上 6 条 / 模型 2 条」同时成立的那种）。 */
-  function skillSummaryText(invocableCount, modelCount, notInModelCount) {
-    const tail =
-      notInModelCount > 0 ? ` · 另 ${notInModelCount} 条进不了模型` : "";
-    return `可点名 ${invocableCount} · 本回合进模型 ${modelCount}${tail}`;
-  }
-
   function skillInventory() {
     const skillsRoot = path.join(AGENT_TOOLS_ROOT, "skills");
     let names = [];
@@ -21592,8 +21585,6 @@ function createHostFfi(repoRoot, opts = {}) {
       const uninvocable = all
         .filter((s) => s.user_ok === false)
         .map((s) => ({ name: s.name, source: s.source, reason: s.user_skip }));
-      // 只数磁盘上的 SKILL.md（managed/plugin 那份名单不在这里，它们另有一套原因）。
-      const modelSkipCount = inventory.filter((s) => s.model_ok === false).length;
       const skills = invocable.filter((s) => {
         if (!query) return true;
         return (
@@ -21624,9 +21615,6 @@ function createHostFfi(repoRoot, opts = {}) {
         uninvocable,
         model_count: seeds.length,
         model_names: seeds.map((s) => s.name),
-        // KP-10 片3：屏上那句「几条能点名、这回合模型真看见几条」由这里一次拼好，
-        // 渲染端原样显示 —— 它自己数就会数出第二个数（片2 之前的形状）。
-        summary_text: skillSummaryText(invocable.length, seeds.length, modelSkipCount),
         at,
       };
       fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
@@ -25217,7 +25205,33 @@ function createHostFfi(repoRoot, opts = {}) {
     }
   }
 
+  /* ---- 副作用串行化闸(B-7)------------------------------------------------
+     一批 effect 里只要有一个 mutating,整批排队;纯读的可与别的成员真并发。
+     推理并行、写入串行 —— 这是把「并行编排」找回来的前提,也是当初把它
+     退回串行的那个问题的正解。
+
+     为什么按**整批**判:一批里常有「先读后写」(先查日程再发邮件),
+     拆开排队会让读看到写之前的旧状态,反而制造不一致。整批最简单也最安全。
+
+     审批不会占着闸:审批是**出卡后回合继续**,不是挂起等批。 */
   async function executeHostEffects(effects, ffiOpts) {
+    const effectList = effects || [];
+    let hasMutating = false;
+    for (const e of effectList) {
+      if (e && effectKinds.isMutating(String((e && e.kind) || ""))) {
+        hasMutating = true;
+        break;
+      }
+    }
+    if (!hasMutating) {
+      // 纯读:不入闸 ⇒ 与别的成员真正并发。
+      return runEffectBatch(effectList, ffiOpts);
+    }
+    // 含写:整批排队 ⇒ 不与别的成员的写操作并发。
+    return getEffectGate().run(() => runEffectBatch(effectList, ffiOpts));
+  }
+
+  async function runEffectBatch(effectList, ffiOpts) {
     const results = [];
     // GP-21: explicit user approval (Allow once / approved re-run) bypasses the
     // ask-rule gate, but never-mode still hard-refuses local kinds.
@@ -25230,7 +25244,6 @@ function createHostFfi(repoRoot, opts = {}) {
        branches (and their `continue`s) untouched, and makes it impossible to
        report a step as finished without a result row existing. Without an
        onProgress listener nothing changes at all. */
-    const effectList = effects || [];
     const progress = _createProgressEmitter
       ? _createProgressEmitter({
           onProgress: ffiOpts && ffiOpts.onProgress,

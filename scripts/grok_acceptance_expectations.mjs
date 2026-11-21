@@ -5,8 +5,8 @@
  * 从 reference/grok-real-spec.json 直接取出，落成 JSON，让新门只读这个文件；
  * 同时把「改这一值会让哪几条既有门红」的冲突显式列出来。
  *
- * 用法：node scripts/grok_acceptance_expectations.mjs [--write] [--ref=DIR] [--out=FILE]
- *   不带 --write 只打印，不动任何文件；--ref/--out 供新鲜度门在临时目录里重放生成。
+ * 用法：node scripts/grok_acceptance_expectations.mjs [--write]
+ *   不带 --write 只打印，不动任何文件。
  */
 import fs from "fs";
 import path from "path";
@@ -14,17 +14,10 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
-/* --ref= / --out= 是给「期望新鲜度门」（scripts/prove_expectations_fresh.mjs）用的：
-   它要在临时目录里改真源再重新生成，证明源头的数真能流到期望里。
-   不带参数时行为与以前完全一致（读仓库 reference/，写同一目录）。 */
-const flag = (name, dflt) => {
-  const a = process.argv.find((s) => s.startsWith(`--${name}=`));
-  return a ? path.resolve(a.slice(name.length + 3)) : dflt;
-};
-const REF = flag("ref", path.join(REPO, "docs/design/desktop-target/reference"));
+const REF = path.join(REPO, "docs/design/desktop-target/reference");
 const GROK = JSON.parse(fs.readFileSync(path.join(REF, "grok-real-spec.json"), "utf8"));
 const BB = JSON.parse(fs.readFileSync(path.join(REF, "bb-real-spec.json"), "utf8"));
-const OUT = flag("out", path.join(REF, "grok-acceptance-expectations.json"));
+const OUT = path.join(REF, "grok-acceptance-expectations.json");
 
 const px = (v) => (typeof v === "string" ? parseFloat(v) : v);
 const num = (v) => (typeof v === "number" ? v : px(v));
@@ -87,11 +80,6 @@ const E = {
     padding: GROK.bubble.padding,
     fontSize: band(num(GROK.bubbleText.fontSize), 0),
     lineHeight: GROK.bubbleText.lineHeight,
-    /* 同一族里 20 与 22 都是真读数，来自两个不同节点：`bubble` 是**气泡容器** computed 出来的
-       line-height，`bubbleText`（`.sand-message-prose p`）是**正文段落**的。派生表以前只带正文那一格，
-       而门里的 SP-02 判的是容器那一格 —— 不拆开就会拿正文的数赦免容器（§8.179 探针节点错位的期望侧版本）。 */
-    containerLineHeight: GROK.bubble.lineHeight,
-    textLineHeight: GROK.bubbleText.lineHeight,
     assistantBackground: GROK.bubble.backgroundColor,
     userBackground: GROK.bubbleVariants?.[1]?.backgroundColor,
     userColor: GROK.bubbleVariants?.[1]?.color,
@@ -109,13 +97,6 @@ const E = {
     },
     maxWidth: band(parseFloat(GROK.messageColumn.maxWidthRule), 2),
     codeBlockWidth: band(num(GROK.messageColumn.codeBlock.width), 2),
-  },
-  /* 消息行/面板：§4.4 的 728 与 SP-03、§4.3 的 composer 728 都钉这个，
-     以前只活在门源码的字面量里（真源有数、期望文件没这一格，门就没人能核对它）。 */
-  messageRow: {
-    rowWidth: band(num(GROK.messageColumn.rowWidth), 2),
-    paneWidth: band(num(GROK.messageColumn.paneWidth), 2),
-    sideMargin: band(num(GROK.messageColumn.sideMargin), 0),
   },
   accountPopup: {
     width: band(num(GROK.accountPopup.container.width), 2),

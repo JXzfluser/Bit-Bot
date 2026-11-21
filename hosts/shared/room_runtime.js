@@ -19,7 +19,11 @@
 
 const path = require("path");
 const { buildRoomContext: buildRoomContextData } = require("./room_context");
-const { buildDiscretionPrompt, parseDiscretionReply } = require("./room_discretion");
+const {
+  buildDiscretionPrompt,
+  parseDiscretionReply,
+  parseDiscretionDecision,
+} = require("./room_discretion");
 const { resolveMachineId } = require("./machine_identity");
 
 /** 调试/协议行不进共享转录。与桌面同一条规则。 */
@@ -226,11 +230,17 @@ function createRoomRuntime(o) {
         .filter((m) => m && m.role === "assistant" && m.text)
         .map((m) => String(m.text))
         .join("\n"));
-      const respond = parseDiscretionReply(text);
-      if (respond === null) {
+      // 老解析只回 YES/NO;新解析额外带回**认领**(这个成员负责哪一段)。
+      const decision = parseDiscretionDecision(text);
+      if (!decision || decision.respond === null) {
         return { ok: false, error: "discretion_unclear", text: safe(text).slice(0, 200) };
       }
-      return { ok: true, respond, text: safe(text).slice(0, 200) };
+      return {
+        ok: true,
+        respond: decision.respond,
+        claim: decision.claim || "",
+        text: decision.text || safe(text).slice(0, 200),
+      };
     } catch (err) {
       return { ok: false, error: safe((err && err.message) || String(err)), text: "" };
     }
@@ -269,7 +279,12 @@ function createRoomRuntime(o) {
         try {
           const out = await withTimeout(runDiscretionTurn(candidate.id, task, ctx), discretionTimeoutMs);
           if (out && out.ok && typeof out.respond === "boolean") {
-            return { bot_id: candidate.id, name: candidate.name, respond: out.respond };
+            return {
+              bot_id: candidate.id, name: candidate.name,
+              respond: out.respond,
+              // 认领:这个成员负责哪一段。没有 = 沿用老行为(各做各的)。
+              claim: String(out.claim || ""),
+            };
           }
           return {
             bot_id: candidate.id,

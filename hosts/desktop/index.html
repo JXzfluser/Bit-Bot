@@ -12948,21 +12948,15 @@
                       (p.pretend_loaded === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "list_skills") {
-                  // KP-10 片3：这一行以前只报一个数（可点名条数），于是「屏上写着 6」
-                  // 和「这回合模型看见 2」同时成立、互不解释。现在显示 Host 拼好的那句。
-                  label = p.summary_text
-                    ? "list_skills · " + p.summary_text
-                    : "list_skills×" +
-                      (p.count != null ? p.count : (p.skills || []).length);
+                  label =
+                    "list_skills×" +
+                    (p.count != null ? p.count : (p.skills || []).length);
                   types.push("attachment");
                   const delMeta = document.getElementById("delivery-meta");
                   if (delMeta) {
                     delMeta.textContent =
                       "list_skills · " +
-                      (p.summary_text ||
-                        (p.count != null
-                          ? p.count
-                          : (p.skills || []).length)) +
+                      (p.count != null ? p.count : (p.skills || []).length) +
                       (p.pretend_listing === true ? " · pretend!" : "");
                   }
                 } else if (h.kind === "device_tools_list") {
@@ -25236,15 +25230,6 @@
         const q = slash[1].toLowerCase();
         menuEl.innerHTML = "";
         menuEl.hidden = false;
-        /* KP-10 片3：这句「可点名 / 本回合进模型」是 Host 一次算好的成品串（raw.summary_text）。
-           渲染端不在这上面再数一遍 —— 自己数就会和注入那一步数出两个口径。 */
-        if (skillsCache && skillsCache.raw && skillsCache.raw.summary_text) {
-          const sum = document.createElement("div");
-          sum.style.cssText =
-            "color:var(--muted);font-size:10px;letter-spacing:.04em;padding:2px 8px 4px";
-          sum.textContent = skillsCache.raw.summary_text;
-          menuEl.appendChild(sum);
-        }
         const hits = items
           .filter((s) => !q || String(s.name || s.id || "").toLowerCase().includes(q))
           .slice(0, 12);

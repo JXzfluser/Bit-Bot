@@ -500,16 +500,15 @@ function createMirror(opts = {}) {
       }
       const h = handle();
       if (!h) return false;
-      // 刻意不发 idem_key：幂等在 diff 里（prev 每次都从盘上重读，内容没变就是
-      // 空 delta），不在键里。按内容哈希当键会把「同一个值被来回切」的第二、三次
-      // 当成重复吞掉，fold 折回来的 active_id 就停在旧值上——那是假的去重。
-      // KP-09 片12b：整批一个事务落库（逐条 append 时 kill -9 落在中间就是半提交面）。
-      const laid = h.appendBatch(events.map((e) => ({ sessionId: e.sessionId, kind: e.kind, payload: e.payload })));
-      for (const r of laid) {
-        if (r.duplicated) stats.duplicated++;
+      for (const e of events) {
+        // 刻意不发 idem_key：幂等在 diff 里（prev 每次都从盘上重读，内容没变就是
+        // 空 delta），不在键里。按内容哈希当键会把「同一个值被来回切」的第二、三次
+        // 当成重复吞掉，fold 折回来的 active_id 就停在旧值上——那是假的去重。
+        const res = h.append({ sessionId: e.sessionId, kind: e.kind, payload: e.payload });
+        if (res.duplicated) stats.duplicated++;
         stats.emitted++;
+        stats.kinds[e.kind] = (stats.kinds[e.kind] || 0) + 1;
       }
-      for (const e of events) stats.kinds[e.kind] = (stats.kinds[e.kind] || 0) + 1;
       return events.length > 0;
     } catch (err) {
       noteFailure(`commit(${filePath}) 派事件失败`, err);
@@ -548,15 +547,13 @@ function createMirror(opts = {}) {
       err.code = "EVENT_DB_UNAVAILABLE";
       throw err;
     }
-    // 与 commit() 同一条决定：不发 idem_key，幂等在 diff 里（见上面 commit 的注释）。
-    // KP-09 片12b：EVENT_ONLY 的落库口必须整批一个事务 —— 一次建会话要派 created+order+activated
-    // 三条，逐条落库时 kill -9 落在中间就留下一张折不动的面，而片10/10b 之后每个写者都被拒。
-    const laid = h.appendBatch(events.map((e) => ({ sessionId: e.sessionId, kind: e.kind, payload: e.payload })));
-    for (const r of laid) {
-      if (r.duplicated) stats.duplicated++;
+    for (const e of events) {
+      // 与 commit() 同一条决定：不发 idem_key，幂等在 diff 里（见上面 commit 的注释）。
+      const res = h.append({ sessionId: e.sessionId, kind: e.kind, payload: e.payload });
+      if (res.duplicated) stats.duplicated++;
       stats.emitted++;
+      stats.kinds[e.kind] = (stats.kinds[e.kind] || 0) + 1;
     }
-    for (const e of events) stats.kinds[e.kind] = (stats.kinds[e.kind] || 0) + 1;
     return events.length;
   }
 

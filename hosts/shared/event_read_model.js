@@ -28,63 +28,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const foldState = require("./fold_state");
 
 const READ_FLAG = "BITBOT_EVENT_READ";
-
-/* 单次折叠的取数窗口与总量护栏（#83）。窗口只决定「一次往内存里读多少行」；
-   **折完的判据是「有一页没读满」，不是「读满了一个上限」**。默认口径以前是一次
-   `limit: 100000` 的读：读满就把它当整份日志 —— 探针（scripts/probe_read_model_row_cap.mjs）
-   在 25 行的库上喂 limit=5 量到：`ok:true`、12 条会话只剩 3 条、已 `entity_removed` 的那条
-   复活，而且这份截断状态按**真实 lastSeq** 写进缓存，同进程之后不管放开多大上限都是
-   `cached:true` —— 一次截断、永久失真，调用方（片11 的提交时基底）会拿它去合并。
-   日志行数不是会话数决定的：回合流 turn_started/progress/turn_ended（§5.2，A1-2 同库）
-   和每条 message_committed 都算行，10 万行是「天天用几个月」量级，不是理论值。 */
-/* 512 而不是 50000：折叠是超线性的（实测三点拟合 k≈9.68e-6 ms/行²：1502 行 22.5ms、
-   4502 行 196.1ms、9002 行 805ms），所以**一页的价钱取决于它落在第几行**。50000 行的页
-   在 5 万行那个量级上单页就是 ~24s 主进程冻结，而时间预算只能在页与页之间检查 ——
-   页太大 = 预算形同不存在（和 #83 里「预算只写在分页上限上」是同一类错）。
-   FOLD_DEADLINE_MS 是**一次读**允许花在折叠上的墙钟：读切换的护栏单位必须是毫秒，
-   不是行数 —— 行数那个护栏（FOLD_BUDGET_ROWS=500000）按同一拟合要 **40 分钟**才咬住，
-   它管的是「这份工作总量根本不合理」，不是「这次读会不会卡住界面」。 */
-const FOLD_PAGE_ROWS = 512;
-const FOLD_BUDGET_ROWS = 500000;
-const FOLD_DEADLINE_MS = 250;
-
-/**
- * 从 `fromSeq` 起分页把日志折进 `base`（base 为 null 即从 BASELINE 全量折）。
- * 只在「读到一页不满」时宣布看完；额度咬住 → `stop:"budget"`，墙钟咬住 → `stop:"deadline"`，
- * 两种都算 `truncated:true`，调用方必须拒。
- * 分页续折用的就是 #82 的 `fromState`，等值性由 RM-10/L 组钉着，不是假定。
- */
-function foldPages(log, opts = {}) {
-  const page = Number(opts.pageSize) > 0 ? Number(opts.pageSize) : FOLD_PAGE_ROWS;
-  const budget = Number(opts.maxRows || opts.limit) > 0 ? Number(opts.maxRows || opts.limit) : FOLD_BUDGET_ROWS;
-  const deadline = opts.deadlineMs === undefined ? FOLD_DEADLINE_MS : Number(opts.deadlineMs);
-  const t0 = process.hrtime.bigint();
-  const { foldEvents } = require("./event_mirror");
-  let folded = opts.base || null;
-  let cursor = Number(opts.fromSeq) || 0;
-  let rows = 0;
-  for (;;) {
-    /* 单页取数按剩余额度夹紧：护栏必须是「行数上限」，不能只是「分页上限」——
-       否则预算 5 行、页 50000 行时一次就把整份日志读走，护栏形同不存在（第一版踩过）。 */
-    const want = Math.min(page, budget - rows);
-    if (want <= 0) return { folded, rows, cursor, truncated: true, stop: "budget", budget, elapsedMs: Number(process.hrtime.bigint() - t0) / 1e6 };
-    const chunk = log.readAfter({ fromSeq: cursor, limit: want });
-    rows += chunk.length;
-    if (chunk.length) {
-      folded = folded ? foldEvents(chunk, { fromState: folded }) : foldEvents(chunk);
-      cursor = Number(chunk[chunk.length - 1].seq);
-    }
-    const elapsed = () => Number(process.hrtime.bigint() - t0) / 1e6;
-    /* 顺序是语义：先看「这一页没读满 = 折完了」，再看墙钟 —— 一趟刚好跑完的读不许被
-       预算说成截断（那会把一次正常的 ok:true 变成拒读）。 */
-    if (chunk.length < want) return { folded, rows, cursor, truncated: false, stop: "done", budget, elapsedMs: elapsed() };
-    if (deadline > 0 && elapsed() >= deadline) return { folded, rows, cursor, truncated: true, stop: "deadline", budget, deadline, elapsedMs: elapsed() };
-    if (rows >= budget) return { folded, rows, cursor, truncated: true, stop: "budget", budget, deadline, elapsedMs: elapsed() };
-  }
-}
 
 function eventReadEnabled(env) {
   const e = env || process.env;
@@ -98,61 +43,6 @@ function dbFilePath(dataRoot) {
 
 /* 每个库文件一个缓存槽：{ log, lastSeq, folded }。进程内复用，进程退出即释放。 */
 const cacheByFile = new Map();
-
-/* #82 后半：把「折干净的前缀」落一份**可丢弃的检查点**，让冷进程不必从 seq=1 重折全量。
-   三条口径写死在这里，避免它被当成第二份真源：
-   1) 它是**派生态**，不是账：内容只可能是「本库 seq<=ckptSeq 的折叠结果」，删掉只是慢一次；
-      读路径永不因为检查点存在而相信它 —— 用完还要折后缀，折出 anomaly 就回全量。
-   2) 绝不拿它建库：库不存在时（no_db）在读它之前就返回，所以只读消费方仍不是写者。
-   3) 落盘按「距上次持久化新增多少行」节流（默认 2000 行），且写失败绝不影响这次读的结果。 */
-/* 落一次检查点的价钱 = 一次整面序列化 + 原子写；不落 = 下个冷进程多折 stride 行。
-   256 是量出来的（scripts/probe_checkpoint_save_cost.mjs，4502 行的库）：
-   一次落盘 0.50ms（面 211KB）、冷折 0.0436ms/行 → 纯时间盈亏平衡在 11 行，
-   取 256 时冷启最坏多折 11.2ms（原值 2000 = 87.1ms）、摊到每行 0.0019ms、每行写放大 0.83KB。
-   折叠是超线性的，库到几万行这一格要多大重跑探针（见 §8.169 的边界）。 */
-const CHECKPOINT_STRIDE = 256;
-const CHECKPOINT_MAX_BYTES = 64 * 1024 * 1024;
-
-function checkpointPathFor(file) {
-  return path.join(path.dirname(file), "desktop-events.fold-cache.json");
-}
-
-/** 读检查点；任何不合格都返回 null（= 冷启动照旧全量折），绝不抛。 */
-function loadCheckpoint(file) {
-  try {
-    const target = checkpointPathFor(file);
-    if (path.resolve(target) === path.resolve(file)) return null;
-    const raw = JSON.parse(fs.readFileSync(target, "utf8"));
-    if (!raw || raw.dbFile !== path.resolve(file)) return null;
-    const ckSeq = Number(raw.lastSeq);
-    if (!Number.isFinite(ckSeq) || ckSeq < 0) return null;
-    const f = raw.folded;
-    if (!f || !f.sessions || !Array.isArray(f.sessions.sessions) || !f.rooms || !Array.isArray(f.rooms.rooms)) return null;
-    if (!Array.isArray(f.approvals)) return null;
-    if (!foldState.isClean(f)) return null;
-    return { lastSeq: ckSeq, folded: f };
-  } catch (_e) {
-    return null;
-  }
-}
-
-/** 原子写检查点；失败静默（下次还是全量折，不假装成功）。 */
-function saveCheckpoint(file, lastSeq, folded) {
-  const target = checkpointPathFor(file);
-  const tmp = `${target}.${process.pid}.tmp`;
-  try {
-    const payload = JSON.stringify({ dbFile: path.resolve(file), lastSeq, folded });
-    if (Buffer.byteLength(payload) > CHECKPOINT_MAX_BYTES) return false;
-    fs.writeFileSync(tmp, payload);
-    fs.renameSync(tmp, target);
-    return true;
-  } catch (_e) {
-    try {
-      fs.rmSync(tmp, { force: true });
-    } catch (_e2) { /* 清不掉不追究 */ }
-    return false;
-  }
-}
 
 function dropCache(file) {
   const slot = cacheByFile.get(file);
@@ -205,23 +95,13 @@ function readSurfaces(dataRoot, opts = {}) {
         file,
       };
     }
-    slot = { log: handle, lastSeq: -1, folded: null, count: 0, persistedSeq: -1, seeded: false };
-    const ck = loadCheckpoint(file);
-    /* 检查点的 seq 比库还大 = 库被换过/截短过（seq 可能已被另一份日志复用）：直接不用它。 */
-    if (ck && ck.lastSeq <= handle.lastSeq()) {
-      slot.folded = ck.folded;
-      slot.lastSeq = ck.lastSeq;
-      slot.persistedSeq = ck.lastSeq;
-      slot.seeded = true;
-    }
+    slot = { log: handle, lastSeq: -1, folded: null, count: 0 };
     cacheByFile.set(file, slot);
   }
 
   try {
     const lastSeq = slot.log.lastSeq();
-    const seeded = slot.seeded;
-    slot.seeded = false;
-    if (slot.folded && slot.lastSeq === lastSeq && !seeded) {
+    if (slot.folded && slot.lastSeq === lastSeq) {
       return {
         ok: true,
         file,
@@ -232,86 +112,21 @@ function readSurfaces(dataRoot, opts = {}) {
         count: slot.count,
         lastSeq,
         cached: true,
-        elapsedMs: slot.elapsedMs || 0,
       };
     }
-    /* 折叠必须把游标之后的每一行都看完才敢宣布状态（#83）。
-       增量（#82 / §8.165）：日志只追加、seq 不复用，所以「上次折干净的状态 ⊕ 之后的新行」
-       与「从头折全部」必须得到同一份面。省下的正是每次操作那一格全量折（2000 会话实测 330ms）。
-       只在 lastSeq 往前走时续折；库被换掉（seq 倒退/归零）就回全量。折出异常一律回全量确认，
-       增量路径永远没有权力单独宣布「这份日志不干净」。 */
-    let result = null;
-    let incremental = false;
-    if (foldState.canContinue(slot, lastSeq)) {
-      result = foldPages(slot.log, {
-        fromSeq: slot.lastSeq,
-        base: slot.folded,
-        pageSize: opts.pageSize,
-        maxRows: opts.maxRows || opts.limit,
-        deadlineMs: opts.deadlineMs,
-      });
-      incremental = true;
-      /* 增量折出异常：不许下结论，退回全量确认（全量也读不全时由下面统一拒）。
-         增量被预算截断则**不**回全量：截断那次的结论本来就是不 ok，而全量重折会把刚折好的
-         前缀再付一遍预算 —— 那样每次拒读都从头再来，收敛变成白烧钱。 */
-      if (!foldState.isClean(result.folded)) result = null;
-    }
-    if (!result) {
-      result = foldPages(slot.log, {
-        fromSeq: 0,
-        base: null,
-        pageSize: opts.pageSize,
-        maxRows: opts.maxRows || opts.limit,
-        deadlineMs: opts.deadlineMs,
-      });
-      incremental = false;
-    }
-    const folded = result.folded;
-    if (result.truncated) {
-      /* 没看完 ≠ 「这张面就这些」：面绝不交出去，调用方按读不到降级。
-         但已经折出来的**前缀**是真的 —— 记在**它自己的游标**上（不是库的 lastSeq：
-         #83 的洞就是把截断面记到真游标上，一次截断、永久失真），当缓存也当检查点，
-         下一次读从这里续，拒读不白烧钱。
-         这一格不看 stride 节流：这次已经付完整个预算的墙钟，多写一份面是零头；
-         而且按 stride 落盘会活锁 —— 每趟只折得动 <stride 行时，游标永远不推进。 */
-      const prefix = foldState.isClean(folded) ? folded : null;
-      slot.folded = prefix;
-      slot.lastSeq = prefix ? result.cursor : -1;
-      slot.count = incremental && prefix ? slot.count + result.rows : result.rows;
-      if (prefix && result.cursor > slot.persistedSeq && saveCheckpoint(file, result.cursor, prefix)) {
-        slot.persistedSeq = result.cursor;
-      }
-      return {
-        ok: false,
-        reason: result.stop === "deadline" ? "fold_timeout" : "log_too_long",
-        rowsRead: result.rows,
-        maxRows: result.budget,
-        deadlineMs: result.deadline,
-        elapsedMs: Number(result.elapsedMs.toFixed(1)),
-        progressSeq: prefix ? result.cursor : null,
-        lastSeq,
-        file,
-      };
-    }
+
+    const rows = slot.log.readAfter({ fromSeq: 0, limit: opts.limit || 100000 });
+    const folded = require("./event_mirror").foldEvents(rows);
     const anomalies = folded.anomalies || [];
     if (anomalies.length) {
       // 日志折不干净：缓存作废，让调用方降级回 JSON。绝不把半折叠状态当真。
-      foldState.invalidate(slot);
-      return { ok: false, reason: "fold_anomalies", anomalies, count: result.rows, file };
+      slot.folded = null;
+      slot.lastSeq = -1;
+      return { ok: false, reason: "fold_anomalies", anomalies, count: rows.length, file };
     }
-    const prevCount = slot.count;
     slot.folded = folded;
     slot.lastSeq = lastSeq;
-    slot.count = incremental ? prevCount + result.rows : result.rows;
-    slot.incremental = incremental;
-    slot.elapsedMs = result.elapsedMs;
-    /* 折干净了才落检查点（脏面绝不持久化 = 不把毒面写进盘上缓存）；写失败不改这次读的结论。
-       节流看「距上次落盘新增了多少行」：落盘的价钱是一次整面序列化，冷启省下的价钱是重折这些行，
-       stride 就是这两者之间的换算率 —— 所以它得是被量出来的，不是拍脑袋（见 §8.169）。 */
-    const stride = Number(opts.checkpointStride) > 0 ? Number(opts.checkpointStride) : CHECKPOINT_STRIDE;
-    if (lastSeq - slot.persistedSeq >= stride) {
-      if (saveCheckpoint(file, lastSeq, folded)) slot.persistedSeq = lastSeq;
-    }
+    slot.count = rows.length;
     return {
       ok: true,
       file,
@@ -319,11 +134,8 @@ function readSurfaces(dataRoot, opts = {}) {
       rooms: clone(folded.rooms),
       approvals: clone(folded.approvals),
       anomalies,
-      count: result.rows,
+      count: rows.length,
       lastSeq,
-      foldPath: seeded ? "checkpoint" : incremental ? "incremental" : "full",
-      checkpointSeq: slot.persistedSeq >= 0 ? slot.persistedSeq : null,
-      elapsedMs: Number(result.elapsedMs.toFixed(1)),
     };
   } catch (err) {
     dropCache(file);
@@ -343,14 +155,8 @@ function closeAll() {
 
 module.exports = {
   READ_FLAG,
-  FOLD_PAGE_ROWS,
-  FOLD_BUDGET_ROWS,
-  FOLD_DEADLINE_MS,
-  CHECKPOINT_STRIDE,
   eventReadEnabled,
   dbFilePath,
-  foldPages,
-  checkpointPathFor,
   readSurfaces,
   closeAll,
 };

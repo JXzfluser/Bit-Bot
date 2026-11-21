@@ -264,30 +264,6 @@ function openEventLog(opts = {}) {
   }
 
   /**
-   * 一次面提交的原子落库口：整批在同一个事务里，要么全落要么一条都不落。
-   * 为什么必须有它：`commitText()`/`commit()` 原先逐条 `append`，每条自己一个事务 ——
-   * 一次「建会话」要派 created + order + activated 三条，`kill -9` 落在中间就是半提交；
-   * 半提交里「顺序指向不存在的实体」那一支会把折叠永久毒成 `ok:false`，
-   * 而片10/10b 之后每个写者都被拒 —— 两道各自正确的决定合起来造出一个死面（KP-09 片12b）。
-   * 事务从 IMMEDIATE 起：批量里第一条写之前就要拿写锁，否则两个进程各读后各写会撞 SQLITE_BUSY 在半路。
-   * @param {Array<object>} list 与 `append` 同形的条目
-   * @returns {Array<{seq:number, duplicated:boolean}>} 与入参同序
-   */
-  function appendBatch(list = []) {
-    const out = [];
-    if (!list.length) return out;
-    db.exec("BEGIN IMMEDIATE;");
-    try {
-      for (const e of list) out.push(append(e));
-      db.exec("COMMIT;");
-    } catch (err) {
-      try { db.exec("ROLLBACK;"); } catch (_r) { /* 事务已断 */ }
-      throw err;
-    }
-    return out;
-  }
-
-  /**
    * 从任意 seq 续订（一次读）。fromSeq=0 就是全量。
    * @param {{sessionId?:string, fromSeq?:number, limit?:number}} [q]
    */
@@ -314,7 +290,6 @@ function openEventLog(opts = {}) {
     actor,
     logVersion: LOG_VERSION,
     append,
-    appendBatch,
     readAfter,
     lastSeq: () => Number(maxSeqStmt.get().seq),
     sessionLastSeq: (sessionId) => Number(sessionMaxStmt.get(String(sessionId)).seq),

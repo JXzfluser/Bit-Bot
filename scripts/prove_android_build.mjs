@@ -66,6 +66,9 @@ import { spawnSync } from "child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const HOST = path.join(REPO, "hosts/android/BitBotHost");
+const JDK =
+  process.env.JAVA_HOME ||
+  (fs.existsSync("/usr/lib/jvm/temurin-21") ? "/usr/lib/jvm/temurin-21" : "");
 
 let PASS = 0,
   FAIL = 0,
@@ -89,38 +92,6 @@ const honestSkip = (why) => {
 };
 
 /* ---------- 工具链探测 ---------- */
-/**
- * JDK 按「gradle 自己会用的那个 java」倒推，而不是只认 JAVA_HOME。
- * 上一版是 `JAVA_HOME || /usr/lib/jvm/temurin-21`（一个写死的 Linux 目录），
- * 于是 mac 上恒判「没有 JDK」而 SKIP —— Android 的 235 项 JVM 单测在本机一次都没跑到过，
- * 那些红（CP-05）只能等 CI 才发现。见 report §8.137/§8.138。
- */
-function findJdk() {
-  const javas = [];
-  if (process.env.JAVA_HOME) javas.push(path.join(process.env.JAVA_HOME, "bin", "java"));
-  const onPath = spawnSync("which", ["java"], { encoding: "utf8" }).stdout.trim();
-  if (onPath) javas.push(onPath);
-  if (process.platform === "darwin") {
-    const home = spawnSync("/usr/libexec/java_home", ["-v", "17"], { encoding: "utf8" }).stdout.trim();
-    if (home) javas.push(path.join(home, "bin", "java"));
-  }
-  javas.push("/usr/lib/jvm/temurin-21/bin/java", "/usr/lib/jvm/temurin-17/bin/java");
-  for (const java of javas) {
-    if (!java || !fs.existsSync(java)) continue;
-    // 问 JVM 自己的 java.home：/usr/bin/java 那种系统壳指不回真目录，
-    // 拿它的父目录当 JAVA_HOME 会把 gradle 带歪。
-    const props = String(
-      spawnSync(java, ["-XshowSettings:properties", "-version"], { encoding: "utf8" }).stderr || "",
-    );
-    const home = (/\bjava\.home = (.+)/.exec(props) || [])[1];
-    if (!home) continue;
-    const version = Number((/\bjava\.version = "?(\d+)/.exec(props) || [])[1] || 0);
-    // gradle 要的是 JDK（有 javac），不是只够跑 class 的 JRE
-    if (version >= 17 && fs.existsSync(path.join(home.trim(), "bin", "javac"))) return home.trim();
-  }
-  return "";
-}
-
 function findSdk() {
   const fromEnv = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || "";
   if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
@@ -168,8 +139,7 @@ const AAPT = findAapt(SDK);
 if (!AAPT) honestSkip("SDK 里没有 build-tools/aapt");
 const GRADLE = findGradle();
 if (!GRADLE) honestSkip("没有 gradle（系统 gradle 和 ./gradlew 都找不到）");
-const JDK = findJdk();
-if (!JDK) honestSkip("没有 JDK 17+（JAVA_HOME、PATH 上的 java、java_home 都没认出 17 以上）");
+if (!JDK || !fs.existsSync(JDK)) honestSkip("没有 JDK（gradle 需要 Java 17+）");
 
 const env = { ...process.env, ANDROID_HOME: SDK, ANDROID_SDK_ROOT: SDK, JAVA_HOME: JDK };
 

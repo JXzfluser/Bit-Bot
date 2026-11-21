@@ -344,11 +344,6 @@ async function setThemeLight(win) {
       const logRt = rect(logEl);
       const mainRt2 = rect(main);
       const logCs = logEl ? getComputedStyle(logEl) : null;
-      /* 气泡的 max-width 才是真源 messageColumn.maxWidthRule 那个量（真源侧采的是
-         .msg .body 的 computed max-width，见 scripts/grok_real_spec_capture.mjs:290）。
-         max-width 带 min() 时 computed 值保留表达式，所以数值另取 min() 里的 px 项。 */
-      const bodyMaxW = aBody ? getComputedStyle(aBody).maxWidth : null;
-      const bodyMaxWpx = ((bodyMaxW || "").match(/[\d.]+px/g) || []).map((s) => parseFloat(s));
       const messageColumn = logEl
         ? {
             selector: "#log",
@@ -356,10 +351,7 @@ async function setThemeLight(win) {
             paneWidth: mainRt2 ? mainRt2.width : null,
             rowWidth: logRt ? logRt.width : null,
             sideMargin: mainRt2 && logRt ? Math.round(((mainRt2.width - logRt.width) / 2) * 100) / 100 : null,
-            maxWidthRule: bodyMaxW,
-            maxWidthPx: bodyMaxWpx.length ? Math.min(...bodyMaxWpx) : null,
-            maxWidthSource: ".msg.assistant .body (computed max-width，与真源同量纲)",
-            rowMaxWidthProbe: {
+            maxWidthRule: {
               cssMaxWidth: logCs ? logCs.maxWidth : null,
               contentMaxVar: logCs ? logCs.getPropertyValue("--content-max").trim() : null,
               resolved: logRt ? logRt.width : null,
@@ -848,7 +840,7 @@ async function setThemeLight(win) {
         bubbleVariants: "[assistant .body, .msg.user]",
         bubbleAuthorName: ".msg-grok-name",
         bubbleAvatar: ".msg-grok-avatar",
-        messageColumn: '#log (maxWidthRule=.msg.assistant .body, pane=#main, codeBlock=.bb-codeblock)',
+        messageColumn: "#log (pane=#main, codeBlock=.bb-codeblock)",
         accountBar: "#sidebar-footer / #account-bar",
         accountPopup: "#account-popup (.ap-item/.ap-ic/.ap-sep)",
         plusMenuItems: "#composer-more (temporarily un-hidden)",

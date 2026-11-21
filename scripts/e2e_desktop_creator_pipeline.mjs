@@ -50,28 +50,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
-/* 数据根隔离（§8.182）：这一格以前读的是 **仓库 data/**（dev 模式 DATA_ROOT=repoRoot/data），
-   于是门禁的建群/建 Bot/排程直接写进用户看得见的那份数据，而且多个门禁实例（以及用户自己开着的
-   Bit Bot）**共用同一个 rooms.json** —— §8.176 量到的 P12 `room_not_found` 就是这个形状：
-   P1 刚建的群，到 P12 用时已经不在群面上（别的实例按前缀清夹具会把它清掉）。
-   口径按 hosts/desktop/paths.js:99-108 的契约来（BITBOT_DATA_ROOT 是留给门禁的逃生口，但值必须
-   是某个根的**直接子目录**，因为内核 cwd = dirname(DATA_ROOT)，且 dev 的 `moon run cmd/desktop_turn`
-   要从那个 cwd 解析 cmd/）：临时根 GATE_ROOT + `cmd` 软链 + 整份 data/ 快照，app 侧走
-   BITBOT_DATA_ROOT=GATE_ROOT/data，门自己的文件读走同一个 DATA，两侧不许分叉。
-   为什么不能直接指向一个空的临时目录（第一版就是这么写的，当场 P1 全红）：根末段不叫 `data`、
-   父目录里没有 cmd/ 与 moon.mod 可解析，内核几百毫秒就 kernel_crashed —— 这条耦合写在产品源码里，
-   不是门禁能绕过去的，只能照契约铺。 */
-const GATE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-e2e-creator-"));
-try { fs.symlinkSync(path.join(REPO, "cmd"), path.join(GATE_ROOT, "cmd"), "dir"); } catch { /* cmd 已在或不存在 */ }
-const DATA = path.join(GATE_ROOT, "data");
-fs.mkdirSync(DATA, { recursive: true });
-for (const name of fs.existsSync(path.join(REPO, "data")) ? fs.readdirSync(path.join(REPO, "data")) : []) {
-  /* data/tmp（192MB 的临时文件）和一次历史 import-backup 不参与本轮，也不该被带进隔离根。 */
-  if (name === "tmp" || name.startsWith("import-backup-")) continue;
-  fs.cpSync(path.join(REPO, "data", name), path.join(DATA, name), { recursive: true });
-}
-process.on("exit", () => { try { fs.rmSync(GATE_ROOT, { recursive: true, force: true }); } catch { /* 收尾失败不改判据 */ } });
-const D = (...p) => path.join(DATA, ...p);
+const D = (...p) => path.join(REPO, "data", ...p);
 const ROOMS = D("desktop/rooms.json");
 const SESSIONS = D("desktop/sessions.json");
 const BOTS = D("desktop/bots.json");
@@ -220,7 +199,6 @@ function startStub() {
         PATH: (process.env.HOME || "") + "/.moon/bin:" + (process.env.PATH || ""),
         MOON_BIN: process.env.MOON_BIN || path.join(os.homedir(), ".moon/bin/moon"),
         BITBOT_REPO_ROOT: REPO,
-        BITBOT_DATA_ROOT: DATA,
         BITBOT_NO_SECRET_SYNC: "1",
         // 门禁不该改用户 macOS 的开机自启设置（app 启动时默认 applyLoginItem(true)）
         BITBOT_DESKTOP_AUTOSTART: "0",

@@ -9,7 +9,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -150,13 +149,7 @@ class ChatThreadPersistenceTest {
     compose.onNode(hasContentDescription("更多")).performClick()
     compose.waitForIdle()
     compose.onNodeWithText("清空对话").assertExists()
-    // 这一行排在弹层折叠线以下：实测它没滚出来时的可命中区域是 (0,0,0,0)，
-    // performClick 落点是空的 ⇒ 命中的是遮罩，弹层关掉而「清空」压根没触发（10s 等不到屏幕变空）。
-    // 真人要先把弹层往上拖，所以这里也先滚到那一行 —— 断言一个都不减。
-    val clearRow = compose.onNodeWithText("清空对话")
-    clearRow.performScrollTo()
-    compose.waitForIdle()
-    clearRow.performClick()
+    compose.onNodeWithText("清空对话").performClick()
     compose.waitUntil(timeoutMillis = 10_000) {
       compose.onAllNodesWithText(SENTENCE).fetchSemanticsNodes().isEmpty()
     }

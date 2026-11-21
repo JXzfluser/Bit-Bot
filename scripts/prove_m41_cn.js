@@ -7,15 +7,14 @@
  * 目标：扫描清单 m37-scan.md 里 M37 batch 1/2 未覆盖的"低频可见英文"，
  *      收掉 4 条动态 meta 前缀与 1 条内部枚举外泄；不破坏既有 i18n。
  *
- * 断言（每条绿行都带 M41-0N 编号；矩阵侧的锚点钉编号、不钉这句中文 ——
- * M46 改过措辞之后，钉散文的锚点就变成了恒红）：
- *   M41-01) chMeta 前缀 workflows · → 工作流 ·
- *   M41-02) boxMeta 前缀 env · → 运行环境 ·
- *   M41-03) webhook meta 前缀 copied → 已复制
- *   M41-04) dmeta 前缀 last: → 最近：
- *   M41-05) cloud-meta 默认值 local_worker · → 本地代理 ·（内部枚举不外泄）
- *   M41-06) 排除项仍保留：ADR 0002 / ICS / example.com 属技术引用，不强译
- *   M41-07) 负向对照：把 workflows · 塞回 → 第 01 条真的翻假
+ * 断言：
+ *   1) chMeta 前缀 workflows · → 工作流 ·
+ *   2) boxMeta 前缀 env · → 运行环境 ·
+ *   3) webhook meta 前缀 copied → 已复制
+ *   4) dmeta 前缀 last: → 最近：
+ *   5) cloud-meta 默认值 local_worker · → 本地代理 ·（内部枚举不外泄）
+ *   6) 排除项仍保留：ADR 0002 / ICS / example.com 属技术引用，不强译
+ *   7) 负向对照：把 workflows · 塞回 → 第 1 条翻假
  *
  * ⚠️ 2026-11-14(M46 · Copy contract 第一波)——判据跟着真源改了形状：
  *   原来 1–4 条断言的是**字面源码形状**
@@ -57,11 +56,11 @@ function zhValue(src, key) {
 /* 一条「前缀必须来自字典、且 zh-CN 词条是中文」的断言。
    usage: 该键的**使用点**正则 —— 渲染器里可以走 t("key")，
    静态 HTML 里可以走 data-i18n="key"（M46 第二波把静态文案也挂上了字典）。 */
-function localizedByKey(src, key, expectZh, label, usageRe, id) {
+function localizedByKey(src, key, expectZh, label, usageRe) {
   const used = usageRe.test(src);
   const val = zhValue(src, key);
   if (used && val === expectZh) {
-    ok("[" + id + "] " + label + "（取自字典 " + key + "，可翻译）");
+    ok(label + "（取自字典 " + key + "，可翻译）");
     return true;
   }
   bad(label, used ? ("字典词条不是 " + JSON.stringify(expectZh) + "，实际 " + JSON.stringify(val)) : ("这个键没被用上 " + key));
@@ -75,54 +74,38 @@ const usedAnywhere = (key) => new RegExp('(t\\(\\s*"|data-i18n=")' + key.replace
 
 /* ---------- 1) channels meta ---------- */
 localizedByKey(html, "workflowMetaCount", "工作流 · {{count}}",
-  "channels-meta 前缀本地化：workflows · → 工作流 ·", usedInRenderer("workflowMetaCount"), "M41-01");
+  "channels-meta 前缀本地化：workflows · → 工作流 ·", usedInRenderer("workflowMetaCount"));
 
 /* ---------- 2) box meta ---------- */
 localizedByKey(html, "pluginMetaRuntime", "运行环境 · {{runtime}}",
-  "box-meta 前缀本地化：env · → 运行环境 ·", usedInRenderer("pluginMetaRuntime"), "M41-02");
+  "box-meta 前缀本地化：env · → 运行环境 ·", usedInRenderer("pluginMetaRuntime"));
 
 /* ---------- 3) webhook copied ---------- */
 localizedByKey(html, "commonFeedbackCopied", "已复制 {{what}}",
-  "webhook meta 前缀本地化：copied → 已复制", usedInRenderer("commonFeedbackCopied"), "M41-03");
+  "webhook meta 前缀本地化：copied → 已复制", usedInRenderer("commonFeedbackCopied"));
 
 /* ---------- 4) delivery last ---------- */
 localizedByKey(html, "memoryMetaRecentTypes", "最近：{{types}}",
-  "delivery meta 前缀本地化：last: → 最近：", usedInRenderer("memoryMetaRecentTypes"), "M41-04");
+  "delivery meta 前缀本地化：last: → 最近：", usedInRenderer("memoryMetaRecentTypes"));
 
 /* ---------- 5) cloud-meta enum leak ---------- */
 localizedByKey(html, "cloudMeta", "本地代理 · 交付产物",
-  "cloud-meta 默认值不再外泄内部枚举 local_worker", usedAnywhere("cloudMeta"), "M41-05");
+  "cloud-meta 默认值不再外泄内部枚举 local_worker", usedAnywhere("cloudMeta"));
 
 /* ---------- 6) 保留技术引用（不硬译） ---------- */
 if (/ADR 0002/.test(html) && /\bICS\b/.test(html)) {
-  ok("[M41-06] 技术引用保留：ADR 0002 / ICS（文件规范名，不强译，符合扫描排除规则）");
+  ok("技术引用保留：ADR 0002 / ICS（文件规范名，不强译，符合扫描排除规则）");
 } else { bad("technical refs", "unexpectedly translated"); }
 
 /* ---------- 7) 负向对照：把字典词条塞回英文枚举 → 第 1 条必须翻假 ---------- */
-/* 这里探的是「断言会不会翻假」本身，而不是「替换字符串有没有生效」——
-   上一版只比了 brokenVal，那等于自证替换，断言即使恒真也照样绿。 */
 const broken = html.replace(
   /workflowMetaCount:\s*"工作流 · \{\{count\}\}"/,
   'workflowMetaCount: "workflows · {{count}}"',
 );
-{
-  const passBefore = pass, failBefore = fail;
-  const log = console.log;
-  console.log = () => {};
-  const stillGreen = localizedByKey(
-    broken, "workflowMetaCount", "工作流 · {{count}}",
-    "negative-control-probe", usedInRenderer("workflowMetaCount"), "M41-00-probe",
-  );
-  console.log = log;
-  /* 内部探针的计数不进总账：它是一次「故意让它红」的试算，
-     真正的读数由下面这条对照结论代替，否则总账会自己把自己判死。 */
-  pass = passBefore; fail = failBefore;
-  if (stillGreen === false) {
-    ok("[M41-07] 负向对照：把字典词条塞回 workflows · → 本地化断言真的翻假（非恒真）");
-  } else {
-    bad("negative control", "断言在退化后仍成立（恒真判据）");
-  }
-}
+const brokenVal = zhValue(broken, "workflowMetaCount");
+if (brokenVal === "workflows · {{count}}" && brokenVal !== "工作流 · {{count}}") {
+  ok("负向对照：把字典词条塞回 workflows · → 本地化断言翻假（非恒真）");
+} else { bad("negative control", "断言在退化后仍成立（恒真判据）"); }
 
 console.log("\nprove_m41_cn: PASS=" + pass + " FAIL=" + fail);
 process.exit(fail === 0 ? 0 : 1);

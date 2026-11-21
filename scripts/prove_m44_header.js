@@ -35,14 +35,14 @@ if (activeBlock
   && /background:\s*var\(--accent\)/.test(activeBlock[1])
   && /color:\s*var\(--accent-ink\)/.test(activeBlock[1])
   && !/border-color:\s*var\(--muted\)/.test(activeBlock[1])) {
-  ok("[M44-01] #header-actions button.active：实心 accent 填充（修 border:0 下 dead border-color）");
+  ok("#header-actions button.active：实心 accent 填充（修 border:0 下 dead border-color）");
 } else {
   bad("active fill", "still relies on border-color or missing fill");
 }
 
 /* ---------- 2) header 按钮按压反馈 ---------- */
 if (/#header-actions button:active \{[^}]*scale\(0\.96\)/.test(html)) {
-  ok("[M44-02] #header-actions button:active scale(0.96)：与 composer / msg-actions 一致");
+  ok("#header-actions button:active scale(0.96)：与 composer / msg-actions 一致");
 } else {
   bad("header press", "no :active scale");
 }
@@ -71,14 +71,14 @@ function atRulesWith(src, needle) {
 const rmHit = atRulesWith(html, "@media (prefers-reduced-motion: reduce)")
   .find((t) => /#header-actions button:active[\s\S]{0,160}transform:\s*none/.test(t));
 if (rmHit) {
-  ok("[M44-03] reduced-motion 下 #header-actions button:active transform 归零");
+  ok("reduced-motion 下 #header-actions button:active transform 归零");
 } else {
   bad("rm header", "header press not neutralized");
 }
 
 /* ---------- 4) M20 回归护栏 ---------- */
 if (/#header-actions \{[^}]*justify-content:\s*flex-end/.test(html)) {
-  ok("[M44-04] M20 回归护栏：#header-actions 仍 justify-content: flex-end");
+  ok("M20 回归护栏：#header-actions 仍 justify-content: flex-end");
 } else {
   bad("M20 regression", "header actions alignment drifted");
 }
@@ -88,12 +88,12 @@ if (/#header-actions \{[^}]*justify-content:\s*flex-end/.test(html)) {
    sync point syncHeaderRailButtons() called from setPanel(). */
 if (/function syncHeaderRailButtons\(val\)[\s\S]{0,300}toolsBtn\.classList\.toggle\("active", val === "tools"\)[\s\S]{0,120}gpBtn\.classList\.toggle\("active", val === "computer"\)/.test(html) &&
     /setPanel\(open \? "computer" : "none"\)/.test(html)) {
-  ok("[M44-05] 把 rail open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合，单一写点 syncHeaderRailButtons 同时覆盖 tools-toggle-btn）");
+  ok("把 rail open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合，单一写点 syncHeaderRailButtons 同时覆盖 tools-toggle-btn）");
 } else {
   bad("rail active sync", "header buttons not driven by setPanel state");
 }
 if (/setPanel\(panelValue\(\) === "tools" \? "none" : "tools"\)/.test(html)) {
-  ok("[M44-06] tools-toggle-btn：点击走 setPanel 单一状态源（实心填充有 JS 触发）");
+  ok("tools-toggle-btn：点击走 setPanel 单一状态源（实心填充有 JS 触发）");
 } else {
   bad("tools active sync", "tools button not toggled via setPanel");
 }
@@ -102,7 +102,7 @@ if (/setPanel\(panelValue\(\) === "tools" \? "none" : "tools"\)/.test(html)) {
 const broken = html.replace(/#header-actions button\.active \{[\s\S]*?\}/,
   "#header-actions button.active { border-color: var(--muted); color: var(--ink); }");
 if (!/#header-actions button\.active \{[^}]*background:\s*var\(--accent\)/.test(broken)) {
-  ok("[M44-07] 负向对照：塞回 dead border-color → active 高亮断言翻假（非恒真）");
+  ok("负向对照：塞回 dead border-color → active 高亮断言翻假（非恒真）");
 } else {
   bad("negative control", "fill survived revert");
 }

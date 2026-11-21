@@ -121,26 +121,6 @@ function createProductSurface(repoRoot, opts = {}) {
     const m = mirror();
     let prev = prevText === undefined ? lastTextBySurface.get(path.resolve(filePath)) : prevText;
     if (prev == null) prev = prevTextFor(filePath, def);
-    if (prev == null) {
-      /* prev 取不到 ≠ 这张面没账。`prevTextFor` 在「库折不动」（并发写撞出 anomaly /
-         读模型报错）时同样返回 null，而 null 的 prev 会让下一次 commitText 走
-         BASELINE 整面替换 —— 等于把读失败翻译成「这张面是空的」，别人的行当场抹掉。
-         会话面 §8.150 实测的就是这一条；这里把同一个洞在共用落库口上堵死。
-         只有「库还没有」（no_db / 一条事件都没有）才允许从 BASELINE 起算。 */
-      const probe = eventReadModel.readSurfaces(DATA_ROOT);
-      const unreadable = (!probe.ok && probe.reason !== "no_db") || (probe.anomalies || []).length > 0;
-      if (unreadable) {
-        const why = (probe.anomalies && probe.anomalies[0]) ||
-          (probe.reason === "fold_timeout"
-            ? `日志读了 ${probe.rowsRead} 行没在 ${probe.deadlineMs}ms 内折完，已折到第 ${probe.progressSeq} 行，下次读接着折`
-            : probe.reason === "log_too_long"
-              ? `日志超过单次额度 ${probe.maxRows} 行，已折到第 ${probe.progressSeq} 行`
-              : probe.reason || "fold_unavailable");
-        const err = new Error(`eventOnlyWrite：${def.surface} 的基底读不动（${why}），拒绝整面替换`);
-        err.code = "EVENT_PREV_UNREADABLE";
-        throw err;
-      }
-    }
     if (prev != null && surfaceEmptyInDb(eventReadModel.readSurfaces(DATA_ROOT), def.surface)) {
       m.commitText(def, null, prev); // 基底导入（与导入脚本同一语义）
     }
@@ -2350,7 +2330,15 @@ function createProductSurface(repoRoot, opts = {}) {
     const botsData = loadBots();
     const members = room.members.map(id => {
       const bot = botsData.bots.find(b => b.id === id);
-      return bot ? { id: bot.id, name: bot.name } : { id, name: id };
+      // 带 job/description:「这个群是不是一支团队」的判据靠它
+      // (成员**被赋予了职责** ⇒ 是团队,不是随手拉人聊天)。
+      return bot
+        ? {
+            id: bot.id, name: bot.name,
+            job: String(bot.job || ""),
+            description: String(bot.description || ""),
+          }
+        : { id, name: id, job: "", description: "" };
     });
 
     // Parse mentions — GP-51 semantics kept (@Name directed / @everyone all /
@@ -2699,12 +2687,16 @@ function createProductSurface(repoRoot, opts = {}) {
         note: "GP-143 responder turn is run by the MoonBit runner; inject deps.runResponderTurn",
       };
     }
+    // `bot_discretion` **必须**有真实的成员自决(它整个语义就是"成员自己决定")。
     if (responderPolicy === "bot_discretion" && typeof selectResponders !== "function") {
       return {
         ok: false, error: "discretion_selector_required", mode: "host_orchestrate_room",
         note: "bot_discretion must be a real per-member decision; inject deps.selectResponders",
       };
     }
+    // 团队模式**没有** selector 时优雅降级:不筛人,全员并行,只是拿不到认领。
+    // ⇒ 少一个能力(认领),不该让整个编排失败 —— 失败才会让"团队"变回"广播"都没了。
+    const canAskMembers = typeof selectResponders === "function";
 
     const timeoutMs = Number(deps.timeoutMs || 120000);
     const decisionTimeoutMs = Number(deps.discretionTimeoutMs || Math.min(timeoutMs, 30000));
@@ -2721,6 +2713,12 @@ function createProductSurface(repoRoot, opts = {}) {
           name: clipRoomText((d && d.name) || "", 80).text,
           respond: Boolean(d && d.respond),
         };
+        // 认领要**留着**:它是这个成员负责哪一段(B-7)。
+        // 不留 ⇒ 分工信息在清洗这一步就没了,后面全白搭。
+        if (d && d.claim) {
+          const c = clipRoomText(String(d.claim), ROOM_REASON_MAX).text;
+          if (c) out.claim = c;
+        }
         if (d && d.fail_open) out.fail_open = true;
         if (d && d.error) out.error = clipRoomText(d.error, ROOM_REASON_MAX).text;
         return out;
@@ -2739,7 +2737,46 @@ function createProductSurface(repoRoot, opts = {}) {
     // 用户的诉求原话：「针对对话内容，分配给某一个 bot，然后一步一步的进行协作，
     // 最后输出按要求的产物（如果中间某一个 bot 有不明确的就停下来进行确认之后再继续）」。
     // 这一条路径就是那句话的实现；上层扇出（@A @B / 全员）保持不变。
-    const isRelay = responderPolicy === "auto_route";
+    // ===== 团队模式(B-7)=====
+    //
+    // `auto_route` 的语义**不动**:用户的原话是「分配给某一个 bot,然后一步一步
+    // 协作」⇒ 唯一负责人 + 串行接力 + 看不出该谁做就停下来问。那是刻意定的,
+    // 门禁 Q-5 明确守着它(「auto_route 不再逐人问你要不要答」)。
+    //
+    // 那"随时可以指挥的团队"从哪来?从**组建团队**这个动作来:
+    // 成员被**赋予了职责**(job/description)⇒ 这个群就是一支团队,不是闲聊。
+    // ⇒ 团队里的任务走**并行 + 分工**;随手拉几个人聊天仍然走 auto_route。
+    //
+    // 判据:群里**至少两个成员有职责**。单成员 / 无职责 ⇒ 老行为。
+    // 显式覆盖:opts.teamMode = true/false;BITBOT_ROOM_TEAM_MODE=0 全局退回。
+    // ===== 团队模式(B-7)=====
+    //
+    // `auto_route` 的语义**不动**:用户的原话是「分配给某一个 bot,然后一步一步
+    // 协作」⇒ 唯一负责人 + 串行接力 + 看不出该谁做就停下来问。那是刻意定的,
+    // 门禁 Q-5 明确守着它(「auto_route 不再逐人问你要不要答」)。
+    //
+    // 那"随时可以指挥的团队"从哪来?从**组建团队**这个动作来:
+    // 成员被**赋予了职责**(job/description)⇒ 这个群就是一支团队,不是闲聊。
+    // ⇒ 团队里的任务走**并行 + 分工**;随手拉几个人聊天仍然走 auto_route。
+    //
+    // 判据:群里**至少两个成员有职责**。单成员 / 无职责 ⇒ 老行为。
+    // 显式覆盖:opts.teamMode = true/false;BITBOT_ROOM_TEAM_MODE=0 全局退回。
+    const teamRoleCount = candidates.filter(
+      (r) => String((r && r.job) || "").trim() ||
+        String((r && r.description) || "").trim(),
+    ).length;
+    const teamMode =
+      opts.teamMode === true
+        ? true
+        : opts.teamMode === false
+          ? false
+          : process.env.BITBOT_ROOM_TEAM_MODE !== "0" &&
+            teamRoleCount >= 2 &&
+            // 无人值守(定时任务到点)**不开团队模式**:
+            // 常开机器上没人在旁边 ⇒ 一队人并行 = 成本 ×N 且没人看着。
+            // ⇒ 这种场景走「按名册交给第一位」的兜底(如实记下是兜底,不是判断)。
+            !opts.unattended;
+    let isRelay = responderPolicy === "auto_route" && !teamMode;
     const pendingConfirm = isRelay ? pendingConfirmOf(room, opts.message_id) : null;
 
     async function relayTurn() {
@@ -2783,7 +2820,11 @@ function createProductSurface(repoRoot, opts = {}) {
       }
 
       // ---- 停点 1：看不出该谁做。不开工，先问用户；问完这轮就结束。 ----
-      if (route.mode === "unclear" || !route.owner) {
+      //
+      // 团队模式**不问**：成员自己能认领(自决回合就是"谁能干")。
+      // ⇒ 问用户是**单助手**语义下的兜底(那个群没有一支成形的队伍);
+      // ⇒ 一支有职责的团队,应该让它自己接活,而不是每次都回来问人。
+      if ((route.mode === "unclear" || !route.owner) && !teamMode) {
         const names = roster.map((r) => r.name).join("、");
         const question = route.reason === "two_equally_likely"
           ? "这句话我看两个人都像：{a}、{b}。要谁来做？回一句名字就行。"
@@ -3031,18 +3072,22 @@ function createProductSurface(repoRoot, opts = {}) {
       if (isRelay) return await relayTurn();
       let selected = candidates;
       let discretion = [];
+      // 成员自决结果(含**认领**)。团队模式与 bot_discretion 共用这一份。
+      let decisions = [];
       let degraded = false;
       let degradedReason = "";
       let failOpenIncluded = [];
       let failOpenExcluded = [];
       let failOpenTotal = 0;
-      if (responderPolicy === "bot_discretion") {
+      if ((responderPolicy === "bot_discretion" || teamMode) && canAskMembers) {
+        // 团队模式:也先问一轮成员「要不要答 + 你负责哪一段」。
+        // 这是**模型自决**,不是宿主猜 —— 答 NO 的成员本轮不参与。
         let picked = null;
         try {
           picked = await withTimeout(selectResponders({
             room: room.id,
             task,
-            candidates: candidates.map((r) => Object.assign({}, r)),
+            candidates: selected.map((r) => Object.assign({}, r)),
             member_count: memberIds.length,
             // 共享任务板回读：选择回合也能看到别人上一轮干了什么。
             board: roomBoard.snapshot(room.id).text,
@@ -3064,7 +3109,7 @@ function createProductSurface(repoRoot, opts = {}) {
         if (!Array.isArray(picked.responders)) {
           return { ok: false, error: "discretion_result_invalid", mode: "host_orchestrate_room" };
         }
-        const decisions = cleanDecisions(picked.decisions);
+        decisions = cleanDecisions(picked.decisions);
         const pickedIds = new Set(picked.responders.map((id) => String(id)));
         const decidedYes = decisions.filter(d => d.respond && !d.fail_open).map(d => d.bot_id);
         const undecided = decisions.filter(d => d.fail_open).map(d => d.bot_id);
@@ -3098,7 +3143,7 @@ function createProductSurface(repoRoot, opts = {}) {
           degraded = true;
           if (!degradedReason) degradedReason = "discretion_fail_open";
         }
-        selected = candidates.filter(r => allowed.has(r.id));
+        selected = selected.filter(r => allowed.has(r.id));
       }
       const nameOf = (id) => {
         const hit = selected.find(r => r.id === id) || candidates.find(r => r.id === id);
@@ -3168,6 +3213,12 @@ function createProductSurface(repoRoot, opts = {}) {
         }
       }
       const assignments = roomOrchestrator.assignSubtasks(subtasks, selected.map(r => r.id));
+      // 认领优先于拆解:成员自己说「我负责 X」时,就用它当自己的那段。
+      // 没有认领的成员沿用拆解结果 —— **不猜、不编**。
+      const claims = new Map();
+      for (const d of (decisions || [])) {
+        if (d && d.claim && d.bot_id) claims.set(d.bot_id, String(d.claim));
+      }
       const ownerOf = (subId) => {
         for (const r of selected) {
           const subs = assignments.get(r.id) || [];
@@ -3196,7 +3247,13 @@ function createProductSurface(repoRoot, opts = {}) {
       let cursor = 0;
       const runMember = async (r) => {
         const scope = roomCancelScope();
-        const subs = assignments.get(r.id) || [];
+        // 认领优先于拆解:成员说「我负责 X」⇒ 用它当自己那段。
+        // 没有认领 ⇒ 沿用拆解结果(**不猜、不编**)。
+        const claim = claims.get(r.id) || "";
+        const decomposed = assignments.get(r.id) || [];
+        const subs = claim
+          ? [{ id: "claim-" + r.id, title: claim }]
+          : decomposed;
         const subtask = subs.length ? subs[0] : null;
         // 回读路径：板子在**每次调用前**现读一次 —— 先跑完的成员，进度会出现在
         // 后面才被派到的成员的 prompt 里（同轮协作，不是各说各话）。
