@@ -4062,3 +4062,14 @@ body.grok-ui .cn-hint {
 .cmd-sub { font-size: 12px; opacity: .75; margin-top: 2px; }
 .cmd-line { font-size: 12px; margin-top: 4px; }
 .cmd-room { font-size: 11px; opacity: .6; margin-top: 2px; }
+
+/* B-8 批 1b:并行过程可见 —— 每个成员干了什么,一眼看到。 */
+.cmd-steps { margin-top: 6px; border-top: 1px solid var(--line, rgba(0,0,0,.08)); padding-top: 6px; }
+.cmd-step { display: flex; gap: 6px; align-items: baseline; font-size: 12px; margin-top: 2px; }
+.cmd-step-mark { font-weight: 700; opacity: .8; }
+.cmd-step-name { font-weight: 600; opacity: .85; flex: 0 0 auto; }
+.cmd-step-text { opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-step-bad .cmd-step-mark { color: var(--danger, #c0392b); }
+
+/* B-8 批 3:指挥台的动作行。 */
+.cmd-actions { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }

@@ -144,6 +144,8 @@ contextBridge.exposeInMainWorld("bitbot", {
     // product path — the renderer no longer builds a kernel phrase, so nothing
     // writes the transcript twice.
     orchestrate: (payload) => ipcRenderer.invoke("bitbot:rooms:orchestrate", payload || {}),
+    // 刹停一个正在跑的任务(B-8 批 3):精准命中 task_sig,不是全停。
+    cancelTask: (payload) => ipcRenderer.invoke("bitbot:rooms:task:cancel", payload || {}),
     // GP-146: group turns are async on the Host; (a) says which responders are
     // working now, (b) says the durable transcript gained rows. Observational
     // only — the renderer never keeps its own copy of room state.

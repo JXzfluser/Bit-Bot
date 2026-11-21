@@ -3036,6 +3036,29 @@ const runRoomDiscretionTurn = roomRuntime.runDiscretionTurn;
 const selectRoomResponders = roomRuntime.selectResponders;
 
 
+/* B-8 批 3:刹停一个正在跑的任务。
+   语义要点:
+     · **精准命中一个任务**(task_sig),不是把机器上的群回合全停;
+     · 没有在跑的 ⇒ 如实回 "no_running_task",不假装停掉了什么;
+     · 停掉了 ⇒ 落一行 task_state 转录(可审计:谁在什么时候被谁停了)。 */
+ipcMain.handle("bitbot:rooms:task:cancel", async (_e, payload) => {
+  const p = payload || {};
+  const taskSig = String(p.task_sig || "").trim();
+  const roomId = String(p.room_id || "").trim();
+  const reason = String(p.reason || "user_stop").trim() || "user_stop";
+  if (!taskSig) return { ok: false, cancelled: 0, error: "task_sig_required" };
+  const out = surface.cancelRoomTask(taskSig, reason);
+  if (out && out.ok && roomId) {
+    try {
+      surface.appendRoomTranscript(roomId, {
+        kind: "task_state", room_id: roomId, task_sig: taskSig,
+        state: "cancelled", reason, at: new Date().toISOString(),
+      });
+    } catch (_) { /* 落盘失败不该让"已经停了"变成"没停" */ }
+  }
+  return out;
+});
+
 ipcMain.handle("bitbot:rooms:orchestrate", async (_e, payload) => {
   const roomId = String((payload && payload.room_id) || "").trim();
   const text = String((payload && payload.text) || "").trim();

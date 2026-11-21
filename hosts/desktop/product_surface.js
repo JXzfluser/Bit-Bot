@@ -2448,6 +2448,9 @@ function createProductSurface(repoRoot, opts = {}) {
    *  settle 之后（runner promise 的 finally）把自己摘掉，表里剩下的就是在跑的。
    * cancel 自身也摘 —— 超时路径取消后不必等 runner 收尾才不再算「在跑」。 */
   const _activeRoomScopes = new Set();
+  // 任务级 scope 表(taskSig → 在跑的 scope 集合)—— 让「刹停」能**精准命中一个任务**,
+  // 而不是像 cancelActiveRoomTurns 那样把整台机器上的群回合全停掉。
+  const _taskScopes = new Map();
   function roomCancelScope() {
     const s = roomOrchestrator.createCancelScope();
     _activeRoomScopes.add(s);
@@ -2461,6 +2464,67 @@ function createProductSurface(repoRoot, opts = {}) {
   }
   function forgetRoomScope(s) {
     _activeRoomScopes.delete(s);
+    if (s && s.taskSig && _taskScopes.has(s.taskSig)) {
+      const set = _taskScopes.get(s.taskSig);
+      set.delete(s);
+      if (!set.size) _taskScopes.delete(s.taskSig);
+    }
+  }
+
+  /** 把一个 scope 挂到任务上(可写回 scope.taskSig,方便收尾时摘掉)。 */
+  function registerTaskScope(taskSig, s) {
+    const key = String(taskSig || "").trim();
+    if (!key || !s) return;
+    s.taskSig = key;
+    if (!_taskScopes.has(key)) _taskScopes.set(key, new Set());
+    _taskScopes.get(key).add(s);
+    // 包一层 cancel:取消的那一刻就把 scope 从**所有**表里摘干净
+    // (否则任务表里会留着已经停掉的 scope ⇒ 指挥台以为还在跑,
+    //  再点一次刹停会得到 ok=false 却说不出原因)。
+    if (!s.__bitbotWrapped) {
+      s.__bitbotWrapped = true;
+      const rawCancel = s.cancel.bind(s);
+      s.cancel = (why) => {
+        const r = rawCancel(why);
+        _activeRoomScopes.delete(s);
+        const set = _taskScopes.get(key);
+        if (set) {
+          set.delete(s);
+          if (!set.size) _taskScopes.delete(key);
+        }
+        return r;
+      };
+    }
+  }
+
+  /**
+   * 刹停某一个正在跑的任务。
+   * @returns {{ok:boolean, cancelled:number, error?:string}}
+   */
+  function cancelRoomTask(taskSig, reason) {
+    const key = String(taskSig || "").trim();
+    if (!key) return { ok: false, cancelled: 0, error: "task_sig_required" };
+    const set = _taskScopes.get(key);
+    if (!set || !set.size) {
+      // 没有在跑的 —— **如实说没有**,不假装停掉了什么。
+      return { ok: false, cancelled: 0, error: "no_running_task" };
+    }
+    let n = 0;
+    for (const s of [...set]) {
+      if (s.cancel(reason || "user_stop")) n += 1;
+    }
+    if (!n) {
+      // 表里还挂着但都已经停过了 —— 如实说"没有在跑的",
+      // 别让 UI 显示成 "没停掉:undefined"。
+      return { ok: false, cancelled: 0, error: "no_running_task" };
+    }
+    return { ok: true, cancelled: n };
+  }
+
+  /** 这个任务现在还在跑吗(指挥台用它决定按钮是否可点)。 */
+  function taskIsRunning(taskSig) {
+    const set = _taskScopes.get(String(taskSig || "").trim());
+    return !!(set && set.size);
   }
   /** 停止当前所有在跑的群回合，返回真取消了几条（0 = 根本没有在跑的）。 */
   function cancelActiveRoomTurns(reason) {
@@ -2888,6 +2952,7 @@ function createProductSurface(repoRoot, opts = {}) {
           break;
         }
         const scope = roomCancelScope();
+        registerTaskScope(taskSig, scope);
         const ctx = {
           room: room.id, bot_id: current.id, name: current.name,
           job: current.job, description: current.description,
@@ -2931,6 +2996,9 @@ function createProductSurface(repoRoot, opts = {}) {
           room_id: room.id, speaker: res.bot_id, bot_id: res.bot_id, name: res.name,
           text: body.text, hop, at,
         };
+        // 带 task_sig ⇒ 指挥台才能把这轮归到某个任务上,
+        // 也才能在"还没有 final_report"的批次里给出可点的刹停按钮。
+        if (taskSig) row.task_sig = taskSig;
         if (body.truncated) row.text_truncated = true;
         if (!res.ok) {
           const why = clipRoomText(res.error || "no_reply", ROOM_REASON_MAX);
@@ -3247,6 +3315,7 @@ function createProductSurface(repoRoot, opts = {}) {
       let cursor = 0;
       const runMember = async (r) => {
         const scope = roomCancelScope();
+        registerTaskScope(taskSig, scope);
         // 认领优先于拆解:成员说「我负责 X」⇒ 用它当自己那段。
         // 没有认领 ⇒ 沿用拆解结果(**不猜、不编**)。
         const claim = claims.get(r.id) || "";
@@ -3355,6 +3424,7 @@ function createProductSurface(repoRoot, opts = {}) {
           room_id: room.id, speaker: s.bot_id, bot_id: s.bot_id, name: s.name,
           text: body.text, at,
         };
+        if (taskSig) entry.task_sig = taskSig;
         if (body.truncated) entry.text_truncated = true;
         if (!s.ok) {
           const why = clipRoomText(s.error || "no_reply", ROOM_REASON_MAX);
@@ -4621,6 +4691,10 @@ function createProductSurface(repoRoot, opts = {}) {
     roomCreate,
     roomTurn,
     orchestrateRoom,
+    cancelRoomTask,
+    taskIsRunning,
+    registerTaskScope,
+    forgetRoomScope,
     // KP-02：停止按钮要能真停到群回合。这个句柄必须挂在返回值上 —— 只在
     // createProductSurface 内部定义、不导出，main.js 的 `surface.cancelActiveRoomTurns`
     // 就永远是 undefined，回执里的 had_active_turn 恒为 false（「按了停止，界面说

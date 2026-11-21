@@ -19055,6 +19055,9 @@
         takeoverHint: "密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。",
         imDone: "我操作完了",
         approvalTitle: "需要审批",
+        cmdCancel: "刹停",
+        cmdStopped: "已停。",
+        cmdStopFailed: "没停掉:",
         cmdPanel: "指挥台",
         cmdTitle: "团队指挥台",
         cmdNeedsYou: "需要你拍板",
@@ -20541,6 +20544,9 @@
         takeoverHint: "密碼 / 驗證碼 / 2FA 請在本機輸入，不要貼進對話。",
         imDone: "我操作完了",
         approvalTitle: "需要審批",
+        cmdCancel: "煞停",
+        cmdStopped: "已停。",
+        cmdStopFailed: "沒停掉:",
         cmdPanel: "指揮台",
         cmdTitle: "團隊指揮台",
         cmdNeedsYou: "需要你拍板",
@@ -22027,6 +22033,9 @@
         takeoverHint: "Type passwords / codes / 2FA on the machine — never paste them into chat.",
         imDone: "I'm done",
         approvalTitle: "Approval required",
+        cmdCancel: "Stop",
+        cmdStopped: "Stopped.",
+        cmdStopFailed: "Could not stop: ",
         cmdPanel: "Command",
         cmdTitle: "Team command",
         cmdNeedsYou: "Needs you",
@@ -26172,7 +26181,7 @@
          · confirm_request              —— 停下来了,等人回答
          · final_report                 —— 这一批收口了(含产物与分段)
        ⇒ 指挥台 = 这些行的聚合视图。**不新增数据源** ⇒ 不会与真相分叉。
-       诚实的边界:bot_reply 行没有 task_sig ⇒ 同一群连续两批可能并到一组;
+     * 诚实的边界:批 3 之后 bot_reply 也带 task_sig ⇒ 分组精确到批次;
        批次边界由 final_report / confirm_request 划定。界面里如实标注。 */
     var CMD_BUCKETS = [
       { key: "needs_you", i18n: "cmdNeedsYou" },
@@ -26216,7 +26225,13 @@
           if (!row || !row.kind) continue;
           var k = row.kind;
           if (k === "bot_reply" || k === "bot_reply_error") {
+            // 换了 task_sig ⇒ 那是**另一批**任务 ⇒ 收尾上一批,另起一组。
+            // (批 3 之后 bot_reply 带 task_sig ⇒ 分组可以精确到批次,
+            //  不用再靠"同一个群就算同一批"这种粗判。)
+            var rsig = String(row.task_sig || "");
+            if (cur && rsig && cur.task_sig && cur.task_sig !== rsig) cur = null;
             if (!cur) { cur = fresh(row); tasks.push(cur); }
+            if (rsig) cur.task_sig = rsig;
             var nm = String(row.name || row.bot_id || row.speaker || "");
             cur.steps.push({
               name: nm,
@@ -26231,6 +26246,8 @@
             continue;
           }
           if (k === "confirm_request") {
+            var csig = String(row.task_sig || "");
+            if (cur && csig && cur.task_sig && cur.task_sig !== csig) cur = null;
             if (!cur) { cur = fresh(row); tasks.push(cur); }
             cur.needs_you = {
               question: String(row.question || ""),
@@ -26243,6 +26260,8 @@
             continue;
           }
           if (k === "final_report") {
+            var fsig = String(row.task_sig || "");
+            if (cur && fsig && cur.task_sig && cur.task_sig !== fsig) cur = null;
             if (!cur) { cur = fresh(row); tasks.push(cur); }
             cur.report = row;
             cur.task = String(row.task || "");
@@ -26269,6 +26288,24 @@
       }
       tasks.sort(function (a, b) { return String(b.at || "").localeCompare(String(a.at || "")); });
       return tasks;
+    }
+
+    /** 每个成员的步骤明细:谁跑了、成没成、说了什么、错在哪。 */
+    function cmdRenderSteps(steps) {
+      if (!Array.isArray(steps) || !steps.length) return "";
+      var html = '<div class="cmd-steps">';
+      for (var i = 0; i < steps.length; i++) {
+        var st = steps[i] || {};
+        var mark = st.ok ? "✓" : "✗";
+        var body = st.ok
+          ? String(st.text || "").replace(/\s+/g, " ").trim().slice(0, 120)
+          : String(st.error || "").slice(0, 120);
+        html += '<div class="cmd-step' + (st.ok ? "" : " cmd-step-bad") + '">' +
+          '<span class="cmd-step-mark">' + mark + "</span>" +
+          '<span class="cmd-step-name">' + cmdEsc(st.name || "") + "</span>" +
+          '<span class="cmd-step-text">' + cmdEsc(body) + "</span></div>";
+      }
+      return html + "</div>";
     }
 
     function cmdRenderBuckets() {
@@ -26314,7 +26351,18 @@
           '<div class="cmd-sub">' + cmdEsc(who ? who : cmdT("cmdMembers")) + "</div>" +
           '<div class="cmd-line">' + cmdEsc(line) + "</div>" +
           '<div class="cmd-room">' + cmdEsc(t.room_title || t.room_id) + "</div>" +
-          '<div style="margin-top:6px"><button type="button" class="bb-btn bb-btn-sm" data-cmd-open-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">打开群</button></div>' +
+          // 批 1 让成员真并行 ⇒ 用户必须看得见**谁干了什么**,
+          // 否则并行只会变成"一堆 bot 同时动但说不清"。
+          cmdRenderSteps(t.steps) +
+          '<div class="cmd-actions">' +
+          '<button type="button" class="bb-btn bb-btn-sm" data-cmd-open-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">打开群</button>' +
+          // 「刹停」只在**真在跑**且有 task_sig 时才给 —— 没有在跑的,
+          // 按下去只会得到一句 "no_running_task",不如不给。
+          (t.bucket === "working" && t.task_sig
+            ? '<button type="button" class="bb-btn bb-btn-sm bb-btn-danger-soft" data-cmd-cancel="' +
+              cmdEsc(t.task_sig) + '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdCancel">刹停</button>'
+            : "") +
+          "</div>" +
           "</div>";
       }
       host.innerHTML = html;
@@ -26370,6 +26418,25 @@
       document.addEventListener("click", function (ev) {
         var t = ev.target;
         if (!t || !t.getAttribute) return;
+        var cancelSig = t.getAttribute("data-cmd-cancel");
+        if (cancelSig) {
+          var api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.cancelTask;
+          if (typeof api !== "function") return;
+          api({
+            task_sig: cancelSig,
+            room_id: t.getAttribute("data-cmd-room") || "",
+            reason: "user_stop",
+          }).then(function (r) {
+            CMD_STATE.note = r && r.ok
+              ? cmdT("cmdStopped")
+              : cmdT("cmdStopFailed") + ":" + String((r && r.error) || "unknown");
+            cmdRender();
+          }).catch(function (e) {
+            CMD_STATE.note = cmdT("cmdStopFailed") + ":" + String((e && e.message) || e);
+            cmdRender();
+          });
+          return;
+        }
         var rid = t.getAttribute("data-cmd-open-room");
         if (!rid) return;
         if (typeof openRoomChat === "function") {

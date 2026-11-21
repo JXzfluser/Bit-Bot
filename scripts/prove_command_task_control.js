@@ -1,0 +1,207 @@
+#!/usr/bin/env node
+"use strict";
+
+/**
+ * prove_command_task_control —— 指挥台的「可指挥」能力(B-8 批 2b + 批 3)
+ *
+ * 两半:
+ *   A. **并行过程可见**(2b):指挥台里看得到每个成员干了什么。
+ *   B. **刹停**(批 3):能**精准命中一个正在跑的任务**并把它停下来,
+ *      停下来要**落一行可审计的转录**。
+ *
+ * B 半跑**真源码**:`createProductSurface` 是纯 CommonJS ⇒ 直接 require,
+ * 用真 `roomOrchestrator.createCancelScope()` 造 scope ⇒ 验的是产品真逻辑。
+ */
+
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const vm = require("vm");
+
+const REPO = path.resolve(__dirname, "..");
+const { chromium } = require("/workspace/.pw/node_modules/playwright-core");
+const CHROME = "/workspace/.home/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
+const HTML = path.join(REPO, "hosts", "desktop", "index.html");
+
+let pass = 0, fail = 0;
+const ok = (m) => { pass++; console.log("  ✓ " + m); };
+const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String(d).slice(0, 300) : "")); };
+const check = (c, m, d) => (c ? ok(m) : bad(m, d));
+
+console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
+
+// ══════════════════════════════════════════════════════════════════════
+// A. 并行过程可见 —— 静态 + 真渲染
+// ══════════════════════════════════════════════════════════════════════
+{
+  const html = fs.readFileSync(HTML, "utf8");
+  check(/cmdRenderSteps/.test(html), "TC-1 指挥台有步骤明细的渲染函数");
+  check(/cmd-step-name/.test(html), "TC-1 步骤明细画出成员名字");
+
+  // 取**含 aggregateCommandTasks 的那个 script 块**(比定位注释稳)。
+  let m = null;
+  const blocks = html.match(/<script[\s\S]*?<\/script>/g) || [];
+  for (const b of blocks) {
+    if (b.indexOf("aggregateCommandTasks") >= 0) { m = b.match(/<script[^>]*>([\s\S]*?)<\/script>/); break; }
+  }
+  check(!!m, "TC-1 指挥台脚本块可定位");
+  if (m) {
+    try {
+      // 只**编译**不执行:这层要验的是语法,不是浏览器行为
+      // (真渲染由下面的 Playwright 段负责)。
+      new vm.Script(m[1], { filename: "index.html#cmd-panel" });
+      ok("TC-1 指挥台脚本在 vm 里语法成立");
+    } catch (e) {
+      bad("TC-1 指挥台脚本在 vm 里语法成立", e && e.message);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// B. 刹停 —— 真源码
+// ══════════════════════════════════════════════════════════════════════
+{
+  const surfaceMod = require(path.join(REPO, "hosts", "desktop", "product_surface.js"));
+  const orch = require(path.join(REPO, "hosts", "desktop", "room_orchestrator.js"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-ctrl-"));
+  const surface = surfaceMod.createProductSurface(REPO, { dataRoot: tmp });
+
+  // 造一个在跑的任务
+  const scope = orch.createCancelScope();
+  surface.registerTaskScope("sig-run-1", scope);
+  check(surface.taskIsRunning("sig-run-1") === true, "TC-2 登记后这个任务算「在跑」");
+
+  const r1 = surface.cancelRoomTask("sig-run-1", "user_stop");
+  check(r1 && r1.ok === true && r1.cancelled === 1, "TC-2 刹停命中了 1 个在跑的 scope", JSON.stringify(r1));
+  check(scope.isCancelled() === true, "TC-2 scope 真的被取消了");
+
+  // 负向:再停一次 ⇒ 如实说"没有在跑的",**不假装**
+  const r2 = surface.cancelRoomTask("sig-run-1", "user_stop");
+  check(r2 && r2.ok === false && r2.error === "no_running_task",
+    "TC-3 负向:再停一次 ⇒ no_running_task(**不假装停掉了什么**)", JSON.stringify(r2));
+
+  // 负向:空 task_sig
+  const r3 = surface.cancelRoomTask("", "user_stop");
+  check(r3 && r3.ok === false && r3.error === "task_sig_required",
+    "TC-3 负向:空 task_sig ⇒ task_sig_required", JSON.stringify(r3));
+
+  // 精准性:两个任务,只停其中一个
+  const sA = orch.createCancelScope();
+  const sB = orch.createCancelScope();
+  surface.registerTaskScope("sig-A", sA);
+  surface.registerTaskScope("sig-B", sB);
+  const r4 = surface.cancelRoomTask("sig-A", "user_stop");
+  check(r4 && r4.cancelled === 1, "TC-4 精准:只停 A", JSON.stringify(r4));
+  check(surface.taskIsRunning("sig-B") === true, "TC-4 精准:B 还在跑(没被误伤)");
+  check(surface.taskIsRunning("sig-A") === false, "TC-4 精准:A 停了");
+
+  // 收尾:forgetRoomScope 之后 scope 表干净
+  surface.forgetRoomScope(sB);
+  check(surface.taskIsRunning("sig-B") === false, "TC-4 forgetRoomScope 之后任务不在表里");
+
+  // IPC 那条路:静态断言「停掉了 ⇒ 落一行 task_state 转录」
+  const mainSrc = fs.readFileSync(path.join(REPO, "hosts", "desktop", "main.js"), "utf8");
+  check(/bitbot:rooms:task:cancel/.test(mainSrc), "TC-5 IPC 通道存在");
+  const ipcBlock = mainSrc.slice(
+    mainSrc.indexOf('ipcMain.handle("bitbot:rooms:task:cancel"'),
+    mainSrc.indexOf('ipcMain.handle("bitbot:rooms:orchestrate"')
+  );
+  check(/kind:\s*"task_state"/.test(ipcBlock), "TC-5 停掉了会落一行 task_state 转录(可审计)");
+  check(/state:\s*"cancelled"/.test(ipcBlock), "TC-5 那行写明 state=cancelled");
+  check(/appendRoomTranscript/.test(ipcBlock), "TC-5 那行真的写进转录");
+
+  // preload 暴露
+  const pre = fs.readFileSync(path.join(REPO, "hosts", "desktop", "preload.js"), "utf8");
+  check(/cancelTask/.test(pre), "TC-5 preload 暴露 cancelTask");
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// C. 真渲染:按钮只给真在跑的
+// ══════════════════════════════════════════════════════════════════════
+(async function render() {
+  const browser = await chromium.launch({
+    executablePath: CHROME,
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errs = [];
+  page.on("pageerror", (e) => errs.push(String((e && e.message) || "").split("\n")[0]));
+  await page.addInitScript(() => {
+    window.bitbot = Object.assign(window.bitbot || {}, {
+      rooms: {
+        list: async () => ({
+          rooms: {
+            version: 1,
+            rooms: [
+              { id: "r-run", title: "在跑", transcript: [
+                { kind: "bot_reply", room_id: "r-run", speaker: "t1", bot_id: "t1", name: "Alice", text: "正在写第一段…", task_sig: "sig-run-1", at: "2026-11-21T12:00:00.000Z" },
+                { kind: "bot_reply", room_id: "r-run", speaker: "t2", bot_id: "t2", name: "Bob", text: "第二段完成", task_sig: "sig-run-1", at: "2026-11-21T12:00:30.000Z" },
+              ]},
+              { id: "r-done", title: "已完成", transcript: [
+                { kind: "bot_reply", room_id: "r-done", speaker: "t1", bot_id: "t1", name: "Alice", text: "稿子好了", at: "2026-11-21T10:00:00.000Z" },
+                { kind: "final_report", room_id: "r-done", task: "整理稿", task_sig: "sig-done", responders: ["t1"], total: 1, returned: 1, partial: false, artifacts: [], at: "2026-11-21T10:01:00.000Z" },
+              ]},
+            ],
+          },
+        }),
+        cancelTask: async () => ({ ok: true, cancelled: 1 }),
+      },
+    });
+  });
+  await page.goto("file://" + HTML, { waitUntil: "load" });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => window.__bitbotCommand.open());
+  await page.waitForTimeout(500);
+
+  const dom = await page.evaluate(() => {
+    const d = document.getElementById("cmd-detail");
+    return {
+      text: d ? d.textContent : "",
+      cancelBtns: document.querySelectorAll("[data-cmd-cancel]").length,
+      cancelSig: (document.querySelector("[data-cmd-cancel]") || {}).dataset
+        ? document.querySelector("[data-cmd-cancel]").dataset.cmdCancel : "",
+      stepNames: Array.from(document.querySelectorAll(".cmd-step-name")).map((n) => n.textContent),
+      stepTexts: Array.from(document.querySelectorAll(".cmd-step-text")).map((n) => n.textContent),
+    };
+  });
+
+  check(dom.stepNames.indexOf("Alice") >= 0 && dom.stepNames.indexOf("Bob") >= 0,
+    "TC-6 两个成员的名字都出现在明细里(并行看得见)", JSON.stringify(dom.stepNames));
+  check(dom.stepTexts.some((t) => t.indexOf("正在写第一段") >= 0),
+    "TC-6 明细里能看到某个成员**干了什么**", JSON.stringify(dom.stepTexts));
+  check(dom.cancelBtns === 1, "TC-7 刹停按钮只给真在跑的那个任务(1 个)", dom.cancelBtns);
+  check(dom.cancelSig === "sig-run-1" || dom.cancelSig === "",
+    "TC-7 按钮带的是真 task_sig(没带就不该给按钮)", dom.cancelSig);
+  check(dom.text.indexOf("整理稿") >= 0, "TC-6 已完的任务也在列表里");
+
+  // 点击按钮 ⇒ 真的调 cancelTask
+  await page.evaluate(() => {
+    window.__cmdCancelCalls = [];
+    window.bitbot.rooms.cancelTask = async (p) => {
+      window.__cmdCancelCalls.push(p);
+      return { ok: true, cancelled: 1 };
+    };
+  });
+  await page.evaluate(() => {
+    const b = document.querySelector("[data-cmd-cancel]");
+    if (b) b.click();
+  });
+  await page.waitForTimeout(400);
+  const calls = await page.evaluate(() => window.__cmdCancelCalls || []);
+  check(calls.length === 1 && calls[0] && calls[0].task_sig,
+    "TC-8 点刹停 ⇒ 真的调了 cancelTask(带 task_sig)", JSON.stringify(calls));
+  check(calls.length === 1 && calls[0] && calls[0].reason === "user_stop",
+    "TC-8 停的理由写明是 user_stop(可审计)", JSON.stringify(calls[0] || {}));
+
+  check(errs.length === 0, "TC-9 页面没有 pageerror", JSON.stringify(errs.slice(0, 3)));
+
+  await browser.close();
+  console.log("\nprove_command_task_control: PASS=" + pass + " FAIL=" + fail);
+  process.exit(fail ? 1 : 0);
+})().catch((e) => {
+  console.error("prove_command_task_control: " + String((e && e.stack) || e));
+  console.log("\nprove_command_task_control: PASS=" + pass + " FAIL=" + (fail + 1));
+  process.exit(1);
+});
