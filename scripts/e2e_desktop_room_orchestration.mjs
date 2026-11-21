@@ -135,6 +135,10 @@ const reportsOf = (id) => txOf(id).filter((e) => e && e.kind === "final_report")
 const lastReport = (id) => { const l = reportsOf(id); return l[l.length - 1] || null; };
 
 /** 等最后一张 final_report 变成这一轮的（比数数量稳：轮次序号 = reports.length）。 */
+/* JSON.stringify(undefined) 返回的是 **undefined**(不是字符串) ⇒ 紧接着 .slice 就 TypeError
+   ⇒ 门禁自己崩掉,真正的失败原因反而看不见。统一走 jstr。 */
+const jstr = (v, n) => String(JSON.stringify(v === undefined ? null : v)).slice(0, n);
+
 async function waitForReportCount(id, want, rounds = 240) {
   for (let i = 0; i < rounds; i++) {
     if (reportsOf(id).length >= want) return true;
@@ -673,7 +677,7 @@ const DOM_COUNTS = () => ({
       repD && repD.route && repD.route.mode === "content_match" &&
         repD.route.owner === seeded.ba.id && repD.route.owner_name === A.name
         ? ok("宿主按内容认出了唯一负责人（content_match → " + A.name + "，margin " + repD.route.margin + "）")
-        : bad("content_match routing", JSON.stringify(repD && repD.route).slice(0, 400));
+        : bad("content_match routing", jstr(repD && repD.route, 400));
       // ① + ②：这一轮真的只有一个成员在干活，且只有一棒。
       workersD.length === 1 && workersD[0].bot_id === seeded.ba.id && workersD[0].hop === 0 &&
         Array.isArray(repD && repD.relay) && repD.relay.length === 1 && repD.total === 1
