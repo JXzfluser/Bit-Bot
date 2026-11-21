@@ -116,3 +116,7 @@ docs/design/desktop-target/reference/modal-computed.json
 
 # 用户模板库的一次性备份（改库前留的手尾）
 /data/desktop/bot-templates.json.bak
+
+# 交付物不进仓：worker 的交付物写到 /workspace/output/ 与自己的 worktree 根，
+# 但那是过程产物，不属于产品仓库。
+deliverable.md
