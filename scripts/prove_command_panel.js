@@ -8,6 +8,12 @@
  * `rooms.list()`,然后调产品自己的 `window.__bitbotCommand` ⇒ 验的是
  * **真产品代码的聚合与渲染**,不是另写一份逻辑重测一遍。
  *
+ * 负向对照(本门自带的那些「必须是错/必须是空」的断言):
+ *   · 没有 final_report 的那一批**不能**被算成「已完」
+ *   · 没有数据时必须显示「还没有任务」,**不编**
+ *   · 页面无 pageerror
+ *   ⇒ 外加手工变异对照(判定改坏 ⇒ 3 红;空态造假 ⇒ 1 红)。
+ *
  * 它钉住四件事:
  *   1. **聚合正确** —— 群转录里的真实行 ⇒ 正确的任务集合与桶;
  *   2. **分桶诚实** —— 没有 final_report 的那一批**不能**被算成「已完」;
@@ -16,9 +22,9 @@
  */
 
 const path = require("path");
-const { chromium } = require("/workspace/.pw/node_modules/playwright-core");
+const { resolveBrowser } = require("./lib/browser_env");
 
-const CHROME = "/workspace/.home/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
+
 const HTML = path.resolve(__dirname, "..", "hosts", "desktop", "index.html");
 
 let pass = 0, fail = 0;
@@ -75,8 +81,15 @@ function fakeRooms() {
 console.log("prove_command_panel — 团队指挥台(聚合 / 分桶 / 真渲染)");
 
 (async function main() {
+  const benv = resolveBrowser();
+  if (!benv.pw || !benv.exe) {
+    console.log("  · SKIP " + benv.reason + " —— 渲染门没跑(不算通过)");
+    console.log("\nprove_command_panel: SKIP(" + benv.reason + ")");
+    process.exit(2);
+  }
+  const { chromium } = benv.pw;
   const browser = await chromium.launch({
-    executablePath: CHROME,
+    executablePath: benv.exe,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

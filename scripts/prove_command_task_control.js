@@ -4,6 +4,13 @@
 /**
  * prove_command_task_control —— 指挥台的「可指挥」能力(B-8 批 2b + 批 3)
  *
+ * 负向对照(本门自带的那些「必须是错/必须是空/必须是没发生」的断言):
+ *   · 再停一次 ⇒ no_running_task(**不假装**停掉了什么);空 sig ⇒ task_sig_required
+ *   · 新人选不存在 / 不在群里 / 换成自己 ⇒ 各自如实回错
+ *   · 没有 task_sig ⇒ **不写** Task(**不编一个出来**)
+ *   · 空输入 ⇒ 不发任何东西
+ *   ⇒ 外加手工变异对照(不同步 8 红 / 不补「仅记录」卡 5 红 / 实体不优先 1 红)。
+ *
  * 两半:
  *   A. **并行过程可见**(2b):指挥台里看得到每个成员干了什么。
  *   B. **刹停**(批 3):能**精准命中一个正在跑的任务**并把它停下来,
@@ -19,8 +26,8 @@ const path = require("path");
 const vm = require("vm");
 
 const REPO = path.resolve(__dirname, "..");
-const { chromium } = require("/workspace/.pw/node_modules/playwright-core");
-const CHROME = "/workspace/.home/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
+const { resolveBrowser } = require("./lib/browser_env");
+
 const HTML = path.join(REPO, "hosts", "desktop", "index.html");
 
 let pass = 0, fail = 0;
@@ -328,8 +335,15 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
 // C. 真渲染:按钮只给真在跑的
 // ══════════════════════════════════════════════════════════════════════
 (async function render() {
+  const benv = resolveBrowser();
+  if (!benv.pw || !benv.exe) {
+    console.log("  · SKIP " + benv.reason + " —— 渲染门没跑(不算通过)");
+    console.log("\nprove_command_task_control: SKIP(" + benv.reason + ")");
+    process.exit(2);
+  }
+  const { chromium } = benv.pw;
   const browser = await chromium.launch({
-    executablePath: CHROME,
+    executablePath: benv.exe,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

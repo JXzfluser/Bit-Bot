@@ -5536,6 +5536,50 @@ echo "    EF-04 是灵敏度对照（临时真源改成 640px → 期望必须�
 echo "    EF-05 钉的是门源码的判据形状（不许再出现手抄 558.4 字面量），散文里提这个数字不算红。"
 echo "    真源本身的重采节奏不在这条门管辖内：它只保证「期望 = 当前盘上真源的派生物」，不保证盘上真源是今天抓的。"
 
+echo "== G-129 B-8 指挥台(团队四原语 + Task 实体)=="
+# 这三个门此前**不在任何 CI 路径** —— AC-07 实测孤门 80 > 基线 77:
+# 门存在、报告里拿它当过证据,但**没有任何 CI 路径会跑它** ⇒ 它的绿灯不会让任何 CI 变红。
+# 这里接进来。门名必须**字面**写(AC-07 只认字面出现,拼名变量它不展开)。
+# 门名必须**字面**出现在 `node scripts/<门名>` 上:AC-07 的字面正则会跳过含 `$` 的文件名
+# (拼名变量它不展开),写成 `node "scripts/prove_$1.js"` 等于没接线。
+g129_check() {
+  # $1=日志路径  $2=门名(仅用于文案)
+  if [ "$3" = "skip" ]; then
+    echo "  · skip：prove_$2 需要浏览器/外部条件，本机没跑（SKIP ≠ PASS）"
+    return 0
+  fi
+  # 计数锚点(AC-03 的 B 类):数值比较,不是"印在消息里"——
+  # 只印不算看守,必须出现在比较里。
+  if grep -qE "FAIL=0|fail=0" "$1" && grep -c "^  ✓" "$1" >/dev/null 2>&1; then
+    ok "G-129 prove_$2 绿（$(grep -m1 -oE 'PASS=[0-9]+ FAIL=[0-9]+|pass=[0-9]+ fail=[0-9]+' "$1")）"
+  else
+    bad "G-129 prove_$2 未通过（见 $1；$(tail -1 "$1")）"
+  fi
+}
+timeout 900 node scripts/prove_team_division.js >/tmp/g129-team_division.log 2>&1
+g129_check /tmp/g129-team_division.log team_division skip
+if grep -q "PASS=23 FAIL=0" /tmp/g129-team_division.log; then
+  ok "G-129 prove_team_division 计数锚点：PASS=23 FAIL=0"
+else
+  bad "G-129 prove_team_division 计数锚点红（$(tail -1 /tmp/g129-team_division.log)）"
+fi
+timeout 900 node scripts/prove_command_panel.js >/tmp/g129-command_panel.log 2>&1
+if [ $? -eq 2 ]; then g129_check /tmp/g129-command_panel.log command_panel skip; else g129_check /tmp/g129-command_panel.log command_panel; fi
+if grep -q "PASS=16 FAIL=0" /tmp/g129-command_panel.log; then
+  ok "G-129 prove_command_panel 计数锚点：PASS=16 FAIL=0"
+else
+  bad "G-129 prove_command_panel 计数锚点红（$(tail -1 /tmp/g129-command_panel.log)）"
+fi
+timeout 900 node scripts/prove_command_task_control.js >/tmp/g129-command_task_control.log 2>&1
+if [ $? -eq 2 ]; then g129_check /tmp/g129-command_task_control.log command_task_control skip; else g129_check /tmp/g129-command_task_control.log command_task_control; fi
+if grep -q "PASS=82 FAIL=0" /tmp/g129-command_task_control.log; then
+  ok "G-129 prove_command_task_control 计数锚点：PASS=82 FAIL=0"
+else
+  bad "G-129 prove_command_task_control 计数锚点红（$(tail -1 /tmp/g129-command_task_control.log)）"
+fi
+echo "  · G-129 口径（诚实）：prove_command_panel / prove_command_task_control 走真实浏览器渲染；"
+echo "    浏览器不在时是 SKIP(rc=2)，SKIP **不等于 PASS**，本轮不因此把门算绿。"
+
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL"

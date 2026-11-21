@@ -69,7 +69,16 @@ const transcriptOf = (roomId) => {
   return (room && room.transcript) || [];
 };
 
-/** 记录每次成员回合的起止时刻 —— 并发的硬证据是**区间重叠**。 */
+/** 记录每次成员回合的起止时刻 —— 并发的硬证据是**区间重叠**。
+ *
+ * 负向对照(本门自带的那些「必须是错/必须是没发生」的断言):
+ *   · 团队判据失效 ⇒ 6 红(该并行的没有并行)
+ *   · 副作用闸不排队 ⇒ 2 红(写入没有串行化)
+ *   · 模型分工默认关 ⇒ 2 红
+ *   · 无职责的群仍只唤醒一个成员(不能瞎并行)
+ *   ⇒ 外加手工变异对照。
+ */
+
 function makeRunner(handler, holdMs) {
   const calls = [];
   const runResponderTurn = async (botId, task, ctx) => {
