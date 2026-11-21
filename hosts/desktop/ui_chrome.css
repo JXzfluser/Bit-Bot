@@ -4095,3 +4095,7 @@ body.grok-ui .cn-hint {
 
 /* B-8 批 4:「仅记录」标签 —— 这批任务的转录已经滚出视野了。 */
 .cmd-tag { font-size: 11px; opacity: .65; border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+
+/* B-8 批 H/I:值班区与复盘区。 */
+.cmd-sec-title { font-weight: 600; margin-bottom: 6px; }
+.cmd-duty-row, .cmd-review-row { margin-bottom: 6px; }

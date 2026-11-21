@@ -2778,6 +2778,8 @@
       <div id="cmd-hint" class="cmd-note" style="margin-top:6px" data-i18n="cmdHint">任务来自各群的真实执行记录。</div>
       <div id="cmd-buckets" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"></div>
       <div id="cmd-detail" style="margin-top:10px"></div>
+      <div id="cmd-duty" style="margin-top:14px"></div>
+      <div id="cmd-review" style="margin-top:14px"></div>
     </div>
     <div id="settings-panel" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="bb-sheet" id="settings-sheet">
@@ -19062,6 +19064,15 @@
         imDone: "我操作完了",
         approvalTitle: "需要审批",
         cmdCancel: "刹停",
+        cmdDuty: "值班",
+        cmdDutyEmpty: "没有排班任务",
+        cmdDutyNext: "下次",
+        cmdDutyDone: "上次",
+        cmdDutyNever: "还没跑过",
+        cmdDutyOff: "已停用",
+        cmdDutyUnknownTime: "（时间未知）",
+        cmdReview: "复盘",
+        cmdReviewEmpty: "还没有完成的批次",
         cmdArchived: "仅记录 · 转录已滚出",
         cmdSwap: "换人",
         cmdSwapped: "已换人。下一棒会接手。",
@@ -20562,6 +20573,15 @@
         imDone: "我操作完了",
         approvalTitle: "需要審批",
         cmdCancel: "煞停",
+        cmdDuty: "值班",
+        cmdDutyEmpty: "沒有排班任務",
+        cmdDutyNext: "下次",
+        cmdDutyDone: "上次",
+        cmdDutyNever: "還沒跑過",
+        cmdDutyOff: "已停用",
+        cmdDutyUnknownTime: "（時間未知）",
+        cmdReview: "復盤",
+        cmdReviewEmpty: "還沒有完成的批次",
         cmdArchived: "僅記錄 · 轉錄已滾出",
         cmdSwap: "換人",
         cmdSwapped: "已換人。下一棒會接手。",
@@ -22062,6 +22082,15 @@
         imDone: "I'm done",
         approvalTitle: "Approval required",
         cmdCancel: "Stop",
+        cmdDuty: "Duty",
+        cmdDutyEmpty: "No scheduled duties",
+        cmdDutyNext: "Next",
+        cmdDutyDone: "Last",
+        cmdDutyNever: "Never ran",
+        cmdDutyOff: "disabled",
+        cmdDutyUnknownTime: "(time unknown)",
+        cmdReview: "Review",
+        cmdReviewEmpty: "Nothing completed yet",
         cmdArchived: "Archived · transcript rolled out",
         cmdSwap: "Swap",
         cmdSwapped: "Swapped. The next hop takes over.",
@@ -26238,7 +26267,7 @@
       { key: "closed", i18n: "cmdClosed" },
     ];
 
-    var CMD_STATE = { tasks: [], selected: null, note: "" };
+    var CMD_STATE = { tasks: [], selected: null, note: "", duty: {}, records: [] };
 
     function cmdEsc(s) {
       return String(s == null ? "" : s)
@@ -26416,6 +26445,77 @@
       return html + "</div>";
     }
 
+    /**
+     * 值班区(B-8 批 H):今天该跑什么、上次跑没跑。
+     * 数据来自各群的 routines(routines.list)—— **不另造一份排班**。
+     */
+    function cmdRenderDuty(byRoom) {
+      var host = document.getElementById("cmd-duty");
+      if (!host) return;
+      var html = '<div class="cmd-sec-title" data-i18n="cmdDuty">值班</div>';
+      var rows = [];
+      for (var roomId in byRoom) {
+        if (!Object.prototype.hasOwnProperty.call(byRoom, roomId)) continue;
+        var list = byRoom[roomId] || [];
+        for (var i = 0; i < list.length; i++) {
+          var r = list[i] || {};
+          if (r.archived === true) continue;
+          rows.push({ room_id: roomId, r: r });
+        }
+      }
+      if (!rows.length) {
+        html += '<div class="frame-box" data-i18n="cmdDutyEmpty">没有排班任务</div>';
+        host.innerHTML = html;
+        return;
+      }
+      for (var j = 0; j < rows.length; j++) {
+        var row = rows[j];
+        var r2 = row.r;
+        var meta = "";
+        if (r2.next_due_label) meta = cmdT("cmdDutyNext") + " " + r2.next_due_label;
+        else if (r2.once_done && r2.last_fired_label) meta = cmdT("cmdDutyDone") + " " + r2.last_fired_label;
+        else if (r2.once_done) meta = cmdT("cmdDutyDone") + " " + cmdT("cmdDutyUnknownTime");
+        else meta = cmdT("cmdDutyNever");
+        html += '<div class="frame-box cmd-duty-row">' +
+          '<div class="cmd-line">' + cmdEsc(String(r2.prompt || r2.id || "").slice(0, 120)) + "</div>" +
+          '<div class="cmd-sub">' + cmdEsc(meta) +
+          (r2.enabled === false ? " · " + cmdT("cmdDutyOff") : "") +
+          (r2.cron ? " · " + cmdEsc(r2.cron) : "") + "</div></div>";
+      }
+      host.innerHTML = html;
+    }
+
+    /**
+     * 复盘区(B-8 批 I):做完了什么。
+     * 数据来自 Task 实体(state=done)—— 不编,只列真的收过口的批次。
+     */
+    function cmdRenderReview(records) {
+      var host = document.getElementById("cmd-review");
+      if (!host) return;
+      var html = '<div class="cmd-sec-title" data-i18n="cmdReview">复盘</div>';
+      var list = (Array.isArray(records) ? records : []).filter(function (x) {
+        return x && x.state === "done";
+      });
+      if (!list.length) {
+        html += '<div class="frame-box" data-i18n="cmdReviewEmpty">还没有完成的批次</div>';
+        host.innerHTML = html;
+        return;
+      }
+      list.sort(function (a, b) {
+        return String(b.closed_at || b.updated_at || "").localeCompare(String(a.closed_at || a.updated_at || ""));
+      });
+      for (var i = 0; i < list.length; i++) {
+        var t = list[i] || {};
+        var when = String(t.closed_at || t.updated_at || "");
+        html += '<div class="frame-box cmd-review-row">' +
+          '<div class="cmd-line">' + cmdEsc(String(t.title || t.task || t.id || "").slice(0, 120)) + "</div>" +
+          '<div class="cmd-sub">' + cmdEsc(when) +
+          (t.total ? " · " + cmdEsc(String(t.returned || 0) + "/" + String(t.total)) : "") +
+          (t.partial ? " · " + cmdT("cmdPartial") : "") + "</div></div>";
+      }
+      host.innerHTML = html;
+    }
+
     function cmdRenderBuckets() {
       var host = document.getElementById("cmd-buckets");
       if (!host) return;
@@ -26489,6 +26589,8 @@
 
     function cmdRender() {
       cmdRenderBuckets();
+      cmdRenderDuty(CMD_STATE.duty || {});
+      cmdRenderReview(CMD_STATE.records || []);
       cmdRenderList();
     }
 
@@ -26515,6 +26617,26 @@
         } catch (_) { records = []; }
         CMD_STATE.tasks = aggregateCommandTasks(rooms, records);
         CMD_STATE.note = "";
+
+        // 值班(批 H):逐房读排班。读不到就当没有 —— **不编排班**。
+        var dutyByRoom = {};
+        try {
+          var rApi = window.bitbot && window.bitbot.routines && window.bitbot.routines.list;
+          if (typeof rApi === "function") {
+            for (var ri = 0; ri < rooms.length; ri++) {
+              var rid2 = String((rooms[ri] && rooms[ri].id) || "");
+              if (!rid2) continue;
+              try {
+                var rres = await rApi({ roomId: rid2 });
+                if (rres && rres.ok !== false && Array.isArray(rres.routines)) {
+                  dutyByRoom[rid2] = rres.routines;
+                }
+              } catch (_) { /* 这个房读不到就跳过,别的房照常 */ }
+            }
+          }
+        } catch (_) { dutyByRoom = {}; }
+        CMD_STATE.duty = dutyByRoom;
+        CMD_STATE.records = records;
       } catch (e) {
         CMD_STATE.tasks = [];
         CMD_STATE.note = String((e && e.message) || e);

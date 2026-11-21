@@ -351,6 +351,21 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
   page.on("pageerror", (e) => errs.push(String((e && e.message) || "").split("\n")[0]));
   await page.addInitScript(() => {
     window.bitbot = Object.assign(window.bitbot || {}, {
+      routines: {
+        list: async (p) => {
+          const rid = String((p && p.roomId) || "");
+          if (rid === "r-done") {
+            return { ok: true, routines: [
+              { id: "rt-1", room_id: "r-done", prompt: "每天9点采集AI热点", cron: "0 9 * * *",
+                enabled: true, next_due_label: "明天 09:00", once_done: false, last_fired_label: "今天 09:00" },
+              { id: "rt-2", room_id: "r-done", prompt: "一次性:发上周周报", cron: "",
+                enabled: true, next_due: null, once_done: true, last_fired_label: "昨天 18:30" },
+            ] };
+          }
+          if (rid === "r-err") throw new Error("读不到");
+          return { ok: true, routines: [] };
+        },
+      },
       tasks: {
         list: async () => ({ ok: true, tasks: [
           { id: "sig-run-1", room_id: "r-run", task: "旧活儿", title: "旧活儿", state: "done", updated_at: "2026-11-20T10:00:00.000Z" },
@@ -524,6 +539,38 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
     "TC-25 Task 实体说 done ⇒ 归「已完」(**实体优先于转录推导**)", JSON.stringify(bucketState));
   check(bucketState.length === 1 && bucketState[0].persisted === true,
     "TC-25 标成 persisted(知道它来自 Task 实体)");
+
+  // 批 H:值班区
+  const dutyUi = await page.evaluate(() => {
+    const d = document.getElementById("cmd-duty");
+    return { text: d ? d.textContent : "", rows: document.querySelectorAll(".cmd-duty-row").length };
+  });
+  check(dutyUi.rows >= 2, "TC-29 值班区画出了排班行", dutyUi.rows);
+  check(dutyUi.text.indexOf("每天9点采集AI热点") >= 0, "TC-29 值班区写着排班内容(真 prompt)");
+  check(dutyUi.text.indexOf("明天 09:00") >= 0, "TC-29 值班区写着下次什么时候跑");
+  check(dutyUi.text.indexOf("昨天 18:30") >= 0, "TC-29 一次性任务显示**上次**跑的时间(不是说「还没排上」)");
+
+  // 批 I:复盘区
+  const revUi = await page.evaluate(() => {
+    const d = document.getElementById("cmd-review");
+    return { text: d ? d.textContent : "", rows: document.querySelectorAll(".cmd-review-row").length };
+  });
+  check(revUi.rows >= 1, "TC-30 复盘区画出了完成的批次", revUi.rows);
+  check(revUi.text.indexOf("旧活儿") >= 0, "TC-30 复盘区写着做完了什么");
+
+  // 负向:排班读不到 ⇒ 如实说「没有排班任务」,**不编一条出来**
+  await page.evaluate(() => {
+    window.bitbot.routines.list = async () => { throw new Error("读不到排班"); };
+  });
+  await page.evaluate(() => window.__bitbotCommand.refresh());
+  await page.waitForTimeout(400);
+  const dutyFail = await page.evaluate(() => {
+    const d = document.getElementById("cmd-duty");
+    return { text: d ? d.textContent : "", rows: document.querySelectorAll(".cmd-duty-row").length };
+  });
+  check(dutyFail.rows === 0, "TC-31 排班读不到 ⇒ 值班区**没有编出任何一行**", dutyFail.rows);
+  check(dutyFail.text.indexOf("没有排班任务") >= 0 || dutyFail.text.indexOf("No scheduled duties") >= 0,
+    "TC-31 排班读不到 ⇒ 如实说没有排班任务", dutyFail.text.slice(0, 80));
 
   check(errs.length === 0, "TC-9 页面没有 pageerror", JSON.stringify(errs.slice(0, 3)));
 
