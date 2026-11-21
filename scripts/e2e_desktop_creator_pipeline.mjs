@@ -109,7 +109,11 @@ if (!moonOk) honestSkip("moon toolchain unavailable → 真回合无法验证（
 const require = createRequire(path.join(DESKTOP, "package.json"));
 const { _electron } = require("playwright-core");
 
-const STUB_PORT = Number(process.env.GP155_STUB_PORT || 8803);
+/* 固定端口 ⇒ 上一轮残留占着就是 EADDRINUSE ⇒ 「stub boot timeout」⇒
+ * 后面所有断言级联崩(看着像产品崩了)。⇒ 默认随机端口,可显式覆盖。 */
+const STUB_PORT = Number(
+  process.env.GP155_STUB_PORT || (21000 + Math.floor(Math.random() * 20000))
+);
 const NEWS = { name: "GP155News", job: "热点新闻搜集", desc: "只负责搜集当天热点，给出来源清单" };
 const EDIT = { name: "GP155Editor", job: "内容编辑", desc: "把选题写成成稿，控制字数和小标题" };
 const REVW = { name: "GP155Review", job: "稿件审核", desc: "检查事实与合规，给出通过/打回结论" };
@@ -210,7 +214,23 @@ function startStub() {
 
   let stub = null, app = null;
   try {
+    /* 起之前:先按**端口**清残留,再确认端口可绑。
+     * ⚠️ 不要按脚本名全量 pkill —— 同门禁起两个 stub 时会杀掉前一个
+     * (2026-11-21 在 user_journeys 上踩过:症状是「消息没到 provider」)。 */
+    try {
+      const out = execSync("lsof -ti tcp:" + STUB_PORT + " 2>/dev/null || true", {
+        stdio: ["ignore", "pipe", "ignore"],
+      }).toString().trim();
+      for (const pid of out.split(/\s+/).filter(Boolean)) {
+        try { process.kill(Number(pid), "SIGKILL"); } catch { /* ignore */ }
+      }
+    } catch { /* 没有 lsof 就跳过 */ }
     stub = await startStub();
+    /* 起完立刻验活 —— 别等几十秒后症状才炸,那时极难归因。 */
+    await new Promise((r) => setTimeout(r, 300));
+    if (stub.exitCode !== null || stub.signalCode !== null) {
+      throw new Error("stub " + STUB_PORT + " 刚启动就死了(exit=" + stub.exitCode + ")");
+    }
     app = await _electron.launch({
       executablePath: ELECTRON,
       args: [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu", "--user-data-dir=" + UD],
