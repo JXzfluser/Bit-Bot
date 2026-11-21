@@ -148,6 +148,8 @@ contextBridge.exposeInMainWorld("bitbot", {
     cancelTask: (payload) => ipcRenderer.invoke("bitbot:rooms:task:cancel", payload || {}),
     // 插话:落共享板,**下一棒**看得见(正在跑的那一轮看不见 —— 如实说)。
     steerTask: (payload) => ipcRenderer.invoke("bitbot:rooms:task:steer", payload || {}),
+    // 换人:把某个成员换成另一个 bot,下一棒生效。
+    reassignTask: (payload) => ipcRenderer.invoke("bitbot:rooms:task:reassign", payload || {}),
     // 改向:换目标并立刻重跑同一批任务。
     replanTask: (payload) => ipcRenderer.invoke("bitbot:rooms:task:replan", payload || {}),
     // GP-146: group turns are async on the Host; (a) says which responders are

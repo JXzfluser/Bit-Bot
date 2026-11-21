@@ -4080,3 +4080,6 @@ body.grok-ui .cn-hint {
 
 /* B-8:指挥台的提示条 —— 浮在列表上方,不再把任务挤没。 */
 .cmd-note-box { margin-bottom: 8px; }
+
+/* B-8 批 3 续二:成员旁的「换人」小按钮。 */
+.bb-btn-xs { padding: 1px 6px; font-size: 11px; flex: 0 0 auto; }

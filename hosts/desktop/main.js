@@ -3043,6 +3043,12 @@ const selectRoomResponders = roomRuntime.selectResponders;
      · 停掉了 ⇒ 落一行 task_state 转录(可审计:谁在什么时候被谁停了)。 */
 /* B-8 批 3 续:插话(steer)—— 落共享板,**下一棒**看得见。
    诚实:正在跑的那一轮已经拿到 prompt,看不见这句插话。 */
+/* B-8 批 3 续二:换人(reassign)—— 把某个成员换成另一个 bot,**下一棒**生效。 */
+ipcMain.handle("bitbot:rooms:task:reassign", async (_e, payload) => {
+  const p = payload || {};
+  return surface.reassignRoomTask(p.task_sig, p.room_id, p.from_bot, p.to_bot);
+});
+
 ipcMain.handle("bitbot:rooms:task:steer", async (_e, payload) => {
   const p = payload || {};
   const out = surface.steerRoomTask(p.task_sig, p.room_id, p.text);

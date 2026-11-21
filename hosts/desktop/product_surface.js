@@ -2548,6 +2548,80 @@ function createProductSurface(repoRoot, opts = {}) {
   }
 
   /**
+   * 读这个房间最新的**换人指令**(reassigned)。
+   * 语义:把某个成员换成另一个 bot ⇒ **下一棒**生效(当前这一轮已经拿到了 prompt)。
+   * 同一房间可以有多条 ⇒ 取**最后一条**(用户改主意了就以最后一次为准)。
+   */
+  function latestReassignment(room) {
+    const tr = (room && room.transcript) || [];
+    let found = null;
+    for (let i = 0; i < tr.length; i++) {
+      const e = tr[i];
+      if (e && e.kind === "task_state" && e.state === "reassigned" && e.from_bot && e.to_bot) {
+        found = e;
+      }
+    }
+    if (!found) return null;
+    return { from_bot: String(found.from_bot), to_bot: String(found.to_bot) };
+  }
+
+  /**
+   * 把候选池里被换的成员换成新人 —— **纯函数**(不碰 IO),编排与门禁共用。
+   * @returns {{applied:boolean, from?:string, to?:string}}
+   */
+  function applyReassignment(candidates, reassign, bots) {
+    if (!Array.isArray(candidates) || !reassign || !reassign.from_bot || !reassign.to_bot) {
+      return { applied: false };
+    }
+    const newbie = (Array.isArray(bots) ? bots : []).find((b) => b.id === reassign.to_bot);
+    if (!newbie) return { applied: false };
+    for (let i = 0; i < candidates.length; i++) {
+      if (candidates[i].id !== reassign.from_bot) continue;
+      candidates[i] = {
+        id: newbie.id, name: newbie.name,
+        job: newbie.job || "", description: newbie.description || "",
+      };
+      return { applied: true, from: reassign.from_bot, to: newbie.id };
+    }
+    return { applied: false };
+  }
+
+  /**
+   * 换人(reassign):把某个成员换成另一个 bot,下一棒生效。
+   * 校验:新人选必须**存在**且**在这个群里** —— 否则就是让人去一个不在群里的人,
+   * 那样编排在解析时会给出 "responder_not_member",但那时已经晚了。
+   */
+  function reassignRoomTask(taskSig, roomId, fromBotId, toBot) {
+    const key = String(taskSig || "").trim();
+    const room = String(roomId || "").trim();
+    const from = String(fromBotId || "").trim();
+    const toRaw = String(toBot || "").trim();
+    if (!key) return { ok: false, error: "task_sig_required" };
+    if (!room) return { ok: false, error: "room_id_required" };
+    if (!from) return { ok: false, error: "from_bot_required" };
+    if (!toRaw) return { ok: false, error: "to_bot_required" };
+    if (from === toRaw) return { ok: false, error: "same_bot" };
+
+    const rooms = requireWritableRooms();
+    const r = (rooms.rooms || []).find((x) => x.id === room || x.title === room);
+    if (!r) return { ok: false, error: "room_not_found" };
+    const bots = (loadBots().bots) || [];
+    const target = bots.find((b) => b.id === toRaw || b.name === toRaw);
+    if (!target) return { ok: false, error: "bot_not_found", bot: toRaw };
+    const memberIds = r.members || [];
+    if (!memberIds.includes(target.id)) {
+      return { ok: false, error: "bot_not_in_room", bot: target.id };
+    }
+    appendRoomTranscript(room, {
+      kind: "task_state", room_id: room, task_sig: key,
+      state: "reassigned", from_bot: from, to_bot: target.id,
+      to_bot_name: target.name || "", at: new Date().toISOString(),
+    });
+    // 诚实:换的是**下一棒**(当前那一轮已经拿到 prompt 了)。
+    return { ok: true, from_bot: from, to_bot: target.id, to_bot_name: target.name || "", scope: "next_hop" };
+  }
+
+  /**
    * 插话(steer):用户在任务进行中插一句。
    * **诚实降级**:这一轮**已经拿到 prompt** 了,看不见插话;
    * 插话落**共享板** ⇒ **下一棒**(接力/并行成员)读 board 时真的看得见。
@@ -2844,6 +2918,12 @@ function createProductSurface(repoRoot, opts = {}) {
     const at = nowIso();
     const withTimeout = withCancelTimeout;
     const candidates = responders.slice();
+    // 换人指令:把被换的成员换成新人 —— **下一棒**生效。
+    // (改的是 candidates ⇒ 接力与并行两路都跟着变,只有这一个替换点。)
+    const reassign = latestReassignment(room);
+    if (reassign) {
+      applyReassignment(candidates, reassign, loadBots().bots || []);
+    }
     const cleanDecisions = (list) => {
       if (!Array.isArray(list)) return undefined;
       return list.slice(0, 6).map((d) => {
@@ -4775,6 +4855,9 @@ function createProductSurface(repoRoot, opts = {}) {
     steerRoomTask,
     replanRoomTask,
     latestTaskDirective,
+    latestReassignment,
+    reassignRoomTask,
+    applyReassignment,
     // KP-02：停止按钮要能真停到群回合。这个句柄必须挂在返回值上 —— 只在
     // createProductSurface 内部定义、不导出，main.js 的 `surface.cancelActiveRoomTurns`
     // 就永远是 undefined，回执里的 had_active_turn 恒为 false（「按了停止，界面说

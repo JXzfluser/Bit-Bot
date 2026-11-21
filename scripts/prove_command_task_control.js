@@ -181,6 +181,73 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
     check(s2.latestTaskDirective(rooms2.rooms[0]) === null,
       "TC-14 负向:那批已经收口 ⇒ 旧改向指令不再生效");
 
+    // ── 换人 ────────────────────────────────────────────────────────────
+    const botsFile = path.join(tmp2, "desktop", "bots.json");
+    fs.writeFileSync(botsFile, JSON.stringify({
+      bots: [
+        { id: "b-old", name: "老王" },
+        { id: "b-new", name: "小李" },
+        { id: "b-outsider", name: "外人" },
+      ],
+    }));
+    // 把两个 bot 都放进群里
+    const rw = JSON.parse(fs.readFileSync(path.join(tmp2, "desktop", "rooms.json"), "utf8"));
+    rw.rooms[0].members = ["b-old", "b-new"];
+    fs.writeFileSync(path.join(tmp2, "desktop", "rooms.json"), JSON.stringify(rw));
+    const s3 = surfaceMod.createProductSurface(REPO, { dataRoot: tmp2 });
+
+    const sw = s3.reassignRoomTask("r1|sig-1", "r1", "b-old", "b-new");
+    check(sw && sw.ok === true, "TC-18 换人成功", JSON.stringify(sw));
+    check(sw && sw.to_bot === "b-new" && sw.scope === "next_hop",
+      "TC-18 换的是**下一棒**(当前这一轮已经拿到 prompt)", JSON.stringify(sw));
+
+    const rooms3 = JSON.parse(fs.readFileSync(path.join(tmp2, "desktop", "rooms.json"), "utf8"));
+    const swRow = (rooms3.rooms[0].transcript || []).find(
+      (e) => e.kind === "task_state" && e.state === "reassigned"
+    );
+    check(!!swRow && swRow.from_bot === "b-old" && swRow.to_bot === "b-new",
+      "TC-18 落了一行 task_state/reassigned(可审计)", JSON.stringify(swRow));
+    check(!!(rooms3.rooms[0].transcript || []).find((e) => e.kind === "task_state" && e.state === "steered"),
+      "TC-18 插话与换人落在**同一条时间线**上(能一起回看)");
+
+    // 编排读换人指令 ⇒ 真的换人
+    const dirSwap = s3.latestReassignment(rooms3.rooms[0]);
+    check(dirSwap && dirSwap.from_bot === "b-old" && dirSwap.to_bot === "b-new",
+      "TC-19 编排读得到换人指令", JSON.stringify(dirSwap));
+
+    // 纯函数真跑:候选池里真的换了
+    const cand = [{ id: "b-old", name: "老王" }, { id: "b-new", name: "小李" }];
+    const applied = s3.applyReassignment(cand, dirSwap, [
+      { id: "b-old", name: "老王" }, { id: "b-new", name: "小李" },
+    ]);
+    check(applied && applied.applied === true && cand[0].id === "b-new",
+      "TC-19 候选池里那个人真的被换掉了(纯函数真跑)", JSON.stringify({ applied, cand }));
+    check(cand.length === 2, "TC-19 换人不改候选池的**长度**(不凭空多一个人)");
+
+    // 负向
+    check(s3.reassignRoomTask("r1|s", "r1", "b-old", "不存在的人").error === "bot_not_found",
+      "TC-20 负向:新人选不存在");
+    check(s3.reassignRoomTask("r1|s", "r1", "b-old", "外人").error === "bot_not_in_room",
+      "TC-20 负向:新人选不在这个群里(**不能让人去一个不在群里的人**)");
+    check(s3.reassignRoomTask("r1|s", "r1", "b-old", "b-old").error === "same_bot",
+      "TC-20 负向:换成自己");
+    check(s3.reassignRoomTask("r1|s", "r1", "", "b-new").error === "from_bot_required",
+      "TC-20 负向:没说要换谁");
+    check(s3.reassignRoomTask("r1|s", "r1", "b-old", "").error === "to_bot_required",
+      "TC-20 负向:没说换成谁");
+    check(s3.reassignRoomTask("", "r1", "b-old", "b-new").error === "task_sig_required",
+      "TC-20 负向:空 task_sig");
+
+    // 编排源码真的用了这个纯函数(只有一个替换点)
+    const psrc = fs.readFileSync(path.join(REPO, "hosts", "desktop", "product_surface.js"), "utf8");
+    // 判据必须精确到**调用**:`function applyReassignment(candidates, reassign, ...)`
+    // 这个定义本身也会命中前缀 —— 只看前缀 ⇒ 删掉调用反而门禁还是绿的(踩过)。
+    const applyCalls = psrc.match(/[^a-zA-Z]applyReassignment\(candidates, reassign, loadBots\(\)/g) || [];
+    check(applyCalls.length === 1,
+      "TC-21 编排**真的调用了**它(且只在一处调用:接力+并行两路都覆盖)", applyCalls.length);
+    check(!/function applyReassignment\(candidates, reassign, loadBots\(\)/.test(psrc),
+      "TC-21 定义与调用不是同一处(判据没被定义本身骗到)");
+
     fs.rmSync(tmp2, { recursive: true, force: true });
   }
 
@@ -303,6 +370,44 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
   await page.waitForTimeout(300);
   const emptyCalls = await page.evaluate(() => window.__cmdSteerCalls || []);
   check(emptyCalls.length === 0, "TC-16 负向:空输入 ⇒ 不发任何东西", JSON.stringify(emptyCalls));
+
+  // 换人:每个成员旁一个「换人」,读同一张卡的输入框当新人选
+  const swapUi = await page.evaluate(() => ({
+    btns: document.querySelectorAll("[data-cmd-swap]").length,
+    from: (document.querySelector("[data-cmd-swap]") || { dataset: {} }).dataset.cmdSwap || "",
+  }));
+  check(swapUi.btns >= 1, "TC-22 成员旁有「换人」按钮", swapUi.btns);
+  check(swapUi.from === "t1", "TC-22 按钮带的是那个成员的 id", swapUi.from);
+
+  await page.evaluate(() => {
+    window.__cmdSwapCalls = [];
+    window.bitbot.rooms.reassignTask = async (p) => { window.__cmdSwapCalls.push(p); return { ok: true, scope: "next_hop" }; };
+  });
+  await page.evaluate(() => {
+    const card = document.querySelector("[data-cmd-task]");
+    const inp = card ? card.querySelector(".cmd-input") : null;
+    if (inp) inp.value = "小李";
+    const b = document.querySelector("[data-cmd-swap]");
+    if (b) b.click();
+  });
+  await page.waitForTimeout(400);
+  const swapCalls = await page.evaluate(() => window.__cmdSwapCalls || []);
+  check(swapCalls.length === 1 && swapCalls[0].from_bot === "t1" && swapCalls[0].to_bot === "小李",
+    "TC-23 点换人 ⇒ 把「谁」和「换成谁」都发出去", JSON.stringify(swapCalls));
+  check(swapCalls.length === 1 && !!swapCalls[0].task_sig,
+    "TC-23 换人带 task_sig(知道是在改哪一批)", JSON.stringify(swapCalls[0] || {}));
+
+  await page.evaluate(() => {
+    window.__cmdSwapCalls = [];
+    const card = document.querySelector("[data-cmd-task]");
+    const inp = card ? card.querySelector(".cmd-input") : null;
+    if (inp) inp.value = "  ";
+    const b = document.querySelector("[data-cmd-swap]");
+    if (b) b.click();
+  });
+  await page.waitForTimeout(300);
+  const swapEmpty = await page.evaluate(() => window.__cmdSwapCalls || []);
+  check(swapEmpty.length === 0, "TC-23 负向:空输入 ⇒ 不发任何东西", JSON.stringify(swapEmpty));
 
   check(errs.length === 0, "TC-9 页面没有 pageerror", JSON.stringify(errs.slice(0, 3)));
 

@@ -19056,6 +19056,9 @@
         imDone: "我操作完了",
         approvalTitle: "需要审批",
         cmdCancel: "刹停",
+        cmdSwap: "换人",
+        cmdSwapped: "已换人。下一棒会接手。",
+        cmdSwapFailed: "没换成:",
         cmdCmdPlaceholder: "插话或改向…",
         cmdSteer: "插话",
         cmdReplan: "改向",
@@ -20552,6 +20555,9 @@
         imDone: "我操作完了",
         approvalTitle: "需要審批",
         cmdCancel: "煞停",
+        cmdSwap: "換人",
+        cmdSwapped: "已換人。下一棒會接手。",
+        cmdSwapFailed: "沒換成:",
         cmdCmdPlaceholder: "插話或改向…",
         cmdSteer: "插話",
         cmdReplan: "改向",
@@ -22048,6 +22054,9 @@
         imDone: "I'm done",
         approvalTitle: "Approval required",
         cmdCancel: "Stop",
+        cmdSwap: "Swap",
+        cmdSwapped: "Swapped. The next hop takes over.",
+        cmdSwapFailed: "Could not swap: ",
         cmdCmdPlaceholder: "Steer or replan…",
         cmdSteer: "Steer",
         cmdReplan: "Replan",
@@ -26312,7 +26321,7 @@
     }
 
     /** 每个成员的步骤明细:谁跑了、成没成、说了什么、错在哪。 */
-    function cmdRenderSteps(steps) {
+    function cmdRenderSteps(steps, taskSig, roomId) {
       if (!Array.isArray(steps) || !steps.length) return "";
       var html = '<div class="cmd-steps">';
       for (var i = 0; i < steps.length; i++) {
@@ -26324,7 +26333,14 @@
         html += '<div class="cmd-step' + (st.ok ? "" : " cmd-step-bad") + '">' +
           '<span class="cmd-step-mark">' + mark + "</span>" +
           '<span class="cmd-step-name">' + cmdEsc(st.name || "") + "</span>" +
-          '<span class="cmd-step-text">' + cmdEsc(body) + "</span></div>";
+          '<span class="cmd-step-text">' + cmdEsc(body) + "</span>" +
+          // 「换人」:读**同一张任务卡的输入框**当新人选 ⇒ 一步到位,不用中间弹窗。
+          (taskSig && st.bot_id
+            ? '<button type="button" class="bb-btn bb-btn-xs" data-cmd-swap="' + cmdEsc(st.bot_id) +
+              '" data-cmd-swap-task="' + cmdEsc(taskSig) + '" data-cmd-swap-room="' + cmdEsc(roomId || "") +
+              '" data-i18n="cmdSwap">换人</button>'
+            : "") +
+          "</div>";
       }
       return html + "</div>";
     }
@@ -26375,7 +26391,7 @@
           '<div class="cmd-room">' + cmdEsc(t.room_title || t.room_id) + "</div>" +
           // 批 1 让成员真并行 ⇒ 用户必须看得见**谁干了什么**,
           // 否则并行只会变成"一堆 bot 同时动但说不清"。
-          cmdRenderSteps(t.steps) +
+          cmdRenderSteps(t.steps, t.task_sig, t.room_id) +
           // 指挥区:一句输入,两个动作 —— 插话(下一棒看见) / 改向(立刻重跑)。
           '<div class="cmd-command">' +
           '<input class="cmd-input" type="text" data-i18n-placeholder="cmdCmdPlaceholder" placeholder="' +
@@ -26449,6 +26465,28 @@
       document.addEventListener("click", function (ev) {
         var t = ev.target;
         if (!t || !t.getAttribute) return;
+        var swapBot = t.getAttribute("data-cmd-swap");
+        if (swapBot) {
+          var swapCard = t.closest ? t.closest("[data-cmd-task]") : null;
+          var swapInp = swapCard ? swapCard.querySelector(".cmd-input") : null;
+          var swapVal = swapInp ? String(swapInp.value || "").trim() : "";
+          if (!swapVal) { CMD_STATE.note = cmdT("cmdCmdEmpty"); cmdRender(); return; }
+          var apiW = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.reassignTask;
+          if (typeof apiW !== "function") return;
+          apiW({
+            task_sig: t.getAttribute("data-cmd-swap-task") || "",
+            room_id: t.getAttribute("data-cmd-swap-room") || "",
+            from_bot: swapBot,
+            to_bot: swapVal,
+          }).then(function (r) {
+            CMD_STATE.note = r && r.ok ? cmdT("cmdSwapped") : cmdT("cmdSwapFailed") + ":" + String((r && r.error) || "unknown");
+            cmdRender();
+          }).catch(function (e) {
+            CMD_STATE.note = cmdT("cmdSwapFailed") + ":" + String((e && e.message) || e);
+            cmdRender();
+          });
+          return;
+        }
         var steerSig = t.getAttribute("data-cmd-steer");
         var replanSig = t.getAttribute("data-cmd-replan");
         if (steerSig || replanSig) {
