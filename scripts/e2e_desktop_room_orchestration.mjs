@@ -43,8 +43,34 @@ const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
 const ROOMS = path.join(REPO, "data/desktop/rooms.json");
 const SESSIONS = path.join(REPO, "data/desktop/sessions.json");
-// 证据目录：默认写进 reference/（.png 约定上不入仓），可用 GP145_SHOT_DIR 覆盖。
-const SHOT_DIR = process.env.GP145_SHOT_DIR || path.join(REPO, "docs/design/desktop-target/reference");
+/* 证据目录(2026-11-21 改)：**默认写 artifacts/**,不再写 reference/。
+ * 理由:reference/ 是**期望基线**目录 —— 它只能由人改。
+ * 这个门禁以前默认往 reference/ 里覆盖截图 ⇒ 每跑一次,期望基线就被当前实现盖掉
+ * ⇒ 像素回归从此自证自明(永远绿)。这不是「截图不入仓」的小事,是把尺子换成了橡皮擦。
+ * ⇒ 产物进 artifacts/,期望进 reference/,两者分开。
+ * 可用 GP145_SHOT_DIR 覆盖。 */
+const SHOT_DIR = process.env.GP145_SHOT_DIR
+  || (process.env.GP145_SHOT_COMMIT === "1"
+    ? path.join(REPO, "docs/design/desktop-target/reference")
+    : path.join(REPO, "artifacts", "gp145-shots"));
+
+/* 期望基线保护(2026-11-21)：跑之前给 reference/ 下每个文件记一份指纹,跑完比对。
+ * 只要门禁**自己**把期望基线改了 ⇒ 这条就红 ⇒ 「基线被实现自动覆盖」从此是可执行的判据,
+ * 而不只是一句约定。 */
+const REFERENCE_DIR = path.join(REPO, "docs/design/desktop-target/reference");
+const fingerprintReference = () => {
+  const out = {};
+  try {
+    for (const f of fs.readdirSync(REFERENCE_DIR)) {
+      const fp = path.join(REFERENCE_DIR, f);
+      try {
+        if (fs.statSync(fp).isFile()) out[f] = fs.readFileSync(fp).length + ":" + require("crypto").createHash("sha1").update(fs.readFileSync(fp)).digest("hex");
+      } catch { /* ignore */ }
+    }
+  } catch { /* 目录不存在就当没有基线 */ }
+  return out;
+};
+const REFERENCE_BEFORE = fingerprintReference();
 let PASS = 0, FAIL = 0;
 const ok = (m) => { PASS++; console.log("  ✓ " + m); };
 const bad = (m, d) => { FAIL++; console.log("  ✗ " + m + (d === undefined || d === null ? "" : " — " + String(d).slice(0, 400))); };
@@ -995,6 +1021,17 @@ const DOM_COUNTS = () => ({
     if (sessionsBefore) fs.writeFileSync(SESSIONS, sessionsBefore); else if (fs.existsSync(SESSIONS)) fs.rmSync(SESSIONS, { force: true });
     if (botsBefore) fs.writeFileSync(path.join(REPO, "data/desktop/bots.json"), botsBefore);
   }
+  /* 期望基线保护:门禁跑完,reference/ 必须**逐字节未变**。 */
+  (() => {
+    const after = fingerprintReference();
+    const changed = Object.keys({ ...REFERENCE_BEFORE, ...after })
+      .filter((f) => REFERENCE_BEFORE[f] !== after[f]);
+    if (changed.length) {
+      bad("期望基线被门禁改写了（reference/ 只能人工改）", JSON.stringify(changed));
+    } else {
+      ok("期望基线逐字节未变（reference/ 只由人改，产物在 artifacts/）");
+    }
+  })();
   console.log("\ne2e_desktop_room_orchestration: PASS=" + PASS + " FAIL=" + FAIL + " SKIP=0");
   console.log("evidence: " + path.join(SHOT_DIR, "gp145-1-room-empty.png") + " … gp145-8-unknown-mention.png + gp145-rooms-evidence.json");
   process.exit(FAIL > 0 ? 1 : 0);

@@ -44,7 +44,14 @@ const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
 const SETTINGS_JSON = path.join(REPO, "data/desktop/settings.json");
-const OUT = path.join(REPO, "docs/design/desktop-target/reference");
+/* 期望基线目录(2026-11-21 改):默认写 artifacts/,**不**写 reference/ ——
+ * reference/ 是期望基线,只能由人改;门禁每次跑都往那儿覆盖 ⇒ 像素回归自证自明。
+ * 同 scripts/e2e_desktop_layout_target.mjs 的范式:要「更新对外证据」必须
+ * 显式设 BITBOT_LAYOUT_SHOT_COMMIT=1(有意识的动作)。 */
+const OUT = process.env.BITBOT_LAYOUT_SHOT_DIR
+  || (process.env.BITBOT_LAYOUT_SHOT_COMMIT === "1"
+    ? path.join(REPO, "docs/design/desktop-target/reference")
+    : path.join(REPO, "artifacts", "shell-v2-shots"));
 let PASS = 0, FAIL = 0, SKIP = 0;
 const ok = (m) => { PASS++; console.log("  ✓ " + m); };
 const bad = (m, d) => { FAIL++; console.log("  ✗ " + m + (d ? " — " + String(d).slice(0, 260) : "")); };
