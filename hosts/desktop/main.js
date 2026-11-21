@@ -19,6 +19,72 @@ const {
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+
+/* 主进程日志落文件（可选）：设 BITBOT_APP_LOG_FILE 时，console.* 同时写进那个文件。
+ * 为什么需要它：门禁用 playwright 起 Electron 时，playwright 会把子进程的 stdout
+ * 收走 —— 主进程说了什么，门外**一个字都看不到**。于是「用户发消息没反应」
+ * 这类问题只能靠猜。⇒ 给它一个不依赖门禁的诊断通道:
+ *   BITBOT_APP_LOG_FILE=/tmp/app.log electron hosts/desktop/main.js
+ * 默认不开（不写盘、不改行为）。 */
+if (process.env.BITBOT_APP_LOG_FILE) {
+  const __logFile = process.env.BITBOT_APP_LOG_FILE;
+  const __origLog = console.log.bind(console);
+  const __origWarn = console.warn.bind(console);
+  const __origErr = console.error.bind(console);
+  const __tee = (fn) => (...args) => {
+    try {
+      fs.appendFileSync(__logFile, args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ") + "\n");
+    } catch (_) { /* 落盘失败不许影响主流程 */ }
+    fn(...args);
+  };
+  console.log = __tee(__origLog);
+  console.warn = __tee(__origWarn);
+  console.error = __tee(__origErr);
+}
+
+/* 主进程日志落文件（可选）：设 BITBOT_APP_LOG_FILE 时，console.* 同时写进那个文件。
+ * 为什么需要它：门禁用 playwright 起 Electron 时，playwright 会把子进程的 stdout
+ * 收走 —— 主进程说了什么，门外**一个字都看不到**。于是「用户发消息没反应」
+ * 这类问题只能靠猜。⇒ 给它一个不依赖门禁的诊断通道:
+ *   BITBOT_APP_LOG_FILE=/tmp/app.log electron hosts/desktop/main.js
+ * 默认不开（不写盘、不改行为）。 */
+if (process.env.BITBOT_APP_LOG_FILE) {
+  const __logFile = process.env.BITBOT_APP_LOG_FILE;
+  const __origLog = console.log.bind(console);
+  const __origWarn = console.warn.bind(console);
+  const __origErr = console.error.bind(console);
+  const __tee = (fn) => (...args) => {
+    try {
+      fs.appendFileSync(__logFile, args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ") + "\n");
+    } catch (_) { /* 落盘失败不许影响主流程 */ }
+    fn(...args);
+  };
+  console.log = __tee(__origLog);
+  console.warn = __tee(__origWarn);
+  console.error = __tee(__origErr);
+}
+
+/* 主进程日志落文件（可选）：设 BITBOT_APP_LOG_FILE 时，console.* 同时写进那个文件。
+ * 为什么需要它：门禁用 playwright 起 Electron 时，playwright 会把子进程的 stdout
+ * 收走 —— 主进程说了什么，门外**一个字都看不到**。于是「用户发消息没反应」
+ * 这类问题只能靠猜。⇒ 给它一个不依赖门禁的诊断通道:
+ *   BITBOT_APP_LOG_FILE=/tmp/app.log electron hosts/desktop/main.js
+ * 默认不开（不写盘、不改行为）。 */
+if (process.env.BITBOT_APP_LOG_FILE) {
+  const __logFile = process.env.BITBOT_APP_LOG_FILE;
+  const __origLog = console.log.bind(console);
+  const __origWarn = console.warn.bind(console);
+  const __origErr = console.error.bind(console);
+  const __tee = (fn) => (...args) => {
+    try {
+      fs.appendFileSync(__logFile, args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ") + "\n");
+    } catch (_) { /* 落盘失败不许影响主流程 */ }
+    fn(...args);
+  };
+  console.log = __tee(__origLog);
+  console.warn = __tee(__origWarn);
+  console.error = __tee(__origErr);
+}
 const { spawn } = require("child_process");
 
 // A1-2 桥：回合广播 → 持久化事件（docs/events.md §5.2）。布局安全 require：

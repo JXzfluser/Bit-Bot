@@ -277,10 +277,24 @@ const forbiddenHit = (text) => {
     DISPLAY: process.env.DISPLAY || "",
     PATH: (process.env.HOME || "") + "/.moon/bin:" + (process.env.PATH || ""),
     MOON_BIN: process.env.MOON_BIN || path.join(os.homedir(), ".moon/bin/moon"),
+    /* 钉住**已编译好的**内核二进制（2026-11-21 诊断）：
+     * 默认走 `moon run cmd/desktop_turn` —— 每回合重编译，慢，且在门禁环境里
+     * 那个路径上的内核会以 exit 255 崩掉（kernel_reason:"crashed"）。
+     * 钉住 _build 里的现成二进制 ⇒ 不重编译，也绕开那条崩路径。
+     * （.exe 不存在时自动退回默认路径，不让门禁因为找不到二进制就崩。） */
+    BITBOT_KERNEL_BIN: fs.existsSync(path.join(REPO, "_build/native/debug/build/cmd/desktop_turn/desktop_turn.exe"))
+      ? path.join(REPO, "_build/native/debug/build/cmd/desktop_turn/desktop_turn.exe")
+      : "",
     BITBOT_REPO_ROOT: REPO,
     // 应用与门禁读同一份隔离数据 —— 仓库真实 data/ 一个字节都不碰。
     BITBOT_DATA_ROOT: GATE_DATA,
     BITBOT_NO_SECRET_SYNC: "1",
+    // 主进程日志落文件 —— playwright 会收走子进程 stdout,门外看不到主进程说话。
+    BITBOT_APP_LOG_FILE: path.join(os.tmpdir(), "bitbot-e2e-app-user-journeys.log"),
+    // 主进程日志落文件 —— playwright 会收走子进程 stdout,门外看不到主进程说话。
+    BITBOT_APP_LOG_FILE: path.join(os.tmpdir(), "bitbot-e2e-app-user-journeys.log"),
+    // 主进程日志落文件 —— playwright 会收走子进程 stdout,门外看不到主进程说话。
+    BITBOT_APP_LOG_FILE: path.join(os.tmpdir(), "bitbot-e2e-app-user-journeys.log"),
     BITBOT_DESKTOP_AUTOSTART: "0",
     BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + P_MAIN + "/v1",
     BITBOT_LLM_API_KEY: KEY_MAIN,
@@ -303,6 +317,34 @@ const forbiddenHit = (text) => {
       env: launchEnv({}),
       timeout: 120000,
     });
+    /* 把**主进程**的 stdout/stderr 转发出来（2026-11-21 诊断用）。
+     * 之前主进程说什么完全看不见 ⇒ 「私聊没到 provider」只能靠猜。
+     * 渲染层报错走 pageerror、主进程报错走这里 —— 两边都要能看到。
+     * 门禁自身的判定不依赖这些输出（它只是诊断通道）。 */
+    try {
+      const ap = app.process();
+      if (ap && ap.stdout) ap.stdout.on("data", (d) => console.log("[app] " + String(d).trim().slice(0, 220)));
+      if (ap && ap.stderr) ap.stderr.on("data", (d) => {
+        const t = String(d).trim();
+        if (!/dbus|DEPRECATED|deprecated|ERROR:dbus/.test(t)) {
+          console.log("[app!] " + t.slice(0, 220));
+        }
+      });
+    } catch (_) { /* 没有 stdout 也照样跑 —— 诊断通道是锦上添花 */ }
+    /* 把**主进程**的 stdout/stderr 转发出来（2026-11-21 诊断用）。
+     * 之前主进程说什么完全看不见 ⇒ 「私聊没到 provider」只能靠猜。
+     * 渲染层报错走 pageerror、主进程报错走这里 —— 两边都要能看到。
+     * 门禁自身的判定不依赖这些输出（它只是诊断通道）。 */
+    try {
+      const ap = app.process();
+      if (ap && ap.stdout) ap.stdout.on("data", (d) => console.log("[app] " + String(d).trim().slice(0, 220)));
+      if (ap && ap.stderr) ap.stderr.on("data", (d) => {
+        const t = String(d).trim();
+        if (!/dbus|DEPRECATED|deprecated|ERROR:dbus/.test(t)) {
+          console.log("[app!] " + t.slice(0, 220));
+        }
+      });
+    } catch (_) { /* 没有 stdout 也照样跑 —— 诊断通道是锦上添花 */ }
     win = await app.firstWindow({ timeout: 60000 });
     await win.waitForSelector("#composer #text", { timeout: 60000 });
     await win.setViewportSize({ width: 1280, height: 800 });
