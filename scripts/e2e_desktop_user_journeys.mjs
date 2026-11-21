@@ -25,6 +25,7 @@
  * 用法：ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_desktop_user_journeys.mjs
  */
 import path from "path";
+import net from "net";
 import fs from "fs";
 import os from "os";
 import crypto from "crypto";
@@ -41,12 +42,40 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
-const DATA = path.join(REPO, "data/desktop");
+/* 隔离数据目录（2026-11-21 修）：
+ * 原来这里直接用 **仓库真实的 data/**。dev 模式下应用写的也是仓库的 data/
+ * （paths.js:resolveDataRoot —— 非 packaged 时 DATA_ROOT = <repoRoot>/data），
+ * 所以「门禁读的地方」和「应用写的地方」是同一个 —— 于是门禁跑一次，
+ * 用户的真实群/会话/机器人就被覆盖一次。
+ * 实测：跑完这一轮，仓库 data/desktop/rooms.json 的群数是 **0**。
+ *
+ * ⇒ 门禁必须有自己的一份数据目录：应用与门禁都指向它，仓库那份不碰。
+ *   模式照抄 e2e_desktop_artifacts 等已隔离的脚本（gateAppEnv + BITBOT_DATA_ROOT）。
+ */
+const GATE_DATA = path.join(os.tmpdir(), "bitbot-e2e-data-user-journeys");
+fs.rmSync(GATE_DATA, { recursive: true, force: true });
+fs.mkdirSync(GATE_DATA, { recursive: true });
+/* 拷一份 **快照**:应用启动需要 data/ 里的若干骨架(app-install / 模板 / provider
+   配置 / 设置…)。缺了会卡在启动(实测:只建两个空目录 ⇒ 窗口起不来,门禁只打一行)。
+ * 快照是**拷贝**,仓库那份一个字节都不动 —— 门禁在自己的副本上跑。 */
+function copyTree(src, dst) {
+  if (!fs.existsSync(src)) return;
+  const st = fs.statSync(src);
+  if (st.isDirectory()) {
+    fs.mkdirSync(dst, { recursive: true });
+    for (const e of fs.readdirSync(src)) copyTree(path.join(src, e), path.join(dst, e));
+  } else {
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    try { fs.copyFileSync(src, dst); } catch (_) { /* 大文件/占用 ⇒ 跳过,门禁会如实说缺什么 */ }
+  }
+}
+copyTree(path.join(REPO, "data"), GATE_DATA);
+const DATA = path.join(GATE_DATA, "desktop");
 const ROOMS = path.join(DATA, "rooms.json");
 const SESSIONS = path.join(DATA, "sessions.json");
 const BOTS = path.join(DATA, "bots.json");
 const SETTINGS = path.join(DATA, "settings.json");
-const LLM_ACTIVE = path.join(REPO, "data/llm/active.json");
+const LLM_ACTIVE = path.join(GATE_DATA, "llm/active.json");
 const ART = process.env.UJ_ART_DIR || path.join(REPO, "artifacts");
 const REC_MAIN = path.join(ART, "uj-provider-main.jsonl");
 const REC_QWEN = path.join(ART, "uj-provider-qwen.jsonl");
@@ -77,8 +106,15 @@ if (!moonOk) honestSkip("moon toolchain unavailable → 真回合无法验证");
 const require = createRequire(path.join(DESKTOP, "package.json"));
 const { _electron } = require("playwright-core");
 
-const P_MAIN = Number(process.env.UJ_PORT_MAIN || 9411);
-const P_QWEN = Number(process.env.UJ_PORT_QWEN || 9412);
+/* 端口随机(2026-11-21 修)：固定端口会撞上**上一轮残留的 stub** ⇒
+ * 新 stub EADDRINUSE ⇒ 不打 ready 行 ⇒ 门禁报 "stub boot timeout" ⇒
+ * 后面所有断言级联崩("Target page has been closed")——
+ * 看起来像产品崩了,其实是端口撞车。实测第一次跑 53/5,第二次起全崩。
+ * 随机端口 + finally 清理 ⇒ 撞车不再发生。 */
+const P_MAIN = Number(process.env.UJ_PORT_MAIN || (20000 + Math.floor(Math.random() * 20000)));
+const _P_QWEN_RANDOM = 20000 + Math.floor(Math.random() * 20000);
+const P_QWEN = Number(process.env.UJ_PORT_QWEN || (_P_QWEN_RANDOM === P_MAIN ? _P_QWEN_RANDOM + 1 : _P_QWEN_RANDOM));
+
 // 只在进程 env 里存在；门禁全程只打印长度与 sha256 前缀，绝不打印原文。
 const KEY_MAIN = "uj-key-main-" + crypto.randomBytes(8).toString("hex");
 const KEY_QWEN = "uj-key-qwen-" + crypto.randomBytes(8).toString("hex");
@@ -101,7 +137,21 @@ const PH3 = "把 " + X.name + " 和 " + Y.name + " 拉到 " + T3 + " 群";
 const PHBAD = "把 " + X.name + "、UJGhostone 拉到 " + T4 + " 群";
 const PHPART = "把 " + X.name + " 和 " + F.name + " 拉到 " + TP + " 群";
 
-function startStub({ port, record, failContains, reply }) {
+async function startStub({ port, record, failContains, reply }) {
+  // 端口若被上一轮的残留占着 ⇒ 新 stub EADDRINUSE ⇒ 不打 ready 行 ⇒
+  // 门禁报 "stub boot timeout" ⇒ 后面所有断言级联崩(看着像产品崩了)。
+  // 只 kill 不等 ⇒ 仍有进程退出窗口,照样 EADDRINUSE ⇒ 杀完**确认端口可绑**。
+  try { execSync('pkill -9 -f "openai_compat_stub.js" || true', { stdio: "ignore" }); } catch { /* ignore */ }
+  for (let i = 0; i < 40; i++) {
+    const free = await new Promise((res) => {
+      const srv = net.createServer();
+      srv.once("error", () => res(false));
+      srv.listen(port, "127.0.0.1", () => srv.close(() => res(true)));
+      setTimeout(() => { try { srv.close(); } catch { /* ignore */ } res(false); }, 300);
+    });
+    if (free) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
   const proc = spawn(
     process.execPath,
     [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")],
@@ -228,6 +278,8 @@ const forbiddenHit = (text) => {
     PATH: (process.env.HOME || "") + "/.moon/bin:" + (process.env.PATH || ""),
     MOON_BIN: process.env.MOON_BIN || path.join(os.homedir(), ".moon/bin/moon"),
     BITBOT_REPO_ROOT: REPO,
+    // 应用与门禁读同一份隔离数据 —— 仓库真实 data/ 一个字节都不碰。
+    BITBOT_DATA_ROOT: GATE_DATA,
     BITBOT_NO_SECRET_SYNC: "1",
     BITBOT_DESKTOP_AUTOSTART: "0",
     BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + P_MAIN + "/v1",
