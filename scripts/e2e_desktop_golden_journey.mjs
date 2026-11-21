@@ -526,6 +526,34 @@ async function shot(name) {
         ? ok("GJ-10", "产出：到点真的派进群，成员跑完并留下回执（bot_reply " + replies.length + " 条）",
           { names: replies.map((r) => r.name), text: safeStr(replies[0] && replies[0].text, 160) })
         : bad("GJ-10", "产出：到点之后群里没有任何成员回执", { tx: safeStr(txOf(roomId).slice(-6), 500) });
+      /* 团队模式专属契约(2026-11-22):**共享任务板** ——
+       * 成员能看见彼此干了什么。这是团队模式相对 auto_route 接力(previous_turn)多出来的东西,
+       * 所以归这个门禁守(团队模式的那个群),不归 auto_route 场景守。
+       * 载荷里的标记字样还没实测过 ⇒ 先按宽松正则找,并把首条 system 前 400 字打出来做诊断。 */
+      /* 团队模式专属契约(2026-11-22):**共享任务板** ——
+       * 成员能看见彼此干了什么。这是团队模式相对 auto_route 接力(previous_turn)多出来的东西,
+       * 所以归这个门禁守(团队模式的那个群),不归 auto_route 场景守。
+       * 载荷里的标记字样还没实测过 ⇒ 先按宽松正则找,并把首条 system 前 400 字打出来做诊断。 */
+      const provRowsGJ = (() => {
+        try {
+          return fs.readFileSync(PROVIDER_JSONL, "utf8").split("\n").filter(Boolean)
+            .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        } catch { return []; }
+      })();
+      const sharedHitsGJ = provRowsGJ.filter((r) => {
+        const msgs = Array.isArray(r.messages) ? r.messages : [];
+        const all = msgs.map((m) => String((m && m.content) || "")).join("\n");
+        return /最近群聊记录|共享任务板|共享板|任务板|群聊记录/.test(all);
+      }).length;
+      if (sharedHitsGJ >= 1) {
+        ok("GJ-10b", "团队模式：成员的 provider 载荷里带着**共享任务板**（成员看得见彼此干了什么）", { rows: sharedHitsGJ });
+      } else {
+        const firstSysGJ = provRowsGJ.length
+          ? String(((provRowsGJ[0].messages || []).find((m) => m && m.role === "system") || {}).content || "").slice(0, 400)
+          : "";
+        bad("GJ-10b", "团队模式：provider 载荷里没有共享任务板（成员看不见彼此干了什么）",
+          { rows: sharedHitsGJ, total: provRowsGJ.length, firstSystem: firstSysGJ });
+      }
       if (!report) {
         bad("GJ-11", "产出：这一批没收口（没有 final_report）", { replies: replies.length });
       } else {

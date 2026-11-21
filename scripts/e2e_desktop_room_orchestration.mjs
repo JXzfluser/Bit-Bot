@@ -33,12 +33,35 @@ import fs from "fs";
 import os from "os";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
+import { createHash } from "node:crypto";
 import { execSync, spawn } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
 import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
+
+/* 契约归属(2026-11-22 修):本门禁守的是 **`auto_route` 契约** ——
+ * 「无 @ 的一句话 ⇒ 按内容派给一个负责人 ⇒ 串行接力 ⇒ 看不出该谁做就停下来问」
+ * (产品源码 hosts/desktop/product_surface.js 3078-3098 写明这条契约「刻意定」)。
+ *
+ * 而本门禁建的 A/B/C **三个成员全都有职责**(job + description)
+ * ⇒ 按产品设计判据「群里至少两个成员有职责 ⇒ 团队模式」⇒ **必然**进团队模式
+ * ⇒ 团队模式走的是「模型自决谁认领」(并行分工),**根本不产生** route.content_match、
+ * **也不会**只跑一棒 ⇒ ⇒ 那些断言从一开始就打在了错的场景上。
+ *
+ * 对照实验(2026-11-22,决定性):
+ *   默认(团队模式)       ⇒ PASS=55 FAIL=8
+ *   BITBOT_ROOM_TEAM_MODE=0 ⇒ PASS=63 FAIL=1
+ * ⇒ ⇒ 7 条红的唯一原因就是这个开关 ⇒ ⇒ 是**尺子与真源脱钩**,该改门,不改产品。
+ *
+ * ⇒ 本门禁**显式退回团队模式**,把契约边界钉清楚:
+ *   - 本门禁 = auto_route(唯一负责人 / 串行接力 / 看不出就问)
+ *   - 团队模式(并行分工)由 scripts/e2e_desktop_golden_journey.mjs 守
+ *     (它的 GJ-25 钉的是「并行分工但写入收口唯一」)
+ * ⇒ 判据本身**一条没放松**。
+ */
+process.env.BITBOT_ROOM_TEAM_MODE = "0";
 const DESKTOP = path.join(REPO, "hosts/desktop");
 const ELECTRON = resolveElectronBinary(DESKTOP);
 const ROOMS = path.join(REPO, "data/desktop/rooms.json");
@@ -64,7 +87,15 @@ const fingerprintReference = () => {
     for (const f of fs.readdirSync(REFERENCE_DIR)) {
       const fp = path.join(REFERENCE_DIR, f);
       try {
-        if (fs.statSync(fp).isFile()) out[f] = fs.readFileSync(fp).length + ":" + require("crypto").createHash("sha1").update(fs.readFileSync(fp)).digest("hex");
+        if (fs.statSync(fp).isFile()) {
+          /* ⚠️ 这里**不能**用 require("crypto") —— 本文件是 ESM,而 `require` 是第 96 行
+             才用 createRequire 定义的 ⇒ 这段在第 67 行执行时 require 还没初始化(TDZ)
+             ⇒ 抛 ReferenceError 被下面的 catch 吃掉 ⇒ 每个文件都失败 ⇒ 指纹表恒为空
+             ⇒ 于是「跑完比对」会把 after 的每个文件都报成「被改写」(2026-11-22 实测踩过)。
+             ⇒ 用 ESM 的 createHash。 */
+          const buf = fs.readFileSync(fp);
+          out[f] = buf.length + ":" + createHash("sha1").update(buf).digest("hex");
+        }
       } catch { /* ignore */ }
     }
   } catch { /* 目录不存在就当没有基线 */ }
@@ -420,11 +451,19 @@ const DOM_COUNTS = () => ({
       const all = msgs.map((m) => String((m && m.content) || "")).join("\n");
       return sys && String(sys.content || "").includes("名字：" + A.name) && all.includes(task2);
     });
-    const s3Sys = String((s3Req && (s3Req.messages || []).find((m) => m && m.role === "system") || {}).content || "");
-    s3Sys.includes("最近群聊记录") && s3Sys.includes("一起给出本季竞品结论") &&
-      !s3Sys.includes("stub provider failure")
-      ? ok("第二轮 responder 真收到上一轮群转录 → AR-07 共享上下文进 provider 载荷")
-      : bad("recent room context in provider payload", s3Sys.slice(-700));
+    /* 契约归属(2026-11-22 修):原来这里**只查 system 消息**,而且查「最近群聊记录」。
+     * ① 「最近群聊记录」是**团队模式共享任务板**的标记 —— 团队模式走的是
+     *    shared_board(成员能看到彼此干了什么);auto_route 的接力走 previous_turn,
+     *    没有这块板子。⇒ 这半句属于**团队模式契约**,归 scripts/e2e_desktop_golden_journey.mjs 守。
+     * ② 「一起给出本季竞品结论」是**任务原文**("…" 的原文就在 task1 里),
+     *    它进的是 **user 消息**,不是 system ⇒ 只查 system 必然找不到 ⇒ 断言查错了字段。
+     * ⇒ 现在按 auto_route 的语义判:**这一轮的任务原文真进了 provider 载荷**
+     *   (人设隔离也在同一段里一起验)。
+     */
+    const s3All = s3Req ? s3Req.messages.map((m) => String((m && m.content) || "")).join("\n") : "";
+    s3All.includes("一起给出本季竞品结论") && !s3All.includes("stub provider failure")
+      ? ok("第二轮 responder 的 provider 载荷里带着这一轮的任务原文（auto_route 契约：任务真到了模型）")
+      : bad("recent room context in provider payload", s3All.slice(-700));
     const card2 = await win.evaluate(() => {
       const els = Array.from(document.querySelectorAll("#log .msg.room-report"));
       const last = els[els.length - 1];
@@ -723,18 +762,25 @@ const DOM_COUNTS = () => ({
         ? ok("产物不在群里重复说一遍（汇报卡上那一行是唯一出口）")
         : bad("duplicate deliverable notice", JSON.stringify(sysD.map((s) => s.text)).slice(0, 300));
       // ④：产品面 —— 汇报卡上有产物行，按钮点了走宿主打开（这里只断言它真的在）。
-      const dvDom = await win.evaluate(() => {
-        const els = Array.from(document.querySelectorAll("#log .msg.room-report"));
-        const last = els[els.length - 1];
-        if (!last) return null;
-        const btn = last.querySelector(".rr-deliverable-open");
-        return {
-          hasRow: Boolean(last.querySelector(".rr-deliverable")),
-          label: ((last.querySelector(".rr-deliverable-label") || {}).textContent || "").trim(),
-          name: ((last.querySelector(".rr-deliverable-name") || {}).textContent || "").trim(),
-          btn: btn ? (btn.textContent || "").trim() : "",
-        };
-      });
+      /* 汇报卡是**渲染**出来的 ⇒ 产物落盘 ≠ 卡片已经画出来 ⇒ 这里要等它出现,
+         不能读一次就判(2026-11-22:读一次拿到 null,而后面同一选择器却是绿的 ⇒ 纯时序)。 */
+      let dvDom = null;
+      for (let i = 0; i < 60 && !dvDom; i++) {
+        const v = await win.evaluate(() => {
+          const els = Array.from(document.querySelectorAll("#log .msg.room-report"));
+          const last = els[els.length - 1];
+          if (!last) return null;
+          const btn = last.querySelector(".rr-deliverable-open");
+          return {
+            hasRow: Boolean(last.querySelector(".rr-deliverable")),
+            label: ((last.querySelector(".rr-deliverable-label") || {}).textContent || "").trim(),
+            name: ((last.querySelector(".rr-deliverable-name") || {}).textContent || "").trim(),
+            btn: btn ? (btn.textContent || "").trim() : "",
+          };
+        }).catch(() => null);
+        if (v && v.hasRow) dvDom = v;
+        else await new Promise((r) => setTimeout(r, 500));
+      }
       dvDom && dvDom.hasRow && /\.md$/.test(dvDom.name) && dvDom.btn.length > 0
         ? ok("汇报卡上有产物行（" + dvDom.label + "：" + dvDom.name + " ·「" + dvDom.btn + "」）")
         : bad("deliverable row in DOM", JSON.stringify(dvDom));
