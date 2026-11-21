@@ -124,6 +124,26 @@ function createProductSurface(repoRoot, opts = {}) {
     const m = mirror();
     let prev = prevText === undefined ? lastTextBySurface.get(path.resolve(filePath)) : prevText;
     if (prev == null) prev = prevTextFor(filePath, def);
+    if (prev == null) {
+      /* prev 取不到 ≠ 这张面没账。`prevTextFor` 在「库折不动」（并发写撞出 anomaly /
+         读模型报错）时同样返回 null，而 null 的 prev 会让下一次 commitText 走
+         BASELINE 整面替换 —— 等于把读失败翻译成「这张面是空的」，别人的行当场抹掉。
+         会话面 §8.150 实测的就是这一条；这里把同一个洞在共用落库口上堵死。
+         只有「库还没有」（no_db / 一条事件都没有）才允许从 BASELINE 起算。 */
+      const probe = eventReadModel.readSurfaces(DATA_ROOT);
+      const unreadable = (!probe.ok && probe.reason !== "no_db") || (probe.anomalies || []).length > 0;
+      if (unreadable) {
+        const why = (probe.anomalies && probe.anomalies[0]) ||
+          (probe.reason === "fold_timeout"
+            ? `日志读了 ${probe.rowsRead} 行没在 ${probe.deadlineMs}ms 内折完，已折到第 ${probe.progressSeq} 行，下次读接着折`
+            : probe.reason === "log_too_long"
+              ? `日志超过单次额度 ${probe.maxRows} 行，已折到第 ${probe.progressSeq} 行`
+              : probe.reason || "fold_unavailable");
+        const err = new Error(`eventOnlyWrite：${def.surface} 的基底读不动（${why}），拒绝整面替换`);
+        err.code = "EVENT_PREV_UNREADABLE";
+        throw err;
+      }
+    }
     if (prev != null && surfaceEmptyInDb(eventReadModel.readSurfaces(DATA_ROOT), def.surface)) {
       m.commitText(def, null, prev); // 基底导入（与导入脚本同一语义）
     }

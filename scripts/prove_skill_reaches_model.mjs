@@ -257,6 +257,19 @@ const CONTROLS = [
     kind: "listing",
     marker: "",
   },
+  {
+    // 让界面那句成品串自己数（片3 之前的形状）：屏上的「进模型」和注入那一步脱钩
+    label: "SK-18 界面自己拼那句数",
+    file: "host_ffi.js",
+    patches: [
+      {
+        from: "        summary_text: skillSummaryText(invocable.length, seeds.length, modelSkipCount),",
+        to: "        summary_text: skillSummaryText(invocable.length, invocable.length, 0), // 夹具：界面自己数",
+      },
+    ],
+    kind: "summary",
+    marker: "",
+  },
 ];
 
 function startStub() {
@@ -438,6 +451,28 @@ async function main() {
       : bad("SK-14 清单与注入同源", wrong.join(" / ") + " " + JSON.stringify({ count: payload.count, model_count: payload.model_count }).slice(0, 200));
   }
 
+  /* ---- SK-17：屏上那句「可点名 / 本回合进模型」是 Host 一次拼好的成品串 ---- */
+  {
+    const payload = await listSkillsVia(runner.ffi);
+    const skip = runner.ffi.skillInventory().filter((s) => s.model_ok === false).length;
+    const m = /^可点名 (\d+) · 本回合进模型 (\d+)(?: · 另 (\d+) 条进不了模型)?$/.exec(
+      String(payload.summary_text || ""),
+    );
+    const wrong = [];
+    if (!m) wrong.push("summary_text=" + JSON.stringify(payload.summary_text));
+    else {
+      if (Number(m[1]) !== payload.invocable_count)
+        wrong.push("可点名 " + m[1] + " != invocable_count " + payload.invocable_count);
+      if (Number(m[2]) !== payload.model_count)
+        wrong.push("进模型 " + m[2] + " != model_count " + payload.model_count);
+      const tail = m[3] === undefined ? 0 : Number(m[3]);
+      if (tail !== skip) wrong.push("另 " + tail + " != 分类器里 model_ok=false 的 " + skip);
+    }
+    wrong.length === 0
+      ? ok("SK-17 屏上那句数同源", payload.summary_text + "（三个数分别取自 invocable_count / model_count / skillInventory）")
+      : bad("SK-17 屏上那句数同源", wrong.join(" / "));
+  }
+
   /* ---- SK-10 / SK-11 / SK-15 / SK-16：反向夹具必须判红（否则这条门是恒真的） ---- */
   for (const ctl of CONTROLS) {
     const farm = sharedFarm({ [ctl.file]: ctl.patches });
@@ -457,6 +492,15 @@ async function main() {
       p.model_count !== injected
         ? ok(ctl.label, "界面上的 model_count（" + p.model_count + "）与注入条数（" + injected + "）分家 ⇒ SK-14 那条是承重的")
         : bad(ctl.label, "界面自己数之后仍与注入相等 ⇒ SK-14 是恒真断言，不能当门");
+      continue;
+    }
+    if (ctl.kind === "summary") {
+      const p = await listSkillsVia(control.ffi);
+      const injected = control.ffi.collectSkillSeeds().length;
+      const m = /本回合进模型 (\d+)/.exec(String(p.summary_text || ""));
+      m && Number(m[1]) !== injected
+        ? ok(ctl.label, "那句「本回合进模型 " + m[1] + "」与注入条数（" + injected + "）分家 ⇒ SK-17 那条是承重的")
+        : bad(ctl.label, "把那句改成界面自己数后仍与注入相等 ⇒ SK-17 是恒真断言，不能当门");
       continue;
     }
     const { echoed } = await probe(

@@ -14,7 +14,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,13 +42,12 @@ fun ApprovalSheet(
   client: ApprovalClient?,
   onDismiss: () -> Unit,
 ) {
-  val state = rememberModalBottomSheetState()
   var rows by remember { mutableStateOf<List<ApprovalClient.Pending>>(emptyList()) }
   var busy by remember { mutableStateOf(false) }
   var message by remember { mutableStateOf("") }
   var wideConfirm by remember { mutableStateOf<ApprovalClient.Pending?>(null) }
 
-  fun decide(row: ApprovalClient.Pending, decision: ApprovalDecision, wide: Boolean) {
+  fun decide(row: ApprovalClient.Pending, decision: String, wide: Boolean) {
     val c = client ?: return
     busy = true
     c.decide(row.id, decision, wide) { result ->
@@ -72,7 +70,7 @@ fun ApprovalSheet(
     }
   }
 
-  BitBotSheet(onDismiss = onDismiss, sheetState = state) {
+  BitBotSheet(onDismiss = onDismiss) {
     SheetHeader(
       title = "待批准",
       subtitle = if (client == null) "还没配对,或这台设备没有设备身份" else "批准写进的是那台机器的队列和规则",

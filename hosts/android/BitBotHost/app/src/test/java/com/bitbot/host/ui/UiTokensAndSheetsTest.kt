@@ -301,6 +301,7 @@ class UiTokensAndSheetsTest {
           hostLabel = null,
           onCredentials = {},
           onCapabilities = {},
+          onApprovals = {},
           onPairing = {},
           onClearChat = {},
           onDismiss = {},
@@ -310,6 +311,8 @@ class UiTokensAndSheetsTest {
     compose.waitForIdle()
     compose.onNodeWithText("凭证").assertExists()
     compose.onNodeWithText("能力").assertExists()
+    // B-6：手机上「批」的入口必须在这块面板里，不是另开一屏。
+    compose.onNodeWithText("审批").assertExists()
     compose.onNodeWithText("连接 Desktop").assertExists()
   }
 

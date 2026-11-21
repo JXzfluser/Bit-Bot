@@ -1754,21 +1754,25 @@ if timeout 900 node scripts/prove_m41_cn.js > /tmp/g41-probe.log 2>&1; then
 else
   bad "G-41 M41 中英收尾契约（见 /tmp/g41-probe.log）"
 fi
-grep -q "channels-meta 前缀本地化" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 GP-M41：channels-meta workflows · → 工作流 ·" \
-  || bad "G-41 channels meta"
-grep -q "box-meta 前缀本地化" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 GP-M41：box-meta env · → 运行环境 ·" \
-  || bad "G-41 box meta"
-grep -q "cloud-meta 默认值不再外泄内部枚举" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 GP-M41：cloud-meta local_worker → 本地代理（枚举不外泄）" \
-  || bad "G-41 cloud-meta leak"
-grep -q "技术引用保留：ADR 0002 / ICS" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 GP-M41：技术引用保留 ADR 0002 / ICS（符合扫描排除规则）" \
-  || bad "G-41 technical ref drift"
-grep -q "负向对照：塞回 workflows ·" /tmp/g41-probe.log 2>/dev/null \
-  && ok "G-41 负向对照：塞回 workflows · → 本地化断言翻假（非恒真）" \
-  || bad "G-41 negative control"
+# 锚点钉的是 M41-0N 编号（契约写在 prove_m41_cn.js 头部注释里），不是那句中文。
+# 上一版钉散文：M46 把第 7 条措辞从「负向对照：塞回」改成「把字典词条塞回」，
+# 锚点当场变成恒红（G-40 同族，这次是反过来 —— 该红的没红过、该绿的恒红）。
+for g41_id in M41-01 M41-02 M41-03 M41-04 M41-05 M41-06 M41-07; do
+  case "$g41_id" in
+    M41-01) g41_lab="channels-meta workflows · → 工作流 ·" ;;
+    M41-02) g41_lab="box-meta env · → 运行环境 ·" ;;
+    M41-03) g41_lab="webhook meta copied → 已复制" ;;
+    M41-04) g41_lab="delivery meta last: → 最近：" ;;
+    M41-05) g41_lab="cloud-meta local_worker → 本地代理（枚举不外泄）" ;;
+    M41-06) g41_lab="技术引用保留 ADR 0002 / ICS（符合扫描排除规则）" ;;
+    M41-07) g41_lab="负向对照：塞回 workflows · → 本地化断言翻假（非恒真）" ;;
+  esac
+  if grep -q "\[$g41_id\]" /tmp/g41-probe.log 2>/dev/null; then
+    ok "G-41 GP-M41 $g41_id：$g41_lab"
+  else
+    bad "G-41 GP-M41 $g41_id 锚点没跑绿：$g41_lab"
+  fi
+done
 
 echo "== G-42 消息流排版（M42：居中列 + 气泡尾角 + 连续回合分组）=="
 if timeout 900 node scripts/prove_m42_stream.js > /tmp/g42-probe.log 2>&1; then
@@ -1828,24 +1832,24 @@ if timeout 900 node scripts/prove_m44_header.js > /tmp/g44-probe.log 2>&1; then
 else
   bad "G-44 M44 header 契约（见 /tmp/g44-probe.log）"
 fi
-grep -q "实心 accent 填充" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 GP-M44：header 按钮 active 改实心 accent 填充（修 dead border-color）" \
-  || bad "G-44 active fill missing"
-grep -q "#header-actions button:active scale(0.96)" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 GP-M44：header 按钮 :active scale(0.96) 与 composer 节奏一致" \
-  || bad "G-44 header press missing"
-grep -q "reduced-motion 下 #header-actions" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 GP-M44：reduced-motion 归零 header 按压位移" \
-  || bad "G-44 rm header missing"
-grep -q "把 rail open 状态回写 gp-panel-btn" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 GP-M44：toggleComputerRail 把 open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合）" \
-  || bad "G-44 gp active sync missing"
-grep -q "M20 回归护栏：#header-actions 仍 justify-content: flex-end" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 M20 回归护栏：header-actions 对齐不破" \
-  || bad "G-44 M20 regression"
-grep -q "负向对照：塞回 dead border-color" /tmp/g44-probe.log 2>/dev/null \
-  && ok "G-44 负向对照：塞回 dead border-color → active 断言翻假（非恒真）" \
-  || bad "G-44 negative control"
+# 同 G-41：锚点钉 M44-0N 编号（编号契约写在 prove_m44_header.js 各段注释里），不钉散文。
+# 改前 6 条锚点全是散文，其中 M44-06（tools-toggle-btn 走 setPanel 单一状态源）无人看守。
+for g44_id in M44-01 M44-02 M44-03 M44-04 M44-05 M44-06 M44-07; do
+  case "$g44_id" in
+    M44-01) g44_lab="header 按钮 active 改实心 accent 填充（修 dead border-color）" ;;
+    M44-02) g44_lab="header 按钮 :active scale(0.96) 与 composer 节奏一致" ;;
+    M44-03) g44_lab="reduced-motion 归零 header 按压位移" ;;
+    M44-04) g44_lab="M20 回归护栏：header-actions 对齐不破" ;;
+    M44-05) g44_lab="rail open 状态回写 gp-panel-btn.active（CSS+JS 双端闭合）" ;;
+    M44-06) g44_lab="tools-toggle-btn 点击走 setPanel 单一状态源" ;;
+    M44-07) g44_lab="负向对照：塞回 dead border-color → active 断言翻假（非恒真）" ;;
+  esac
+  if grep -q "\[$g44_id\]" /tmp/g44-probe.log 2>/dev/null; then
+    ok "G-44 GP-M44 $g44_id：$g44_lab"
+  else
+    bad "G-44 GP-M44 $g44_id 锚点没跑绿：$g44_lab"
+  fi
+done
 
 
 echo
@@ -1897,7 +1901,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g46_xvfb=(xvfb-run -a)
   fi
-  for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity stream_typing; do
+  for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity stream_typing artifacts bottom_archive chatsurface room_orchestration shell_v2 team_ui unread_summary; do
     log=/tmp/g46-$g.log
     pkill -9 -f "dist/[e]lectron" 2>/dev/null
     sleep 1
@@ -1907,6 +1911,19 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
       bad "G-46 e2e_desktop_${g}（见 ${log}；$(tail -1 "$log")）"
     fi
   done
+  # §8.176：这条门原本在任何 CI 路径里都没有（孤门尺 AC-07 读出来的）。它量的是五个
+  # 弹层关闭钮在真渲染里是否还是同一套 Grok 幽灵圆钮 —— 源码 lint 看不见 computed 值。
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node scripts/e2e_modal_computed.mjs > /tmp/g46-modal.log 2>&1; then
+    ok "G-46 e2e_modal_computed 全绿（$(grep -c '✓' /tmp/g46-modal.log) 项，$(tail -1 /tmp/g46-modal.log)）"
+  else
+    bad "G-46 e2e_modal_computed（见 /tmp/g46-modal.log；$(tail -1 /tmp/g46-modal.log)）"
+  fi
+  grep -q "close buttons share colour" /tmp/g46-modal.log 2>/dev/null \
+    && ok "G-46 弹层关闭钮：五枚同色（一条 .bb-close 规则，不是五条 per-id）" \
+    || bad "G-46 modal close contract missing"
+
   grep -q "S-02 同 UD 只活着一个主进程" /tmp/g46-single_instance.log 2>/dev/null \
     && grep -q "S-03 第一个实例窗口仍在前台" /tmp/g46-single_instance.log 2>/dev/null \
     && ok "G-46 单实例：同 UD 第二实例被锁挡住并唤起已有窗口（用户双击两次只开一个）" \
@@ -5332,7 +5349,7 @@ echo "    交错写 8 步、两种模式（默认+双写 10 条事件 / EVENT_ON
 echo "    把 prev 的两条刷新摘掉也一模一样 —— 群面写路吃的是同实例刚读到的那份，不是缓存；"
 echo "    所以它降级为「冗余内存 + 潜在风险」，欠的是实例合并本身，不当 SW-28 立门（反向夹具判不红＝恒真断言）。"
 
-echo "== G-123 技能必须进模型（KP-10 第一、二片：SKILL.md 正文 → --seed-skill argv → 内核 → provider system，界面与注入同源 + 可点名，KP-10）=="
+echo "== G-123 技能必须进模型（KP-10 第一~三片：SKILL.md 正文 → --seed-skill argv → 内核 → provider system，界面与注入同源 + 可点名 + 界面上那句数由 Host 拼好，KP-10）=="
 # 这条门是先有红才立起来的：改之前内核根本没有技能通道（skills/catalog.mbt 只有 3 条硬编码、
 # runtime 里 skill 命中 0、Host 的磁盘发现只提 description、正文从没被读过）—— 磁盘上装了技能，
 # 模型一个字都没看见。
@@ -5344,10 +5361,10 @@ fi
 g123_line=$(grep -m1 'prove_skill_reaches_model: PASS=[0-9]* FAIL=[0-9]*' /tmp/g123-skill-model.log | tail -1)
 g123_pass=$(printf '%s' "$g123_line" | grep -o 'PASS=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 g123_fail=$(printf '%s' "$g123_line" | grep -o 'FAIL=[0-9][0-9]*' | grep -o '[0-9][0-9]*')
-if [ -n "$g123_line" ] && [ "$g123_fail" = "0" ] && [ "$g123_pass" -ge 16 ]; then
-  ok "G-123 锚点：SK-01..16 绿满 $g123_pass 项（正文进 HTTP + 四种该挡的挡住 + 点名那条也进 + 界面数与注入数同源 + 四把反向夹具各判红 1 条）"
+if [ -n "$g123_line" ] && [ "$g123_fail" = "0" ] && [ "$g123_pass" -ge 18 ]; then
+  ok "G-123 锚点：SK-01..18 绿满 $g123_pass 项（正文进 HTTP + 四种该挡的挡住 + 点名那条也进 + 界面数与注入数同源 + 界面上那句技能数与注入数同源 + 五把反向夹具各判红 1 条）"
 else
-  bad "G-123 锚点不足：需要 FAIL=0 且 PASS>=16，实测 $(printf '%s' "$g123_line")"
+  bad "G-123 锚点不足：需要 FAIL=0 且 PASS>=18，实测 $(printf '%s' "$g123_line")"
 fi
 echo "  · G-123 口径（诚实）：判据落在 provider 请求体（echo-all stub 的回显）而不是我们自己的日志 —— "
 echo "    链路是 agent-tools/skills/<dir>/SKILL.md → Host skillInventory（一次分类：name≤64 / description≤1024 /"
@@ -5356,11 +5373,168 @@ echo "    → collectSkillSeeds 与 list_skills 两边都读它（界面上的 m
 echo "    → argv --seed-skill name::description::body（用户点名的那条排前面，SK-13）→ 内核 parse_skill_seeds（再判一次字节上限）"
 echo "    → 内核随每一次 llm_chat 请求把 skills 交回 → Host llmSkillBlock 拼进 system（有界 / 脱敏 / 标注：技能是数据不是指令）。"
 echo "    renderer 不参与拼 prompt；技能正文不进用户原文（SK-08 逐字比）。"
+echo "    屏上那句「可点名 N · 本回合进模型 M」是 Host 的 list_skills.summary_text —— "
+echo "    SK-17 钉住它三个数与 invocable_count / model_count / skillInventory(model_ok=false) 逐一相等；SK-18 把这句改回界面自己数，实测判红。"
 echo "  · G-123 残账（实测到的）：legacy effects 路径（BITBOT_LEGACY_CHAT_EFFECT / --legacy-chat-effect）拿不到技能，"
 echo "    这条只收了产品默认的 AgentLoop 那一路；点名认的是「原文里出现技能名或目录名（≥3 字，大小写不敏感）」，"
 echo "    别名与近义说法不算；environments 只校形状、不按环境过滤（还没有『本回合在哪个环境』这个数）；"
 echo "    「Bot 的输出按该规则变」证到的是 HTTP 请求体那一层（stub 回显），真供应商 + 真开机的行为差还没量；"
 echo "    斜杠菜单那条「不进模型」的小字是静态断言，没在真应用里截图看过。"
+
+echo "== G-124 EVENT_ONLY 并发交错：旁路面在双实例/双进程下不许丢行 =="
+if timeout 300 node scripts/prove_kp09_event_only_concurrency.mjs > /tmp/g124-kp09.log 2>&1; then
+  g124_line=$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g124-kp09.log | tail -1)
+  g124_pass=$(printf '%s' "$g124_line" | sed -n 's/PASS=\([0-9]*\).*/\1/p')
+  g124_fail=$(printf '%s' "$g124_line" | sed -n 's/.*FAIL=\([0-9]*\).*/\1/p')
+  g124_skip=$(printf '%s' "$g124_line" | sed -n 's/.*SKIP=\([0-9]*\).*/\1/p')
+  if [ "$g124_fail" = "0" ] && [ "$g124_skip" = "0" ] && [ "${g124_pass:-0}" -ge 7 ]; then
+    ok "G-124 双实例 + 双进程交错全绿（$g124_line）"
+  else
+    bad "G-124 锚点不足：要 FAIL=0 且 SKIP=0 且 PASS>=7，实测 $g124_line"
+  fi
+else
+  bad "G-124 并发门翻红（见 /tmp/g124-kp09.log；$(tail -1 /tmp/g124-kp09.log)）"
+fi
+# 反向夹具：把期望里一条审批换成不存在的 id，门必须判红 —— 否则「没丢行」是恒真。
+# 突变体必须落在 scripts/ 里：门按自身目录推 REPO，放 /tmp 会把 REPO 指错（测出来过）。
+sed 's/"cmd-a1", "cmd-a2", "cmd-b1", "cmd-b2"/"cmd-a1", "cmd-a2", "cmd-b1", "cmd-不存在"/' \
+  scripts/prove_kp09_event_only_concurrency.mjs > scripts/.g124-mut.mjs
+if timeout 300 node scripts/.g124-mut.mjs > /tmp/g124-mut.log 2>&1; then
+  bad "G-124 反向夹具没红：改掉期望照样过门，这条门是假门"
+else
+  ok "G-124 反向夹具真红：期望被换掉即判红（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]*' /tmp/g124-mut.log | tail -1)）"
+fi
+rm -f scripts/.g124-mut.mjs /tmp/g124-mut.log
+echo "  · G-124 口径（诚实）：八条臂覆盖 approvals 追加面 + rooms 整面替换面 + sessions 会话面 + 折叠不可用时的拒写 + 跨进程删除不复活 + 面提交原子性"
+echo "  · G-124 未覆盖（别读成并发的账全清）：臂5 = sessions 面真并发（6 进程无屏障），"
+echo "    并发删除已由臂7 用屏障钉死（B 见过那条 → A 删 → B 再提交），实测不复活（§8.154 把 §8.152 的机制推断作废）；"
+echo "    群面没有删除入口（产品侧无任何 delete 方法），所以群面「并发删除」不是可达路径，别读成也证过了；"
+echo "    kill -9 那一半（臂8，§8.155）：撕裂的**生成端**已封 —— 原先 commitText 逐条 append，每条自己一个事务，"
+echo "    一次建会话要落 3 条事件，落在中间就是半提交面；现在整批一个事务（appendBatch）。"
+echo "    压住它的是静态形状判据（退回逐条即 FAIL=1）；两条动态行数判据实测不灵敏，别当护栏（§8.155 逐字记）。"
+echo "    仍未收的是**自愈端**：面已经被毒成 ok:false 时，产品没有任何复原路径，只能人工删库；"
+echo "    已修的是「读不动→当空面覆盖」那一半：折叠不可用时改成拒绝并给 fold_blocked 回执。"
+echo "    （臂1 同进程双实例、臂2/臂3 跨进程文件屏障强制交错、臂4/臂5 真并发 6 进程无屏障抢锁、臂6 用注入幽灵顺序的夹具把折叠造坏再验拒写）；"
+echo "    锚点 PASS>=7，八臂全绿实测 PASS=38；臂4/臂5 的并发是真的量出来的（六个写窗口必须重叠），"
+echo "    臂6 的封堵口径实测只覆盖「冷 prev 缓存的整面替换面」：同实例已写过一次的面走增量不受影响，"
+echo "    追加面（approvals）自带 prevText 所以折叠坏了也照样写且不覆盖别人 —— 别把臂6 读成「所有写口都会拒」；"
+echo "    回执不可解析一律 SKIP（SKIP≠0 在锚点里就是不过）；"
+echo "    仍未覆盖：kill -9 落在两次写之间、臂4 里的 sessions 面 —— 见交付报告 §8.149。"
+
+echo "== G-125 锚点覆盖尺（谁看守「门的断言有没有人看守」）=="
+if timeout 600 node scripts/prove_anchor_coverage.mjs > /tmp/g125-probe.log 2>&1; then
+  ok "G-125 AC 覆盖尺 exit 0（$(tail -1 /tmp/g125-probe.log)）"
+else
+  bad "G-125 AC 覆盖尺红（见 /tmp/g125-probe.log）"
+fi
+# 锚点钉 [$g125_id] 编号（契约写在尺头注释里）：尺的措辞可以改，编号和「这条真的绿过」不能消失。
+for g125_id in AC-01 AC-02 AC-03 AC-04 AC-05 AC-06 AC-07 AC-08; do
+  if grep -q "\[$g125_id\]" /tmp/g125-probe.log 2>/dev/null; then
+    ok "G-125 GP-AC $g125_id：锚点跑到绿行"
+  else
+    bad "G-125 GP-AC $g125_id 没跑出绿行（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+# 计数锚点：绿行条数与总结行一起钉 —— 删一条断言或让它静默 SKIP 都拦得住（矩阵里第一条 B 类看守）。
+if [ "$(grep -c '^  ✓' /tmp/g125-probe.log)" -ge 6 ] \
+   && grep -q "PASS=6 FAIL=0 SKIP=0" /tmp/g125-probe.log; then
+  ok "G-125 GP-AC 计数钉：绿行 $(grep -c '^  ✓' /tmp/g125-probe.log) ≥ 6 且 FAIL=0 SKIP=0"
+else
+  bad "G-125 GP-AC 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g125-probe.log)、$(tail -1 /tmp/g125-probe.log)（期望 PASS=6 FAIL=0 SKIP=0）"
+fi
+
+echo "== G-126 折叠续折判据的单一出处（#84：一条规则不许有两份近似副本）=="
+if timeout 300 node scripts/prove_fold_state_owner.mjs > /tmp/g126-probe.log 2>&1; then
+  ok "G-126 FP 单写者尺 exit 0（$(tail -1 /tmp/g126-probe.log)）"
+else
+  bad "G-126 FP 单写者尺红（见 /tmp/g126-probe.log）"
+fi
+# 锚点钉 [FP-nn] 编号（契约写在尺头注释里）：判据表可以改措辞，编号和「这条真的绿过」不能消失。
+for g126_id in FP-01 FP-02 FP-03 FP-04 FP-05 FP-06 FP-07; do
+  if grep -q "\[$g126_id\]" /tmp/g126-probe.log 2>/dev/null; then
+    ok "G-126 GP-FP $g126_id：锚点跑到绿行"
+  else
+    bad "G-126 GP-FP $g126_id 没跑出绿行（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+if [ "$(grep -c '^  ✓' /tmp/g126-probe.log)" -ge 7 ] \
+   && grep -q "PASS=7 FAIL=0 SKIP=0" /tmp/g126-probe.log; then
+  ok "G-126 GP-FP 计数钉：绿行 $(grep -c '^  ✓' /tmp/g126-probe.log) ≥ 7 且 FAIL=0 SKIP=0"
+else
+  bad "G-126 GP-FP 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g126-probe.log)、$(tail -1 /tmp/g126-probe.log)（期望 PASS=7 FAIL=0 SKIP=0）"
+fi
+echo "  · G-126 口径（诚实）：FP-01/02 是静态层（两个消费方 require(./fold_state)、内联判据 0 处）；"
+echo "    FP-03..06 是语义层（canContinue 五格真值表、isClean 四格、prefixOf 的前缀游标、invalidate 原地重置）；"
+echo "    FP-07 是反向对照（把 \`>=\` 写成 \`>\` 后「同 seq」这格必须翻）—— 突变体在内存里，不落盘、不改源码。"
+echo "    端到端行为不在这条门里：RM 组（prove_event_read_model PASS=23）与 L 组（prove_surface_parity PASS=42 SKIP=1）"
+echo "    各自继续管产品缓存与尺缓存那半；SKIP 是开机接线那条，别读成这条门也 SKIP。"
+echo "    本轮统一的一处分歧：尺的缓存处原要求 anomalies 字段存在才肯缓存，产品与尺的 audit 处把缺字段当干净，"
+echo "    统一到宽的一侧（3/4 处如此，且 foldPages 返回体始终带该字段）—— 口径写在 fold_state 头注释里，不是悄悄选边。"
+
+echo "== G-127 Grok 真源规格门（§4.4 消息列重锚 + 编号契约 SP-01..05）=="
+echo "  · 这条门原本也是孤门（AC-07 读出来的）。它此前唯一红的那条「消息文字列 558.4」量到 62 —— 是探针往 #log 塞 5 个字符的合成 .body 再量宽度，"
+echo "    量到的是**收缩宽**不是夹位。重锚后同时量两档：长文案的饱和宽 + 短句的收缩宽 + computed max-width（§8.178）。"
+if [ "$HAVE_ELECTRON_UI" = "1" ]; then
+  g127_xvfb=()
+  if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
+    g127_xvfb=(xvfb-run -a)
+  fi
+  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  sleep 1
+  if timeout 900 ${g127_xvfb[@]+"${g127_xvfb[@]}"} node scripts/e2e_grok_desktop_spec.mjs > /tmp/g127-spec.log 2>&1; then
+    ok "G-127 e2e_grok_desktop_spec 全绿（$(tail -1 /tmp/g127-spec.log)）"
+  else
+    bad "G-127 e2e_grok_desktop_spec 红（见 /tmp/g127-spec.log；$(tail -1 /tmp/g127-spec.log)）"
+  fi
+  # 锚点只钉 ✓ 行里出现的 [SP-nn]：编号只加在 ok() 文案上，红行没有编号 —— 漏一条就是这条锚点红。
+  for g127_id in SP-01 SP-02 SP-03 SP-04 SP-05; do
+    if grep -q "\[$g127_id\]" /tmp/g127-spec.log 2>/dev/null; then
+      ok "G-127 GP-SP $g127_id：锚点跑到绿行"
+    else
+      bad "G-127 GP-SP $g127_id 没跑出绿行（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+    fi
+  done
+  if [ "$(grep -c '^  ✓' /tmp/g127-spec.log)" -ge 35 ] \
+     && grep -q "PASS=35 FAIL=0 SKIP=0" /tmp/g127-spec.log; then
+    ok "G-127 GP-SP 计数钉：绿行 $(grep -c '^  ✓' /tmp/g127-spec.log) ≥ 35 且 PASS=35 FAIL=0 SKIP=0"
+  else
+    bad "G-127 GP-SP 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g127-spec.log)、$(tail -1 /tmp/g127-spec.log)（期望 PASS=35 FAIL=0 SKIP=0）"
+  fi
+else
+  bad "G-127 没 Electron 可起 —— 这条门必须有真渲染读数（SKIP≠过，按 §8.162 的口径直接判红）"
+fi
+echo "  · G-127 口径（诚实）：SP-01..05 只覆盖 §4.4 的气泡五档（平面块 / 墨 6% 字阶 / 行宽 728 / 文字列饱和 558.4 / 用户气泡反转）；"
+echo "    其余 30 条断言仍是散文锚点（属 #85 的活），本轮没顺手编号，别读成整门已编号。"
+echo "    列宽这条本轮同时改了产品：ui_chrome.css 的 assistant 上限从自拟 640px 收回真源 558.4px（三处），"
+echo "    同轮重跑 artifacts 9/0、chatsurface 13/0、stream_typing 9/0 —— 代码块行为没回退（283px 那个坑仍在 :has() 分支里堵着）。"
+
+echo "== G-128 期望新鲜度门（§8.181：门读的期望必须是当前真源的派生物）=="
+echo "  · SP-04 改成读 grok-acceptance-expectations.json 之后留下的洞：没有任何东西看守这份 JSON 是否随两份 real-spec 重生成。"
+echo "    接入本轮第一次跑就当场量到陈旧（盘上 8523B vs 重生成 9035B）；差异全部落在 _gateConflicts[].ourCurrent 与 _measuredAt 备注，"
+echo "    断言带一格没动（bubble.maxWidth.eq 558.4 → 558.4），重生成后 EF-02 才转绿。"
+if node scripts/prove_expectations_fresh.mjs > /tmp/g128-exp.log 2>&1; then
+  ok "G-128 EF 期望新鲜度尺 exit 0（$(tail -1 /tmp/g128-exp.log)）"
+else
+  bad "G-128 EF 期望新鲜度尺红（见 /tmp/g128-exp.log；$(tail -1 /tmp/g128-exp.log)）"
+fi
+# 锚点只钉 ✓ 行里出现的 [EF-nn]：编号只加在 ok() 文案上，红行没有编号 —— 漏一条就是这条锚点红。
+for g128_id in EF-01 EF-02 EF-03 EF-04 EF-05; do
+  if grep -q "\[$g128_id\]" /tmp/g128-exp.log 2>/dev/null; then
+    ok "G-128 GP-EF $g128_id：锚点跑到绿行"
+  else
+    bad "G-128 GP-EF $g128_id 没跑出绿行（判据被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+if [ "$(grep -c '^  ✓' /tmp/g128-exp.log)" -ge 5 ] \
+   && grep -q "PASS=5 FAIL=0 SKIP=0" /tmp/g128-exp.log; then
+  ok "G-128 GP-EF 计数钉：绿行 $(grep -c '^  ✓' /tmp/g128-exp.log) ≥ 5 且 PASS=5 FAIL=0 SKIP=0"
+else
+  bad "G-128 GP-EF 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g128-exp.log)、$(tail -1 /tmp/g128-exp.log)（期望 PASS=5 FAIL=0 SKIP=0）"
+fi
+echo "  · G-128 口径（诚实）：EF-02 是**逐字节**比较而不是逐字段 —— 字段级比较会放过「生成逻辑改了但没人重跑」这一类漂移；"
+echo "    EF-04 是灵敏度对照（临时真源改成 640px → 期望必须跟着变 640），缺它的话 EF-02 只是两份文件互相印证；"
+echo "    EF-05 钉的是门源码的判据形状（不许再出现手抄 558.4 字面量），散文里提这个数字不算红。"
+echo "    真源本身的重采节奏不在这条门管辖内：它只保证「期望 = 当前盘上真源的派生物」，不保证盘上真源是今天抓的。"
 
 echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
 echo

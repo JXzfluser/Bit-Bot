@@ -790,6 +790,14 @@ function createHostFfi(repoRoot, opts = {}) {
    * 两处各自解析的话，同一屏上会出现两个互相对不上的技能数（§8.133 的残账）。
    * 每条给出两个独立答案：能不能进模型（modelSkip）、能不能被用户点名（userSkip）。
    */
+  /** KP-10 片3：界面上那句技能数只在 Host 拼一次。渲染端拿到的就是成品字符串，
+   *  它再数就会数出第二个口径（片2 之前「屏上 6 条 / 模型 2 条」同时成立的那种）。 */
+  function skillSummaryText(invocableCount, modelCount, notInModelCount) {
+    const tail =
+      notInModelCount > 0 ? ` · 另 ${notInModelCount} 条进不了模型` : "";
+    return `可点名 ${invocableCount} · 本回合进模型 ${modelCount}${tail}`;
+  }
+
   function skillInventory() {
     const skillsRoot = path.join(AGENT_TOOLS_ROOT, "skills");
     let names = [];
@@ -21585,6 +21593,8 @@ function createHostFfi(repoRoot, opts = {}) {
       const uninvocable = all
         .filter((s) => s.user_ok === false)
         .map((s) => ({ name: s.name, source: s.source, reason: s.user_skip }));
+      // 只数磁盘上的 SKILL.md（managed/plugin 那份名单不在这里，它们另有一套原因）。
+      const modelSkipCount = inventory.filter((s) => s.model_ok === false).length;
       const skills = invocable.filter((s) => {
         if (!query) return true;
         return (
@@ -21615,6 +21625,9 @@ function createHostFfi(repoRoot, opts = {}) {
         uninvocable,
         model_count: seeds.length,
         model_names: seeds.map((s) => s.name),
+        // KP-10 片3：屏上那句「几条能点名、这回合模型真看见几条」由这里一次拼好，
+        // 渲染端原样显示 —— 它自己数就会数出第二个数（片2 之前的形状）。
+        summary_text: skillSummaryText(invocable.length, seeds.length, modelSkipCount),
         at,
       };
       fs.writeFileSync(listPath, JSON.stringify(artifact, null, 2));
