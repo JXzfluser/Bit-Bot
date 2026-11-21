@@ -37,14 +37,21 @@ const BASE = {
      两处），按棘轮纪律「只许降」，基线跟着落地值走，别留空额度。 */
   cssImportant: 178,
   /* 2026-10-24 W0 落地后重锚：0a 调色去重 + 0b 折第二套家族，css hex 139 → 57（82 个预算槽供 W1-W5 消费） */
-  cssHex: 55,
+  /* 2026-11-21 下调:原语块里重复的字面量合并成 var() 引用
+     (CSS 自定义属性的 var() 运行时解析,顺序无关 ⇒ 像素零变化),
+     加上非原语的硬编码 #fff 收进 --p-lt-solid ⇒ 总数 70 → 48。
+     基线跟着落地值走(棘轮纪律:只许降)。 */
+  cssHex: 48,
   /* 2026-11-01 重锚 26 → 40，两笔都是「有理由的字面色值」而不是新配色：
      · +8 用量页的图表色板（USAGE_SERIES 六色 + 图例两处直接引用）——与
        AVATAR_PALETTE 同性质：采样来的数据色，不该走 --token；
      · +6 粘贴框的 `var(--token, #fallback)` 兜底（URL 弹窗那次修的：token
        不存在时不能再塌成深底深字）。兜底不是主色，是 token 缺失时的最后一道。
      T-2b「调色块外不得出现字面色值」仍然守着配色纪律，没松。 */
-  htmlHex: 40,
+  /* 2026-11-21 下调:index.html 里 43 个 hex 里,块注释里的 1 个 +
+     17 个 `var(--token, #fallback)` 兜底(ui_chrome.css 已定义这些 token
+     且 index.html 有 <link> 引它 ⇒ 兜底永远走不到)⇒ 43 → 25。 */
+  htmlHex: 25,
   htmlInlineFont: 13,
   cssAttrPatch: 5,
 };

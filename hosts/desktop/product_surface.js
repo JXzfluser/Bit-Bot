@@ -28,6 +28,9 @@ function createProductSurface(repoRoot, opts = {}) {
   const COMPUTER_PATH = path.join(DESKTOP_DIR, "computer.json");
   const LLM_USAGE_PATH = path.join(DESKTOP_DIR, "llm-usage.json");
   const ROOMS_PATH = path.join(DESKTOP_DIR, "rooms.json");
+  // Task 实体:指挥台**跨会话**记住「哪些任务还在、暂停了没」。
+  // 单写者 = 本模块;多进程按 id 三方合并(照抄 bots.json 的写法)。
+  const TASKS_PATH = path.join(DESKTOP_DIR, "tasks.json");
   /* sessions.json 没有本地路径常量了：这张面只有一个写者（sessions store），
      谁想读写它都得经过上面那个 store 句柄 —— 见 §8.123 / G-122 的 SW-02 棘轮。 */
   const MEMORY_DIR = path.join(DATA_ROOT, "memory");
@@ -297,6 +300,54 @@ function createProductSurface(repoRoot, opts = {}) {
   /* bots.json 的读-改-写基底：本次 loadBots 交给调用方的那份快照，落盘时用来
      分辨「我删掉的」和「别的进程刚加的」。见 saveBots / mergeBotsAgainstDisk。 */
   let botsBaseText = null;
+
+  function loadTasks() {
+    const data = readFaceJson(TASKS_PATH, "tasks", null);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return { version: 1, tasks: [] };
+    if (!Array.isArray(data.tasks)) data.tasks = [];
+    return data;
+  }
+
+  /* 多进程合并:按 id 三方合并,别人新加的留着,别人删掉的我不复活。
+     (与 bots.json 同形 —— 桌面主进程 + 定时守护会同时写。) */
+  function mergeTasksAgainstDisk(ours) {
+    const disk = loadTasks();
+    const map = new Map();
+    for (const t of disk.tasks) if (t && t.id) map.set(t.id, t);
+    for (const t of (ours && ours.tasks) || []) {
+      if (!t || !t.id) continue;
+      map.set(t.id, Object.assign({}, map.get(t.id) || {}, t));
+    }
+    return { version: 1, tasks: Array.from(map.values()) };
+  }
+
+  function saveTasks(data) {
+    withFaceLock(TASKS_PATH, () => atomicWrite(TASKS_PATH, JSON.stringify(mergeTasksAgainstDisk(data), null, 2)));
+  }
+
+  /** 写一条 Task(按 id 合并,不整表覆盖)。 */
+  function upsertTask(patch) {
+    const id = String((patch && patch.id) || "").trim();
+    if (!id) return null;
+    const data = loadTasks();
+    const tasks = data.tasks.slice();
+    const i = tasks.findIndex((t) => t && t.id === id);
+    const prev = i >= 0 ? tasks[i] : {};
+    const next = Object.assign({}, prev, patch, {
+      id,
+      created_at: prev.created_at || (patch && patch.created_at) || nowIso(),
+      updated_at: nowIso(),
+    });
+    if (i >= 0) tasks[i] = next; else tasks.push(next);
+    saveTasks({ version: 1, tasks });
+    return next;
+  }
+
+  /** 列出 Task(指挥台读它做跨会话记忆)。 */
+  function listTasks() {
+    const data = loadTasks();
+    return (data.tasks || []).slice().sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  }
 
   function loadBots() {
     // Missing file AND a half-written file (bots present, builtin row absent)
@@ -2422,6 +2473,42 @@ function createProductSurface(repoRoot, opts = {}) {
   }
 
   // GP-51/52: persist the routed line into the room's durable transcript (capped at 200).
+  /* Task 状态**只在这里**同步:appendRoomTranscript 是转录的唯一写入口,
+     所以这里是唯一能保证「转录与 Task 不分叉」的地方。
+     状态来自行本身的 kind —— 不猜、不编。 */
+  function syncTaskFromTranscript(entry) {
+    if (!entry || !entry.kind) return;
+    const sig = String(entry.task_sig || "").trim();
+    if (!sig) return;
+    const roomId = String(entry.room_id || "");
+    if (entry.kind === "final_report") {
+      upsertTask({
+        id: sig, room_id: roomId, state: "done",
+        task: String(entry.task || ""), title: String(entry.task_title || entry.task || ""),
+        total: Number(entry.total || 0), returned: Number(entry.returned || 0),
+        partial: entry.partial === true,
+        closed_at: nowIso(),
+      });
+      return;
+    }
+    if (entry.kind === "confirm_request") {
+      upsertTask({
+        id: sig, room_id: roomId, state: "waiting",
+        task: String(entry.task || ""),
+        question: String(entry.question || ""),
+        waiting_since: nowIso(),
+      });
+      return;
+    }
+    if (entry.kind === "task_state") {
+      if (entry.state === "cancelled") {
+        upsertTask({ id: sig, room_id: roomId, state: "cancelled", reason: String(entry.reason || ""), closed_at: nowIso() });
+      } else if (entry.state === "replanned") {
+        upsertTask({ id: sig, room_id: roomId, task: String(entry.task || "") });
+      }
+    }
+  }
+
   function appendRoomTranscript(room_id, entry) {
     const rooms = requireWritableRooms();
     const room = rooms.rooms.find(r => r.id === room_id);
@@ -2430,6 +2517,13 @@ function createProductSurface(repoRoot, opts = {}) {
     room.transcript.push(entry);
     if (room.transcript.length > 200) room.transcript = room.transcript.slice(-200);
     saveRooms(rooms);
+    // Task 状态在**转录写成功之后**同步 —— 写转录失败就不会留下一个
+    // "转录里没有、Task 里有" 的幽灵状态。
+    try {
+      syncTaskFromTranscript(entry);
+    } catch (_) {
+      // Task 同步失败**不许**让转录写入变成失败:转录已经是真相了。
+    }
     return { ok: true, mode: "host_room_transcript_append" };
   }
 
@@ -4855,6 +4949,8 @@ function createProductSurface(repoRoot, opts = {}) {
     steerRoomTask,
     replanRoomTask,
     latestTaskDirective,
+    listTasks,
+    upsertTask,
     latestReassignment,
     reassignRoomTask,
     applyReassignment,

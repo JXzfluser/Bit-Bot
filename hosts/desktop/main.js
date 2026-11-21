@@ -3044,6 +3044,16 @@ const selectRoomResponders = roomRuntime.selectResponders;
 /* B-8 批 3 续:插话(steer)—— 落共享板,**下一棒**看得见。
    诚实:正在跑的那一轮已经拿到 prompt,看不见这句插话。 */
 /* B-8 批 3 续二:换人(reassign)—— 把某个成员换成另一个 bot,**下一棒**生效。 */
+/* B-8 批 4:Task 实体 —— 跨会话记住「哪些任务还在、暂停了没」。
+   与转录分开存:转录只留最后 200 条,长任务会被滚出视野。 */
+ipcMain.handle("bitbot:tasks:list", async () => {
+  try {
+    return { ok: true, tasks: surface.listTasks() };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e), tasks: [] };
+  }
+});
+
 ipcMain.handle("bitbot:rooms:task:reassign", async (_e, payload) => {
   const p = payload || {};
   return surface.reassignRoomTask(p.task_sig, p.room_id, p.from_bot, p.to_bot);

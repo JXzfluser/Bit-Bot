@@ -18,33 +18,35 @@
   --p-dk-bg0: #121212;
   --p-lt-bg1: #f5f5f5;
   --p-dk-bg1: #1d1d1d;
-  --p-lt-side: #f5f5f5;
+  --p-lt-side: var(--p-lt-bg1);
   --p-dk-side: #0e0e0e;
   --p-lt-input-bg: #f2f2f2;
   --p-dk-input-bg: #232323;
   --p-lt-ink: #1c1c1c;
-  --p-dk-ink: #f5f5f5;
-  --p-lt-text: #1c1c1c;
-  --p-dk-text: #f5f5f5;
+  --p-dk-ink: var(--p-lt-bg1);
+  --p-lt-text: var(--p-lt-ink);
+  --p-dk-text: var(--p-lt-bg1);
   --p-lt-muted: rgba(28, 28, 28, 0.68);
   --p-dk-muted: rgba(245, 245, 245, 0.66);
   --p-lt-line: rgba(28, 28, 28, 0.08);
   --p-dk-line: rgba(245, 245, 245, 0.06);
   /* D-1：主操作 = 近黑（暗色反白），取自 Grok 实测 sendButton / --sand-bg-primary */
-  --p-lt-accent: #1c1c1c;
-  --p-dk-accent: #f5f5f5;
-  --p-lt-accent-ink: #fcfcfc;
-  --p-dk-accent-ink: #121212;
+  --p-lt-accent: var(--p-lt-ink);
+  --p-dk-accent: var(--p-lt-bg1);
+  --p-lt-accent-ink: var(--p-lt-bg0);
+  --p-dk-accent-ink: var(--p-dk-bg0);
+  --p-lt-solid: #fff;
+  --p-dk-solid: #fff;
   --p-lt-accent-soft: rgba(28, 28, 28, 0.06);
   --p-dk-accent-soft: rgba(245, 245, 245, 0.08);
   /* §4.4 实测：用户气泡浅色近黑、暗色绿；助手气泡是墨/纸 6% 的 alpha。
      --fill 必须独立：它是表格头 / ghost hover 的底，不能跟着用户气泡反转。 */
-  --p-lt-user-bubble: #1c1c1c;
+  --p-lt-user-bubble: var(--p-lt-ink);
   --p-dk-user-bubble: #0e9f5a;
   --p-lt-bot-bubble: #1c1c1c0f;
   --p-dk-bot-bubble: #f5f5f50f;
-  --p-lt-fill: #1c1c1c0f;
-  --p-dk-fill: #f5f5f50f;
+  --p-lt-fill: var(--p-lt-bot-bubble);
+  --p-dk-fill: var(--p-dk-bot-bubble);
   --p-lt-warn: #a06a00;
   --p-dk-warn: #d4a017;
   --p-lt-warn-bg: #fbf4e0;
@@ -67,17 +69,17 @@
   --p-dk-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
   --p-lt-shadow-sticky: 0 1px 0 var(--line);
   --p-dk-shadow-sticky: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --p-dk-page-bg: #121212;
+  --p-dk-page-bg: var(--p-dk-bg0);
   --p-dk-surface: #1f1f1f;
   --p-dk-bot-avatar: #2f9e44;
   /* 根块/fLt 独有色值（0a 残余收敛，2026-10-24） */
   --p-lt-surface: #ffffff;
-  --p-lt-page-bg: #fcfcfc;
-  --p-lt-page-bg-force: #fcfcfc;
+  --p-lt-page-bg: var(--p-lt-bg0);
+  --p-lt-page-bg-force: var(--p-lt-bg0);
   --p-lt-bot-avatar: #1e86fc;
-  --p-lt-bot-avatar-force: #2f9e44;
+  --p-lt-bot-avatar-force: var(--p-dk-bot-avatar);
   --p-lt-unread: #0b6dd3;
-  --p-lt-on-fill: #ffffff;
+  --p-lt-on-fill: var(--p-lt-surface);
   --p-lt-lightbox-ink: #eee;
 }
 
@@ -85,14 +87,14 @@
 :root {
   color-scheme: light;
 
-  /* surfaces — Grok-style light default: #fcfcfc field, #f5f5f5 sidebar,
+  /* surfaces — Grok-style light default: fcfcfc field, f5f5f5 sidebar,
      near-black ink + accent (G-28 aligns to the Grok Bot app reference). */
   --bg0: var(--p-lt-bg0);
   --bg1: var(--p-lt-bg1);
   --side: var(--p-lt-side);
   /* raised surface for cards/chips/rails — token, not a literal, so
      force-dark repaints every surface (real-render GP-70 caught 45
-     hard-coded #ffffff shells staying bright in dark mode) */
+     hard-coded ffffff shells staying bright in dark mode) */
   --surface: var(--p-lt-surface);
   /* shell page background — Grok uses a clean white field */
   --page-bg: var(--p-lt-page-bg);
@@ -1085,9 +1087,9 @@ body.grok-ui #sidebar-settings-btn:hover { background: var(--accent-soft) !impor
 /* No-key warning: slim neutral inline notice instead of a big tan callout. */
 body.grok-ui #cfg-strip {
   margin: 0 auto 10px !important; max-width: 760px !important;
-  /* 原来是写死的 #f8f8f8：暗色下这块仍然是浅底，而文字走 --muted（暗色里是
+  /* 原来是写死的 f8f8f8：暗色下这块仍然是浅底，而文字走 --muted（暗色里是
      浅灰），浅字压浅底 → 整行看不见，只剩「去配置」按钮浮在一条白块上。
-     换 --fill（浅色下≈#f4f4f5，几乎同值；暗色下跟着主题变深）。 */
+     换 --fill（浅色下≈f4f4f5，几乎同值；暗色下跟着主题变深）。 */
   background: var(--fill) !important; border: 1px solid var(--line) !important;
   border-radius: 10px !important; color: var(--muted) !important;
   font-size: 12.5px !important; padding: 8px 12px !important; text-align: center !important;
@@ -2482,7 +2484,7 @@ body.grok-ui .bb-notice-act {
 }
 body.grok-ui .bb-notice-act:hover { color: var(--ink); }
 
-/* 主区与输入区必须是同一张纸：body 用 --page-bg(#f5f5f7)、#main 用 --bg0(#fff)，
+/* 主区与输入区必须是同一张纸：body 用 --page-bg(f5f5f7)、#main 用 --bg0(fff)，
    输入框那一行会露出一道灰带（截图可见 y≈560 处长缝）。 */
 body.grok-ui { background: var(--bg0); }
 
@@ -2858,7 +2860,7 @@ body.grok-ui #account-avatar-circle {
   font-size: 13px;
   font-weight: 600;
   /* 真源头像是「实心彩色圆 + 白色字形」；我方沿用主操作色（D-1 近黑/反白），
-     不再用 8% 灰圈 —— 灰圈在 #f5f5f5 底上几乎看不见字形。 */
+     不再用 8% 灰圈 —— 灰圈在 f5f5f5 底上几乎看不见字形。 */
   background: var(--accent);
   color: var(--accent-ink);
   box-shadow: none;
@@ -3394,7 +3396,7 @@ body.grok-ui .ca-cn-line {
 .cmd-toast[hidden] { display: none; }
 .cmd-toast.warn {
   background: var(--danger);
-  color: #fff;
+  color: var(--p-lt-solid);
 }
 @keyframes cmdToastIn {
   from { opacity: 0; transform: translate(-50%, 6px); }
@@ -3686,7 +3688,7 @@ body.grok-ui .cn-hint {
 .mc-qr-wrap {
   display: grid; place-items: center; min-height: 196px;
   padding: 14px; border-radius: 10px;
-  border: 1px solid var(--line); background: #fff;
+  border: 1px solid var(--line); background: var(--p-lt-solid);
 }
 .mc-qr { width: 168px; height: 168px; display: grid; place-items: center; }
 .mc-qr svg { width: 100%; height: 100%; display: block; }
@@ -3713,7 +3715,7 @@ body.grok-ui .cn-hint {
 .mc-ch-ic {
   flex: none; width: 30px; height: 30px; border-radius: 8px;
   display: grid; place-items: center;
-  font-size: 13px; font-weight: 700; color: #fff;
+  font-size: 13px; font-weight: 700; color: var(--p-lt-solid);
 }
 .mc-ch-ding { background: #2f7cf6; }
 .mc-ch-feishu { background: #3370ff; }
@@ -3837,14 +3839,14 @@ body.grok-ui .cn-hint {
 .bm-item-ic {
   flex: none; width: 28px; height: 28px; border-radius: 8px;
   display: grid; place-items: center;
-  font-size: 12px; font-weight: 700; color: #fff;
+  font-size: 12px; font-weight: 700; color: var(--p-lt-solid);
 }
 /* 渠道图标：一个字母的方形牌子，字是 12px/700 的白字。
-   四个底色原来直接用品牌色（#2f7cf6 / #3370ff / #2f9e6f / #17b04a），量下来
+   四个底色原来直接用品牌色（2f7cf6 / 3370ff / 2f9e6f / 17b04a），量下来
    白字对比度分别是 3.94 / 4.28 / 3.36 / 2.86 —— 全部低于 4.5:1（12px/700 不算
    large text，只能用 AA 正文这档）。微信那块最糟，白字基本糊在绿底上。
    下面四个是把每个品牌色**只压亮度、不动色相**到刚好过线（≥4.55:1）的值：
-   #196ef5 4.57 / #2969ff 4.61 / #27845d 4.62 / #128739 4.61。
+   196ef5 4.57 / 2969ff 4.61 / 27845d 4.62 / 128739 4.61。
    色相没变，钉钉还是蓝的、微信还是绿的；变的是「读不读得清」。 */
 .bm-ic-dingtalk { background: #196ef5; }
 .bm-ic-feishu { background: #2969ff; }
@@ -3861,7 +3863,7 @@ body.grok-ui .cn-hint {
 .bm-detail-head { display: flex; align-items: center; gap: 10px; }
 .bm-avatar {
   flex: none; width: 34px; height: 34px; border-radius: 10px;
-  display: grid; place-items: center; font-size: 14px; font-weight: 700; color: #fff;
+  display: grid; place-items: center; font-size: 14px; font-weight: 700; color: var(--p-lt-solid);
 }
 .bm-detail-tx { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
 .bm-detail-tx b { font-size: var(--text-md, 15px); font-weight: 650; }
@@ -3876,7 +3878,7 @@ body.grok-ui .cn-hint {
 }
 .bm-switch-ui::after {
   content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
-  border-radius: 999px; background: #fff; transition: transform .15s;
+  border-radius: 999px; background: var(--p-lt-solid); transition: transform .15s;
 }
 .bm-switch input:checked + .bm-switch-ui { background: var(--accent); }
 .bm-switch input:checked + .bm-switch-ui::after { transform: translateX(14px); }
@@ -3895,7 +3897,7 @@ body.grok-ui .cn-hint {
 .bm-bind { display: grid; grid-template-columns: 196px 1fr; gap: 14px; margin-top: 10px; align-items: start; }
 .bm-qr-wrap {
   display: grid; place-items: center; min-height: 196px; padding: 12px;
-  border-radius: 10px; border: 1px solid var(--line); background: #fff;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--p-lt-solid);
 }
 .bm-qr { width: 172px; height: 172px; display: grid; place-items: center; }
 .bm-qr[hidden] { display: none; }
@@ -3908,7 +3910,7 @@ body.grok-ui .cn-hint {
 }
 .bm-bind-status[data-state="waiting"] { color: var(--accent); }
 .bm-bind-status[data-state="done"] { color: var(--accent); }
-.bm-bind-status[data-state="error"] { color: var(--danger-ink, #b3261e); }
+.bm-bind-status[data-state="error"] { color: var(--danger-ink); }
 .bm-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .bm-actions .bb-btn[hidden] { display: none; }
 .bm-note { margin: 0; font-size: var(--text-xs, 11px); color: var(--muted); line-height: 1.5; }
@@ -3920,7 +3922,7 @@ body.grok-ui .cn-hint {
 .bm-row-tx b { font-size: var(--text-sm); font-weight: 600; }
 .bm-row-tx small { font-size: var(--text-xs, 11px); color: var(--muted); line-height: 1.5; }
 .bm-danger { border-color: var(--danger-line, var(--line)); }
-.bm-danger .bb-btn.is-armed { background: var(--danger, #b3261e); color: #fff; border-color: transparent; }
+.bm-danger .bb-btn.is-armed { background: var(--danger); color: var(--p-lt-solid); border-color: transparent; }
 
 /* 配对弹窗右栏：设备清单 + 去机器人管理的入口 */
 .mc-roster-card { gap: 8px; }
@@ -4069,7 +4071,7 @@ body.grok-ui .cn-hint {
 .cmd-step-mark { font-weight: 700; opacity: .8; }
 .cmd-step-name { font-weight: 600; opacity: .85; flex: 0 0 auto; }
 .cmd-step-text { opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmd-step-bad .cmd-step-mark { color: var(--danger, #c0392b); }
+.cmd-step-bad .cmd-step-mark { color: var(--danger); }
 
 /* B-8 批 3:指挥台的动作行。 */
 .cmd-actions { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
@@ -4083,3 +4085,6 @@ body.grok-ui .cn-hint {
 
 /* B-8 批 3 续二:成员旁的「换人」小按钮。 */
 .bb-btn-xs { padding: 1px 6px; font-size: 11px; flex: 0 0 auto; }
+
+/* B-8 批 4:「仅记录」标签 —— 这批任务的转录已经滚出视野了。 */
+.cmd-tag { font-size: 11px; opacity: .65; border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }

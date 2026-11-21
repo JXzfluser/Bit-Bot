@@ -248,6 +248,76 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
     check(!/function applyReassignment\(candidates, reassign, loadBots\(\)/.test(psrc),
       "TC-21 定义与调用不是同一处(判据没被定义本身骗到)");
 
+    // ── Task 实体(批 4)─────────────────────────────────────────────────
+    {
+      const tmp3 = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-task-"));
+      fs.mkdirSync(path.join(tmp3, "desktop"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp3, "desktop", "rooms.json"),
+        JSON.stringify({ rooms: [{ id: "r1", title: "群", members: [], transcript: [] }] })
+      );
+      const t1 = surfaceMod.createProductSurface(REPO, { dataRoot: tmp3 });
+
+      // 收口 ⇒ Task 实体写 state=done
+      t1.appendRoomTranscript("r1", {
+        kind: "final_report", room_id: "r1", task_sig: "r1|sig-1",
+        task: "写稿子", task_title: "写稿子", total: 2, returned: 2, partial: false, at: "x",
+      });
+      const t1tasks = t1.listTasks();
+      const rec1 = t1tasks.find((x) => x.id === "r1|sig-1");
+      check(!!rec1 && rec1.state === "done",
+        "TC-26 final_report ⇒ Task 实体记 done", JSON.stringify(rec1));
+      check(!!rec1 && rec1.task === "写稿子",
+        "TC-26 Task 实体记着任务标题(不是只有状态)", JSON.stringify(rec1 && rec1.task));
+
+      // 问人 ⇒ state=waiting
+      t1.appendRoomTranscript("r1", {
+        kind: "confirm_request", room_id: "r1", task_sig: "r1|sig-2",
+        task: "选谁", question: "该谁做?", at: "x",
+      });
+      check((t1.listTasks().find((x) => x.id === "r1|sig-2") || {}).state === "waiting",
+        "TC-26 confirm_request ⇒ Task 实体记 waiting");
+
+      // 取消 ⇒ state=cancelled
+      t1.appendRoomTranscript("r1", {
+        kind: "task_state", room_id: "r1", task_sig: "r1|sig-1",
+        state: "cancelled", reason: "user_stop", at: "x",
+      });
+      check((t1.listTasks().find((x) => x.id === "r1|sig-1") || {}).state === "cancelled",
+        "TC-26 刹停 ⇒ Task 实体记 cancelled");
+
+      // 改向 ⇒ 任务文本更新
+      t1.appendRoomTranscript("r1", {
+        kind: "task_state", room_id: "r1", task_sig: "r1|sig-3",
+        state: "replanned", task: "改成写竞品", prev_message_id: "sig-3", at: "x",
+      });
+      check((t1.listTasks().find((x) => x.id === "r1|sig-3") || {}).task === "改成写竞品",
+        "TC-27 改向 ⇒ Task 实体的目标更新了");
+
+      // 负向:没有 task_sig ⇒ **不写** Task(不编)
+      const before = t1.listTasks().length;
+      t1.appendRoomTranscript("r1", { kind: "final_report", room_id: "r1", task: "无 sig", at: "x" });
+      check(t1.listTasks().length === before,
+        "TC-27 负向:没有 task_sig ⇒ 不写 Task(**不编一个出来**)", t1.listTasks().length);
+
+      // **跨会话**:换一个 surface 实例(≈重启进程)⇒ Task 还在
+      const t2 = surfaceMod.createProductSurface(REPO, { dataRoot: tmp3 });
+      const t2tasks = t2.listTasks();
+      check(t2tasks.length === 3,
+        "TC-28 跨会话:换实例(≈重启)⇒ Task 实体还在", t2tasks.length);
+      check((t2tasks.find((x) => x.id === "r1|sig-1") || {}).state === "cancelled",
+        "TC-28 跨会话:状态也还在");
+
+      // 多进程合并:两个实例各写一条 ⇒ 都还在(不整表覆盖)
+      t1.appendRoomTranscript("r1", { kind: "task_state", room_id: "r1", task_sig: "r1|sig-4", state: "cancelled", at: "x" });
+      t2.appendRoomTranscript("r1", { kind: "task_state", room_id: "r1", task_sig: "r1|sig-5", state: "cancelled", at: "x" });
+      const merged = surfaceMod.createProductSurface(REPO, { dataRoot: tmp3 }).listTasks();
+      check(merged.length === 5,
+        "TC-28 多进程各写一条 ⇒ 都在(按 id 合并,不整表覆盖)", merged.length);
+
+      fs.rmSync(tmp3, { recursive: true, force: true });
+    }
+
     fs.rmSync(tmp2, { recursive: true, force: true });
   }
 
@@ -267,6 +337,12 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
   page.on("pageerror", (e) => errs.push(String((e && e.message) || "").split("\n")[0]));
   await page.addInitScript(() => {
     window.bitbot = Object.assign(window.bitbot || {}, {
+      tasks: {
+        list: async () => ({ ok: true, tasks: [
+          { id: "sig-run-1", room_id: "r-run", task: "旧活儿", title: "旧活儿", state: "done", updated_at: "2026-11-20T10:00:00.000Z" },
+          { id: "sig-gone", room_id: "r-old", task: "转录已滚出的那批", title: "转录已滚出的那批", state: "waiting", updated_at: "2026-11-19T10:00:00.000Z" },
+        ] }),
+      },
       rooms: {
         list: async () => ({
           rooms: {
@@ -408,6 +484,32 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
   await page.waitForTimeout(300);
   const swapEmpty = await page.evaluate(() => window.__cmdSwapCalls || []);
   check(swapEmpty.length === 0, "TC-23 负向:空输入 ⇒ 不发任何东西", JSON.stringify(swapEmpty));
+
+  // 批 4:Task 实体的状态**优先**于从转录推的;转录已滚出的批次要补「仅记录」卡
+  const taskUi = await page.evaluate(() => {
+    const d = document.getElementById("cmd-detail");
+    return {
+      text: d ? d.textContent : "",
+      archived: document.querySelectorAll(".cmd-tag").length,
+      hasGone: d ? d.textContent.indexOf("转录已滚出的那批") >= 0 : false,
+      oldDone: d ? d.textContent.indexOf("旧活儿") >= 0 : false,
+    };
+  });
+  check(taskUi.hasGone, "TC-24 转录已滚出的那批 ⇒ 指挥台**还认得**(Task 实体补回来的)");
+  check(taskUi.archived >= 1, "TC-24 它被标成「仅记录」", taskUi.archived);
+  check(taskUi.oldDone, "TC-24 Task 里的任务标题出现在列表里");
+
+  const bucketState = await page.evaluate(() => {
+    const t = window.__bitbotCommand.aggregate(
+      [{ id: "r", title: "x", transcript: [] }],
+      [{ id: "sig-run-1", state: "done", task: "干完了" }]
+    );
+    return t.map((x) => ({ bucket: x.bucket, persisted: !!x.persisted }));
+  });
+  check(bucketState.length === 1 && bucketState[0].bucket === "closed",
+    "TC-25 Task 实体说 done ⇒ 归「已完」(**实体优先于转录推导**)", JSON.stringify(bucketState));
+  check(bucketState.length === 1 && bucketState[0].persisted === true,
+    "TC-25 标成 persisted(知道它来自 Task 实体)");
 
   check(errs.length === 0, "TC-9 页面没有 pageerror", JSON.stringify(errs.slice(0, 3)));
 

@@ -402,7 +402,7 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: var(--bot-avatar, #2f9e44);
+    background: var(--bot-avatar);
     flex: 0 0 28px;
     display: inline-flex;
     align-items: center;
@@ -1416,7 +1416,7 @@
   .rr-fold[open] > .rr-fold-sum::before { content: "▾"; }
   .rr-fold > .rr-fold-body {
     margin: 6px 0 0; padding: 8px 10px; max-height: 240px; overflow: auto;
-    background: var(--code-bg, #111); color: var(--ink, #eee);
+    background: var(--code-bg); color: var(--ink);
     border-radius: var(--radius-sm, 6px);
     font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; word-break: break-word;
   }
@@ -9644,7 +9644,7 @@
             const pre = document.createElement("pre");
             pre.style.cssText =
               "max-height:140px;overflow:auto;white-space:pre-wrap;font-size:10px;line-height:1.45;" +
-              "background:var(--code-bg,#111);color:var(--ink,#eee);padding:6px;border-radius:6px;margin:4px 0 0";
+              "background:var(--code-bg);color:var(--ink);padding:6px;border-radius:6px;margin:4px 0 0";
             pre.textContent = tpl.prompt;
             det.appendChild(pre);
             card.appendChild(det);
@@ -11297,7 +11297,7 @@
 
     /* 轻量粘贴框：抓不到 URL 时让用户贴教程正文。自包含模态，不复用其它弹窗。
        颜色必须走产品 token（--surface / --ink / --line / --input-bg / --accent）。
-       早先这里写的是 var(--panel,#1c1d22) —— 本产品没有 --panel 这个变量，
+       早先这里写的是 var(--panel,1c1d22) —— 本产品没有 --panel 这个变量，
        于是回退成深色底；而标题和「取消」用的是 --ink（浅色主题下近黑），
        深字压深底直接看不见，界面上只剩一个白框 + 「开始搭建」。
        规则：这个弹窗里不要再出现任何字面色值，一律取 token。 */
@@ -11323,13 +11323,13 @@
       box.setAttribute("role", "dialog");
       box.setAttribute("aria-modal", "true");
       box.style.cssText =
-        "background:var(--surface,#fff);color:var(--ink,#18191c);border:1px solid var(--line,#e5e5e5);" +
+        "background:var(--surface);color:var(--ink);border:1px solid var(--line);" +
         "border-radius:var(--radius-xl,12px);box-shadow:var(--shadow-modal,0 12px 40px rgba(0,0,0,.12));" +
         "padding:18px;width:min(560px,92vw);display:flex;flex-direction:column;gap:9px;";
 
       const title = document.createElement("div");
       title.textContent = t("linkErrorUnreadable");
-      title.style.cssText = "font-weight:600;font-size:14px;color:var(--ink,#18191c);";
+      title.style.cssText = "font-weight:600;font-size:14px;color:var(--ink);";
 
       const why = document.createElement("div");
       why.textContent = meta.reason || "抓取失败";
@@ -11345,8 +11345,8 @@
       ta.rows = 10;
       ta.placeholder = t("phPasteTutorialHere");
       ta.style.cssText =
-        "width:100%;box-sizing:border-box;resize:vertical;background:var(--input-bg,#f2f2f2);" +
-        "color:var(--ink,#18191c);border:1px solid var(--line,#e5e5e5);border-radius:var(--radius-md,8px);" +
+        "width:100%;box-sizing:border-box;resize:vertical;background:var(--input-bg);" +
+        "color:var(--ink);border:1px solid var(--line);border-radius:var(--radius-md,8px);" +
         "padding:10px;font:13px/1.5 inherit;";
 
       const foot = document.createElement("div");
@@ -11355,14 +11355,14 @@
       cancel.type = "button";
       cancel.textContent = t("commonCancel");
       cancel.style.cssText =
-        "padding:6px 14px;border-radius:var(--radius-md,8px);border:1px solid var(--line,#e5e5e5);" +
-        "background:transparent;color:var(--ink,#18191c);cursor:pointer;font:inherit;";
+        "padding:6px 14px;border-radius:var(--radius-md,8px);border:1px solid var(--line);" +
+        "background:transparent;color:var(--ink);cursor:pointer;font:inherit;";
       const ok = document.createElement("button");
       ok.type = "button";
       ok.textContent = t("builderActionStart");
       ok.style.cssText =
-        "padding:6px 14px;border-radius:var(--radius-md,8px);border:1px solid var(--accent,#1c1c1c);" +
-        "background:var(--accent,#1c1c1c);color:var(--accent-ink,#fcfcfc);" +
+        "padding:6px 14px;border-radius:var(--radius-md,8px);border:1px solid var(--accent);" +
+        "background:var(--accent);color:var(--accent-ink);" +
         "cursor:pointer;font:inherit;font-weight:600;";
       foot.appendChild(cancel);
       foot.appendChild(ok);
@@ -19056,6 +19056,7 @@
         imDone: "我操作完了",
         approvalTitle: "需要审批",
         cmdCancel: "刹停",
+        cmdArchived: "仅记录 · 转录已滚出",
         cmdSwap: "换人",
         cmdSwapped: "已换人。下一棒会接手。",
         cmdSwapFailed: "没换成:",
@@ -20555,6 +20556,7 @@
         imDone: "我操作完了",
         approvalTitle: "需要審批",
         cmdCancel: "煞停",
+        cmdArchived: "僅記錄 · 轉錄已滾出",
         cmdSwap: "換人",
         cmdSwapped: "已換人。下一棒會接手。",
         cmdSwapFailed: "沒換成:",
@@ -22054,6 +22056,7 @@
         imDone: "I'm done",
         approvalTitle: "Approval required",
         cmdCancel: "Stop",
+        cmdArchived: "Archived · transcript rolled out",
         cmdSwap: "Swap",
         cmdSwapped: "Swapped. The next hop takes over.",
         cmdSwapFailed: "Could not swap: ",
@@ -26234,9 +26237,57 @@
       return key;
     }
 
-    function aggregateCommandTasks(rooms) {
+    /**
+     * 把 Task 实体(B-8 批 4)合并进聚合结果。
+     * 为什么需要它:转录只留**最后 200 条** ⇒ 长任务会被滚出视野;
+     * Task 实体单独记着「这批是什么、什么状态」⇒ 跨会话还认得。
+     * 规则:
+     *   ① 状态**以 Task 实体为准**(它是显式的,不是从转录推的);
+     *   ② Task 里有、聚合里没有的 ⇒ 补一张「仅记录」卡(转录已滚出)。
+     */
+    function cmdMergeTaskRecords(tasks, records) {
+      var list = Array.isArray(records) ? records : [];
+      if (!list.length) return tasks;
+      var byId = {};
+      for (var i = 0; i < list.length; i++) {
+        var r = list[i] || {};
+        if (r.id) byId[r.id] = r;
+      }
+      for (var j = 0; j < tasks.length; j++) {
+        var t = tasks[j];
+        var rec = byId[t.task_sig];
+        if (!rec) continue;
+        t.persisted = true;
+        if (rec.state) t.state = rec.state;
+        if (rec.task && !t.task) t.task = rec.task;
+        if (rec.title && !t.task_title) t.task_title = rec.title;
+      }
+      for (var k = 0; k < list.length; k++) {
+        var rec2 = list[k] || {};
+        if (!rec2.id) continue;
+        var seen = false;
+        for (var m = 0; m < tasks.length; m++) {
+          if (tasks[m].task_sig === rec2.id) { seen = true; break; }
+        }
+        if (seen) continue;
+        tasks.push({
+          room_id: String(rec2.room_id || ""), room_title: "",
+          steps: [], members: [], needs_you: null, report: null,
+          deliverables: [], task: String(rec2.task || ""),
+          task_title: String(rec2.title || rec2.task || ""),
+          task_sig: rec2.id, partial: false,
+          total: Number(rec2.total || 0), returned: Number(rec2.returned || 0),
+          at: String(rec2.updated_at || ""), persisted: true, archived: true,
+          state: String(rec2.state || ""),
+        });
+      }
+      return tasks;
+    }
+
+    function aggregateCommandTasks(rooms, taskRecords) {
       var tasks = [];
       var list = Array.isArray(rooms) ? rooms : [];
+      tasks = cmdMergeTaskRecords(tasks, taskRecords);
       for (var i = 0; i < list.length; i++) {
         var room = list[i] || {};
         var tr = Array.isArray(room.transcript) ? room.transcript : [];
@@ -26311,7 +26362,12 @@
       }
       for (var t = 0; t < tasks.length; t++) {
         var x = tasks[t];
-        if (x.needs_you) x.bucket = "needs_you";
+        // Task 实体的状态**优先**于从转录推出来的 —— 它是显式写下的。
+        var st = String(x.state || "");
+        if (st === "done" || st === "cancelled") x.bucket = "closed";
+        else if (st === "waiting") x.bucket = "needs_you";
+        else if (st === "running") x.bucket = "working";
+        else if (x.needs_you) x.bucket = "needs_you";
         else if (x.report) x.bucket = "closed";
         else if (x.steps.length) x.bucket = "working";
         else x.bucket = "waiting";
@@ -26388,7 +26444,8 @@
           '<div style="font-weight:600">' + cmdEsc(String(title).slice(0, 120)) + "</div>" +
           '<div class="cmd-sub">' + cmdEsc(who ? who : cmdT("cmdMembers")) + "</div>" +
           '<div class="cmd-line">' + cmdEsc(line) + "</div>" +
-          '<div class="cmd-room">' + cmdEsc(t.room_title || t.room_id) + "</div>" +
+          '<div class="cmd-room">' + cmdEsc(t.room_title || t.room_id) +
+          (t.archived ? ' <span class="cmd-tag" data-i18n="cmdArchived">仅记录</span>' : "") + "</div>" +
           // 批 1 让成员真并行 ⇒ 用户必须看得见**谁干了什么**,
           // 否则并行只会变成"一堆 bot 同时动但说不清"。
           cmdRenderSteps(t.steps, t.task_sig, t.room_id) +
@@ -26431,7 +26488,17 @@
       try {
         var res = await api();
         var rooms = (res && res.rooms && res.rooms.rooms) || res.rooms || [];
-        CMD_STATE.tasks = aggregateCommandTasks(rooms);
+        // Task 实体(批 4):跨会话的任务状态。拿不到就照旧只用转录,
+        // **不因此报错** —— 老数据没有 tasks.json 是正常的。
+        var records = [];
+        try {
+          var tApi = window.bitbot && window.bitbot.tasks && window.bitbot.tasks.list;
+          if (typeof tApi === "function") {
+            var tres = await tApi();
+            records = (tres && tres.tasks) || [];
+          }
+        } catch (_) { records = []; }
+        CMD_STATE.tasks = aggregateCommandTasks(rooms, records);
         CMD_STATE.note = "";
       } catch (e) {
         CMD_STATE.tasks = [];

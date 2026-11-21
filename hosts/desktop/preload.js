@@ -123,6 +123,10 @@ contextBridge.exposeInMainWorld("bitbot", {
     takeover: (opts) => ipcRenderer.invoke("bitbot:computer:takeover", opts),
     state: () => ipcRenderer.invoke("bitbot:computer:state"),
   },
+  // Task 实体(B-8 批 4):跨会话的任务状态。
+  tasks: {
+    list: () => ipcRenderer.invoke("bitbot:tasks:list"),
+  },
   rooms: {
     list: () => ipcRenderer.invoke("bitbot:rooms:list"),
     // G-28 #4：群成员增删。渲染层只递交「哪个群、哪个 Bot、加还是减」，
