@@ -2768,18 +2768,37 @@
     </div>
     <!-- B-8 团队指挥台:四桶 + 任务详情。
          数据**不新增来源** —— 任务就是各群转录里真实跑过的那几轮
-         (final_report / bot_reply / confirm_request),渲染层只做聚合与呈现。 -->
-    <div id="command-panel" style="display:none;margin:0 16px 8px" role="region" aria-label="团队指挥台" data-i18n-aria="cmdTitle">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <div style="font-weight:700" data-i18n="cmdTitle">团队指挥台</div>
+         (final_report / bot_reply / confirm_request),渲染层只做聚合与呈现。
+
+         P1 批 1(任务为主轴)改的是**骨架**,不是数据源:
+           一级 #cmd-active  「要你拍板」—— 现在就要我决定的那件事(最多 3 条)
+           二级 #cmd-buckets  四个状态桶变成**可点的 tab**(needs_you/working/waiting/closed)
+           三级 #cmd-detail   按桶分栏:每个桶一个 section,tab 选哪个看哪个
+           四级 #cmd-done     「已完成」默认折叠 —— **原复盘区并进来**(同一份 Task 实体)
+           五级 #cmd-duty     「值班」默认折叠(未来的事,不该抢首屏)
+         复盘区(#cmd-review)与它的渲染函数已删 —— 复盘 = 已完 = 同一份 Task 实体。 -->
+    <div id="command-panel" class="cmd-panel" hidden role="region" aria-label="团队指挥台" data-i18n-aria="cmdTitle">
+      <div class="cmd-head">
+        <div class="cmd-head-title" data-i18n="cmdTitle">团队指挥台</div>
         <button type="button" id="cmd-refresh-btn" class="bb-btn bb-btn-sm" data-i18n="cmdRefresh">刷新</button>
         <button type="button" id="cmd-panel-close" class="bb-btn bb-btn-sm" data-i18n="cmdClose">关闭</button>
       </div>
-      <div id="cmd-hint" class="cmd-note" style="margin-top:6px" data-i18n="cmdHint">任务来自各群的真实执行记录。</div>
-      <div id="cmd-buckets" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"></div>
-      <div id="cmd-detail" style="margin-top:10px"></div>
-      <div id="cmd-duty" style="margin-top:14px"></div>
-      <div id="cmd-review" style="margin-top:14px"></div>
+      <div id="cmd-hint" class="cmd-note cmd-hint" data-i18n="cmdHint">任务来自各群的真实执行记录。</div>
+      <section id="cmd-active" class="cmd-active" hidden>
+        <h3 class="cmd-sec-title" data-i18n="cmdActiveTitle">要你拍板</h3>
+        <div id="cmd-active-list" class="cmd-list"></div>
+        <div id="cmd-active-more" class="cmd-note" hidden></div>
+      </section>
+      <div id="cmd-buckets" class="cmd-tabs" role="tablist"></div>
+      <div id="cmd-detail" class="cmd-sections"></div>
+      <details id="cmd-done" class="cmd-fold">
+        <summary class="cmd-fold-summary"><span data-i18n="cmdDoneTitle">已完成</span><span class="cmd-fold-count" id="cmd-done-count"></span></summary>
+        <div id="cmd-done-list" class="cmd-list"></div>
+      </details>
+      <details id="cmd-duty" class="cmd-fold">
+        <summary class="cmd-fold-summary"><span data-i18n="cmdDuty">值班</span><span class="cmd-fold-count" id="cmd-duty-count"></span></summary>
+        <div id="cmd-duty-list" class="cmd-list"></div>
+      </details>
     </div>
     <div id="settings-panel" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="bb-sheet" id="settings-sheet">
@@ -19100,6 +19119,11 @@
         cmdRefresh: "刷新",
         cmdHint: "任务来自各群的真实执行记录。",
         cmdUnavailable: "拿不到群列表(rooms.list 不可用)。",
+        cmdActiveTitle: "要你拍板",
+        cmdRunningTitle: "在跑的",
+        cmdDoneTitle: "已完成",
+        cmdMoreCount: "还有 {n} 件",
+        cmdSteerScopeHint: "下一棒会看到，当前这轮看不到",
         allowOnce: "本次允许",
         alwaysAllow: "总是允许",
         deny: "拒绝",
@@ -20609,6 +20633,11 @@
         cmdRefresh: "重新整理",
         cmdHint: "任務來自各群的真實執行記錄。",
         cmdUnavailable: "拿不到群清單(rooms.list 不可用)。",
+        cmdActiveTitle: "要你拍板",
+        cmdRunningTitle: "在跑的",
+        cmdDoneTitle: "已完成",
+        cmdMoreCount: "還有 {n} 件",
+        cmdSteerScopeHint: "下一棒會看到，當前這輪看不到",
         allowOnce: "本次允許",
         alwaysAllow: "總是允許",
         deny: "拒絕",
@@ -22118,6 +22147,11 @@
         cmdRefresh: "Refresh",
         cmdHint: "Tasks are rebuilt from each group's real run records.",
         cmdUnavailable: "Group list unavailable (rooms.list missing).",
+        cmdActiveTitle: "Needs you",
+        cmdRunningTitle: "Running",
+        cmdDoneTitle: "Completed",
+        cmdMoreCount: "{n} more",
+        cmdSteerScopeHint: "The next hop sees it, the current turn does not",
         allowOnce: "Allow once",
         alwaysAllow: "Always allow",
         deny: "Deny",
@@ -23176,6 +23210,13 @@
           const k = el.getAttribute("data-agent-step-key");
           if (k) el.textContent = wavegT(k);
         });
+        // P1 批 1 D-15:指挥台的面板是**渲染层取词**的(tab 标签 / 分区标题 /
+        // 状态徽标 / 卡片文案都在渲染那一刻取词),不吃 [data-i18n] 扫描 ——
+        // 换语言后不重画,屏幕上就会留着上一种语言(同上面那条病)。
+        try {
+          if (window.__bitbotCommand && typeof window.__bitbotCommand.render === "function")
+            window.__bitbotCommand.render();
+        } catch (_) { /* 指挥台还没起来 */ }
       } catch (_) { /* not booted yet */ }
     }
     /** GP-70b: renderer-side theme override follows persisted appearance. */
@@ -26261,13 +26302,16 @@
      * 诚实的边界:批 3 之后 bot_reply 也带 task_sig ⇒ 分组精确到批次;
        批次边界由 final_report / confirm_request 划定。界面里如实标注。 */
     var CMD_BUCKETS = [
-      { key: "needs_you", i18n: "cmdNeedsYou" },
-      { key: "working", i18n: "cmdWorking" },
-      { key: "waiting", i18n: "cmdWaiting" },
-      { key: "closed", i18n: "cmdClosed" },
+      { key: "needs_you", i18n: "cmdNeedsYou", sec: "cmdNeedsYou" },
+      { key: "working", i18n: "cmdWorking", sec: "cmdRunningTitle" },
+      { key: "waiting", i18n: "cmdWaiting", sec: "cmdWaiting" },
+      { key: "closed", i18n: "cmdClosed", sec: "cmdClosed" },
     ];
 
-    var CMD_STATE = { tasks: [], selected: null, note: "", duty: {}, records: [] };
+    /* P1 批 1:桶从「只计数」变成**可点的 tab** ⇒ 渲染层多一个状态:当前选中哪个桶。
+       默认落在「在跑」—— 一级信息(要你拍板)由 #cmd-active 单独占首屏,
+       二级信息(正在跑的事)才轮到 tab。 */
+    var CMD_STATE = { tasks: [], selected: null, note: "", duty: {}, records: [], tab: "working" };
 
     function cmdEsc(s) {
       return String(s == null ? "" : s)
@@ -26277,6 +26321,15 @@
     function cmdT(key) {
       try {
         if (typeof wavegT === "function") return wavegT(key);
+      } catch (e) { /* 字典还没就绪 */ }
+      return key;
+    }
+    /* 带参数的取词(如「还有 {n} 件」)。cmdT 不带参数,带参数的是全局 t(key, params)。
+       **不在顶层调用** —— 顶层求值期调 t() 会撞 TDZ(字典在文件后半段才初始化),
+       这里只在**渲染时**调,天然安全。 */
+    function cmdTp(key, params) {
+      try {
+        if (typeof t === "function") return t(key, params);
       } catch (e) { /* 字典还没就绪 */ }
       return key;
     }
@@ -26430,7 +26483,7 @@
         var body = st.ok
           ? String(st.text || "").replace(/\s+/g, " ").trim().slice(0, 120)
           : String(st.error || "").slice(0, 120);
-        html += '<div class="cmd-step' + (st.ok ? "" : " cmd-step-bad") + '">' +
+        html += '<div class="cmd-step' + (st.ok ? "" : " cmd-step-bad") + '" data-cmd-step="' + cmdEsc(st.name || "") + '">' +
           '<span class="cmd-step-mark">' + mark + "</span>" +
           '<span class="cmd-step-name">' + cmdEsc(st.name || "") + "</span>" +
           '<span class="cmd-step-text">' + cmdEsc(body) + "</span>" +
@@ -26438,7 +26491,7 @@
           (taskSig && st.bot_id
             ? '<button type="button" class="bb-btn bb-btn-xs" data-cmd-swap="' + cmdEsc(st.bot_id) +
               '" data-cmd-swap-task="' + cmdEsc(taskSig) + '" data-cmd-swap-room="' + cmdEsc(roomId || "") +
-              '" data-i18n="cmdSwap">换人</button>'
+                            '" data-i18n="cmdSwap">' + cmdEsc(cmdT("cmdSwap")) + "</button>"
             : "") +
           "</div>";
       }
@@ -26448,11 +26501,12 @@
     /**
      * 值班区(B-8 批 H):今天该跑什么、上次跑没跑。
      * 数据来自各群的 routines(routines.list)—— **不另造一份排班**。
+     * P1 批 1:值班是「未来的事」⇒ 降级成面板末尾的**折叠区**(D-6),
+     * 行仍然写进 #cmd-duty-list;折叠区标题与计数在 <summary> 上。
      */
     function cmdRenderDuty(byRoom) {
-      var host = document.getElementById("cmd-duty");
+      var host = document.getElementById("cmd-duty-list");
       if (!host) return;
-      var html = '<div class="cmd-sec-title" data-i18n="cmdDuty">值班</div>';
       var rows = [];
       for (var roomId in byRoom) {
         if (!Object.prototype.hasOwnProperty.call(byRoom, roomId)) continue;
@@ -26463,11 +26517,13 @@
           rows.push({ room_id: roomId, r: r });
         }
       }
+      var cnt = document.getElementById("cmd-duty-count");
+      if (cnt) cnt.textContent = String(rows.length);
       if (!rows.length) {
-        html += '<div class="frame-box" data-i18n="cmdDutyEmpty">没有排班任务</div>';
-        host.innerHTML = html;
+        host.innerHTML = '<div class="frame-box" data-i18n="cmdDutyEmpty">' + cmdEsc(cmdT("cmdDutyEmpty")) + "</div>";
         return;
       }
+      var html = "";
       for (var j = 0; j < rows.length; j++) {
         var row = rows[j];
         var r2 = row.r;
@@ -26486,36 +26542,119 @@
     }
 
     /**
-     * 复盘区(B-8 批 I):做完了什么。
+     * 已完区(P1 批 1,原「复盘区」):做完了什么。
      * 数据来自 Task 实体(state=done)—— 不编,只列真的收过口的批次。
+     * 复盘 = 已完 = **同一份 Task 实体** ⇒ 原 #cmd-review 容器与 cmdRenderReview
+     * 已删(D-7),行仍然叫 .cmd-review-row(门禁按 class 找,不改名)。
      */
-    function cmdRenderReview(records) {
-      var host = document.getElementById("cmd-review");
+    function cmdRenderDone(records) {
+      var host = document.getElementById("cmd-done-list");
       if (!host) return;
-      var html = '<div class="cmd-sec-title" data-i18n="cmdReview">复盘</div>';
       var list = (Array.isArray(records) ? records : []).filter(function (x) {
         return x && x.state === "done";
       });
+      var cnt = document.getElementById("cmd-done-count");
+      if (cnt) cnt.textContent = String(list.length);
       if (!list.length) {
-        html += '<div class="frame-box" data-i18n="cmdReviewEmpty">还没有完成的批次</div>';
-        host.innerHTML = html;
+        host.innerHTML = '<div class="frame-box" data-i18n="cmdReviewEmpty">' + cmdEsc(cmdT("cmdReviewEmpty")) + "</div>";
         return;
       }
       list.sort(function (a, b) {
         return String(b.closed_at || b.updated_at || "").localeCompare(String(a.closed_at || a.updated_at || ""));
       });
+      var html = "";
       for (var i = 0; i < list.length; i++) {
-        var t = list[i] || {};
-        var when = String(t.closed_at || t.updated_at || "");
+        var rec = list[i] || {};
+        var when = String(rec.closed_at || rec.updated_at || "");
         html += '<div class="frame-box cmd-review-row">' +
-          '<div class="cmd-line">' + cmdEsc(String(t.title || t.task || t.id || "").slice(0, 120)) + "</div>" +
+          '<div class="cmd-line">' + cmdEsc(String(rec.title || rec.task || rec.id || "").slice(0, 120)) + "</div>" +
           '<div class="cmd-sub">' + cmdEsc(when) +
-          (t.total ? " · " + cmdEsc(String(t.returned || 0) + "/" + String(t.total)) : "") +
-          (t.partial ? " · " + cmdT("cmdPartial") : "") + "</div></div>";
+          (rec.total ? " · " + cmdEsc(String(rec.returned || 0) + "/" + String(rec.total)) : "") +
+          (rec.partial ? " · " + cmdT("cmdPartial") : "") + "</div></div>";
       }
       host.innerHTML = html;
     }
 
+    /** 桶的中文/英文标签(状态徽标用)。取不到就返回空串,不编。 */
+    function cmdBucketLabel(bucket) {
+      for (var i = 0; i < CMD_BUCKETS.length; i++) {
+        if (CMD_BUCKETS[i].key === bucket) return cmdT(CMD_BUCKETS[i].i18n);
+      }
+      return "";
+    }
+
+    /**
+     * 一张任务卡(P1 批 1 D-8..D-13)。
+     * 数据仍然来自同一份聚合结果 —— **不新增数据源**。
+     * 四个动作(插话/改向/刹停/换人)的属性与语义一个字没动(D-11/D-12);
+     * 变的只是外壳:卡片根从 div.frame-box 变成 article.cmd-card,
+     * 标题走类型阶 class(去掉行内 font-weight),多一个状态徽标。
+     */
+    function cmdCardHtml(task) {
+      var t = task;
+      var title = t.task_title || t.task || (t.steps[0] && t.steps[0].text) || t.room_title || "";
+      var who = t.members.join("、");
+      var line = "";
+      if (t.needs_you) line = cmdT("cmdNeedsYou") + "：" + t.needs_you.question;
+      else if (t.partial) line = cmdT("cmdPartial") + " " + t.returned + "/" + t.total;
+      else if (t.report) line = cmdT("cmdClosed") + " " + t.returned + "/" + t.total;
+      else line = cmdT("cmdWorking");
+      return '<article class="cmd-card" data-cmd-task="' + cmdEsc(t.task_sig || t.at) +
+        '" data-bucket="' + cmdEsc(t.bucket || "") +
+        '" data-task-sig="' + cmdEsc(t.task_sig || "") + '">' +
+        '<div class="cmd-card-head">' +
+        '<h4 class="cmd-card-title">' + cmdEsc(String(title).slice(0, 120)) + "</h4>" +
+        '<span class="cmd-state" data-cmd-state="' + cmdEsc(t.bucket || "") + '">' +
+        cmdEsc(cmdBucketLabel(t.bucket)) + "</span></div>" +
+        '<div class="cmd-sub">' + cmdEsc(who ? who : cmdT("cmdMembers")) + "</div>" +
+        '<div class="cmd-line">' + cmdEsc(line) + "</div>" +
+        '<div class="cmd-room cmd-card-room">' + cmdEsc(t.room_title || t.room_id) +
+        (t.archived ? ' <span class="cmd-tag" data-i18n="cmdArchived">' + cmdEsc(cmdT("cmdArchived")) + "</span>" : "") + "</div>" +
+        // 批 1 让成员真并行 ⇒ 用户必须看得见**谁干了什么**,
+        // 否则并行只会变成"一堆 bot 同时动但说不清"。
+        cmdRenderSteps(t.steps, t.task_sig, t.room_id) +
+        // 指挥区:一句输入,两个动作 —— 插话(下一棒看见) / 改向(立刻重跑)。
+        '<div class="cmd-command">' +
+        '<input class="cmd-input" type="text" data-i18n-placeholder="cmdCmdPlaceholder" placeholder="' +
+          cmdEsc(cmdT("cmdCmdPlaceholder")) + '">' +
+        '<button type="button" class="bb-btn bb-btn-sm" data-cmd-steer="' + cmdEsc(t.task_sig) +
+          '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdSteer">' + cmdEsc(cmdT("cmdSteer")) + "</button>" +
+        '<button type="button" class="bb-btn bb-btn-sm" data-cmd-replan="' + cmdEsc(t.task_sig) +
+          '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdReplan">' + cmdEsc(cmdT("cmdReplan")) + "</button>" +
+        // 插话的诚实边界常驻小字(product_surface.js:2756 scope:"next_hop"):
+        // 下一棒看得见,**当前这一轮看不见** —— 不许让用户以为插话能打断这一轮。
+        '<span class="cmd-note cmd-steer-hint" data-i18n="cmdSteerScopeHint">' + cmdEsc(cmdT("cmdSteerScopeHint")) + "</span>" +
+        "</div>" +
+        '<div class="cmd-actions">' +
+        '<button type="button" class="bb-btn bb-btn-sm" data-cmd-open-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">' + cmdEsc(cmdT("cmdOpenRoom")) + "</button>" +
+        // 「刹停」只在**真在跑**且有 task_sig 时才给 —— 没有在跑的,
+        // 按下去只会得到一句 "no_running_task",不如不给。
+        (t.bucket === "working" && t.task_sig
+          ? '<button type="button" class="bb-btn bb-btn-sm bb-btn-danger-soft" data-cmd-cancel="' +
+                        cmdEsc(t.task_sig) + '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdCancel">' + cmdEsc(cmdT("cmdCancel")) + "</button>"
+          : "") +
+        "</div>" +
+        "</article>";
+    }
+
+    /**
+     * tab 标签的 data-i18n 属性 —— **写字面量,不拼**。
+     * copy contract CC-05 扫的是源码里 data-i18n 属性的取值;拼出来的键名它看不见
+     * ⇒ 拼 = 哪天漏了词条也不会有人发现(界面直接显示键名)。
+     */
+    function cmdTabAttr(bucket) {
+      if (bucket === "needs_you") return 'data-i18n="cmdNeedsYou"';
+      if (bucket === "working") return 'data-i18n="cmdWorking"';
+      if (bucket === "waiting") return 'data-i18n="cmdWaiting"';
+      if (bucket === "closed") return 'data-i18n="cmdClosed"';
+      return "";
+    }
+
+    /**
+     * 四个状态桶 → **可点的 tab**(P1 批 1 D-2)。
+     * 以前这里只画四个数字,用户点不动、数字与列表之间没有映射;
+     * 现在每个桶一个 button,点一下就只看那个桶的卡。
+     */
     function cmdRenderBuckets() {
       var host = document.getElementById("cmd-buckets");
       if (!host) return;
@@ -26526,13 +26665,21 @@
         for (var j = 0; j < CMD_STATE.tasks.length; j++) {
           if (CMD_STATE.tasks[j].bucket === b.key) n += 1;
         }
-        html += '<div class="frame-box" style="min-width:132px;flex:1">' +
-          '<div class="cmd-bucket-title">' + cmdEsc(cmdT(b.i18n)) + "</div>" +
-          '<div class="cmd-bucket-count">' + n + "</div></div>";
+        var on = CMD_STATE.tab === b.key;
+        html += '<button type="button" class="cmd-tab' + (on ? " cmd-tab-on" : "") + '" data-cmd-tab="' +
+          b.key + '" role="tab" aria-selected="' + (on ? "true" : "false") + '">' +
+          // 标签文本渲染时取词(cmdT),同时挂 data-i18n ⇒ 换语言时扫描也覆盖得到。
+          '<span class="cmd-tab-label" ' + cmdTabAttr(b.key) + '>' + cmdEsc(cmdT(b.i18n)) + "</span>" +
+          '<span class="cmd-tab-count">' + n + "</span></button>";
       }
       host.innerHTML = html;
     }
 
+    /**
+     * 按桶分栏的列表(P1 批 1 D-4):每个桶一个 section,
+     * 只有 tab 选中的那个可见(其余 hidden,但**仍在 DOM 里** ——
+     * 门禁读 #cmd-detail 的 textContent,读的是真实内容而不是"当前这一屏")。
+     */
     function cmdRenderList() {
       var host = document.getElementById("cmd-detail");
       if (!host) return;
@@ -26543,55 +26690,79 @@
         html += '<div class="frame-box cmd-note-box">' + cmdEsc(CMD_STATE.note) + "</div>";
       }
       if (!CMD_STATE.tasks.length) {
-        host.innerHTML = html + '<div class="frame-box" data-i18n="cmdEmpty">还没有任务</div>';
+        host.innerHTML = html + '<div class="frame-box" data-i18n="cmdEmpty">' + cmdEsc(cmdT("cmdEmpty")) + "</div>";
         return;
       }
-      for (var i = 0; i < CMD_STATE.tasks.length; i++) {
-        var t = CMD_STATE.tasks[i];
-        var title = t.task_title || t.task || t.steps[0] && t.steps[0].text || t.room_title || "";
-        var who = t.members.join("、");
-        var line = "";
-        if (t.needs_you) line = cmdT("cmdNeedsYou") + "：" + t.needs_you.question;
-        else if (t.partial) line = cmdT("cmdPartial") + " " + t.returned + "/" + t.total;
-        else if (t.report) line = cmdT("cmdClosed") + " " + t.returned + "/" + t.total;
-        else line = cmdT("cmdWorking");
-        html += '<div class="frame-box" style="margin-bottom:8px" data-cmd-task="' + cmdEsc(t.task_sig || t.at) + '">' +
-          '<div style="font-weight:600">' + cmdEsc(String(title).slice(0, 120)) + "</div>" +
-          '<div class="cmd-sub">' + cmdEsc(who ? who : cmdT("cmdMembers")) + "</div>" +
-          '<div class="cmd-line">' + cmdEsc(line) + "</div>" +
-          '<div class="cmd-room">' + cmdEsc(t.room_title || t.room_id) +
-          (t.archived ? ' <span class="cmd-tag" data-i18n="cmdArchived">仅记录</span>' : "") + "</div>" +
-          // 批 1 让成员真并行 ⇒ 用户必须看得见**谁干了什么**,
-          // 否则并行只会变成"一堆 bot 同时动但说不清"。
-          cmdRenderSteps(t.steps, t.task_sig, t.room_id) +
-          // 指挥区:一句输入,两个动作 —— 插话(下一棒看见) / 改向(立刻重跑)。
-          '<div class="cmd-command">' +
-          '<input class="cmd-input" type="text" data-i18n-placeholder="cmdCmdPlaceholder" placeholder="' +
-            cmdEsc(cmdT("cmdCmdPlaceholder")) + '">' +
-          '<button type="button" class="bb-btn bb-btn-sm" data-cmd-steer="' + cmdEsc(t.task_sig) +
-            '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdSteer">插话</button>' +
-          '<button type="button" class="bb-btn bb-btn-sm" data-cmd-replan="' + cmdEsc(t.task_sig) +
-            '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdReplan">改向</button>' +
-          "</div>" +
-          '<div class="cmd-actions">' +
-          '<button type="button" class="bb-btn bb-btn-sm" data-cmd-open-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">打开群</button>' +
-          // 「刹停」只在**真在跑**且有 task_sig 时才给 —— 没有在跑的,
-          // 按下去只会得到一句 "no_running_task",不如不给。
-          (t.bucket === "working" && t.task_sig
-            ? '<button type="button" class="bb-btn bb-btn-sm bb-btn-danger-soft" data-cmd-cancel="' +
-              cmdEsc(t.task_sig) + '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdCancel">刹停</button>'
-            : "") +
-          "</div>" +
-          "</div>";
+      var byBucket = {};
+      for (var i = 0; i < CMD_BUCKETS.length; i++) byBucket[CMD_BUCKETS[i].key] = [];
+      for (var j = 0; j < CMD_STATE.tasks.length; j++) {
+        var task = CMD_STATE.tasks[j];
+        var key = task.bucket || "waiting";
+        if (!byBucket[key]) byBucket[key] = [];
+        byBucket[key].push(task);
+      }
+      for (var k = 0; k < CMD_BUCKETS.length; k++) {
+        var b = CMD_BUCKETS[k];
+        var list = byBucket[b.key] || [];
+        var on = b.key === CMD_STATE.tab;
+        html += '<section class="cmd-section" data-bucket="' + b.key + '"' + (on ? "" : " hidden") + ">" +
+          '<h4 class="cmd-sec-title">' + cmdEsc(cmdT(b.sec)) + "</h4>" +
+          '<div class="cmd-list">';
+        if (!list.length) {
+          html += '<div class="frame-box cmd-empty" data-i18n="cmdEmpty">' + cmdEsc(cmdT("cmdEmpty")) + "</div>";
+        } else {
+          for (var m = 0; m < list.length; m++) html += cmdCardHtml(list[m]);
+        }
+        html += "</div></section>";
       }
       host.innerHTML = html;
     }
 
+    /**
+     * 一级信息(P1 批 1 D-3):**要你拍板**的那件事。
+     * 面板打开后的第一屏就是它;没有待办时整块隐藏(不占屏),
+     * 首屏直接是四个 tab。最多 3 条 + 「还有 N 件」。
+     */
+    function cmdRenderActive() {
+      var sec = document.getElementById("cmd-active");
+      var list = document.getElementById("cmd-active-list");
+      if (!sec || !list) return;
+      var more = document.getElementById("cmd-active-more");
+      var needs = [];
+      for (var i = 0; i < CMD_STATE.tasks.length; i++) {
+        if (CMD_STATE.tasks[i].bucket === "needs_you") needs.push(CMD_STATE.tasks[i]);
+      }
+      if (!needs.length) {
+        sec.hidden = true;
+        list.innerHTML = "";
+        if (more) { more.hidden = true; more.textContent = ""; }
+        return;
+      }
+      sec.hidden = false;
+      var shown = needs.length > 3 ? needs.slice(0, 3) : needs;
+      var html = "";
+      for (var j = 0; j < shown.length; j++) html += cmdCardHtml(shown[j]);
+      list.innerHTML = html;
+      if (more) {
+        var rest = needs.length - shown.length;
+        if (rest > 0) {
+          more.hidden = false;
+          more.textContent = cmdTp("cmdMoreCount", { n: String(rest) });
+        } else {
+          more.hidden = true;
+          more.textContent = "";
+        }
+      }
+    }
+
     function cmdRender() {
+      // P1 批 1 的渲染顺序:桶 tab → 一级「要你拍板」→ 按桶分栏的列表 →
+      // 「已完成」折叠(原复盘区)→ 「值班」折叠。
       cmdRenderBuckets();
-      cmdRenderDuty(CMD_STATE.duty || {});
-      cmdRenderReview(CMD_STATE.records || []);
+      cmdRenderActive();
       cmdRenderList();
+      cmdRenderDone(CMD_STATE.records || []);
+      cmdRenderDuty(CMD_STATE.duty || {});
     }
 
     async function cmdRefresh() {
@@ -26645,8 +26816,10 @@
     }
 
     async function cmdOpen() {
+      // P1 批 1 D-1:面板的显隐走 **hidden 属性**(不再写行内 style.display)
+      // —— ui_chrome.css 里 [hidden]{display:none!important} 是既有兜底(T-1b)。
       var el = document.getElementById("command-panel");
-      if (el) el.style.display = "";
+      if (el) el.hidden = false;
       var btn = document.getElementById("cmd-open-btn");
       if (btn) btn.setAttribute("aria-expanded", "true");
       await cmdRefresh();
@@ -26654,7 +26827,7 @@
 
     function cmdClose() {
       var el = document.getElementById("command-panel");
-      if (el) el.style.display = "none";
+      if (el) el.hidden = true;
       var btn = document.getElementById("cmd-open-btn");
       if (btn) btn.setAttribute("aria-expanded", "false");
     }
@@ -26669,6 +26842,13 @@
       document.addEventListener("click", function (ev) {
         var t = ev.target;
         if (!t || !t.getAttribute) return;
+        // P1 批 1 D-2:桶 tab —— 点一下就切到那个桶,只看那个桶的卡。
+        var tabKey = t.getAttribute("data-cmd-tab");
+        if (tabKey) {
+          CMD_STATE.tab = tabKey;
+          cmdRender();
+          return;
+        }
         var swapBot = t.getAttribute("data-cmd-swap");
         if (swapBot) {
           var swapCard = t.closest ? t.closest("[data-cmd-task]") : null;
@@ -26763,6 +26943,9 @@
     window.__bitbotCommand = {
       aggregate: aggregateCommandTasks,
       open: cmdOpen, close: cmdClose, refresh: cmdRefresh,
+      // P1 批 1 D-15:暴露 render —— 换语言时要把已渲染的面板重画,
+      // 否则屏幕上会留着上一种语言(wavegLangApply 里那条注释记过这个病)。
+      render: cmdRender,
       state: CMD_STATE, buckets: CMD_BUCKETS,
     };
   })();

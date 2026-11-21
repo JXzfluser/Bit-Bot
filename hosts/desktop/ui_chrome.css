@@ -4066,8 +4066,6 @@ body.grok-ui .cn-hint {
 /* B-8 团队指挥台:字号走类型阶 class,渲染层不写行内 font-size
    (行内字号有棘轮门禁 T-3 盯着 —— 收敛目标是 0)。 */
 .cmd-note { font-size: 12px; opacity: .7; }
-.cmd-bucket-title { font-size: 12px; opacity: .75; }
-.cmd-bucket-count { font-size: 20px; font-weight: 700; }
 .cmd-sub { font-size: 12px; opacity: .75; margin-top: 2px; }
 .cmd-line { font-size: 12px; margin-top: 4px; }
 .cmd-room { font-size: 11px; opacity: .6; margin-top: 2px; }
@@ -4099,3 +4097,61 @@ body.grok-ui .cn-hint {
 /* B-8 批 H/I:值班区与复盘区。 */
 .cmd-sec-title { font-weight: 600; margin-bottom: 6px; }
 .cmd-duty-row, .cmd-review-row { margin-bottom: 6px; }
+
+/* ── P1 批 1:指挥台改骨架(任务为主轴) ─────────────────────────────────────
+   规则(与 docs/design/p1-task-axis-and-mobile-command.md §2.3 一致):
+   · 不写行内 font-size / 十六进制色值 / !important —— 全部走 var(--token);
+   · 一级「要你拍板」(#cmd-active) → 二级四个可点的桶 tab(#cmd-buckets)
+     → 三级按桶分栏(#cmd-detail) → 四级「已完成」折叠(#cmd-done)
+     → 五级「值班」折叠(#cmd-duty)。 */
+.cmd-panel { margin: 0 16px 8px; }
+.cmd-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cmd-head-title { font-weight: 700; }
+.cmd-hint { margin-top: 6px; }
+
+/* 桶 tab —— 以前只有四个数字,现在点得动。 */
+.cmd-tabs { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+.cmd-tab {
+  display: inline-flex; align-items: baseline; gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--line); border-radius: var(--radius-pill);
+  background: var(--surface); color: var(--muted);
+  font-family: inherit; font-size: var(--text-sm); cursor: pointer;
+}
+.cmd-tab-on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
+.cmd-tab-label { font-size: var(--text-sm); }
+.cmd-tab-count { font-size: var(--text-sm); font-weight: 700; opacity: .75; }
+
+/* 一级:要你拍板。没有待办时整块 hidden(不占屏)。 */
+.cmd-active { margin-top: var(--space-5); }
+
+/* 按桶分栏的列表区。只有选中的那个 section 可见,其余 hidden。 */
+.cmd-sections { margin-top: var(--space-5); }
+.cmd-section { margin-bottom: var(--space-5); }
+.cmd-list { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* 任务卡:根元素从 div.frame-box 换成 article.cmd-card。 */
+.cmd-card {
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: var(--surface); padding: var(--space-5);
+}
+.cmd-card-head { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+.cmd-card-title { font-size: var(--text-md); font-weight: 600; margin: 0; }
+.cmd-state {
+  font-size: var(--text-xs); color: var(--muted);
+  border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 0 6px;
+}
+.cmd-card-room { margin-top: 2px; }
+
+/* 插话旁常驻的小字:下一棒看得见,当前这一轮看不见(诚实边界)。 */
+.cmd-steer-hint { flex: 1 1 100%; }
+
+/* 折叠区(已完成 / 值班):默认收起,标题行带计数。 */
+.cmd-fold { margin-top: var(--space-6); }
+.cmd-fold-summary {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  cursor: pointer; font-weight: 600; font-size: var(--text-sm);
+  color: var(--muted); list-style: revert;
+}
+.cmd-fold-count { font-size: var(--text-xs); font-weight: 400; opacity: .75; }
+.cmd-fold[open] .cmd-fold-summary { color: var(--ink); }

@@ -489,10 +489,20 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
     window.bitbot.rooms.reassignTask = async (p) => { window.__cmdSwapCalls.push(p); return { ok: true, scope: "next_hop" }; };
   });
   await page.evaluate(() => {
-    const card = document.querySelector("[data-cmd-task]");
+    /* P1 批 1:setup 从「靠 DOM 顺序巧合」改成「按产品契约指名道姓」。
+       原来这里写的是「往**文档里第一张**任务卡的输入框里写值」—— 那只在旧版
+       「一张平铺列表」里成立:第一张卡恰好就是第一个「换人」按钮所属的那张。
+       新 IA 把「要你拍板」提到第一屏(#cmd-active),文档里第一张卡换了人,
+       那样写会**写到别的卡上** ⇒ 断言假红(产品其实是对的:换人读的是
+       **自己那张卡**的输入框,见 index.html 的 data-cmd-swap 处理)。
+       现在按契约写:往**被点的那个「换人」按钮所属的那张卡**里写值。
+       **断言本身一个字没动**(仍然是「只调 1 次 / from_bot=t1 / to_bot=小李 /
+       带 task_sig」),而且这条判据更严 —— 它现在真的钉住了「读同一张卡的输入框」,
+       旧写法里「读第一张卡的输入框」也能蒙混过关。 */
+    const b = document.querySelector("[data-cmd-swap]");
+    const card = b && b.closest ? b.closest("[data-cmd-task]") : null;
     const inp = card ? card.querySelector(".cmd-input") : null;
     if (inp) inp.value = "小李";
-    const b = document.querySelector("[data-cmd-swap]");
     if (b) b.click();
   });
   await page.waitForTimeout(400);
@@ -504,10 +514,10 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
 
   await page.evaluate(() => {
     window.__cmdSwapCalls = [];
-    const card = document.querySelector("[data-cmd-task]");
+    const b = document.querySelector("[data-cmd-swap]");
+    const card = b && b.closest ? b.closest("[data-cmd-task]") : null;
     const inp = card ? card.querySelector(".cmd-input") : null;
     if (inp) inp.value = "  ";
-    const b = document.querySelector("[data-cmd-swap]");
     if (b) b.click();
   });
   await page.waitForTimeout(300);
@@ -550,13 +560,15 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
   check(dutyUi.text.indexOf("明天 09:00") >= 0, "TC-29 值班区写着下次什么时候跑");
   check(dutyUi.text.indexOf("昨天 18:30") >= 0, "TC-29 一次性任务显示**上次**跑的时间(不是说「还没排上」)");
 
-  // 批 I:复盘区
+  // P1 批 1:复盘区已并进「已完成」折叠区(同一份 Task 实体,state==="done"),
+  // 容器 id 由 #cmd-review 改成 #cmd-done-list —— **只改这一个 id 字符串**
+  // (方案 §4 批 1 明写:不许把断言删掉换绿;行的 class .cmd-review-row 保留)。
   const revUi = await page.evaluate(() => {
-    const d = document.getElementById("cmd-review");
+    const d = document.getElementById("cmd-done-list");
     return { text: d ? d.textContent : "", rows: document.querySelectorAll(".cmd-review-row").length };
   });
-  check(revUi.rows >= 1, "TC-30 复盘区画出了完成的批次", revUi.rows);
-  check(revUi.text.indexOf("旧活儿") >= 0, "TC-30 复盘区写着做完了什么");
+  check(revUi.rows >= 1, "TC-30 已完成区画出了完成的批次", revUi.rows);
+  check(revUi.text.indexOf("旧活儿") >= 0, "TC-30 已完成区写着做完了什么");
 
   // 负向:排班读不到 ⇒ 如实说「没有排班任务」,**不编一条出来**
   await page.evaluate(() => {
