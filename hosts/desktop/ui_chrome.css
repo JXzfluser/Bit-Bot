@@ -4053,3 +4053,12 @@ body.grok-ui .cn-hint {
 .gi-result li { margin-top: 2px; }
 .gi-result .gi-fail { color: var(--danger); }
 .gi-result .gi-sub { color: var(--muted); }
+
+/* B-8 团队指挥台:字号走类型阶 class,渲染层不写行内 font-size
+   (行内字号有棘轮门禁 T-3 盯着 —— 收敛目标是 0)。 */
+.cmd-note { font-size: 12px; opacity: .7; }
+.cmd-bucket-title { font-size: 12px; opacity: .75; }
+.cmd-bucket-count { font-size: 20px; font-weight: 700; }
+.cmd-sub { font-size: 12px; opacity: .75; margin-top: 2px; }
+.cmd-line { font-size: 12px; margin-top: 4px; }
+.cmd-room { font-size: 11px; opacity: .6; margin-top: 2px; }

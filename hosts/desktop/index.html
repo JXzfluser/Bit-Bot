@@ -2564,6 +2564,8 @@
       <button type="button" id="sidebar-toggle-btn" title="收起侧栏" aria-label="收起或展开侧栏" aria-expanded="true" data-i18n-title="railActionCollapse" data-i18n-aria="railActionToggleSidebar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
       <button type="button" id="sidebar-search-toggle" title="搜索 Bot / 群组 (Ctrl/Cmd+K)" aria-label="搜索 Bot 或群组" data-i18n-aria="searchAria" data-i18n-title="railActionSearch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
       <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话" data-i18n-title="railActionNewChat" data-i18n-aria="railActionNewChatAria">+</button>
+      <!-- B-8 团队指挥台:不是又一个聊天流 —— 是"谁在干什么、要我拍什么板"。 -->
+      <button type="button" id="cmd-open-btn" title="团队指挥台" aria-label="团队指挥台" data-i18n-title="cmdPanel" data-i18n-aria="cmdPanel" aria-expanded="false">☰</button>
     </div>
     <!-- 侧栏搜索：搜的是「Bot」和「群组」。产品模型就是 Bot + 群 Bot——会话
          属于某个 Bot、收在账户条弹层里，不在这颗放大镜的搜索范围里。
@@ -2763,6 +2765,19 @@
       <div class="actions" style="margin-top:10px;display:flex;gap:8px">
         <button data-i18n="permissionDismiss" type="button" id="permission-dismiss" class="bb-btn bb-btn-sm">关闭卡片</button>
       </div>
+    </div>
+    <!-- B-8 团队指挥台:四桶 + 任务详情。
+         数据**不新增来源** —— 任务就是各群转录里真实跑过的那几轮
+         (final_report / bot_reply / confirm_request),渲染层只做聚合与呈现。 -->
+    <div id="command-panel" style="display:none;margin:0 16px 8px" role="region" aria-label="团队指挥台" data-i18n-aria="cmdTitle">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="font-weight:700" data-i18n="cmdTitle">团队指挥台</div>
+        <button type="button" id="cmd-refresh-btn" class="bb-btn bb-btn-sm" data-i18n="cmdRefresh">刷新</button>
+        <button type="button" id="cmd-panel-close" class="bb-btn bb-btn-sm" data-i18n="cmdClose">关闭</button>
+      </div>
+      <div id="cmd-hint" class="cmd-note" style="margin-top:6px" data-i18n="cmdHint">任务来自各群的真实执行记录。</div>
+      <div id="cmd-buckets" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"></div>
+      <div id="cmd-detail" style="margin-top:10px"></div>
     </div>
     <div id="settings-panel" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="bb-sheet" id="settings-sheet">
@@ -19040,6 +19055,20 @@
         takeoverHint: "密码 / 验证码 / 2FA 请在本机输入，不要贴进对话。",
         imDone: "我操作完了",
         approvalTitle: "需要审批",
+        cmdPanel: "指挥台",
+        cmdTitle: "团队指挥台",
+        cmdNeedsYou: "需要你拍板",
+        cmdWorking: "在跑",
+        cmdWaiting: "等待",
+        cmdClosed: "已完",
+        cmdEmpty: "还没有任务",
+        cmdMembers: "成员",
+        cmdPartial: "部分完成",
+        cmdOpenRoom: "打开群",
+        cmdClose: "关闭",
+        cmdRefresh: "刷新",
+        cmdHint: "任务来自各群的真实执行记录。",
+        cmdUnavailable: "拿不到群列表(rooms.list 不可用)。",
         allowOnce: "本次允许",
         alwaysAllow: "总是允许",
         deny: "拒绝",
@@ -20512,6 +20541,20 @@
         takeoverHint: "密碼 / 驗證碼 / 2FA 請在本機輸入，不要貼進對話。",
         imDone: "我操作完了",
         approvalTitle: "需要審批",
+        cmdPanel: "指揮台",
+        cmdTitle: "團隊指揮台",
+        cmdNeedsYou: "需要你拍板",
+        cmdWorking: "在跑",
+        cmdWaiting: "等待",
+        cmdClosed: "已完",
+        cmdEmpty: "還沒有任務",
+        cmdMembers: "成員",
+        cmdPartial: "部分完成",
+        cmdOpenRoom: "開啟群",
+        cmdClose: "關閉",
+        cmdRefresh: "重新整理",
+        cmdHint: "任務來自各群的真實執行記錄。",
+        cmdUnavailable: "拿不到群清單(rooms.list 不可用)。",
         allowOnce: "本次允許",
         alwaysAllow: "總是允許",
         deny: "拒絕",
@@ -21984,6 +22027,20 @@
         takeoverHint: "Type passwords / codes / 2FA on the machine — never paste them into chat.",
         imDone: "I'm done",
         approvalTitle: "Approval required",
+        cmdPanel: "Command",
+        cmdTitle: "Team command",
+        cmdNeedsYou: "Needs you",
+        cmdWorking: "Working",
+        cmdWaiting: "Waiting",
+        cmdClosed: "Closed",
+        cmdEmpty: "No tasks yet",
+        cmdMembers: "Members",
+        cmdPartial: "Partial",
+        cmdOpenRoom: "Open room",
+        cmdClose: "Close",
+        cmdRefresh: "Refresh",
+        cmdHint: "Tasks are rebuilt from each group's real run records.",
+        cmdUnavailable: "Group list unavailable (rooms.list missing).",
         allowOnce: "Allow once",
         alwaysAllow: "Always allow",
         deny: "Deny",
@@ -26103,5 +26160,240 @@
   <!-- G-28 #12：命令回执。控制命令不进消息流，但「生效了」必须看得见 ——
        回执落在这里，一行胶囊，2.6s 自己走（失败 4.6s）。 -->
   <div id="cmd-toast" class="cmd-toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- B-8 团队指挥台 -->
+  <script>
+  (function () {
+    "use strict";
+
+    /* ── 任务是从转录**重建**出来的,不是另一份数据 ──
+       群转录里已经落着三类事实行:
+         · bot_reply / bot_reply_error —— 某个成员真的跑了一轮
+         · confirm_request              —— 停下来了,等人回答
+         · final_report                 —— 这一批收口了(含产物与分段)
+       ⇒ 指挥台 = 这些行的聚合视图。**不新增数据源** ⇒ 不会与真相分叉。
+       诚实的边界:bot_reply 行没有 task_sig ⇒ 同一群连续两批可能并到一组;
+       批次边界由 final_report / confirm_request 划定。界面里如实标注。 */
+    var CMD_BUCKETS = [
+      { key: "needs_you", i18n: "cmdNeedsYou" },
+      { key: "working", i18n: "cmdWorking" },
+      { key: "waiting", i18n: "cmdWaiting" },
+      { key: "closed", i18n: "cmdClosed" },
+    ];
+
+    var CMD_STATE = { tasks: [], selected: null, note: "" };
+
+    function cmdEsc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function cmdT(key) {
+      try {
+        if (typeof wavegT === "function") return wavegT(key);
+      } catch (e) { /* 字典还没就绪 */ }
+      return key;
+    }
+
+    function aggregateCommandTasks(rooms) {
+      var tasks = [];
+      var list = Array.isArray(rooms) ? rooms : [];
+      for (var i = 0; i < list.length; i++) {
+        var room = list[i] || {};
+        var tr = Array.isArray(room.transcript) ? room.transcript : [];
+        var cur = null;
+        function fresh(row) {
+          return {
+            room_id: String((row && row.room_id) || room.id || ""),
+            room_title: String(room.title || ""),
+            steps: [], members: [], needs_you: null, report: null,
+            deliverables: [], task: "", task_title: "", task_sig: "",
+            partial: false, total: 0, returned: 0, at: "",
+          };
+        }
+        for (var j = 0; j < tr.length; j++) {
+          var row = tr[j];
+          if (!row || !row.kind) continue;
+          var k = row.kind;
+          if (k === "bot_reply" || k === "bot_reply_error") {
+            if (!cur) { cur = fresh(row); tasks.push(cur); }
+            var nm = String(row.name || row.bot_id || row.speaker || "");
+            cur.steps.push({
+              name: nm,
+              bot_id: String(row.bot_id || row.speaker || ""),
+              ok: k === "bot_reply",
+              text: String(row.text || ""),
+              error: String(row.error || ""),
+              at: String(row.at || ""),
+            });
+            if (nm && cur.members.indexOf(nm) < 0) cur.members.push(nm);
+            if (!cur.at) cur.at = String(row.at || "");
+            continue;
+          }
+          if (k === "confirm_request") {
+            if (!cur) { cur = fresh(row); tasks.push(cur); }
+            cur.needs_you = {
+              question: String(row.question || ""),
+              candidates: Array.isArray(row.candidates) ? row.candidates : [],
+              at: String(row.at || ""),
+            };
+            cur.task = String(row.task || "");
+            cur.task_sig = String(row.task_sig || "");
+            cur.at = String(row.at || cur.at);
+            continue;
+          }
+          if (k === "final_report") {
+            if (!cur) { cur = fresh(row); tasks.push(cur); }
+            cur.report = row;
+            cur.task = String(row.task || "");
+            cur.task_title = String(row.task_title || "");
+            cur.task_sig = String(row.task_sig || "");
+            cur.responders = Array.isArray(row.responders) ? row.responders : [];
+            cur.partial = row.partial === true;
+            cur.total = Number(row.total || 0);
+            cur.returned = Number(row.returned || 0);
+            var arts = Array.isArray(row.artifacts) ? row.artifacts.slice() : [];
+            if (row.deliverable) arts.push(row.deliverable);
+            cur.deliverables = arts;
+            cur.at = String(row.at || cur.at);
+            cur = null;
+          }
+        }
+      }
+      for (var t = 0; t < tasks.length; t++) {
+        var x = tasks[t];
+        if (x.needs_you) x.bucket = "needs_you";
+        else if (x.report) x.bucket = "closed";
+        else if (x.steps.length) x.bucket = "working";
+        else x.bucket = "waiting";
+      }
+      tasks.sort(function (a, b) { return String(b.at || "").localeCompare(String(a.at || "")); });
+      return tasks;
+    }
+
+    function cmdRenderBuckets() {
+      var host = document.getElementById("cmd-buckets");
+      if (!host) return;
+      var html = "";
+      for (var i = 0; i < CMD_BUCKETS.length; i++) {
+        var b = CMD_BUCKETS[i];
+        var n = 0;
+        for (var j = 0; j < CMD_STATE.tasks.length; j++) {
+          if (CMD_STATE.tasks[j].bucket === b.key) n += 1;
+        }
+        html += '<div class="frame-box" style="min-width:132px;flex:1">' +
+          '<div class="cmd-bucket-title">' + cmdEsc(cmdT(b.i18n)) + "</div>" +
+          '<div class="cmd-bucket-count">' + n + "</div></div>";
+      }
+      host.innerHTML = html;
+    }
+
+    function cmdRenderList() {
+      var host = document.getElementById("cmd-detail");
+      if (!host) return;
+      if (CMD_STATE.note) {
+        host.innerHTML = '<div class="frame-box">' + cmdEsc(CMD_STATE.note) + "</div>";
+        return;
+      }
+      if (!CMD_STATE.tasks.length) {
+        host.innerHTML = '<div class="frame-box" data-i18n="cmdEmpty">还没有任务</div>';
+        return;
+      }
+      var html = "";
+      for (var i = 0; i < CMD_STATE.tasks.length; i++) {
+        var t = CMD_STATE.tasks[i];
+        var title = t.task_title || t.task || t.steps[0] && t.steps[0].text || t.room_title || "";
+        var who = t.members.join("、");
+        var line = "";
+        if (t.needs_you) line = cmdT("cmdNeedsYou") + "：" + t.needs_you.question;
+        else if (t.partial) line = cmdT("cmdPartial") + " " + t.returned + "/" + t.total;
+        else if (t.report) line = cmdT("cmdClosed") + " " + t.returned + "/" + t.total;
+        else line = cmdT("cmdWorking");
+        html += '<div class="frame-box" style="margin-bottom:8px" data-cmd-task="' + cmdEsc(t.task_sig || t.at) + '">' +
+          '<div style="font-weight:600">' + cmdEsc(String(title).slice(0, 120)) + "</div>" +
+          '<div class="cmd-sub">' + cmdEsc(who ? who : cmdT("cmdMembers")) + "</div>" +
+          '<div class="cmd-line">' + cmdEsc(line) + "</div>" +
+          '<div class="cmd-room">' + cmdEsc(t.room_title || t.room_id) + "</div>" +
+          '<div style="margin-top:6px"><button type="button" class="bb-btn bb-btn-sm" data-cmd-open-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">打开群</button></div>' +
+          "</div>";
+      }
+      host.innerHTML = html;
+    }
+
+    function cmdRender() {
+      cmdRenderBuckets();
+      cmdRenderList();
+    }
+
+    async function cmdRefresh() {
+      var api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.list;
+      if (typeof api !== "function") {
+        CMD_STATE.tasks = [];
+        CMD_STATE.note = cmdT("cmdUnavailable");
+        cmdRender();
+        return;
+      }
+      try {
+        var res = await api();
+        var rooms = (res && res.rooms && res.rooms.rooms) || res.rooms || [];
+        CMD_STATE.tasks = aggregateCommandTasks(rooms);
+        CMD_STATE.note = "";
+      } catch (e) {
+        CMD_STATE.tasks = [];
+        CMD_STATE.note = String((e && e.message) || e);
+      }
+      cmdRender();
+    }
+
+    async function cmdOpen() {
+      var el = document.getElementById("command-panel");
+      if (el) el.style.display = "";
+      var btn = document.getElementById("cmd-open-btn");
+      if (btn) btn.setAttribute("aria-expanded", "true");
+      await cmdRefresh();
+    }
+
+    function cmdClose() {
+      var el = document.getElementById("command-panel");
+      if (el) el.style.display = "none";
+      var btn = document.getElementById("cmd-open-btn");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      var open = document.getElementById("cmd-open-btn");
+      if (open) open.addEventListener("click", function () { cmdOpen(); });
+      var close = document.getElementById("cmd-panel-close");
+      if (close) close.addEventListener("click", function () { cmdClose(); });
+      var refresh = document.getElementById("cmd-refresh-btn");
+      if (refresh) refresh.addEventListener("click", function () { cmdRefresh(); });
+      document.addEventListener("click", function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute) return;
+        var rid = t.getAttribute("data-cmd-open-room");
+        if (!rid) return;
+        if (typeof openRoomChat === "function") {
+          var rooms = [];
+          try {
+            var api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.list;
+            if (typeof api === "function") {
+              api().then(function (res) {
+                var rs = (res && res.rooms && res.rooms.rooms) || res.rooms || [];
+                for (var i = 0; i < rs.length; i++) if (rs[i] && rs[i].id === rid) openRoomChat(rs[i]);
+              });
+              return;
+            }
+          } catch (e) { /* 拿不到就如实不跳 */ }
+        }
+      });
+    });
+
+    window.__bitbotCommand = {
+      aggregate: aggregateCommandTasks,
+      open: cmdOpen, close: cmdClose, refresh: cmdRefresh,
+      state: CMD_STATE, buckets: CMD_BUCKETS,
+    };
+  })();
+  </script>
 </body>
 </html>
