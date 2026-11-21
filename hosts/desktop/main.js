@@ -3041,6 +3041,32 @@ const selectRoomResponders = roomRuntime.selectResponders;
      · **精准命中一个任务**(task_sig),不是把机器上的群回合全停;
      · 没有在跑的 ⇒ 如实回 "no_running_task",不假装停掉了什么;
      · 停掉了 ⇒ 落一行 task_state 转录(可审计:谁在什么时候被谁停了)。 */
+/* B-8 批 3 续:插话(steer)—— 落共享板,**下一棒**看得见。
+   诚实:正在跑的那一轮已经拿到 prompt,看不见这句插话。 */
+ipcMain.handle("bitbot:rooms:task:steer", async (_e, payload) => {
+  const p = payload || {};
+  const out = surface.steerRoomTask(p.task_sig, p.room_id, p.text);
+  return out;
+});
+
+/* B-8 批 3 续:改向(replan)—— 换目标并**立刻重跑**同一批任务
+   (幂等键沿用 ⇒ 还是同一个任务;force ⇒ 不走幂等短路)。 */
+ipcMain.handle("bitbot:rooms:task:replan", async (_e, payload) => {
+  const p = payload || {};
+  const out = surface.replanRoomTask(p.task_sig, p.room_id, p.task);
+  if (!out || !out.ok) return out;
+  try {
+    // fire-and-forget:重跑可能很久,IPC 不用等它跑完。
+    Promise.resolve(surface.orchestrateRoom({
+      room: p.room_id,
+      task: out.task,
+      message_id: out.message_id,
+      force: true,
+    })).catch(() => { /* 重跑失败会自己落转录,这里不重复报 */ });
+  } catch (_) { /* 同上 */ }
+  return Object.assign({}, out, { restarted: true });
+});
+
 ipcMain.handle("bitbot:rooms:task:cancel", async (_e, payload) => {
   const p = payload || {};
   const taskSig = String(p.task_sig || "").trim();

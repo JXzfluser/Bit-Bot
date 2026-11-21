@@ -146,6 +146,10 @@ contextBridge.exposeInMainWorld("bitbot", {
     orchestrate: (payload) => ipcRenderer.invoke("bitbot:rooms:orchestrate", payload || {}),
     // 刹停一个正在跑的任务(B-8 批 3):精准命中 task_sig,不是全停。
     cancelTask: (payload) => ipcRenderer.invoke("bitbot:rooms:task:cancel", payload || {}),
+    // 插话:落共享板,**下一棒**看得见(正在跑的那一轮看不见 —— 如实说)。
+    steerTask: (payload) => ipcRenderer.invoke("bitbot:rooms:task:steer", payload || {}),
+    // 改向:换目标并立刻重跑同一批任务。
+    replanTask: (payload) => ipcRenderer.invoke("bitbot:rooms:task:replan", payload || {}),
     // GP-146: group turns are async on the Host; (a) says which responders are
     // working now, (b) says the durable transcript gained rows. Observational
     // only — the renderer never keeps its own copy of room state.

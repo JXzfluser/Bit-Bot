@@ -2521,6 +2521,75 @@ function createProductSurface(repoRoot, opts = {}) {
     return { ok: true, cancelled: n };
   }
 
+  /**
+   * 读这个房间**最新的改向指令**(replanned directive)。
+   * 语义:
+   *   · 改向 = 用户改了任务目标 ⇒ 下一轮用新目标跑;
+   *   · 幂等键**保持不变**(用原 message_id)⇒ 指挥台认得出还是同一个任务;
+   *   · 但改向**就是要重跑** ⇒ directive 存在时跳过幂等短路;
+   *   · directive 之后若已有 final_report ⇒ 说明这轮已经跑完了 ⇒ 不再生效。
+   */
+  function latestTaskDirective(room) {
+    const tr = (room && room.transcript) || [];
+    let idx = -1;
+    for (let i = tr.length - 1; i >= 0; i--) {
+      const e = tr[i];
+      if (e && e.kind === "task_state" && e.state === "replanned") { idx = i; break; }
+    }
+    if (idx < 0) return null;
+    for (let j = idx + 1; j < tr.length; j++) {
+      const e = tr[j];
+      if (e && (e.kind === "final_report" || e.kind === "confirm_request")) return null;
+    }
+    const e = tr[idx];
+    const t = String(e.task || "").trim();
+    if (!t) return null;
+    return { task: t, message_id: String(e.prev_message_id || ""), at: String(e.at || "") };
+  }
+
+  /**
+   * 插话(steer):用户在任务进行中插一句。
+   * **诚实降级**:这一轮**已经拿到 prompt** 了,看不见插话;
+   * 插话落**共享板** ⇒ **下一棒**(接力/并行成员)读 board 时真的看得见。
+   */
+  function steerRoomTask(taskSig, roomId, text) {
+    const key = String(taskSig || "").trim();
+    const room = String(roomId || "").trim();
+    const say = String(text || "").trim();
+    if (!key) return { ok: false, error: "task_sig_required" };
+    if (!room) return { ok: false, error: "room_id_required" };
+    if (!say) return { ok: false, error: "text_required" };
+    roomBoard.post(room, "steer", "user", say, "用户插话");
+    appendRoomTranscript(room, {
+      kind: "task_state", room_id: room, task_sig: key,
+      state: "steered", text: say, at: new Date().toISOString(),
+    });
+    // scope 写清楚:下一棒看得见,**当前这一轮看不见**。
+    return { ok: true, scope: "next_hop", current_turn_sees: false };
+  }
+
+  /**
+   * 改向(replan):换任务目标。
+   * 幂等键沿用原 message_id ⇒ 还是同一个任务;下次编排会用新目标重跑。
+   */
+  function replanRoomTask(taskSig, roomId, newTask) {
+    const key = String(taskSig || "").trim();
+    const room = String(roomId || "").trim();
+    const t = String(newTask || "").trim();
+    if (!key) return { ok: false, error: "task_sig_required" };
+    if (!room) return { ok: false, error: "room_id_required" };
+    if (!t) return { ok: false, error: "task_required" };
+    // taskSig = "<room>|<message_id>" ⇒ 取回幂等键的那一段。
+    const bar = key.indexOf("|");
+    const prevMessageId = bar >= 0 ? key.slice(bar + 1) : "";
+    appendRoomTranscript(room, {
+      kind: "task_state", room_id: room, task_sig: key,
+      state: "replanned", task: t, prev_message_id: prevMessageId,
+      at: new Date().toISOString(),
+    });
+    return { ok: true, task: t, message_id: prevMessageId };
+  }
+
   /** 这个任务现在还在跑吗(指挥台用它决定按钮是否可点)。 */
   function taskIsRunning(taskSig) {
     const set = _taskScopes.get(String(taskSig || "").trim());
@@ -2671,13 +2740,16 @@ function createProductSurface(repoRoot, opts = {}) {
   function orchestrateRoom(input) {    const opts = input || {};
     const deps = opts.deps || {};
     const roomKey = String(opts.room || "").trim();
-    const task = String(opts.task || "").trim();
-    if (!roomKey || !task) {
-      return { ok: false, error: "orchestrate_needs_room_and_task", mode: "host_orchestrate_room" };
-    }
+    const requestedTask = String(opts.task || "").trim();
     const rooms = requireWritableRooms();
     const room = (rooms.rooms || []).find(r => r.id === roomKey || r.title === roomKey);
     if (!room) return { ok: false, error: "room_not_found", room: roomKey, mode: "host_orchestrate_room" };
+    // 改向指令:用户改过目标 ⇒ 用新目标跑;幂等键沿用原 message_id。
+    const directive = latestTaskDirective(room);
+    const task = directive ? directive.task : requestedTask;
+    if (!roomKey || !task) {
+      return { ok: false, error: "orchestrate_needs_room_and_task", mode: "host_orchestrate_room" };
+    }
 
     const bots = (loadBots().bots) || [];
     const resolve = (idOrName) => {
@@ -2708,7 +2780,11 @@ function createProductSurface(repoRoot, opts = {}) {
 
     // Q-5: 幂等键 = 房间 + **投递 id**。
     // 没有 id 时退回文字(向后兼容旧转录),但那时「同样的字」只能当同一次投递。
-    const sigKey = String(opts.message_id || "").trim() || task.toLowerCase();
+    // 幂等键:**投递 id 最优先**(旧契约不动);没有投递 id 时,
+    // 改向指令带来的原 message_id 兜底 ⇒ 改向后还是同一个任务。
+    const sigKey = String(opts.message_id || "").trim()
+      || (directive && directive.message_id)
+      || task.toLowerCase();
     const taskSig = room.id + "|" + sigKey;
     if (_orchInflight.has(taskSig)) {
       return { ok: false, error: "orchestrate_recursion", depth: 1, mode: "host_orchestrate_room" };
@@ -2716,7 +2792,8 @@ function createProductSurface(repoRoot, opts = {}) {
     const prior = (room.transcript || []).find(
       (e) => e && (e.kind === "final_report" || e.kind === "confirm_request") && e.task_sig === taskSig,
     );
-    if (prior && !opts.force) {
+    // 改向后**就是要重跑** ⇒ directive 存在时不走幂等短路。
+    if (prior && !opts.force && !directive) {
       // 幂等命中：不扇出、不起新回合，只回既有汇报。渲染层据此说明「未重复执行」，
       // 不能让人以为刚刚又跑了一遍。
       // confirm_request 也进幂等：停下来问用户的那一轮同样只能问一次。
@@ -4695,6 +4772,9 @@ function createProductSurface(repoRoot, opts = {}) {
     taskIsRunning,
     registerTaskScope,
     forgetRoomScope,
+    steerRoomTask,
+    replanRoomTask,
+    latestTaskDirective,
     // KP-02：停止按钮要能真停到群回合。这个句柄必须挂在返回值上 —— 只在
     // createProductSurface 内部定义、不导出，main.js 的 `surface.cancelActiveRoomTurns`
     // 就永远是 undefined，回执里的 had_active_turn 恒为 false（「按了停止，界面说

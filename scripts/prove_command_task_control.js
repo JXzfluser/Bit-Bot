@@ -114,6 +114,76 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
   const pre = fs.readFileSync(path.join(REPO, "hosts", "desktop", "preload.js"), "utf8");
   check(/cancelTask/.test(pre), "TC-5 preload 暴露 cancelTask");
 
+  // ── 插话 / 改向 ──────────────────────────────────────────────────────
+  {
+    const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-steer-"));
+    fs.mkdirSync(path.join(tmp2, "desktop"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp2, "desktop", "rooms.json"),
+      JSON.stringify({ rooms: [{ id: "r1", title: "测试群", members: [], transcript: [] }] })
+    );
+    const s2 = surfaceMod.createProductSurface(REPO, { dataRoot: tmp2 });
+
+    // 插话:落共享板 ⇒ **下一棒**读 board 时看得见
+    const st = s2.steerRoomTask("r1|sig-1", "r1", "加一段数据分析");
+    check(st && st.ok === true, "TC-10 插话成功", JSON.stringify(st));
+    check(st && st.scope === "next_hop" && st.current_turn_sees === false,
+      "TC-10 **诚实**:回执写明「下一棒看得见、当前这一轮看不见」",
+      JSON.stringify(st));
+
+    const board = orch.createRoomBoard(REPO, { dataRoot: tmp2 });
+    const snap = board.snapshot("r1");
+    check(String(snap.text || "").indexOf("数据分析") >= 0,
+      "TC-10 插话真的落在共享板上(下一棒读得到)", String(snap.text).slice(0, 120));
+
+    const roomsJson = JSON.parse(fs.readFileSync(path.join(tmp2, "desktop", "rooms.json"), "utf8"));
+    const tr = roomsJson.rooms[0].transcript || [];
+    const steerRow = tr.find((e) => e.kind === "task_state" && e.state === "steered");
+    check(!!steerRow, "TC-10 插话落了一行 task_state/steered 转录(可审计)");
+    check(steerRow && String(steerRow.text || "").indexOf("数据分析") >= 0,
+      "TC-10 那行带着插话内容");
+
+    // 改向:换目标 + 幂等键沿用
+    const rp = s2.replanRoomTask("r1|sig-1", "r1", "改成写一份竞品分析");
+    check(rp && rp.ok === true, "TC-11 改向成功", JSON.stringify(rp));
+    check(rp && rp.message_id === "sig-1",
+      "TC-11 改向沿用原幂等键(还是同一个任务)", JSON.stringify(rp));
+    const rooms2 = JSON.parse(fs.readFileSync(path.join(tmp2, "desktop", "rooms.json"), "utf8"));
+    const tr2 = rooms2.rooms[0].transcript || [];
+    const rpRow = tr2.find((e) => e.kind === "task_state" && e.state === "replanned");
+    check(!!rpRow && String(rpRow.task || "") === "改成写一份竞品分析",
+      "TC-11 改向落了一行 task_state/replanned,写明新目标");
+
+    // 编排读 directive ⇒ 用新目标
+    const dir = s2.latestTaskDirective(rooms2.rooms[0]);
+    check(dir && dir.task === "改成写一份竞品分析",
+      "TC-12 编排读得到改向指令 ⇒ 下一轮用新目标", JSON.stringify(dir));
+    check(dir && dir.message_id === "sig-1",
+      "TC-12 directive 带着幂等键(不改身份,只换目标)", JSON.stringify(dir));
+
+    // 负向
+    check(s2.steerRoomTask("", "r1", "x").error === "task_sig_required", "TC-13 负向:空 task_sig");
+    check(s2.steerRoomTask("r1|s", "r1", "  ").error === "text_required", "TC-13 负向:空插话内容");
+    check(s2.replanRoomTask("r1|s", "r1", "").error === "task_required", "TC-13 负向:空新目标");
+    check(s2.steerRoomTask("r1|s", "", "x").error === "room_id_required", "TC-13 负向:空 room");
+
+    // 真差分:编排**真的读了** directive ⇒ 即便调用方没给 task,
+    // 也不会报 "needs_room_and_task",而是走到后面去(这里 members 为空 ⇒ no_responders)。
+    // (不读 directive 的话 ⇒ 一定会撞上 needs_room_and_task。)
+    const orchOut = s2.orchestrateRoom({ room: "r1", task: "" });
+    check(orchOut && orchOut.error !== "orchestrate_needs_room_and_task",
+      "TC-17 编排真的读了改向指令(没给 task 也没报缺 task)", JSON.stringify(orchOut));
+    check(orchOut && orchOut.error === "no_responders",
+      "TC-17 它是顺着新目标往下走的(不是被空 task 挡住)", JSON.stringify(orchOut));
+
+    // directive 之后若已收口 ⇒ 不再生效(改向只影响"还没跑完"的那批)
+    rooms2.rooms[0].transcript.push({ kind: "final_report", task_sig: "r1|sig-1", at: "x" });
+    check(s2.latestTaskDirective(rooms2.rooms[0]) === null,
+      "TC-14 负向:那批已经收口 ⇒ 旧改向指令不再生效");
+
+    fs.rmSync(tmp2, { recursive: true, force: true });
+  }
+
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
@@ -194,6 +264,45 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
     "TC-8 点刹停 ⇒ 真的调了 cancelTask(带 task_sig)", JSON.stringify(calls));
   check(calls.length === 1 && calls[0] && calls[0].reason === "user_stop",
     "TC-8 停的理由写明是 user_stop(可审计)", JSON.stringify(calls[0] || {}));
+
+  // 指挥区:一句输入 + 插话 / 改向
+  const cmdUi = await page.evaluate(() => ({
+    inputs: document.querySelectorAll(".cmd-input").length,
+    steer: document.querySelectorAll("[data-cmd-steer]").length,
+    replan: document.querySelectorAll("[data-cmd-replan]").length,
+  }));
+  check(cmdUi.inputs >= 1, "TC-15 指挥区有输入框", cmdUi.inputs);
+  check(cmdUi.steer >= 1 && cmdUi.replan >= 1, "TC-15 插话/改向按钮都在", JSON.stringify(cmdUi));
+
+  await page.evaluate(() => {
+    window.__cmdSteerCalls = [];
+    window.bitbot.rooms.steerTask = async (p) => { window.__cmdSteerCalls.push(p); return { ok: true, scope: "next_hop" }; };
+    window.bitbot.rooms.replanTask = async (p) => { window.__cmdSteerCalls.push(Object.assign({ via: "replan" }, p)); return { ok: true }; };
+  });
+  await page.evaluate(() => {
+    const inp = document.querySelector(".cmd-input");
+    if (inp) inp.value = "插一句：重点看数据";
+    const b = document.querySelector("[data-cmd-steer]");
+    if (b) b.click();
+  });
+  await page.waitForTimeout(400);
+  const steerCalls = await page.evaluate(() => window.__cmdSteerCalls || []);
+  check(steerCalls.length === 1 && String(steerCalls[0].text || "").indexOf("重点看数据") >= 0,
+    "TC-16 点插话 ⇒ 真的把那句原文发出去", JSON.stringify(steerCalls));
+  check(steerCalls.length === 1 && !!steerCalls[0].task_sig,
+    "TC-16 插话带 task_sig(知道是对谁说的)", JSON.stringify(steerCalls[0] || {}));
+
+  // 空输入 ⇒ 不该发任何东西(诚实:先写一句)
+  await page.evaluate(() => {
+    window.__cmdSteerCalls = [];
+    const inp = document.querySelector(".cmd-input");
+    if (inp) inp.value = "   ";
+    const b = document.querySelector("[data-cmd-steer]");
+    if (b) b.click();
+  });
+  await page.waitForTimeout(300);
+  const emptyCalls = await page.evaluate(() => window.__cmdSteerCalls || []);
+  check(emptyCalls.length === 0, "TC-16 负向:空输入 ⇒ 不发任何东西", JSON.stringify(emptyCalls));
 
   check(errs.length === 0, "TC-9 页面没有 pageerror", JSON.stringify(errs.slice(0, 3)));
 

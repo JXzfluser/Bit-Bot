@@ -19056,6 +19056,13 @@
         imDone: "我操作完了",
         approvalTitle: "需要审批",
         cmdCancel: "刹停",
+        cmdCmdPlaceholder: "插话或改向…",
+        cmdSteer: "插话",
+        cmdReplan: "改向",
+        cmdSteered: "已插话。下一棒会看到。",
+        cmdReplanned: "已改向，正在重跑。",
+        cmdCmdEmpty: "先写一句。",
+        cmdCmdFailed: "没成:",
         cmdStopped: "已停。",
         cmdStopFailed: "没停掉:",
         cmdPanel: "指挥台",
@@ -20545,6 +20552,13 @@
         imDone: "我操作完了",
         approvalTitle: "需要審批",
         cmdCancel: "煞停",
+        cmdCmdPlaceholder: "插話或改向…",
+        cmdSteer: "插話",
+        cmdReplan: "改向",
+        cmdSteered: "已插話。下一棒會看到。",
+        cmdReplanned: "已改向，正在重跑。",
+        cmdCmdEmpty: "先寫一句。",
+        cmdCmdFailed: "沒成:",
         cmdStopped: "已停。",
         cmdStopFailed: "沒停掉:",
         cmdPanel: "指揮台",
@@ -22034,6 +22048,13 @@
         imDone: "I'm done",
         approvalTitle: "Approval required",
         cmdCancel: "Stop",
+        cmdCmdPlaceholder: "Steer or replan…",
+        cmdSteer: "Steer",
+        cmdReplan: "Replan",
+        cmdSteered: "Steered. The next hop will see it.",
+        cmdReplanned: "Replanned. Re-running.",
+        cmdCmdEmpty: "Type something first.",
+        cmdCmdFailed: "Failed: ",
         cmdStopped: "Stopped.",
         cmdStopFailed: "Could not stop: ",
         cmdPanel: "Command",
@@ -26328,15 +26349,16 @@
     function cmdRenderList() {
       var host = document.getElementById("cmd-detail");
       if (!host) return;
+      // 提示**不替换**列表 —— 以前 note 一有值就整个 return,
+      // 用户看到的是"我的任务全没了",只留一句报错。列表必须在。
+      var html = "";
       if (CMD_STATE.note) {
-        host.innerHTML = '<div class="frame-box">' + cmdEsc(CMD_STATE.note) + "</div>";
-        return;
+        html += '<div class="frame-box cmd-note-box">' + cmdEsc(CMD_STATE.note) + "</div>";
       }
       if (!CMD_STATE.tasks.length) {
-        host.innerHTML = '<div class="frame-box" data-i18n="cmdEmpty">还没有任务</div>';
+        host.innerHTML = html + '<div class="frame-box" data-i18n="cmdEmpty">还没有任务</div>';
         return;
       }
-      var html = "";
       for (var i = 0; i < CMD_STATE.tasks.length; i++) {
         var t = CMD_STATE.tasks[i];
         var title = t.task_title || t.task || t.steps[0] && t.steps[0].text || t.room_title || "";
@@ -26354,6 +26376,15 @@
           // 批 1 让成员真并行 ⇒ 用户必须看得见**谁干了什么**,
           // 否则并行只会变成"一堆 bot 同时动但说不清"。
           cmdRenderSteps(t.steps) +
+          // 指挥区:一句输入,两个动作 —— 插话(下一棒看见) / 改向(立刻重跑)。
+          '<div class="cmd-command">' +
+          '<input class="cmd-input" type="text" data-i18n-placeholder="cmdCmdPlaceholder" placeholder="' +
+            cmdEsc(cmdT("cmdCmdPlaceholder")) + '">' +
+          '<button type="button" class="bb-btn bb-btn-sm" data-cmd-steer="' + cmdEsc(t.task_sig) +
+            '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdSteer">插话</button>' +
+          '<button type="button" class="bb-btn bb-btn-sm" data-cmd-replan="' + cmdEsc(t.task_sig) +
+            '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdReplan">改向</button>' +
+          "</div>" +
           '<div class="cmd-actions">' +
           '<button type="button" class="bb-btn bb-btn-sm" data-cmd-open-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">打开群</button>' +
           // 「刹停」只在**真在跑**且有 task_sig 时才给 —— 没有在跑的,
@@ -26418,6 +26449,38 @@
       document.addEventListener("click", function (ev) {
         var t = ev.target;
         if (!t || !t.getAttribute) return;
+        var steerSig = t.getAttribute("data-cmd-steer");
+        var replanSig = t.getAttribute("data-cmd-replan");
+        if (steerSig || replanSig) {
+          var card = t.closest ? t.closest("[data-cmd-task]") : null;
+          var inp = card ? card.querySelector(".cmd-input") : null;
+          var val = inp ? String(inp.value || "").trim() : "";
+          if (!val) { CMD_STATE.note = cmdT("cmdCmdEmpty"); cmdRender(); return; }
+          var sig = steerSig || replanSig;
+          var roomId2 = t.getAttribute("data-cmd-room") || "";
+          if (steerSig) {
+            var apiS = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.steerTask;
+            if (typeof apiS !== "function") return;
+            apiS({ task_sig: sig, room_id: roomId2, text: val }).then(function (r) {
+              CMD_STATE.note = r && r.ok ? cmdT("cmdSteered") : cmdT("cmdCmdFailed") + ":" + String((r && r.error) || "unknown");
+              cmdRender();
+            }).catch(function (e) {
+              CMD_STATE.note = cmdT("cmdCmdFailed") + ":" + String((e && e.message) || e);
+              cmdRender();
+            });
+            return;
+          }
+          var apiR = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.replanTask;
+          if (typeof apiR !== "function") return;
+          apiR({ task_sig: sig, room_id: roomId2, task: val }).then(function (r) {
+            CMD_STATE.note = r && r.ok ? cmdT("cmdReplanned") : cmdT("cmdCmdFailed") + ":" + String((r && r.error) || "unknown");
+            cmdRender();
+          }).catch(function (e) {
+            CMD_STATE.note = cmdT("cmdCmdFailed") + ":" + String((e && e.message) || e);
+            cmdRender();
+          });
+          return;
+        }
         var cancelSig = t.getAttribute("data-cmd-cancel");
         if (cancelSig) {
           var api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.cancelTask;

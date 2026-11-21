@@ -4073,3 +4073,10 @@ body.grok-ui .cn-hint {
 
 /* B-8 批 3:指挥台的动作行。 */
 .cmd-actions { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* B-8 批 3 续:指挥区(一句输入 + 插话 / 改向)。 */
+.cmd-command { margin-top: 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cmd-input { flex: 1 1 220px; min-width: 140px; }
+
+/* B-8:指挥台的提示条 —— 浮在列表上方,不再把任务挤没。 */
+.cmd-note-box { margin-bottom: 8px; }
