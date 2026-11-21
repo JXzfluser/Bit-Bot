@@ -64,7 +64,7 @@
 | 端 | 状态 | 证据 |
 |----|------|------|
 | **桌面（Electron）** | 唯一有完整产品路径的一端；上表就是它的自动分类结果 | `smoke_grok_desktop_parity.sh`（G-xx 全量）、`e2e_desktop_*` 真渲染门、`G-46` 聚合 |
-| **Android** | **未逐条验收**。共用同一 MoonBit 内核，但只有两条真机/模拟器门：名单与单回合 | `e2e_android_roster.mjs`、`e2e_android_turn.mjs`、`.github/workflows/android-apk.yml` |
+| **Android** | **未逐条验收**。共用同一 MoonBit 内核，但只有两条真机/模拟器门：名单与单回合 | `e2e_android_roster.v2.mjs`、`e2e_android_turn.mjs`、`.github/workflows/android-apk.yml` |
 | **iOS** | **未做**（发布文档明确暂缓），不得引用桌面数字 | `docs/desktop-release.md` §本阶段验收 |
 
 **关键边界：Android 的能力完成度不能拿桌面的 234/29 去套。** 内核共享 ≠ UI 可用；

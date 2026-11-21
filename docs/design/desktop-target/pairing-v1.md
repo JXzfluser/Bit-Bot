@@ -133,7 +133,7 @@ GET /pair  → 200 text/html（未鉴权，只读）
 | 真 HTTP：discover 形状与不含令牌、错码、对码、再用一次、次数用满、过期、非法入参 | 同上 PC-09..17 | 全绿 |
 | **换到的令牌真能打通 `/v1/turn`** | 同上 PC-13 | 全绿 |
 | base_url 走网卡排序，不给 docker0（PC-18）、LAN 未放开如实 409（PC-19） | 同上 | 全绿 |
-| 桌面面板：生成配对码出 6 位数字 + 倒计时、可作废 | `scripts/e2e_android_roster.mjs` AR-16/17（真 Electron） | 20/0 |
+| 桌面面板：生成配对码出 6 位数字 + 倒计时、可作废 | `scripts/e2e_android_roster.v2.mjs` AR-16/17（真 Electron） | 20/0 |
 | 桌面「移动端远程控制」弹窗：入口、状态点 off→on 如实、码生成/刷新/作废与 Host 每步一致、复制链接回显、弹窗内零令牌控件、Esc/遮罩关闭且焦点归还、渠道列只有钉钉/飞书/企业微信且「去配置」真跳转、480 宽不破版 | `scripts/e2e_desktop_mobile_control.mjs` MC-01..11（真 Electron，G-67） | 11/0 |
 | 配对说明页真 HTTP：`GET /pair` 与 `GET /` 回 200 text/html、写明主机名/端口/下一步、不含令牌与配对码、无表单不碰 redeem、未放开时说实话、404 清单不再过期、无外部资源、带 noindex/no-store/nosniff/CSP、弹窗复制的确实是这一页 | `scripts/e2e_desktop_pair_page.mjs` PP-01..10（真 Electron + 真 socket，G-68） | 11/0（修复前红 PASS=1 FAIL=10） |
 | 手机端纯逻辑（/24 枚举、discover 解析、码校验、四种失败映射、scope 提醒） | `PairingDiscoveryTest`（23 条） | 全绿 |

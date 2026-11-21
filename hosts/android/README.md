@@ -21,7 +21,7 @@ bash scripts/verify_native_shells.sh
 # 移动端三块门禁（G-47，已并入 scripts/smoke_grok_desktop_parity.sh）：
 node scripts/e2e_android_turn.mjs        # 真 HTTP + 真内核：/v1/turn 鉴权、机器身份、设备工具、在线证据
 node scripts/prove_android_build.mjs     # 真编译 universalDebug APK + aapt 读回包名/权限/SDK
-ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_android_roster.mjs  # 真实 Electron：桌面花名册看得见手机在线
+ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/e2e_android_roster.v2.mjs  # 真实 Electron：桌面花名册看得见手机在线
 cd hosts/android/BitBotHost && gradle :app:testUniversalDebugUnitTest        # 线路解析的 JVM 单测
 ```
 
@@ -42,7 +42,7 @@ cd hosts/android/BitBotHost && gradle :app:testUniversalDebugUnitTest        # �
 同一条映射也被桌面 app 自己用：`hosts/desktop/main.js` 里 `ensureCnInbound()` 的内联
 `onTurn` 以前自己拼 `${machineKind}-1`（`android-1` / `ios-1`，内核注册表里根本没有），
 于是「共享模块修好了、产品还是断的」。现在它调同一个 `seedMachineId()`，由
-`e2e_android_roster.mjs` 的 AR-06 / AR-07 在真实 Electron 里盯着。
+`e2e_android_roster.v2.mjs` 的 AR-06 / AR-07 在真实 Electron 里盯着。
 
 ## 桌面侧怎么拿到配对地址与令牌
 

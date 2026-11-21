@@ -34,8 +34,15 @@ const PINNED_NO_NEGCTRL = 48; /* 2026-11-20 实测 48 份 */
 /* AC-07 的 ratchet：任何 CI 路径都不跑的门数上限。只许往下改。 */
 /* 2026-11-21 下调 77 → 29:把**真·用户旅程**(15 个孤儿 e2e)与
    批 1~9/D/E/F 做出来的 43 个 prove_* 全部接进矩阵 ⇒ 孤门 77 → 29。
-   剩下的 29 个多为 .sh 外壳(成对调内层 .js)与纯环境门。 */
-const PINNED_ORPHAN_GATES = 29; /* 2026-11-20 首测 86；接回 G-46 的 8 条真渲染门后 78；再接回 G-127 的 spec 门后 77 */
+   2026-11-21 再下调 29 → 0（本轮「孤儿门禁归零」）：
+     · 12 个真门**字面接进矩阵**（G-132/G-133/G-134 三段，层位见 scripts/gate_tiers.json）；
+     · 14 个成对的 .sh 外壳改成**矩阵里的那一个入口**（一门一入口：跑外壳，
+       内层 .js 由传递接线认领 —— 外壳的存在不再是「没人跑」）；
+     · 2 个退役（scripts/retired/：prove_all.sh 是第二个 runner，会把矩阵里的门
+       再跑一遍；e2e_android_roster.mjs 已被 v2 取代且自己写明尺子已过期）。
+   逐条处置见 scripts/gate_tiers.json 的 orphan_dispositions 段 ——
+   **数字必须跟清单对得上**：清单自检由 runner 的 L1 段（scripts/gate_roster_check.mjs）盯着。 */
+const PINNED_ORPHAN_GATES = 0; /* 2026-11-20 首测 86 → 78 → 77 → 29 → 0 */
 
 let pass = 0, fail = 0, skip = 0;
 const ok = (m) => { pass++; console.log("  ✓ " + m); };
@@ -290,7 +297,11 @@ else ok("[AC-03] C 类 " + cGates + " = 上限 " + PINNED_C_GATES + "（持平�
 
   function wiredSet(matrixText) {
     const wired = new Set();
-    for (const m of matrixText.matchAll(/node\s+"?([\w./-]*\/)?([\w.-]+\.(?:mjs|js|sh))"?/g)) {
+    /* 接线口径：**字面**出现 `node scripts/X` / `bash scripts/X.sh` / `sh scripts/X.sh`
+       都算接线。2026-11-21 补上 bash/sh 这两条：此前只认 node 前缀，于是「真在跑的
+       shell 门」（成对外壳：prove_approve_cli.sh 等）被判成孤门 —— 那是**尺的盲区**，
+       不是门的问题（门确实被跑了）。补这条口径不会让孤门变多，只会让读数更准。 */
+    for (const m of matrixText.matchAll(/(?:node|bash|sh)\s+"?([\w./-]*\/)?([\w.-]+\.(?:mjs|js|sh))"?/g)) {
       if (!m[2].includes("$")) wired.add(m[2]);
     }
     /* for VAR in a b c; do … node "scripts/pre$VAR.suf" … —— 在循环头之后 12 行内找拼名调用 */
@@ -318,18 +329,35 @@ else ok("[AC-03] C 类 " + cGates + " = 上限 " + PINNED_C_GATES + "（持平�
   /* 传递接线：从矩阵/workflow 直接接的门出发，看它们的源码里有没有按文件名跑别的门。
      只看非注释行，行首 /* 与 // 都不算。
      .sh 也要展开 —— 仓里成对写着的 prove_X.js + prove_X.sh 是「外壳调内层」的形状，
-     上一版只走 .mjs/.js，结果接了 .sh 的那批 .js 全被读成孤门（首测 87 个里 30+ 是这样来的）。 */
+     上一版只走 .mjs/.js，结果接了 .sh 的那批 .js 全被读成孤门（首测 87 个里 30+ 是这样来的）。
+     2026-11-21：**只往门形状的文件里走**（不再往矩阵自身走）—— 矩阵不是门，
+     它的字面接线已经由 wiredSet() 收过一遍；让它自己再当一次「门」会把闭包撑成
+     「矩阵里提过名字的都算接了」，反向对照（删掉一条接线 ⇒ 它该变孤门）就永远做不成。 */
+  const fileCache = new Map();
+  function readCached(abs) {
+    if (!fileCache.has(abs)) {
+      try { fileCache.set(abs, fs.readFileSync(abs, "utf8")); }
+      catch (e) { fileCache.set(abs, ""); }
+    }
+    return fileCache.get(abs);
+  }
+  /* 门名集合：展开时用**正则抽出这一行提到的文件名**再查表，
+     不要对每一行遍历全部门名（224 个 × 每一行 × 每次 expand ⇒ 尺自己变成慢门）。 */
+  const gateSet = new Set(gateNames);
   function expand(seed) {
     const queue = [...seed];
     const seen = new Set(queue);
     while (queue.length) {
       const n = queue.shift();
-      const abs = path.join(REPO, "scripts", path.basename(n));
+      const base = path.basename(n);
+      if (!gateSet.has(base)) continue; /* 只往门形状的文件里走 */
+      const abs = path.join(REPO, "scripts", base);
       if (!fs.existsSync(abs) || !/\.(mjs|js|sh)$/.test(n)) continue;
-      for (const ln of fs.readFileSync(abs, "utf8").split("\n")) {
+      for (const ln of readCached(abs).split("\n")) {
         if (/^\s*(\/\/|\*|\/\*|#)/.test(ln)) continue;
-        for (const cand of gateNames) {
-          if (seen.has(cand) || !ln.includes(cand)) continue;
+        for (const m of ln.matchAll(/[\w.-]+\.(?:mjs|js|sh)\b/g)) {
+          const cand = m[0];
+          if (!gateSet.has(cand) || seen.has(cand)) continue;
           seen.add(cand);
           queue.push(cand);
         }
@@ -355,12 +383,37 @@ else ok("[AC-03] C 类 " + cGates + " = 上限 " + PINNED_C_GATES + "（持平�
     ok("[AC-07] 孤门 " + orphans.length + " = 上限 " + PINNED_ORPHAN_GATES + "（持平；每接一条往下调）");
   }
 
-  /* AC-08 反向对照：拿清单里第一条真孤门，在矩阵文本上假装加一行 `node scripts/X.mjs`，
-     它必须离开孤门集。上一版是把门名塞进 G-46 的 `for g in` 循环，但那个循环会给名字加
-     e2e_desktop_ 前缀和 .mjs 后缀 —— 拿 diagnose_surfaces.mjs 去塞只拼出
-     e2e_desktop_diagnose_surfaces.mjs.mjs，假装接线没做成，读出的还是 87。 */
-  if (!orphans.length) sk("[AC-08] 没有孤门可做反向对照", "孤门清零后这条改判据：假装删一条已接线的门，它应当变孤门");
-  else {
+  /* AC-08 反向对照：孤门清零后，对照方向必须换 —— 不再是「加一条接线」，
+     而是「**删掉一条已接线的门**」：它必须当场变回孤门（+1）⇒ 尺对「没人跑」依然灵敏。
+     挑那一行时按**实测**来：逐行试删，找出「删完只多出这 1 条孤门」的那一行
+     （删 .sh 外壳那一行会让外壳与它内层的 .js 一起变孤门 ⇒ 多于 1 条，跳过）。 */
+  if (!orphans.length) {
+    /* 孤门清零后，对照方向必须换 —— 不再是「加一条接线」，而是「**删掉一条已接线的门**」：
+       它必须当场变回孤门（+1）⇒ 尺对「没人跑」依然灵敏。
+       算式（不必逐行重跑整份矩阵）：删掉一行 ⇒ 那行上的门名从「直接接线」里消失；
+       若它也**不再被任何已接线的门传递引用**，它就变回孤门（恰好 +1 条）。
+       挑门时用「这个名字在矩阵里只出现一次」剪枝 —— 出现多次的删一行不影响接线。 */
+    const direct = wiredSet(s0);
+    const occ = (name) => (s0.match(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length;
+    const ciSeeds = gateNames.filter((n) => ciText.includes(n));
+    let found = null;
+    for (const g of direct) {
+      if (occ(g) !== 1) continue;
+      const w2 = expand(new Set([...direct].filter((x) => x !== g).concat(ciSeeds)));
+      const o2 = gateNames.filter((n) => !w2.has(n));
+      /* 判据：删掉这条接线后，它**自己**必须进孤门清单（尺对「没人跑」灵敏）。
+         孤门总数可能多涨几条 —— 被删的那条门若是「传递接线」的枢纽，它内层提到的
+         那些门也会跟着没人跑（那本来就该算孤门）。 */
+      if (o2.includes(g)) { found = { probe: g, o2 }; break; }
+    }
+    if (!found) {
+      sk("[AC-08] 反向对照没做成", "逐个门试删都没找到「删掉接线后自己变孤门」的那一个 —— 对照形状需要重做");
+    } else {
+      ok("[AC-08] 反向对照：把 " + found.probe + " 的接线删掉 → 孤门 0 变 " + found.o2.length
+        + "，且它自己进了孤门清单（尺对「没人跑」灵敏；此前这条对照只验「加一条接线」，"
+        + "孤门清零后那已经恒真）");
+    }
+  } else {
     const probe = orphans[0];
     const mutated = s0 + '\nnode scripts/' + probe + ' > /tmp/ac08-mutation.log 2>&1\n';
     const w2 = expand(new Set([...wiredSet(mutated), ...gateNames.filter((n) => ciText.includes(n))]));
