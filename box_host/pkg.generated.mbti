@@ -173,13 +173,15 @@ pub fn DeviceLocalTool::to_repr(Self) -> @debug.Repr
 
 pub(all) struct DeviceLocalToolsRegistry {
   by_machine : Map[String, Array[DeviceLocalTool]]
+  by_kind : Map[String, Array[DeviceLocalTool]]
   cards : Array[DevicePermissionCard]
 }
 pub fn DeviceLocalToolsRegistry::empty() -> Self
-pub fn DeviceLocalToolsRegistry::invoke(Self, String, String) -> Result[String, DevicePermissionCard]
+pub fn DeviceLocalToolsRegistry::invoke(Self, String, MachineKind, String) -> Result[String, DevicePermissionCard]
 pub fn DeviceLocalToolsRegistry::last_card(Self) -> DevicePermissionCard?
 pub fn DeviceLocalToolsRegistry::list_for(Self, String, MachineKind) -> Array[DeviceLocalTool]
 pub fn DeviceLocalToolsRegistry::seed_phones() -> Self
+pub fn DeviceLocalToolsRegistry::tools_for(Self, String, MachineKind) -> Array[DeviceLocalTool]
 
 pub(all) struct DevicePermissionCard {
   machine_id : String
@@ -482,6 +484,7 @@ pub fn MachineRegistry::mark_host_present(Self, machine_id~ : String, machine_ki
 pub fn MachineRegistry::put_box_file(Self, String, String) -> Unit
 pub fn MachineRegistry::put_machine_file(Self, String, String, String) -> Unit
 pub fn MachineRegistry::read_on_machine(Self, String, String, approved~ : Bool) -> Result[String, String]
+pub fn MachineRegistry::register_machine(Self, String, String) -> Unit
 pub fn MachineRegistry::run_on_machine(Self, String, String, approved~ : Bool) -> Result[String, String]
 pub fn MachineRegistry::seed() -> Self
 pub fn MachineRegistry::set_local_execution(Self, enabled~ : Bool) -> Unit

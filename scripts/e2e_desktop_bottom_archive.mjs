@@ -16,7 +16,7 @@ import { fileURLToPath } from "url";
 import { createRequire } from "module";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir, gateAppEnv } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, gateAppEnv, waitForScrollAtEnd } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -161,13 +161,21 @@ const gapOf = () => {
 
     await win.screenshot({ path: path.join(os.tmpdir(), "bb-tobottom.png") });
     await win.click("#to-bottom");
-    await win.waitForTimeout(700);
+    /* 「回到底部」是 **smooth scroll**（hosts/desktop/index.html:
+     * log.scrollTo({ top: log.scrollHeight, behavior: "smooth" })），
+     * 距离越远越慢：实测 4k px 要 ~1s，机器忙时更久。
+     * ⇒ 原来这里固定 sleep 700ms 再量，量到的是**动画中途** ⇒ 判成
+     * 「点了没回到底」——红的是**尺**，不是产品。
+     * 修法不是把 sleep 调大（那还是猜），而是**等状态**：等离底距离连续两次
+     * 读数一样（= 动画停了）。判据本身（离底 < 60px **且**按钮自己收起）
+     * 一个字没放松。 */
+    const scrolled = await waitForScrollAtEnd(win, "#log", { gapPx: 60, timeoutMs: 10000 });
     const afterClick = await win.evaluate(new Function(
       "return { gap: (" + gapOf.toString() + ")(), hidden: document.getElementById('to-bottom').hidden };",
     ));
     afterClick.gap < 60 && afterClick.hidden
       ? ok("点一下就回到最底，按钮自己收起来（离底 " + Math.round(afterClick.gap) + "px）")
-      : bad("click did not scroll", JSON.stringify(afterClick));
+      : bad("click did not scroll", JSON.stringify({ ...afterClick, reached: scrolled.reached, waitedGap: scrolled.gap }));
 
     // 空对话：滚不动 → 离底 0 → 不该出现（这条专治「scrollTop === 0 就亮」的写法）。
     // 注意不能点 #sess-new：没有 Bot 的干净 dataRoot 上它会拉出建 Bot 的弹层，

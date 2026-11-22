@@ -397,5 +397,145 @@ if (!zhLabelHits.length) ok("CC-13 渲染器里 0 处中文 label:/hint: 字面�
 else bad("CC-13 渲染器里 0 处中文 label:/hint: 字面量（字典是唯一来源）",
   zhLabelHits.slice(0, 6).map((m) => m[0].slice(0, 50)).join(" | "));
 
+/* ── CC-14 按语言分槽的**视图映射**：三语必须齐全 ────────────────────────────
+ *
+ * 合同 §5 的延伸：字典（WAVEG_I18N）三语齐全**还不够** —— 按语言分槽的
+ * 视图映射（zh_cn / zh_tw / en 三件套，比如模板市场那张 TPL_COPY）也必须
+ * 三语齐全，而且三语的子键集合要一致。
+ *
+ * 为什么要单独钉这一条（2026-11-22 实测）：
+ *   模板市场的显示映射 TPL_COPY 里，**只有一条**模板带 en，另外 6 条只有
+ *   zh_cn / zh_tw ⇒ 英文界面里模板市场**整屏中文**（标题/岗位/描述全是 Host
+ *   目录里的中文原文，因为显示层拿不到 en 就回落到了原文）。
+ *   而当时的门只查「卡片标题里有没有汉字」⇒ 繁体/简体都算「本地化了」，
+ *   英文界面里的中文**照样通过** ⇒ 这类缺陷没人抓。
+ *
+ * 判据（对**每一张**按语言分槽的映射都查）：
+ *   ① 每个条目三语齐全（zh_cn / zh_tw / en 一个都不能少）；
+ *   ② 三语的子键集合一致（不能 en 里少一个 desc 字段）；
+ *   ③ en 的值里不许有中文（「拿 zh 文案冒充 en」是合同 §5 明令禁止的修法）。
+ * ───────────────────────────────────────────────────────────────────────── */
+const LANG_KEYS = ["zh_cn", "zh_tw", "en"];
+
+/** 从 src 的 openBrace 处开始做括号配对，返回闭合括号下标（找不到返 -1）。 */
+function matchBraces(src, openBrace) {
+  let depth = 0, q = null, esc = false;
+  for (let i = openBrace; i < src.length; i++) {
+    const c = src[i];
+    if (q) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === q) q = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { q = c; continue; }
+    if (c === "{") depth++;
+    else if (c === "}") { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+/**
+ * 找出渲染器里所有「按语言分槽」的映射（zh_cn / zh_tw / en 三件套）。
+ * 返回 [{ name, entries: [{ id, langs: { zh_cn: {k:v}, ... } }] }]
+ */
+function findLangMaps(src) {
+  const maps = [];
+  for (const m of src.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/g)) {
+    const open = m.index + m[0].length - 1;
+    const close = matchBraces(src, open);
+    if (close < 0) continue;
+    const body = src.slice(open + 1, close);
+    if (!/\bzh_cn\s*:/.test(body)) continue;      /* 不是按语言分槽的映射 ⇒ 不归本判据管 */
+    const entries = [];
+    let i = open + 1;
+    while (i < close) {
+      const km = /^[\s,]*("(?:[^"\\]|\\.)*"|[A-Za-z_$][\w$]*)\s*:\s*/.exec(src.slice(i, close));
+      if (!km) break;
+      const id = km[1].replace(/^"|"$/g, "");
+      const vStart = i + km[0].length;
+      if (src[vStart] !== "{") { i = vStart + 1; continue; }
+      const vEnd = matchBraces(src, vStart);
+      if (vEnd < 0) break;
+      const langs = {};
+      const vbody = src.slice(vStart + 1, vEnd);
+      for (const L of LANG_KEYS) {
+        const lm = new RegExp("(?:^|[,\\{])\\s*" + L + "\\s*:\\s*\\{").exec(vbody);
+        if (!lm) continue;
+        const subStart = vStart + 1 + lm.index + lm[0].length - 1;
+        const subEnd = matchBraces(src, subStart);
+        if (subEnd < 0) continue;
+        const sub = src.slice(subStart + 1, subEnd);
+        const kv = {};
+        for (const p of sub.matchAll(/(?:^|[,{\s])([A-Za-z_$][\w$]*)\s*:\s*"((?:[^"\\]|\\.)*)"/g)) kv[p[1]] = p[2];
+        langs[L] = kv;
+      }
+      entries.push({ id, langs });
+      i = vEnd + 1;
+    }
+    if (entries.length) maps.push({ name: m[1], entries });
+  }
+  return maps;
+}
+
+function langMapProblems(maps) {
+  const problems = [];
+  for (const mp of maps) {
+    for (const e of mp.entries) {
+      const missing = LANG_KEYS.filter((L) => !e.langs[L]);
+      if (missing.length) {
+        problems.push(`${mp.name}.${e.id}：缺 ${missing.join("/")}`);
+        continue;
+      }
+      const base = Object.keys(e.langs.zh_cn).sort().join(",");
+      for (const L of LANG_KEYS) {
+        const ks = Object.keys(e.langs[L]).sort().join(",");
+        if (ks !== base) problems.push(`${mp.name}.${e.id}.${L}：子键集合与 zh_cn 不一致（${ks} vs ${base}）`);
+        if (L === "en") {
+          for (const [k, v] of Object.entries(e.langs[L])) {
+            if (CJK.test(String(v))) problems.push(`${mp.name}.${e.id}.en.${k}：en 词条里含中文`);
+          }
+        }
+      }
+    }
+  }
+  return problems;
+}
+
+const langMaps = findLangMaps(renderer);
+const langProblems = langMapProblems(langMaps);
+if (langMaps.length && langProblems.length === 0) {
+  const n = langMaps.reduce((a, m) => a + m.entries.length, 0);
+  ok(`CC-14 按语言分槽的视图映射三语齐全（${langMaps.length} 张表 / ${n} 个条目：zh_cn+zh_tw+en 齐、子键一致、en 无中文）`);
+} else if (!langMaps.length) {
+  bad("CC-14 找不到按语言分槽的视图映射（判据可能恒绿）", "renderer 里没有 zh_cn:/zh_tw:/en: 三件套的表");
+} else {
+  bad("CC-14 按语言分槽的视图映射三语齐全", langProblems.slice(0, 8).join(" | "));
+}
+
+/* ── CC-15 负向对照：删掉一条 en ⇒ CC-14 当场翻红（判据不是恒绿） ──────────── */
+{
+  let broken = null;
+  for (const mp of langMaps) {
+    for (const e of mp.entries) {
+      if (!e.langs.en) continue;
+      const re = new RegExp("([,\\s])en\\s*:\\s*\\{[^}]*\\}");
+      const m = re.exec(renderer);
+      if (m) { broken = renderer.replace(m[0], m[0].replace("en", "en_removed")); break; }
+    }
+    if (broken) break;
+  }
+  if (!broken) {
+    bad("CC-15 负向对照：删掉一条 en ⇒ CC-14 翻红（判据不是恒绿）", "没找到可删的 en 词条");
+  } else {
+    const p2 = langMapProblems(findLangMaps(broken));
+    if (p2.length > langProblems.length) {
+      ok("CC-15 负向对照：删掉一条 en 词条 ⇒ CC-14 翻红（判据不是恒绿）");
+    } else {
+      bad("CC-15 负向对照：删掉一条 en 词条 ⇒ CC-14 翻红（判据不是恒绿）", "退化后没翻红");
+    }
+  }
+}
+
 console.log(`prove_copy_contract: PASS=${PASS} FAIL=${FAIL}`);
 if (FAIL) process.exit(1);

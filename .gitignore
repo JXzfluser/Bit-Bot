@@ -121,5 +121,10 @@ docs/design/desktop-target/reference/modal-computed.json
 # 但那是过程产物，不属于产品仓库。
 deliverable.md
 
-# 门禁影子根（矩阵的数据隔离根；里面是用户 data/ 的一份拷贝，绝不能进仓）
+# 门禁的隔离数据根 —— 都跑在 checkout 的直接子目录里（内核的 cwd =
+# dirname(DATA_ROOT)，见 hosts/desktop/paths.js 的 resolveDataRoot 注释），
+# 跑完自删；万一有一次被强杀，留下的目录也不该进版本库。
+#   /.gate-matrix/     矩阵的影子根（里面是用户 data/ 的一份拷贝）
+#   /.gate-data-*/     单扇门的隔离根（e2e_desktop_shell_v2 等）
 /.gate-matrix/
+/.gate-data-*/

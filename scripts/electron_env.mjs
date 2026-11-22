@@ -21,6 +21,7 @@
 import os from "os";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import { execSync, spawnSync } from "child_process";
 
 /* --------------------------------------------------------------------------
@@ -150,6 +151,43 @@ export function electronUserDataDir(tag) {
 }
 
 /**
+ * 这个 checkout 的 main.js 绝对路径（门禁 Electron 的命令行里带的就是它）。
+ *
+ * electron_env.mjs 就在 <repo>/scripts/ 下 ⇒ 上一级就是仓库根。沙箱里
+ * scripts/ 是拷贝、hosts/ 是软链时同样成立：软链不改变路径**字面量**，
+ * 而 Electron 的 argv 里留的就是那个字面量。
+ */
+function checkoutMainPath() {
+  const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  return path.join(repo, "hosts", "desktop", "main.js");
+}
+
+/**
+ * 找出「**这个 checkout 自己的**」门禁残留进程。
+ *
+ * 为什么必须按 checkout 限定（2026-11-22 实测踩出来的）：
+ *   这台机器上通常**同时**跑着好几个 checkout 的门禁（本仓库是 worktree 一族：
+ *   wt-main / wt-p5 / wt-p2 …，每个都在跑自己的门）。以前这里是
+ *   `pgrep -f "bitbot-e2e-ud"` **全机通杀** ⇒ A checkout 的门禁在启动前会把
+ *   B checkout 正在跑的 Electron 一起 SIGKILL 掉 ⇒ B 那边报的是
+ *     「electron.launch: Process failed to launch!」
+ *     「page.evaluate: Application exited」
+ *     「Target page, context or browser has been closed」
+ *   —— 全都不是产品的红，是**门禁互相杀**。仓里另一处 pkill（按脚本名全量杀）
+ *   早就改成按 $PWD 限定了，这一段是漏网的同一类问题。
+ *
+ * 判据：命令行里同时带「门禁 ud 标记」和**本 checkout 的 hosts/desktop/main.js**
+ * —— 后者只可能来自本 checkout（别的 checkout 的路径字面量不一样）。
+ */
+export function staleGatePids() {
+  const mainPath = checkoutMainPath();
+  return pgrepPids("bitbot-e2e-ud").filter((pid) => {
+    const cmd = cmdlineOf(pid);
+    return cmd.includes(mainPath);
+  });
+}
+
+/**
  * 清掉上一次门禁留下的孤儿 Electron 实例。
  *
  * 为什么会有孤儿：门禁进程被 SIGKILL（超时、会话被打断）时，脚本 finally 里的
@@ -157,15 +195,16 @@ export function electronUserDataDir(tag) {
  * 旧的却还挂着**，机器上于是越积越多。这正是"为什么能启动这么多、而不是先移除旧的"
  * 的根因。
  *
- * 匹配特征是命令行里带 `--user-data-dir=…bitbot-e2e-ud-…`：只有门禁会带这个标记，
- * 用户真实运行的应用（默认 profile / 自己的 userData）永远不会被误伤。
+ * 匹配特征是命令行里带 `--user-data-dir=…bitbot-e2e-ud-…` **而且**来自本
+ * checkout：只有门禁会带这个标记，用户真实运行的应用（默认 profile / 自己的
+ * userData）永远不会被误伤，**别的 checkout 的门禁**也不会被误伤。
  * 杀完等 1s 让端口/单例锁释放，避免下一次 launch 撞锁。
  */
 export function killStaleGateInstances() {
   if (process.platform === "win32") return; // 门禁只在 mac/linux 跑，且 ps 语法不同
-  // 走 pgrepPids：不再用 execSync("pgrep -f …")，否则这个调用会顺手把自己
+  // 走 staleGatePids：不再用 execSync("pgrep -f …")，否则这个调用会顺手把自己
   // 所在的 `/bin/sh -c` 杀掉（表现为偶发的 execSync 报错 + 少杀一个真残留）。
-  const pids = pgrepPids("bitbot-e2e-ud");
+  const pids = staleGatePids();
   for (const pid of pids) {
     try { process.kill(pid, "SIGKILL"); } catch { /* 已退出，忽略 */ }
   }
@@ -245,4 +284,149 @@ export function gateAppEnv(root, extra) {
     BITBOT_NO_SECRET_SYNC: "1",
     ...(extra || {}),
   };
+}
+
+/* ==========================================================================
+ * 等「事情真的发生」，不要等一个拍脑袋的 sleep
+ *
+ * 2026-11-22 一次 L3 积压盘点里，三条红全是**同一个毛病**：门禁用固定
+ * sleep 去量一件**异步**的事，于是量到的是上一帧的状态：
+ *
+ *   · 命令门 C-01：基线在应用启动后 1.0s 拍，气泡数可能是 0；可应用随后会
+ *     插一行自己的「正在思考」占位（启动时的 typing 指示器）⇒ +1 ⇒ 判成
+ *     「命令泄漏进对话」。产品一条命令都没多发，是**基线抢跑**了。
+ *     （实测：那行占位通常在 100ms 内就出现 ⇒ 今天多数时候基线拍得不算早；
+ *     但「等行数不再变化」比「赌它已经出现」稳。）
+ *   · 命令门 C-03/C-04：组队是「建 3 个 Bot + 建群 + 派活」几串 IPC，回执在
+ *     1.5s 后才到；门禁 0.9s 就去读 toast ⇒ 读到的是**上一条命令的回执**
+ *     （"已设置：总是允许"）⇒ 判成「回执含糊」；再往后 C-04 又被迟到的
+ *     C-03 回执盖掉 ⇒ 判成「没有提示 toast」。
+ *   · 归档门：点「回到底部」是 smooth scroll，约 1.0s 才到底；门禁 0.7s 就
+ *     量离底距离 ⇒ 判成「点了没回到底」。
+ *
+ * 三条都是**尺的问题**，不是产品的问题 ⇒ 修法不是把 sleep 调大（那还是猜），
+ * 而是**等状态**。这里放三个公共等待器，所有门共用 ⇒ 这类毛病以后在**任何**
+ * 门里都不会再犯（不是靠某一扇门恰好覆盖）。
+ * ========================================================================== */
+
+/**
+ * 等应用「安静下来」：消息流的**行数不再变化**（连续 stableMs 读到同一个数）。
+ *
+ * 为什么需要：应用启动后会插一行自己的占位气泡（空 assistant 气泡 + .typing
+ * 指示器）。门禁在这之前拍基线，之后再量 ⇒ 凭空多一行。这个占位是**应用自己
+ * 的**，与用户发什么毫无关系。
+ *
+ * 【2026-11-22 修订】判据里**不**要求「占位行消失」：
+ *   实测（探针见报告）：provider 不可达时那一行**永远不会消失**（流起不来也
+ *   收不了尾）—— 拿「占位必须消失」当条件，等的是一个**永远不会发生的状态**
+ *   ⇒ 每次都要空等满 timeout。
+ *   「安静」的真正含义是「流不再往消息流里加行」⇒ 行数稳定即可。
+ *   （占位行本身照样会被 bubbleCount 数进去 —— 判据没放松。）
+ *
+ * @param {import('playwright-core').Page} win
+ * @param {{timeoutMs?: number, stableMs?: number}} [opts]
+ * @returns {Promise<{rows: number, settled: boolean}>}
+ */
+export async function waitForUiSettled(win, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 15000;
+  const stableMs = opts.stableMs ?? 250;
+  const t0 = Date.now();
+  let last = -1;
+  let lastChange = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const n = await win
+      .evaluate(() => {
+        const rows = document.querySelectorAll("#log .msg").length;
+        const typing = document.querySelectorAll("#log .msg .typing").length;
+        return { rows, typing };
+      })
+      .catch(() => ({ rows: -1, typing: 0 }));
+    if (n.rows !== last) {
+      last = n.rows;
+      lastChange = Date.now();
+    } else if (Date.now() - lastChange >= stableMs) {
+      return { rows: n.rows, settled: true };
+    }
+    await win.waitForTimeout(60).catch(() => {});
+  }
+  const rows = await win.evaluate(() => document.querySelectorAll("#log .msg").length).catch(() => -1);
+  return { rows, settled: false };
+}
+
+/**
+ * 等 #cmd-toast 变成满足条件的样子（默认：不是 warn、且文本非空）。
+ *
+ * 用它替掉「发完命令 sleep 900ms 再读 toast」那种拍脑袋等待。
+ *
+ * @param {import('playwright-core').Page} win
+ * @param {{match?: RegExp, warn?: boolean, timeoutMs?: number, differsFrom?: string}} [opts]
+ * @returns {Promise<{text: string, warn: boolean, hidden: boolean, matched: boolean}>}
+ */
+export async function waitForToast(win, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 20000;
+  const match = opts.match || null;
+  const wantWarn = opts.warn === undefined ? null : !!opts.warn;
+  const differsFrom = opts.differsFrom === undefined ? null : String(opts.differsFrom || "");
+  const t0 = Date.now();
+  let last = { text: "", warn: false, hidden: true, matched: false };
+  while (Date.now() - t0 < timeoutMs) {
+    last = await win
+      .evaluate(() => {
+        const el = document.getElementById("cmd-toast");
+        if (!el) return { text: "", warn: false, hidden: true };
+        return {
+          text: (el.textContent || "").trim(),
+          warn: el.classList.contains("warn"),
+          hidden: el.hidden === true,
+        };
+      })
+      .catch(() => ({ text: "", warn: false, hidden: true }));
+    const notHidden = !last.hidden;
+    const textOk = !!last.text;
+    const warnOk = wantWarn === null ? true : last.warn === wantWarn;
+    const differsOk = !differsFrom || last.text !== differsFrom;
+    const matchOk = !match || match.test(last.text);
+    if (notHidden && textOk && warnOk && differsOk && matchOk) {
+      return { ...last, matched: true };
+    }
+    await win.waitForTimeout(80).catch(() => {});
+  }
+  return { ...last, matched: false };
+}
+
+/**
+ * 等一个滚动容器「滚到位」：离底距离小于 gapPx，且连续两次读数一样。
+ *
+ * smooth scroll 的时长跟距离和机器负载有关（实测 4k px 要 ~1s，机器忙时更久），
+ * 所以固定 sleep 量到的是中途 ⇒ 假红。
+ *
+ * @param {import('playwright-core').Page} win
+ * @param {string} sel 滚动容器选择器
+ * @param {{gapPx?: number, timeoutMs?: number}} [opts]
+ */
+export async function waitForScrollAtEnd(win, sel, opts = {}) {
+  const gapPx = opts.gapPx ?? 60;
+  const timeoutMs = opts.timeoutMs ?? 10000;
+  const t0 = Date.now();
+  let lastGap = -1;
+  while (Date.now() - t0 < timeoutMs) {
+    const gap = await win
+      .evaluate((s) => {
+        const el = document.querySelector(s);
+        if (!el) return -1;
+        return Math.round(el.scrollHeight - el.scrollTop - el.clientHeight);
+      }, sel)
+      .catch(() => -1);
+    if (gap >= 0 && gap <= gapPx && gap === lastGap) return { gap, reached: true };
+    lastGap = gap;
+    await win.waitForTimeout(120).catch(() => {});
+  }
+  const gap = await win
+    .evaluate((s) => {
+      const el = document.querySelector(s);
+      if (!el) return -1;
+      return Math.round(el.scrollHeight - el.scrollTop - el.clientHeight);
+    }, sel)
+    .catch(() => -1);
+  return { gap, reached: false };
 }
