@@ -33,6 +33,21 @@
  * 规则:
  *   ① 状态**以 Task 实体为准**(它是显式的,不是从转录推的);
  *   ② Task 里有、聚合里没有的 ⇒ 补一张「仅记录」卡(转录已滚出)。
+ *
+ * 【P1 批 3.5 修掉的真缺陷 —— 调用顺序】
+ *   本函数**必须**在「从转录建卡」**之后**调用。
+ *   之前的写法是 `tasks = cmdMergeTaskRecords([], taskRecords)` —— 也就是
+ *   **拿一张空表去合并**:
+ *     · 第一个循环(把 record 的 state/task/title 盖到卡上)遍历的是空表
+ *       ⇒ 一次都没生效 ⇒ 从转录建出来的卡 state 永远是空串;
+ *     · 第二个循环(补「仅记录」卡)也因此认为「这张 task_sig 没人认领」
+ *       ⇒ **每一条 Task 记录都被 push 成一张额外的卡**。
+ *   ⇒ 结果:同一个 task_sig 在指挥台出现**两张卡**(一张从转录推导、
+ *     一张「仅记录」),而且用户真正操作的那张卡 state 是空的。
+ *   修法:把合并挪到建卡之后(见 aggregateCommandTasks)。
+ *   —— 这条是**聚合端**的顺序问题,不是写端少写了 task_sig:
+ *     写端(orchestrateRoom 的两条 bot_reply)本来就带 task_sig,
+ *     补写端也补不出「合并」这一步 ⇒ 只补写端,两张卡照样在。
  */
 function cmdMergeTaskRecords(tasks, records) {
   var list = Array.isArray(records) ? records : [];
@@ -76,7 +91,14 @@ function cmdMergeTaskRecords(tasks, records) {
 function aggregateCommandTasks(rooms, taskRecords) {
   var tasks = [];
   var list = Array.isArray(rooms) ? rooms : [];
-  tasks = cmdMergeTaskRecords(tasks, taskRecords);
+  /* 【P1 批 3.5】task_sig ⇒ 卡片。
+     task_sig 是这批任务的**幂等键**(product_surface 的 taskSig = <room_id>|<message_id>)
+     ⇒ 同一个号永远是**同一批任务** ⇒ 只能有一张卡。
+     之前的写法是「每来一行就新开一张卡」⇒ 同一个号在指挥台出现两张卡:
+       · 改向(force 重跑)会写**第二批同号**的行(同号、同一批,不是新任务);
+       · 交接回执带着同号的行落在 final_report 之后(那一批已经收口了)。
+     现在:有号的行落到**同号那张卡**上;没号的行接着当前那张(旧行为)。 */
+  var bySig = {};
   for (var i = 0; i < list.length; i++) {
     var room = list[i] || {};
     var tr = Array.isArray(room.transcript) ? room.transcript : [];
@@ -90,6 +112,24 @@ function aggregateCommandTasks(rooms, taskRecords) {
         partial: false, total: 0, returned: 0, at: "",
       };
     }
+    /* 这一行该落到哪张卡上:
+       · 有号 ⇒ 同号就是同一张卡(还没有就现开一张);
+       · 没号 ⇒ 接着当前这张(连续几行没号 ⇒ 同一批,旧行为不变)。 */
+    function cardFor(sig, row) {
+      if (sig) {
+        var hit = bySig[sig];
+        if (hit) { cur = hit; return hit; }
+        if (!cur || (cur.task_sig && cur.task_sig !== sig)) {
+          cur = fresh(row);
+          tasks.push(cur);
+        }
+        cur.task_sig = sig;
+        bySig[sig] = cur;
+        return cur;
+      }
+      if (!cur) { cur = fresh(row); tasks.push(cur); }
+      return cur;
+    }
     for (var j = 0; j < tr.length; j++) {
       var row = tr[j];
       if (!row || !row.kind) continue;
@@ -100,8 +140,7 @@ function aggregateCommandTasks(rooms, taskRecords) {
         //  不用再靠"同一个群就算同一批"这种粗判。)
         var rsig = String(row.task_sig || "");
         if (cur && rsig && cur.task_sig && cur.task_sig !== rsig) cur = null;
-        if (!cur) { cur = fresh(row); tasks.push(cur); }
-        if (rsig) cur.task_sig = rsig;
+        cur = cardFor(rsig, row);
         var nm = String(row.name || row.bot_id || row.speaker || "");
         cur.steps.push({
           name: nm,
@@ -118,25 +157,27 @@ function aggregateCommandTasks(rooms, taskRecords) {
       if (k === "confirm_request") {
         var csig = String(row.task_sig || "");
         if (cur && csig && cur.task_sig && cur.task_sig !== csig) cur = null;
-        if (!cur) { cur = fresh(row); tasks.push(cur); }
+        cur = cardFor(csig, row);
         cur.needs_you = {
           question: String(row.question || ""),
           candidates: Array.isArray(row.candidates) ? row.candidates : [],
           at: String(row.at || ""),
         };
         cur.task = String(row.task || "");
-        cur.task_sig = String(row.task_sig || "");
+        // 空号**不许**把已有的号擦掉(批 3.5):擦掉 ⇒ 这张卡与 Task 实体对不上
+        // ⇒ 实体又被当成新卡 push 一份 ⇒ 同一个号两张卡。
+        if (csig) cur.task_sig = csig;
         cur.at = String(row.at || cur.at);
         continue;
       }
       if (k === "final_report") {
         var fsig = String(row.task_sig || "");
         if (cur && fsig && cur.task_sig && cur.task_sig !== fsig) cur = null;
-        if (!cur) { cur = fresh(row); tasks.push(cur); }
+        cur = cardFor(fsig, row);
         cur.report = row;
         cur.task = String(row.task || "");
         cur.task_title = String(row.task_title || "");
-        cur.task_sig = String(row.task_sig || "");
+        if (fsig) cur.task_sig = fsig;
         cur.responders = Array.isArray(row.responders) ? row.responders : [];
         cur.partial = row.partial === true;
         cur.total = Number(row.total || 0);
@@ -149,6 +190,14 @@ function aggregateCommandTasks(rooms, taskRecords) {
       }
     }
   }
+  /* 【P1 批 3.5】合并 Task 实体 —— **必须在建卡之后**。
+     放在建卡之前(旧写法)⇒ 合并作用在一张空表上:
+       · record 的 state/task/title 一次都没盖到卡上 ⇒ 卡 state 永远是空串;
+       · 「这张 task_sig 没人认领」⇒ 每条 Task 记录都被当成新卡 push 进去
+       ⇒ 同一个 task_sig 出现两张卡(一张从转录推导、一张「仅记录」)。
+     放在建卡之后 ⇒ 有 task_sig 的卡**就地**被 Task 实体盖上状态,
+     只有「转录真的滚出去了」的记录才补一张「仅记录」卡(这才是它的本意)。 */
+  tasks = cmdMergeTaskRecords(tasks, taskRecords);
   for (var t = 0; t < tasks.length; t++) {
     var x = tasks[t];
     // Task 实体的状态**优先**于从转录推出来的 —— 它是显式写下的。

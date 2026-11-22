@@ -3923,6 +3923,19 @@ function createProductSurface(repoRoot, opts = {}) {
     };
   }
 
+  /* 【P1 批 3.5】一个房间里**最近一个**任务签名(最后一条带 task_sig 的转录行)。
+   * 交接(转交)的回执要挂到它身上 —— 交接是「这批任务里的一棒」,
+   * 它落在群里时如果不带 task_sig,指挥台就只能给它单开一张
+   * 「没有任务号」的孤儿卡(看着像任务,其实点不动:插话/改向/刹停都拿不到号)。 */
+  function latestRoomTaskSig(room) {
+    const tr = room && Array.isArray(room.transcript) ? room.transcript : [];
+    for (let i = tr.length - 1; i >= 0; i--) {
+      const sig = String((tr[i] || {}).task_sig || "").trim();
+      if (sig) return sig;
+    }
+    return "";
+  }
+
   function prepareHandoff(input) {
     const opts = input || {};
     const roomId = String(opts.room || "").trim();
@@ -3980,6 +3993,9 @@ function createProductSurface(repoRoot, opts = {}) {
       return b ? b.name : id;
     };
     const at = nowIso();
+    // 交接挂在**这个群里最近的那批任务**上(批 3.5):行里带上 task_sig,
+    // 指挥台才能把这次交接并进那张卡,而不是给它单开一张没有任务号的孤儿卡。
+    const taskSig = latestRoomTaskSig(hit);
     const entry = {
       room_id: hit.id,
       kind: "handoff",
@@ -3991,11 +4007,12 @@ function createProductSurface(repoRoot, opts = {}) {
       responder_policy: "handoff_target",
       at,
     };
+    if (taskSig) entry.task_sig = taskSig;
     return {
       ok: true, mode: "host_handoff_task", room: hit.id, title: hit.title,
       from_bot: fromResolved, from_name: nameOf(fromResolved),
       to_bot: toResolved, to_name: nameOf(toResolved),
-      task: taskText, entry, at, rooms, hit,
+      task: taskText, entry, at, rooms, hit, task_sig: taskSig,
     };
   }
 
@@ -4063,6 +4080,11 @@ function createProductSurface(repoRoot, opts = {}) {
         responder_policy: "handoff_target", at,
       };
     if (body.truncated && ok) row.text_truncated = true;
+    // 【P1 批 3.5】带上 task_sig:交接的回复是「这批任务里的一棒」,
+    // 不带号 ⇒ 指挥台只能给它单开一张没有任务号的孤儿卡(点不动)。
+    // 写端补齐(而不是聚合端回退匹配)—— 唯一同步点是 appendRoomTranscript,
+    // 行里有什么,聚合就看见什么。
+    if (prep.task_sig) row.task_sig = prep.task_sig;
     appendRoomTranscript(prep.room, row);
     return {
       // 「这笔转交成立」与「承接方当场答上了」是两件事：
@@ -4219,6 +4241,13 @@ function createProductSurface(repoRoot, opts = {}) {
       handoff_file: path.basename(String(p || "")),
       at: nowIso(),
     };
+    // 【P1 批 3.5】卡住也要带上 task_sig —— 否则它同样会变成一张点不动的孤儿卡。
+    try {
+      const roomsDoc = requireWritableRooms();
+      const hit = (roomsDoc.rooms || []).find((r) => r.id === roomId);
+      const sig = latestRoomTaskSig(hit);
+      if (sig) row.task_sig = sig;
+    } catch (_) { /* 读不到转录就不写号(不编) */ }
     try {
       const app = appendRoomTranscript(roomId, row);
       return !(app && app.ok === false);

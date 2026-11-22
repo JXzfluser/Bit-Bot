@@ -368,7 +368,20 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
       },
       tasks: {
         list: async () => ({ ok: true, tasks: [
-          { id: "sig-run-1", room_id: "r-run", task: "旧活儿", title: "旧活儿", state: "done", updated_at: "2026-11-20T10:00:00.000Z" },
+          /* 【P1 批 3.5 改夹具,不改断言】这条记录原来挂在 "sig-run-1" 上,
+             而 r-run 的转录里只有两条 bot_reply、没有 final_report ⇒
+             「Task 实体说 done、但这批任务还没有收口」——**产品里不可能出现**
+             (实体的 done 只能由 final_report 同步而来,product_surface.js 的
+              syncTaskFromTranscript:final_report→done;而 final_report 一定
+              落在那两条 bot_reply **之后** ⇒ 它要是滚出 200 条窗口,
+              bot_reply 早就先滚出去了)。
+             批 3.5 把「实体优先于转录推导」真正接上之后,这个不可能状态
+             才显形:卡归「已完」⇒ 没有刹停按钮 ⇒ TC-7/TC-8 假红。
+             ⇒ 把这条记录改成「转录已滚出」的那一类(号对不上任何转录行),
+               让 r-run 回到产品真会产生的状态:**在跑、还没有实体状态**。
+               断言一个字没动(TC-7 仍然要求「刹停按钮只给真在跑的那个任务,
+               正好 1 个」),换掉的是「一条不可能存在的记录」。 */
+          { id: "sig-old-1", room_id: "r-run", task: "旧活儿", title: "旧活儿", state: "done", updated_at: "2026-11-20T10:00:00.000Z" },
           { id: "sig-gone", room_id: "r-old", task: "转录已滚出的那批", title: "转录已滚出的那批", state: "waiting", updated_at: "2026-11-19T10:00:00.000Z" },
         ] }),
       },
@@ -549,6 +562,36 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
     "TC-25 Task 实体说 done ⇒ 归「已完」(**实体优先于转录推导**)", JSON.stringify(bucketState));
   check(bucketState.length === 1 && bucketState[0].persisted === true,
     "TC-25 标成 persisted(知道它来自 Task 实体)");
+
+  /* 【P1 批 3.5】同一个 task_sig ⇒ 指挥台**只有一张卡**,而且那张卡的 state
+     取自 Task 实体(不是空串)。
+     批 3.5 之前:合并动作发生在「建卡」之前 ⇒ 合并作用在一张空表上 ⇒
+       ① record 的 state 一次都没盖到卡上(卡 state 永远是空);
+       ② 每条 record 都被当成「没人认领」⇒ 多 push 一张「仅记录」卡
+     ⇒ 同一个 task_sig 出现两张卡(实测:编排完一轮 ⇒ 2 张;改向重跑 ⇒ 3 张)。 */
+  const oneCard = await page.evaluate(() => {
+    const t = window.__bitbotCommand.aggregate(
+      [{ id: "r", title: "x", transcript: [
+        { kind: "bot_reply", room_id: "r", bot_id: "t1", name: "Alice", text: "a", task_sig: "r|msg-1", at: "2026-11-21T10:00:00.000Z" },
+        { kind: "final_report", room_id: "r", task: "干完了", task_title: "干完了", task_sig: "r|msg-1", responders: ["t1"], total: 1, returned: 1, at: "2026-11-21T10:01:00.000Z" },
+      ]}],
+      [{ id: "r|msg-1", room_id: "r", state: "done", task: "干完了", title: "干完了" }],
+    );
+    return {
+      count: t.length,
+      state: t[0] ? String(t[0].state || "") : "",
+      bucket: t[0] ? String(t[0].bucket || "") : "",
+      steps: t[0] ? (t[0].steps || []).length : 0,
+      archived: t[0] ? !!t[0].archived : null,
+    };
+  });
+  check(oneCard.count === 1,
+    "TC-32 同一个 task_sig 只有**一张**卡(不是「从转录推导」+「仅记录」两张)",
+    JSON.stringify(oneCard));
+  check(oneCard.state === "done",
+    "TC-32 那张卡的 state 取自 Task 实体(不是空串)", JSON.stringify(oneCard));
+  check(oneCard.bucket === "closed" && oneCard.steps === 1 && oneCard.archived === false,
+    "TC-32 那张卡既带着转录里的成员明细、又不是「仅记录」卡", JSON.stringify(oneCard));
 
   // 批 H:值班区
   const dutyUi = await page.evaluate(() => {
