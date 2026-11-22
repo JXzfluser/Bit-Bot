@@ -102,11 +102,14 @@ function usableProtector(candidate) {
 
 function resolvePaths(root, opts) {
   /* The vault holds user secrets -> OS user-data dir when packaged. */
-  const dataRoot = opts.dataRoot
-    ? path.resolve(opts.dataRoot)
-    : process.env.BITBOT_DATA_ROOT
-      ? path.resolve(process.env.BITBOT_DATA_ROOT)
-      : path.join(root, "data");  /* 数据根三级优先级(和 hosts/shared/host_ffi.js 一致):
+  const dataRoot = opts.dataRoot ? path.resolve(opts.dataRoot) : path.join(root, "data");
+  /* 注意(2026-11-22):这里**刻意不读** BITBOT_DATA_ROOT。
+     门禁隔离由上游一层做够:main.js 用 resolveDataRoot() 算出 dataRoot 显式传进来,
+     而 resolveDataRoot 本身就优先读 BITBOT_DATA_ROOT(见 hosts/desktop/paths.js:113)。
+     ⇒ 本模块自己再读一遍 env 是**多余的**,而且会改掉「调用方没传 dataRoot」时的
+     历史行为(实测:room_orchestration 因此报「complete card — null」)。
+     ⇒ 需要 env 逃生口的模块是 hosts/shared/host_ffi.js(它有明确的 env 级)。 */
+  /* 数据根三级优先级(和 hosts/shared/host_ffi.js 一致):
      opts.dataRoot > 环境变量 BITBOT_DATA_ROOT > <repo>/data。
      旧写法只有两级,漏掉环境变量那一级 ⇒ 门禁用 BITBOT_DATA_ROOT 隔离时,
      这里仍然写**真实 checkout 的 data/** ⇒ 门禁跑完用户的真数据目录被改了

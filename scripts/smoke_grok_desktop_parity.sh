@@ -173,7 +173,39 @@ console.log("夹具 Bot "+drop(bp,"bots",(s)=>FIXTURE_BOT.test(s))+"、夹具群
 }
 # 不只靠末尾那一次调用：矩阵被 set -u 或 timeout 打断时（本轮整合前就死在 G-59 的
 # 空数组上）收尾根本不会执行，夹具照样留在用户侧栏里。挂 EXIT trap 兜住异常退出。
-trap 'purge_gate_fixtures >/dev/null 2>&1; gate_llm_restore >/dev/null 2>&1' EXIT
+#
+# ---- 孤儿进程治理（2026-11-22 事故）-------------------------------------------
+# 事故：一轮 all 矩阵被外层 shell 打断时，**子进程没跟着死** ⇒
+#   `smoke_grok_desktop_parity.sh all` + `node hosts/cli_host/run_turn.js` + `moon run`
+#   一直留在后台，持续写真仓库的 data/ ⇒ **用户的真数据目录被改了**。
+#   （证据：什么都不跑、静置 90 秒，data/ 自己变了 23 行。）
+# ⇒ 矩阵必须**自己**是进程组组长，收尾时把**自己这一组**全部带走。
+#   ⚠️ 只杀**自己这一组**：绝不按路径/名字跨组乱杀 —— 别的 worktree 的门禁也在跑，
+#   误杀它们会毁掉别人正在取的结果。
+# ⇒ 没有 setsid 就退回原样（宁可不杀，也不误杀）。
+if [ -z "${BITBOT_GATE_PGID_OK:-}" ] && command -v setsid >/dev/null 2>&1; then
+  export BITBOT_GATE_PGID_OK=1
+  exec setsid bash "$0" "$@"
+fi
+
+# 杀**自己这一组**里除自己以外的进程（孤儿 electron / moon / node）。
+gate_kill_own_group() {
+  local me=$$
+  local pgid
+  pgid=$(ps -o pgid= -p "$me" 2>/dev/null | tr -d ' ')
+  [ -n "$pgid" ] || return 0
+  # 只有自己确实是组长、且组里不止我一个时，才动手。
+  [ "$pgid" = "$me" ] || return 0
+  local p
+  for p in $(ps -eo pid,pgid --no-headers 2>/dev/null | awk -v g="$pgid" -v me="$me" '$2==g && $1!=me {print $1}'); do
+    kill -9 "$p" 2>/dev/null || true
+  done
+}
+trap 'gate_kill_own_group >/dev/null 2>&1; purge_gate_fixtures >/dev/null 2>&1; gate_llm_restore >/dev/null 2>&1' EXIT
+# 信号也要走同一套收尾：外层 timeout 默认发 SIGTERM ⇒ 只挂 EXIT 的话，
+# bash 会退出并跑 EXIT trap，但先把整组带走更干净（SIGKILL 无能为力）。
+trap 'gate_kill_own_group >/dev/null 2>&1; exit 130' INT
+trap 'gate_kill_own_group >/dev/null 2>&1; exit 143' TERM
 
 
 # ---- 分层入口（L1 / L2 / L3）------------------------------------------------
@@ -2157,7 +2189,10 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   fi
   for g in single_instance sidebar_adapt layout_target quit command_channel bot_group_menu token_parity stream_typing artifacts bottom_archive chatsurface room_orchestration shell_v2 team_ui unread_summary; do
     log=/tmp/g46-$g.log
-    pkill -9 -f "dist/[e]lectron" 2>/dev/null
+    # 只杀**本 checkout** 的 Electron：按名字杀(dist/electron)会连**别的 checkout**
+    # 正在跑的门禁一起杀掉(实测:另一个 worktree 的 worker 被误杀 ⇒ 本仓 G-46 报
+    # 「Target page, context or browser has been closed」)⇒ 门禁之间的隔离要落到进程层。
+    pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
     sleep 1
     if timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node "scripts/e2e_desktop_$g.mjs" >"$log" 2>&1; then
       ok "G-46 e2e_desktop_$g 全绿（$(grep -c '✓' "$log") 项，$(tail -1 "$log")）"
@@ -2167,7 +2202,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   done
   # §8.176：这条门原本在任何 CI 路径里都没有（孤门尺 AC-07 读出来的）。它量的是五个
   # 弹层关闭钮在真渲染里是否还是同一套 Grok 幽灵圆钮 —— 源码 lint 看不见 computed 值。
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node scripts/e2e_modal_computed.mjs > /tmp/g46-modal.log 2>&1; then
     ok "G-46 e2e_modal_computed 全绿（$(grep -c '✓' /tmp/g46-modal.log) 项，$(tail -1 /tmp/g46-modal.log)）"
@@ -2224,7 +2259,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   # 负向对照：产品里关掉流式（BITBOT_LLM_STREAM=0 那一形状）→ 同一条判据必须翻红，
   # 且红的必须是「屏上看不到打字效果」，否则 ST-04 是恒真的装饰品。
   log=/tmp/g46-neg-stream.log
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if NEG_CONTROL=1 timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node scripts/e2e_desktop_stream_typing.mjs >"$log" 2>&1; then
     bad "G-46 ST 负向对照失效：关掉流式后门禁仍全绿（恒真断言）"
@@ -2248,7 +2283,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   echo "    改成真实点击进两态、按 §3.2 重算期望后本轮实测 PASS=14 FAIL=0"
   # 负向对照：关掉单实例锁，门禁必须翻红（否则这一组是恒真的装饰品）
   log=/tmp/g46-neg-single.log
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if NEG_CONTROL=1 timeout 900 ${g46_xvfb[@]+"${g46_xvfb[@]}"} node scripts/e2e_desktop_single_instance.mjs >"$log" 2>&1; then
     bad "G-46 负向对照失效：关掉单实例锁后门禁仍全绿（恒真断言）"
@@ -2257,7 +2292,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
       && ok "G-46 负向对照：BITBOT_DISABLE_SINGLE_INSTANCE=1 → 门禁真的翻红（非恒真）" \
       || bad "G-46 负向对照跑红了，但红的不是 S-02（见 ${log}）"
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
 else
   echo "  · skip：playwright-core / electron dist 缺失，G-46 的八个真实门禁未跑（SKIP ≠ PASS）"
 fi
@@ -2297,7 +2332,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g47_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if timeout 900 ${g47_xvfb[@]+"${g47_xvfb[@]}"} node scripts/e2e_android_roster.v2.mjs > /tmp/g47-roster.log 2>&1; then
     ok "G-47 e2e_android_roster.v2 全绿（$(grep -c '✓' /tmp/g47-roster.log) 项，$(tail -1 /tmp/g47-roster.log)）"
@@ -2330,7 +2365,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   # 被有意移除的「掩码令牌那一行 / dev-only 完整端点那一行」登记为 GP-203，不当绿也不当红。
   echo "  · G-47 尺子重接（本轮实测）：旧门停在 ✗ page.click: Timeout 30000ms（waiting for .settings-tab-btn[data-stab=\"phone\"]）"
   echo "    → v2 走 #account-avatar-btn → #ap-remote → #mobile-control-modal（本轮 $(grep -c '✓' /tmp/g47-roster.log) 项全绿）；旧门留在仓里作历史尺子，G-47 不再跑它"
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
 else
   echo "  · skip：playwright-core / electron dist 缺失，G-47 花名册真实渲染门禁未跑（SKIP ≠ PASS）"
 fi
@@ -2559,7 +2594,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g51_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if timeout 900 ${g51_xvfb[@]+"${g51_xvfb[@]}"} node scripts/e2e_desktop_cn_channel_guard.mjs > /tmp/g51-cnchan.log 2>&1; then
     ok "G-51 e2e_desktop_cn_channel_guard 全绿（$(grep -c '✓' /tmp/g51-cnchan.log) 项，$(tail -1 /tmp/g51-cnchan.log)）"
@@ -2593,7 +2628,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g52_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if timeout 900 ${g52_xvfb[@]+"${g52_xvfb[@]}"} node scripts/e2e_desktop_cn_secret_inputs.mjs > /tmp/g52-cnsec.log 2>&1; then
     ok "G-52 e2e_desktop_cn_secret_inputs 全绿（$(grep -c '✓' /tmp/g52-cnsec.log) 项，$(tail -1 /tmp/g52-cnsec.log)）"
@@ -2637,7 +2672,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   fi
   g53_run() {
     local name="$1" log="$2" tmo="$3"
-    pkill -9 -f "dist/[e]lectron" 2>/dev/null
+    pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
     sleep 1
     if timeout "$tmo" ${g53_xvfb[@]+"${g53_xvfb[@]}"} node "scripts/${name}.mjs" >"$log" 2>&1; then
       if grep -q "PASS=0 FAIL=0 SKIP=1" "$log"; then
@@ -2713,7 +2748,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g54_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if timeout 900 ${g54_xvfb[@]+"${g54_xvfb[@]}"} node scripts/e2e_desktop_llm_key_paste_guard.mjs > /tmp/g54-lkkey.log 2>&1; then
     ok "G-54 e2e_desktop_llm_key_paste_guard 全绿（$(grep -c '✓' /tmp/g54-lkkey.log) 项，$(tail -1 /tmp/g54-lkkey.log)）"
@@ -3487,7 +3522,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g67_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if timeout 900 ${g67_xvfb[@]+"${g67_xvfb[@]}"} node scripts/e2e_desktop_mobile_control.mjs > /tmp/g67-mobctl.log 2>&1; then
     ok "G-67 e2e_desktop_mobile_control 全绿（$(grep -c '✓' /tmp/g67-mobctl.log) 项，$(tail -1 /tmp/g67-mobctl.log)）"
@@ -3529,7 +3564,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g68_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if timeout 900 ${g68_xvfb[@]+"${g68_xvfb[@]}"} node scripts/e2e_desktop_pair_page.mjs > /tmp/g68-pairpage.log 2>&1; then
     ok "G-68 e2e_desktop_pair_page 全绿（$(grep -c '✓' /tmp/g68-pairpage.log) 项，$(tail -1 /tmp/g68-pairpage.log)）"
@@ -3602,7 +3637,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g70_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   timeout 900 ${g70_xvfb[@]+"${g70_xvfb[@]}"} node scripts/e2e_desktop_event_dualwrite_live.mjs > /tmp/g70-dualwrite-live.log 2>&1
   # 这个脚本的 SKIP 走 exit 0（PASS=0 FAIL=0 SKIP=1），所以**不能拿退出码当绿** ——
@@ -4425,7 +4460,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g75_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   timeout 600 ${g75_xvfb[@]+"${g75_xvfb[@]}"} env ELECTRON_DISABLE_SANDBOX=1 node scripts/e2e_remote_progress_stream.mjs > /tmp/g75-remote-stream.log 2>&1
   if grep -q "^e2e_remote_progress_stream: PASS=9 FAIL=0 SKIP=0$" /tmp/g75-remote-stream.log; then
@@ -5901,7 +5936,7 @@ if [ "$HAVE_ELECTRON_UI" = "1" ]; then
   if ! { [ -n "${DISPLAY:-}" ] && [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ]; } && command -v xvfb-run >/dev/null 2>&1; then
     g127_xvfb=(xvfb-run -a)
   fi
-  pkill -9 -f "dist/[e]lectron" 2>/dev/null
+  pkill -9 -f "$PWD/hosts/desktop/node_modules/electron/dist/[e]lectron" 2>/dev/null
   sleep 1
   if timeout 900 ${g127_xvfb[@]+"${g127_xvfb[@]}"} node scripts/e2e_grok_desktop_spec.mjs > /tmp/g127-spec.log 2>&1; then
     ok "G-127 e2e_grok_desktop_spec 全绿（$(tail -1 /tmp/g127-spec.log)）"
