@@ -6342,8 +6342,12 @@ else
 fi
 timeout 900 node scripts/prove_command_task_control.js >/tmp/g129-command_task_control.log 2>&1
 if [ $? -eq 2 ]; then g129_check /tmp/g129-command_task_control.log command_task_control skip; else g129_check /tmp/g129-command_task_control.log command_task_control; fi
-if grep -q "PASS=82 FAIL=0" /tmp/g129-command_task_control.log; then
-  ok "G-129 prove_command_task_control 计数锚点：PASS=82 FAIL=0"
+# 计数锚点（精确值，不是"至少"）：门多一条断言就得**有意**抬一次 ——
+# 静默掉断言才是它要抓的东西。上一批把这个数停在 82，而门早就长到 93
+# （2026-11-22 实测 93）⇒ 锚点自己失修，L3 因此长期红着，没人看见。
+# 2026-11-22：加了 TC-33（指挥台「按钮只在点了能成时才渲染」的双向断言）⇒ 95。
+if grep -q "PASS=95 FAIL=0" /tmp/g129-command_task_control.log; then
+  ok "G-129 prove_command_task_control 计数锚点：PASS=95 FAIL=0"
 else
   bad "G-129 prove_command_task_control 计数锚点红（$(tail -1 /tmp/g129-command_task_control.log)）"
 fi

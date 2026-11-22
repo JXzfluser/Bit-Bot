@@ -655,15 +655,13 @@
       "gate": "scripts/smoke_grok_desktop_parity.sh",
       "matrix_line_prefix": "真 data/ 被门禁改写了",
       "kind": "gate-criterion",
-      "reason": "矩阵全程在**用户的真 data/ 目录**上跑（cwd = 仓库根 ⇒ 相对路径全落在真目录；且内核按 cwd 相对写）。这是门禁自己的问题，不是产品缺陷：门禁改用户数据比红更严重。已用影子根 .gate-matrix/ 修掉，并在矩阵收尾加了一条「真 data/ 逐文件指纹跑前跑后一致」的硬断言 —— 这条红一旦再出现，就说明隔离又漏了。",
-      "evidence": "事故证据：2026-11-22 17:36–17:38（全量矩阵 L3 在跑的时间窗），仓库真 data/ 有 1092 个文件被改写；data/desktop/bots.json 从 1 个 Bot 涨到 42 个（含 40 个门禁 Bot 情报侦察员/选题策划师/内容主笔/事实编辑/数据复盘师 + M11Probe），data/desktop/rooms.json 攒了 8 个「自媒体内容团队」群（每群只有一句『已创建群聊…』，成员就是那 5 个模板 Bot）。对照实验 scripts/probe_data_root_isolation.sh 证明隔离根放在 checkout 内（带 cmd/moon.mod/_build 软链）时，真 data 指纹 0 变化、内核与 Host 同源。",
+      "reason": "矩阵**自己**的隔离已修好（影子根 .gate-matrix/ + 逐调用点显式 BITBOT_DATA_ROOT），但 2026-11-22 的 L3 全量实测显示：**仍有门在写用户的真 data/** ⇒ 守卫按设计响了。L3 全量跑完后的真 data 指纹差异 162 行，主要是 agent-context/*.ctx（内核写的会话上下文）、以及 rooms/bots 等 ⇒ 说明「门自己管好隔离」这件事只做了一半：带 isolatedRepoRoot()+gateAppEnv() 的门已隔离（shell_v2 是范例），剩下那些「仓库相对」的门（读 path.join(REPO,'data')、且不自带数据根的）还在写真目录。这条红要**留到那些门逐个改完**才标 resolved —— 不能因为矩阵自己干净了就说整体修好了。",
+      "evidence": "事故证据：2026-11-22 17:36–17:38 全量矩阵跑完后，仓库真 data/ 有 1092 个文件被改写；bots.json 从 1 个 Bot 涨到 42 个、rooms.json 攒了 8 个「自媒体内容团队」群。对照实验 scripts/probe_data_root_isolation.sh 证明隔离根放在 checkout 内（带 cmd/moon.mod/_build 软链）时，真 data 指纹 0 变化、Host 与内核同源。现状证据：L1/L2 跑完真 data 0 变化；L3 跑完 162 行差异（见 /tmp/gate-real-data-diff.txt）。",
       "owner": "unassigned",
       "owner_reason": "已修，不需要产品侧表态；留一条是为了防止复发。",
       "first_seen": "2026-11-22",
       "blocks_release": false,
-      "resolved": true,
-      "resolved_at": "2026-11-22",
-      "resolved_note": "矩阵改为在影子根 .gate-matrix/ 里跑（数据根 = 隔离 data/），并加「真 data/ 逐文件未被改写」断言；复跑 L1 = 105/0，真 data/ 指纹 1767 个文件全未变。",
+      "resolved": false,
       "verify": {
         "cmd": [
           "bash",
@@ -671,8 +669,11 @@
           "L1"
         ],
         "expect": "矩阵收尾出现绿行「真 data/ 逐文件未被改写」，且不出现本条前缀。",
-        "needs": "all-layers-only"
-      }
+        "needs": "all-layers-only",
+        "note": "复现：bash scripts/smoke_grok_desktop_parity.sh L3（不必实跑 all 矩阵）。L3 全量跑完后看 /tmp/gate-real-data-diff.txt（2026-11-22 实测 162 行差异）。修完那批门之后，这条应当**不再出现在红行里** ⇒ 才标 resolved。"
+      },
+      "who_fixes": "逐门给「仓库相对」的门补自己的数据根（同 shell_v2 的 isolatedRepoRoot 口径），补完一条改一条。",
+      "conditional": "只在 **L3/全量(all) 跑法**下出现：L1 与 L2 跑完真 data/ 逐文件未变（L1=105/0、L2=199/0，守卫都绿）；L3 会拉起 40 多扇真 Electron 门，其中「仓库相对」的那批还在写真目录 ⇒ 守卫才红。"
     }
   ],
   "notes_layer_isolation": {
@@ -689,5 +690,29 @@
     "另一半根因（半隔离）": "只设 BITBOT_DATA_ROOT 不够：内核那一半按 cwd 相对写（host_ffi.js:183 KERNEL_CWD = dirname(DATA_ROOT)）⇒ Host 写隔离根、内核照样写真 data/。修法见矩阵里的影子根 .gate-matrix/。",
     "已修": "矩阵改为在 checkout 内的影子根 .gate-matrix/ 里跑（data/ 是种子拷贝，其余顶层条目软链回仓库）⇒ 相对路径与内核 cwd 都落在隔离 data/；并在矩阵收尾加了「真 data/ 逐文件指纹未变」的硬断言。",
     "当前影响": "L1 = 105 PASS / 0 FAIL（含新增的真 data/ 守卫）；真 data/ 已清掉门禁垃圾（42 → 1 个 Bot，8 → 0 个群，备份在 /workspace/output/data-backup-2026-11-22/）。"
+  },
+  "notes_l3_backlog": {
+    "说明": "L3 这一层 2026-11-22 **第一次跑到结尾**（此前每次都在 G-129 处崩掉 —— g129_check 用了未绑定的 $3，set -u 直接中断 ⇒ 没人看得见 L3 的最终小结）。修完之后拿到真实数字：PASS=289 FAIL=62 SKIP=1。",
+    "红单分类": {
+      "环境/缺件（不是产品缺陷）": [
+        "G-119 真 app 锚点 26 条（KD-09a..KD-11e）：要一份 macOS 开发态应用包，Linux 上造不出来",
+        "G-101 二维码门：环境没有 Swift/Vision ⇒ SKIP ≠ PASS（台账已有一条同源记录）",
+        "G-46 e2e_desktop_chatsurface：X connection error received（Xvfb 侧环境抖动）",
+        "G-46 e2e_desktop_bottom_archive：Electron 主进程偶发被 SIGKILL（用**未改的 HEAD 版门**复跑同样崩 ⇒ 不是本轮引入）"
+      ],
+      "门禁自身失修（尺的问题）": [
+        "G-104 prove_identity_render / G-108 prove_room_ux_render：两扇门的锚点一条都没跑出来 —— 门在 xvfb-run 收尾时崩了（同一个 X 环境病）",
+        "G-127 e2e_grok_desktop_spec：PASS=33（期望 35）⇒ 计数漂移，要逐条对",
+        "G-129 prove_command_task_control 计数锚点：锚点停在 82，门早已长到 93（我加 TC-33 后是 95）⇒ **锚点自己失修**，已抬到 95"
+      ],
+      "尚未定位": [
+        "G-47 e2e_android_roster 17/1 + roster 锚点缺",
+        "G-64 旧 smoke_desktop_turn 未通过",
+        "G-75 e2e_remote_progress_stream 7/1 + RP-02/RP-03/RP-05 锚点缺（鉴权口径或续订没被断言到）"
+      ]
+    },
+    "本轮已修": [
+      "G-46 e2e_desktop_command_channel 39/1 的抖动：waitForUiSettled 会在 rows=0 时立刻判「安静」⇒ 基线拍在应用自己的占位气泡出现之前 ⇒ 之后凭空多一行 ⇒ 假红「命令泄漏进对话」。改成 minRows=1（基线拍得更晚，判据没放松）⇒ 连跑 3 次 40/0 一致。"
+    ]
   }
 }

@@ -265,7 +265,10 @@ async function waitFor(fn, ms, step) {
      * 凭空多一行 ⇒ 判成「命令泄漏进对话」。等状态，不靠猜 sleep。
      * （占位那行是**应用自己的**，与用户发什么毫无关系；判据仍是
      *   「一条气泡都没多」——bubbleCount 把 debug 行也算上，更严。） */
-    await waitForUiSettled(win);
+    /* minRows=1：等应用**自己的占位气泡**落定再拍基线（见 electron_env.mjs 的
+     * waitForUiSettled 注释：旧实现会在 rows=0 时立刻判「安静」，抢在占位出现之前
+     * 拍基线 ⇒ 之后凭空多一行 ⇒ 假红「命令泄漏进对话」）。判据本身没放松。 */
+    await waitForUiSettled(win, { minRows: 1 });
     const b0 = await bubbleCount(win);
     await say(win, "set appearance dark");
     const b1 = await bubbleCount(win);

@@ -330,6 +330,15 @@ export function gateAppEnv(root, extra) {
 export async function waitForUiSettled(win, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? 15000;
   const stableMs = opts.stableMs ?? 250;
+  /* minRows：**至少有几行**才算「安静」。
+   * 缘起（2026-11-22）：应用启动后会插一行自己的占位气泡（.typing）。
+   * 旧实现第一次读到 rows=0、250ms 内没变 ⇒ 立刻判定「安静」⇒ 基线拍在
+   * 占位出现**之前** ⇒ 之后占位一出现就凭空多一行 ⇒ 假红
+   * （实测 C-01：before=0, after=1 ⇒「命令泄漏进对话」，其实一条命令都没泄漏）。
+   * minRows=1 ⇒ 等应用**自己的那一行**落定后再拍基线 ⇒ 前后可比。
+   * 这不是放松判据：判据仍是「一条气泡都没多」（bubbleCount 把 debug 行也算上）。
+   * 应用确实一行都没有时（没有 provider），会走完 timeout 并如实返回 settled:false。 */
+  const minRows = opts.minRows ?? 0;
   const t0 = Date.now();
   let last = -1;
   let lastChange = Date.now();
@@ -344,7 +353,7 @@ export async function waitForUiSettled(win, opts = {}) {
     if (n.rows !== last) {
       last = n.rows;
       lastChange = Date.now();
-    } else if (Date.now() - lastChange >= stableMs) {
+    } else if (n.rows >= minRows && Date.now() - lastChange >= stableMs) {
       return { rows: n.rows, settled: true };
     }
     await win.waitForTimeout(60).catch(() => {});
