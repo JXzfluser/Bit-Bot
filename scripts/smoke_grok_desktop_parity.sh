@@ -1078,6 +1078,38 @@ echo "    把卡片推出视口 ⇒ 几何判据翻红(判据不是恒真)。"
 
 fi
 if want L2; then
+echo "== G-137 P1 批 3 共享聚合 + 手机端「看」（真入站服务 + 真 HTTP）=="
+# 这条门**要起进程、要打真 HTTP** ⇒ 它**违反 L1 的定义**
+#   (L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)
+#   ⇒ 落在 L2(真内核 + 真 Host + 真文件,不开 Electron、不联网,只打 127.0.0.1)。
+node scripts/prove_task_view_http.mjs >/tmp/g137-task-view-http.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-137 prove_task_view_http（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g137-task-view-http.log)）"
+else
+  bad "G-137 prove_task_view_http（见 /tmp/g137-task-view-http.log；$(grep '✗' /tmp/g137-task-view-http.log | head -2 | tr '\n' ' ')）"
+fi
+for gTV_id in TV-01 TV-02 TV-03 TV-04 TV-10 TV-11 TV-12 TV-13 TV-14 TV-15 TV-16 TV-17 TV-18 TV-19 TV-20 TV-21; do
+  if grep -q "\[$gTV_id\]" /tmp/g137-task-view-http.log; then
+    ok "G-137 锚点：$gTV_id"
+  elif grep -q "\[$gTV_id\] SKIP" /tmp/g137-task-view-http.log; then
+    # 门自己声明的 SKIP(环境不具备)⇒ **SKIP ≠ PASS**,不算绿也不算红(如实报出)。
+    echo "  · skip：G-137 锚点 $gTV_id —— 门自己 SKIP 了 ⇒ **SKIP ≠ PASS**，不算绿"
+    GATE_SKIP=$((GATE_SKIP+1))
+  else
+    bad "G-137 锚点没跑绿：$gTV_id"
+  fi
+done
+echo "  · G-137 为什么长出来：P1 批 3 把指挥台的聚合搬到 hosts/shared/task_view.js(唯一一份),"
+echo "    手机端因此第一次能「看」任务(GET /v1/tasks)。这一门钉的是**手机看到的清单 =="
+echo "    桌面看到的清单**:两边分叉过一次(桌面在跑、手机上看不到),用户就不知道该信谁。"
+echo "  · G-137 判据：① 真起一个入站服务,真打 HTTP,拿回来的清单与桌面指挥台用**同一份"
+echo "    fixture**算出来的清单逐条一致(条数/顺序/每条字段);② 鉴权只认设备签名"
+echo "    (不带凭证⇒401、只带 bearer⇒401,且 401 不泄露任何任务);③ **必须真起服务**"
+echo "    (响应的对端端口 == 服务在监听的端口 + 原始 body 文本 + HTTP 层头 + 连关着的"
+echo "    端口必须失败的对照);④ 隔离数据根:用户真实 data/ 一个字节没动;⑤ 两组变异对照:"
+echo "    把产品副本改坏(HTTP 侧换另一套聚合 / 不起服务只测函数)⇒ 判据必须翻红。"
+fi
+if want L2; then
 echo "== G-17 附件上限与多附件真实复制（GP-11 · 官方 spec §5.5：≤6 个/次，文档/图片/音频 ≤25MB，视频 ≤200MB）=="
 # 本波 closure：
 #  1) 单次 ≤6 是「本次选择 + 已暂存」的累计上限，不是只看本次选择；

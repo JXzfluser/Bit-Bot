@@ -1881,6 +1881,15 @@
    "wired_in": "G-136"
   },
   {
+   "file": "prove_task_view_http.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_task_view_http.mjs — P1 批 3：共享聚合 + 手机端「看」（真起入站服务 + 真 HTTP：GET /v1/tasks 的清单与桌面指挥台逐条一致、只认设备签名、两组变异对照）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-137"
+  },
+  {
    "file": "prove_team_brief.js",
    "layer": "L2",
    "blocking": true,

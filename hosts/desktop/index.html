@@ -4334,6 +4334,21 @@
       window.__bitbotClientCore.createLedger
     );
   </script>
+  <!-- P1 批 3：指挥台「任务视图」的**唯一一份**实现在 hosts/shared/task_view.js。
+       桌面指挥台与手机的 GET /v1/tasks 必须算出**同一批**任务
+       （方案 docs/design/p1-task-axis-and-mobile-command.md §3.2.2：「聚合逻辑只留一份」），
+       所以渲染层不再自己留一份实现，只委派 window.__bitbotTaskView.aggregate。
+       dev 走 ../shared；打包后 hosts/shared 被整目录复制成 ./shared
+       （electron-builder files 的 **/* 含子目录），和 client_core / untrusted_fence 同一套回退。 -->
+  <script src="../shared/task_view.js"></script>
+  <script>
+    if (!window.__bitbotTaskView) {
+      document.write('<script src="./shared/task_view.js"><\/script>');
+    }
+    /* 打包后 app.asar 里没有这份目录时，这里会是 false —— 让门能看见，
+       而不是等侧栏空白了才发现聚合没接上。 */
+    window.__bitbotTaskViewReady = !!(window.__bitbotTaskView && window.__bitbotTaskView.aggregate);
+  </script>
   <!-- GP-103/104/105: §8.4 fence grammar. Dev path is ../shared, packaged build
        copies hosts/shared → ./shared (electron-builder "files"), so the loader
        falls back once and never double-loads. -->
@@ -26334,144 +26349,23 @@
       return key;
     }
 
-    /**
-     * 把 Task 实体(B-8 批 4)合并进聚合结果。
-     * 为什么需要它:转录只留**最后 200 条** ⇒ 长任务会被滚出视野;
-     * Task 实体单独记着「这批是什么、什么状态」⇒ 跨会话还认得。
-     * 规则:
-     *   ① 状态**以 Task 实体为准**(它是显式的,不是从转录推的);
-     *   ② Task 里有、聚合里没有的 ⇒ 补一张「仅记录」卡(转录已滚出)。
-     */
-    function cmdMergeTaskRecords(tasks, records) {
-      var list = Array.isArray(records) ? records : [];
-      if (!list.length) return tasks;
-      var byId = {};
-      for (var i = 0; i < list.length; i++) {
-        var r = list[i] || {};
-        if (r.id) byId[r.id] = r;
+    /* P1 批 3：聚合逻辑**搬走了** —— 唯一一份在 hosts/shared/task_view.js。
+       桌面指挥台与手机的 GET /v1/tasks 必须算出**同一批**任务
+       （方案 docs/design/p1-task-axis-and-mobile-command.md §3.2.2「聚合逻辑只留一份」）。
+       这里**只做委派，不保留第二份实现** ——
+       门禁 scripts/prove_task_view_http.mjs 盯着「index.html 里不再出现
+       aggregateCommandTasks / cmdMergeTaskRecords 的**本地函数定义**」。
+       依赖清单（搬之前逐个查过）：原来这两个函数在渲染层里只依赖**彼此**
+       与 JS 内建（Array/String/Number/localeCompare）——
+       不碰 t() / cmdT() / CMD_STATE / DOM / window.bitbot ⇒ 搬走不丢任何东西。 */
+    var aggregateCommandTasks = function (rooms, taskRecords) {
+      if (!window.__bitbotTaskView || typeof window.__bitbotTaskView.aggregate !== "function") {
+        // 聚合只有那一份。加载不上就是**装坏了** —— 不许悄悄回一份空清单
+        // （空清单 = 界面显示「还没有任务」= 骗用户）。
+        throw new Error("task_view_unavailable: hosts/shared/task_view.js 没加载上");
       }
-      for (var j = 0; j < tasks.length; j++) {
-        var t = tasks[j];
-        var rec = byId[t.task_sig];
-        if (!rec) continue;
-        t.persisted = true;
-        if (rec.state) t.state = rec.state;
-        if (rec.task && !t.task) t.task = rec.task;
-        if (rec.title && !t.task_title) t.task_title = rec.title;
-      }
-      for (var k = 0; k < list.length; k++) {
-        var rec2 = list[k] || {};
-        if (!rec2.id) continue;
-        var seen = false;
-        for (var m = 0; m < tasks.length; m++) {
-          if (tasks[m].task_sig === rec2.id) { seen = true; break; }
-        }
-        if (seen) continue;
-        tasks.push({
-          room_id: String(rec2.room_id || ""), room_title: "",
-          steps: [], members: [], needs_you: null, report: null,
-          deliverables: [], task: String(rec2.task || ""),
-          task_title: String(rec2.title || rec2.task || ""),
-          task_sig: rec2.id, partial: false,
-          total: Number(rec2.total || 0), returned: Number(rec2.returned || 0),
-          at: String(rec2.updated_at || ""), persisted: true, archived: true,
-          state: String(rec2.state || ""),
-        });
-      }
-      return tasks;
-    }
-
-    function aggregateCommandTasks(rooms, taskRecords) {
-      var tasks = [];
-      var list = Array.isArray(rooms) ? rooms : [];
-      tasks = cmdMergeTaskRecords(tasks, taskRecords);
-      for (var i = 0; i < list.length; i++) {
-        var room = list[i] || {};
-        var tr = Array.isArray(room.transcript) ? room.transcript : [];
-        var cur = null;
-        function fresh(row) {
-          return {
-            room_id: String((row && row.room_id) || room.id || ""),
-            room_title: String(room.title || ""),
-            steps: [], members: [], needs_you: null, report: null,
-            deliverables: [], task: "", task_title: "", task_sig: "",
-            partial: false, total: 0, returned: 0, at: "",
-          };
-        }
-        for (var j = 0; j < tr.length; j++) {
-          var row = tr[j];
-          if (!row || !row.kind) continue;
-          var k = row.kind;
-          if (k === "bot_reply" || k === "bot_reply_error") {
-            // 换了 task_sig ⇒ 那是**另一批**任务 ⇒ 收尾上一批,另起一组。
-            // (批 3 之后 bot_reply 带 task_sig ⇒ 分组可以精确到批次,
-            //  不用再靠"同一个群就算同一批"这种粗判。)
-            var rsig = String(row.task_sig || "");
-            if (cur && rsig && cur.task_sig && cur.task_sig !== rsig) cur = null;
-            if (!cur) { cur = fresh(row); tasks.push(cur); }
-            if (rsig) cur.task_sig = rsig;
-            var nm = String(row.name || row.bot_id || row.speaker || "");
-            cur.steps.push({
-              name: nm,
-              bot_id: String(row.bot_id || row.speaker || ""),
-              ok: k === "bot_reply",
-              text: String(row.text || ""),
-              error: String(row.error || ""),
-              at: String(row.at || ""),
-            });
-            if (nm && cur.members.indexOf(nm) < 0) cur.members.push(nm);
-            if (!cur.at) cur.at = String(row.at || "");
-            continue;
-          }
-          if (k === "confirm_request") {
-            var csig = String(row.task_sig || "");
-            if (cur && csig && cur.task_sig && cur.task_sig !== csig) cur = null;
-            if (!cur) { cur = fresh(row); tasks.push(cur); }
-            cur.needs_you = {
-              question: String(row.question || ""),
-              candidates: Array.isArray(row.candidates) ? row.candidates : [],
-              at: String(row.at || ""),
-            };
-            cur.task = String(row.task || "");
-            cur.task_sig = String(row.task_sig || "");
-            cur.at = String(row.at || cur.at);
-            continue;
-          }
-          if (k === "final_report") {
-            var fsig = String(row.task_sig || "");
-            if (cur && fsig && cur.task_sig && cur.task_sig !== fsig) cur = null;
-            if (!cur) { cur = fresh(row); tasks.push(cur); }
-            cur.report = row;
-            cur.task = String(row.task || "");
-            cur.task_title = String(row.task_title || "");
-            cur.task_sig = String(row.task_sig || "");
-            cur.responders = Array.isArray(row.responders) ? row.responders : [];
-            cur.partial = row.partial === true;
-            cur.total = Number(row.total || 0);
-            cur.returned = Number(row.returned || 0);
-            var arts = Array.isArray(row.artifacts) ? row.artifacts.slice() : [];
-            if (row.deliverable) arts.push(row.deliverable);
-            cur.deliverables = arts;
-            cur.at = String(row.at || cur.at);
-            cur = null;
-          }
-        }
-      }
-      for (var t = 0; t < tasks.length; t++) {
-        var x = tasks[t];
-        // Task 实体的状态**优先**于从转录推出来的 —— 它是显式写下的。
-        var st = String(x.state || "");
-        if (st === "done" || st === "cancelled") x.bucket = "closed";
-        else if (st === "waiting") x.bucket = "needs_you";
-        else if (st === "running") x.bucket = "working";
-        else if (x.needs_you) x.bucket = "needs_you";
-        else if (x.report) x.bucket = "closed";
-        else if (x.steps.length) x.bucket = "working";
-        else x.bucket = "waiting";
-      }
-      tasks.sort(function (a, b) { return String(b.at || "").localeCompare(String(a.at || "")); });
-      return tasks;
-    }
+      return window.__bitbotTaskView.aggregate(rooms, taskRecords);
+    };
 
     /** 每个成员的步骤明细:谁跑了、成没成、说了什么、错在哪。 */
     function cmdRenderSteps(steps, taskSig, roomId) {

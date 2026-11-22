@@ -18,6 +18,11 @@ const p0 = require("./p0_security");
 const deviceKeys = require("./device_keys");
 const { createProductSurfaceRef } = require("./product_surface_ref");
 const { createPairingCodeManager } = require("./desktop_pairing");
+/* P1 批 3：任务视图的**唯一一份**聚合（方案 §3.2.2「聚合逻辑只留一份」）。
+ * 桌面指挥台的渲染层也委派同一个模块（hosts/desktop/index.html 加载
+ * ../shared/task_view.js）⇒ 桌面看到的清单与这里返回的清单**必然一致**。
+ * 这个模块不读盘：读盘是 surface 的事（rooms.json / tasks.json，各一份）。 */
+const taskView = require("./task_view");
 
 /**
  * A2-4：把设备鉴权的失败码翻成一句给用户看的话。
@@ -1133,6 +1138,92 @@ function createCnInboundServer(opts = {}) {
         }
         json(res, 404, { ok: false, error: "approval_route_not_found" });
       }
+
+      // ===== 跨端「看任务」（P1 批 3）=====================================
+      // 手机上第一次能看见「这台机器上正在跑哪些任务、哪件要我拍板」。
+      //
+      // 三条不许越过的线：
+      //   ① 鉴权**只认设备签名**（与 /v1/approvals 同构），不回落共享 bearer ——
+      //      指挥那台机器上的团队，权限比发一轮对话重（方案 §3.2.1 / §3.3）。
+      //   ② **不是新数据源**：Task 实体只有 data/desktop/tasks.json 一份，
+      //      转录只有 data/desktop/rooms.json 一份，聚合只有 hosts/shared/task_view.js 一份。
+      //      这里读的是 surface（跟桌面 IPC 读的是同一批文件），算的是同一个函数。
+      //   ③ **不编**：没有任务就是 count:0 / tasks:[]，不塞一条占位的。
+      if (p === "/v1/tasks") {
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          json(res, 405, { ok: false, error: "method_not_allowed", allow: "GET" });
+          return;
+        }
+        const auth = deviceKeys.verifyDeviceTurn(deviceStoreNow(), req, raw, { nonceStore });
+        if (auth.ok && auth.device_id) deviceKeys.touchDevice(devicesPath, auth.device_id);
+        if (!auth.ok) {
+          // A2-4 同一口径：error 一字不改（既有合同），真原因与下一步放新增字段。
+          json(res, 401, {
+            ok: false,
+            error: auth.error || "unauthorized",
+            ...(auth.error !== "unauthorized"
+              ? { device_error: auth.error }
+              : {}),
+            error_description: describeDeviceAuthFailure(auth.error, req),
+            next_step:
+              auth.error === "missing_device_credential"
+                ? "重新配对一次，让这台设备把公钥登记到机器上（之后请求要带设备签名）"
+                : auth.error === "unknown_device"
+                  ? "这台设备不在这台机器的登记表里（可能被吊销或配到了另一台机器），请重新配对"
+                  : auth.error === "stale_timestamp"
+                    ? "设备与这台机器的时间差太大，请校准系统时间后重试"
+                    : auth.error === "nonce_reused"
+                      ? "这个请求号已经被用过，请重试一次（每次请求要换新 nonce）"
+                      : auth.error === "bad_signature"
+                        ? "签名验不过：私钥与登记的公钥不是同一对，请重新配对"
+                        : "请重新配对这台设备",
+          });
+          return;
+        }
+        if (!surface) {
+          json(res, 503, { ok: false, error: "task_view_unavailable" });
+          return;
+        }
+        // 群面：与桌面 IPC 的 bitbot:rooms:list 走**同一条**读法
+        // （surface.roomsStoreStatus）⇒ 两边看到的是同一批房、同样的转录。
+        let rooms = [];
+        try {
+          const st = surface.roomsStoreStatus();
+          if (!st || st.ok !== true) {
+            json(res, 500, { ok: false, error: (st && st.error) || "rooms_store_unreadable" });
+            return;
+          }
+          const doc = st.rooms || {};
+          rooms = Array.isArray(doc.rooms) ? doc.rooms : [];
+        } catch (e) {
+          json(res, 500, { ok: false, error: "rooms_store_unreadable" });
+          return;
+        }
+        // Task 实体：与桌面 IPC 的 bitbot:tasks:list 走**同一条**读法
+        // （surface.listTasks）⇒ 两边看到的是同一批 Task 记录。
+        let records = [];
+        try {
+          records = surface.listTasks() || [];
+        } catch (_) {
+          records = [];
+        }
+        const updatedById = {};
+        for (const rec of records) {
+          if (rec && rec.id) updatedById[String(rec.id)] = String(rec.updated_at || "");
+        }
+        // 聚合：**唯一一份**（task_view.aggregate）—— 与桌面渲染层同一个函数。
+        const tasks = taskView.aggregate(rooms, records);
+        const items = tasks.map((t) =>
+          taskView.toTaskListItem(t, { updated_at: updatedById[String(t.task_sig || "")] || "" }),
+        );
+        json(res, 200, {
+          ok: true,
+          device_id: auth.device_id,
+          count: items.length,
+          tasks: items,
+        });
+        return;
+      }
       // 配对落地页（只读）：桌面「复制配对链接」复制出去的就是这一页。
       // GET / 与 GET /pair 同页 —— 用户常常只粘得到裸地址，别让他撞 404。
       if (
@@ -1770,6 +1861,7 @@ function createCnInboundServer(opts = {}) {
           "GET|POST /wecom/callback",
           "POST /v1/turn",
           "GET /v1/events（事件流：SSE，或 ?format=json 读一次；游标 ?since=<seq>，旧名 ?from_seq=<seq>，需设备凭证）",
+          "GET /v1/tasks（任务清单：这台机器上正在跑/要你拍板的任务，需设备凭证）",
           "GET /v1/pair/discover",
           "POST /v1/pair/redeem",
           "GET /health",
