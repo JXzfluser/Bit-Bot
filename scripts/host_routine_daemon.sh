@@ -9,8 +9,33 @@
 #   bash scripts/host_routine_daemon.sh --write-systemd-unit
 #   bash scripts/host_routine_daemon.sh --install-user-unit
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# **代码根** 与 **数据根** 必须分开:
+#  · 代码根 = 要跑 hosts/cli_host/run_turn.js 的地方 ⇒ 默认脚本自己所在 checkout
+#    (BITBOT_REPO_ROOT 可以整体换一份 checkout —— 但那份里得有代码)
+#  · 数据根 = daemon 写状态/触发记录的地方 ⇒ 默认 $ROOT/data,
+#    **可被 BITBOT_DATA_ROOT 单独接管**
+# 旧写法只有一个 ROOT ⇒ 门禁没法只隔离数据 ⇒ daemon 一跑就写真实 checkout 的
+# data/routines ⇒ 门禁跑完 data/routines/fires.jsonl 变了(实测)。
+ROOT="${BITBOT_REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
+# 数据根的硬约束(来自 hosts/shared/run_moon_turn.js:KERNEL_CWD = dirname(DATA_ROOT)):
+# **数据根必须是 checkout 的直接子目录** —— 内核在 dirname(DATA_ROOT) 里跑 `moon run`,
+# 而 moon.mod / cmd/desktop_turn 在 checkout 根。⇒ 数据根指到 /tmp 之类的外面 ⇒
+# 内核找不到 moon.mod ⇒ moon exited 255「failed to resolve path cmd/desktop_turn」。
+# ⇒ 所以隔离方式是「在 checkout 内换一个数据根」(如 <repo>/data-gate-daemon),
+#   而不是「把数据根指到 checkout 外」。BITBOT_DATA_ROOT 仍可用于这个场景。
+DATA_ROOT="${BITBOT_DATA_ROOT:-$ROOT/data}"
+case "$DATA_ROOT" in
+  "$ROOT"/*) : ;;
+  *)
+    echo "host_routine_daemon: 拒绝运行 —— 数据根 $DATA_ROOT 不在 checkout $ROOT 内;" >&2
+    echo "  内核的 cwd = dirname(DATA_ROOT),必须在 checkout 里才找得到 moon.mod。" >&2
+    exit 2
+    ;;
+esac
+mkdir -p "$DATA_ROOT"
+# 子进程(node)必须继承数据根,否则它自己会按 REPO_ROOT 写回去。
+export BITBOT_DATA_ROOT="$DATA_ROOT"
 SWEEPS=1
 INTERVAL_MS=0
 LONG_LIVED=0
@@ -45,7 +70,7 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-STATUS_DIR="$ROOT/data/routines"
+STATUS_DIR="$DATA_ROOT/routines"
 mkdir -p "$STATUS_DIR"
 export BITBOT_ROUTINE_DAEMON=1
 

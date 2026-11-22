@@ -1,22 +1,22 @@
 {
   "sidebar": {
     "w": 280,
-    "rows": 96,
+    "rows": 7,
     "toolbar": {
       "top": 0,
       "h": 48
     },
     "botSection": {
       "top": 54,
-      "h": 2542
+      "h": 344
     },
     "botList": {
       "top": 87,
-      "h": 2194
+      "h": 228
     },
     "roomList": {
-      "top": 2310,
-      "h": 286
+      "top": 344,
+      "h": 54
     },
     "roomEmptyShown": false,
     "roomListPrev": {
@@ -24,7 +24,7 @@
       "cls": "panel-title panel-head spaced",
       "display": "flex",
       "h": 19,
-      "top": 2289
+      "top": 323
     },
     "sessionTitleTop": null,
     "sessionListTop": 0,
@@ -44,24 +44,16 @@
       "lh": "18px",
       "color": "rgba(245, 245, 245, 0.66)"
     },
-    "groupHead": {
-      "h": 30,
-      "size": "12px",
-      "weight": "420",
-      "color": "rgba(245, 245, 245, 0.66)"
-    },
+    "groupHead": null,
     "avW": 36,
     "avRadius": "50%",
     "labels": [
-      "自媒体内容团队10",
-      "ok2",
-      "昨天",
-      "更早"
+      "今天"
     ]
   },
   "sessPopup": {
     "shown": true,
-    "rows": 54,
+    "rows": 2,
     "inAccountBar": true,
     "leftStandaloneSection": false
   },
@@ -108,20 +100,20 @@
     "stacked": true,
     "rects": {
       "msg": [
-        496,
-        706,
-        728
+        416,
+        855,
+        713
       ],
       "head": [
-        496,
-        706,
-        97,
+        416,
+        855,
+        93,
         22
       ],
       "body": [
-        496,
-        734,
-        62,
+        416,
+        883,
+        60,
         34
       ]
     },
@@ -133,7 +125,10 @@
       "boxShadow": "none",
       "radius": 18,
       "bg": "rgba(28, 28, 28, 0.06)",
-      "w": 62,
+      "w": 60,
+      "longW": 558,
+      "longWExact": 558.390625,
+      "maxW": "min(558.4px, 100%)",
       "size": "14px",
       "weight": "420",
       "lh": "20px"
@@ -143,8 +138,9 @@
       "bg": "rgb(28, 28, 28)",
       "color": "rgb(255, 255, 255)",
       "shadow": "rgba(255, 255, 255, 0.16) 0px 0.5px 0px 0px inset, rgba(255, 255, 255, 0.16) 0px -0.5px 0px 0px inset, color(srgb 0.109804 0.109804 0.109804 / 0.06) 0px 0px 0px 0.5px inset",
-      "w": 62
+      "w": 60
     },
-    "rowW": 728
+    "rowW": 728,
+    "paneW": 760
   }
 }

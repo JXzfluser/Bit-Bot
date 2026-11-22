@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "primary_id": "agent-bit",
+  "bots": [
+    {
+      "id": "agent-bit",
+      "name": "Bit Bot",
+      "job": "通用助手",
+      "description": "Bit Bot 默认智能体",
+      "avatar": "",
+      "hidden": false,
+      "pinned": true,
+      "created_at": "2026-11-21T16:01:17.424Z",
+      "updated_at": "2026-11-22T02:29:28.007Z",
+      "group": ""
+    },
+    {
+      "id": "bot-3a64e6",
+      "name": "ProbeRepro",
+      "job": "Bug 复现",
+      "description": "在 Bot 电脑的浏览器中复现问题、记录步骤与截图、输出复现说明；不改动生产配置。",
+      "group": "",
+      "avatar": "",
+      "tags": [],
+      "hidden": false,
+      "pinned": false,
+      "created_at": "2026-11-21T16:01:17.469Z",
+      "updated_at": "2026-11-21T16:01:17.469Z"
+    },
+    {
+      "id": "bot-3c800c",
+      "name": "Smoke copy",
+      "job": "verify",
+      "description": "Wave G smoke bot",
+      "avatar": "",
+      "tags": [],
+      "hidden": false,
+      "pinned": false,
+      "created_at": "2026-11-22T02:41:20.614Z",
+      "updated_at": "2026-11-22T02:41:20.614Z"
+    },
+    {
+      "id": "bot-b4d2c4",
+      "name": "SmokeRenamed",
+      "job": "",
+      "description": "",
+      "group": "",
+      "avatar": "",
+      "tags": [],
+      "hidden": false,
+      "pinned": false,
+      "created_at": "2026-11-22T02:41:45.665Z",
+      "updated_at": "2026-11-22T02:41:50.473Z"
+    }
+  ]
+}

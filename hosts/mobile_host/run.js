@@ -24,7 +24,20 @@ const {
 const { loadEnvLocalFiles: loadSharedEnv } = require("../shared/host_env");
 const p0 = require("../shared/p0_security");
 
-const root = path.resolve(__dirname, "../..");
+/* 数据根必须能被门禁隔离。
+ * 旧写法 `path.resolve(__dirname, "../..")` 把**自己的源码位置**当仓库根 ⇒
+ * mobile_host 写 journal / delivery / mirrors 时落进**真实 checkout 的 data/** ⇒
+ * 门禁一跑就污染用户真数据目录(实测:门禁跑完 data/journal/host-delivery.jsonl、
+ * data/delivery/send-to-user.jsonl 变了)。
+ * ⇒ 优先听环境变量: BITBOT_REPO_ROOT(仓库根) / BITBOT_DATA_ROOT(数据根,其 dirname 是仓库根);
+ * 都没有才回退到源码位置。 */
+const DATA_ROOT_ENV = process.env.BITBOT_DATA_ROOT ? path.resolve(process.env.BITBOT_DATA_ROOT) : null;
+const root = process.env.BITBOT_REPO_ROOT
+  ? path.resolve(process.env.BITBOT_REPO_ROOT)
+  : DATA_ROOT_ENV
+    ? path.dirname(DATA_ROOT_ENV)
+    : path.resolve(__dirname, "../..");
+const dataRoot = DATA_ROOT_ENV || path.join(root, "data");
 
 /**
  * Load Desktop/repo .env.local for non-model host env (channel flags, host URL).
@@ -83,7 +96,7 @@ try {
     const turn = JSON.parse(line);
     const hrs = Array.isArray(turn.host_results) ? turn.host_results : [];
     const machineKind = turn.machine_kind || "ios";
-    const journal = path.join(root, "data/journal/host-delivery.jsonl");
+    const journal = path.join(dataRoot, "journal/host-delivery.jsonl");
     fs.mkdirSync(path.dirname(journal), { recursive: true });
 
     const perm =
@@ -103,7 +116,7 @@ try {
       } catch {
         /* ignore */
       }
-      const mirrorDir = path.join(root, "data", "device", "mobile-mirrors");
+      const mirrorDir = path.join(dataRoot, "device", "mobile-mirrors");
       fs.mkdirSync(mirrorDir, { recursive: true });
       const mirrorPath = path.join(
         mirrorDir,

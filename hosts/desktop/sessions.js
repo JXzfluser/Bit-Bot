@@ -15,7 +15,16 @@ function createSessionStore(repoRoot, opts = {}) {
   const root = path.resolve(repoRoot);
   /* Sessions are user data: packaged builds keep them in the OS user-data
      dir, not inside the (read-only, replace-on-upgrade) app bundle. */
-  const dataRoot = opts.dataRoot ? path.resolve(opts.dataRoot) : path.join(root, "data");
+  const dataRoot = opts.dataRoot
+    ? path.resolve(opts.dataRoot)
+    : process.env.BITBOT_DATA_ROOT
+      ? path.resolve(process.env.BITBOT_DATA_ROOT)
+      : path.join(root, "data");  /* 数据根三级优先级(和 hosts/shared/host_ffi.js 一致):
+     opts.dataRoot > 环境变量 BITBOT_DATA_ROOT > <repo>/data。
+     旧写法只有两级,漏掉环境变量那一级 ⇒ 门禁用 BITBOT_DATA_ROOT 隔离时,
+     这里仍然写**真实 checkout 的 data/** ⇒ 门禁跑完用户的真数据目录被改了
+     (实测:data/desktop/bots.json、data/approvals/queue.jsonl 被门禁改掉)。 */
+
   const dir = path.join(dataRoot, "desktop");
   const storePath = path.join(dir, "sessions.json");
 

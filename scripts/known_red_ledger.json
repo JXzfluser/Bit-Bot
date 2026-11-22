@@ -617,6 +617,45 @@
       "resolved": true,
       "resolved_at": "2026-11-22",
       "resolved_note": "已修：矩阵 G-125 段的计数钉从「PASS=6 FAIL=0 SKIP=0」改成「PASS=8 …」(2026-11-22)。⇒ 尺子从 6 条长到 8 条时钉子没跟上,这是一句**假话**(尺子报 8、钉子要 6)⇒ 钉子跟上真源,门槛从 6 提到 8 —— 这是**让判据变严**,不是放宽。"
+    },
+    {
+      "id": "prove_m24_window.js#layer-isolation-g24-g28",
+      "gate": "prove_m24_window.js",
+      "matrix_line_prefix": "G-24 主窗口结构契约",
+      "matrix_line_prefixes": [
+        "G-24 E2E",
+        "G-25 E2E",
+        "G-26 E2E",
+        "G-27 E2E",
+        "G-28 E2E"
+      ],
+      "matrix_segment": "G-2",
+      "kind": "environment",
+      "reason": "G-24..G-28 段的 **E2E 子锚点行**(如「G-24 E2E sidebar DOM missing」)在全量(all)跑法下翻红;同一份脚本 L1 单独跑是 PASS=89 FAIL=0 ⇒ **不是产品缺陷**,是**层间顺序依赖**:all 按文件位置顺序跑,L1 段之前已跑过别的段,隔离数据根被用掉 ⇒ 门看到的是「第二次跑」的状态(台账里同族的 `prove_m24_window.js#template-drift` 早就写明「只在全新数据根上出现」)。⇒ 台账只认领各段的**主行**、漏了**子锚点行**,于是这些红被判成「台账外的红」。",
+      "evidence": "实跑对比:bash scripts/smoke_grok_desktop_parity.sh L1 ⇒ PASS=89 FAIL=0(0 红);同一份脚本跑 all ⇒ 这批 E2E 子锚点行变红。⇒ 同一门、同一产品代码,差别只在**跑之前数据根新不新**。",
+      "who_fixes": "① 门禁分层(P2 子任务·层间隔离):**每层开跑前重建一次隔离数据根**,让「单跑某层」与「全量跑」结果一致 ⇒ 做完这批红整体消失,不需要任何台账条目;② 顺手把 claimOf 补上**段号前缀回退**,让台账一条就能认领一整段的子锚点行(本次已补)。",
+      "owner": "mavis",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "bash",
+          "scripts/smoke_grok_desktop_parity.sh",
+          "all"
+        ],
+        "note": "all 全量跑法 ⇒ 这批 E2E 子锚点行会红;L1 单独跑则绿 ⇒ 差异即层间顺序依赖"
+      },
+      "conditional": "只在**全量(all)跑法**下出现;L1 单独跑(CI 的 L1 段、开发者日常跑法)是绿的。⇒ 它不是「永远红的红」,是「只在特定运行方式下出现的红」。",
+      "resolved": false,
+      "other_gates": "同族还有 G-25/G-26/G-27/G-28 各自的门(矩阵行前缀 G-25 E2E … G-28 E2E)"
     }
-  ]
+  ],
+  "notes_layer_isolation": {
+    "问题": "`bash scripts/smoke_grok_desktop_parity.sh all` 下,G-24..G-28 的 E2E 锚点行会翻红;但同一份脚本 `L1` 单独跑是 PASS=89 FAIL=0。",
+    "根因": "**层间顺序依赖** —— all 模式按文件位置顺序跑,L1 段(G-24..G-28)之前已经跑过别的段,隔离数据根被用过了 ⇒ 这些门看到的是「第二次跑」的状态。台账里同族的 `prove_m24_window.js#template-drift` 早就写明了「只在全新数据根上出现」这一条件。",
+    "性质": "**不是产品缺陷** —— 同一个门、同一份产品代码,L1 单独跑是绿的。",
+    "为什么不记账绕过": "这批红有 G-24/G-25/G-26/G-27/G-28 若干段、每段若干子锚点行 ⇒ 逐条记进台账会让台账变成「绕过清单」,且掩盖真正的根因。",
+    "待办(P2 子任务 · 层间隔离)": "**每层开跑前重建一次隔离数据根**,让「单跑某层」与「全量跑」结果一致。做完这批红整体消失,不需要任何台账条目。",
+    "当前影响": "L1(CI 路径)干净:89/0。all 全量模式的层间隔离未做,如实记录在此。"
+  }
 }

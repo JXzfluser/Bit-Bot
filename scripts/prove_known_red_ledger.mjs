@@ -283,9 +283,15 @@ const reproResults = [];
 function claimOf(rowText) {
   let best = null;
   for (const e of entries) {
-    const p = String(e.matrix_line_prefix || "");
-    if (!p) continue;
-    if (rowText.startsWith(p) && (!best || p.length > String(best.matrix_line_prefix).length)) best = e;
+    /* 一个 entry 可以有多条前缀(matrix_line_prefixes)⇒ 一条认领一整段的子锚点行,
+       台账不会退化成「每条红一个条目」的绕过清单。 */
+    const prefixes = []
+      .concat(e.matrix_line_prefix ? [String(e.matrix_line_prefix)] : [])
+      .concat(Array.isArray(e.matrix_line_prefixes) ? e.matrix_line_prefixes.map(String) : []);
+    for (const p of prefixes) {
+      if (!p) continue;
+      if (rowText.startsWith(p) && (!best || p.length > String(best.matrix_line_prefix || "").length)) best = e;
+    }
   }
   return best;
 }

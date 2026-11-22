@@ -40,6 +40,8 @@ import net from "node:net";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
 import { electronLaunchEnv, electronUserDataDir, isolatedRepoRoot, gateAppEnv, hasDisplay } from "./electron_env.mjs";
@@ -81,6 +83,20 @@ function honestSkip(reason) {
 
 if (!fs.existsSync(ELECTRON)) honestSkip("electron dist missing (" + ELECTRON + ")");
 if (!hasDisplay()) honestSkip("no DISPLAY and no xvfb-run");
+/* 有 xvfb-run 但**没有 DISPLAY** ⇒ Electron 起不来(TA-02 会报「起真 Electron 失败」),
+ * 而那不是产品缺陷,是环境不具备 ⇒ 不该报 FAIL。
+ * ⇒ 自己用 xvfb-run 重新跑一遍(和仓里其它真渲染门同一套做法)。 */
+if (process.platform === "linux" && !process.env.DISPLAY) {
+  let xvfb = false;
+  try { execSync("command -v xvfb-run", { stdio: "ignore" }); xvfb = true; } catch { /* no xvfb-run */ }
+  if (xvfb) {
+    console.log("  · 没有 DISPLAY,但有 xvfb-run ⇒ 自动套 xvfb-run 重跑一次(无显示器是环境问题,不是产品缺陷)");
+    const r = spawnSync("xvfb-run", ["-a", "-s", "-screen 0 1600x1000x24", process.execPath, ...process.argv.slice(1)],
+      { stdio: "inherit", env: process.env });
+    process.exit(r.status === null ? 1 : r.status);
+  }
+  honestSkip("no DISPLAY 且没有 xvfb-run ⇒ 真 Electron 起不来(SKIP ≠ PASS)");
+}
 let playwrightCore = null;
 try {
   const req = createRequire(path.join(DESKTOP, "package.json"));
@@ -144,6 +160,22 @@ const REFERENCE_BEFORE = fingerprintReference();
 
 /* 用户真仓库的 data/ —— 门禁跑在隔离根里,这里必须一个字节都不动。 */
 const REAL_DATA = path.join(REPO, "data");
+/* 本轮用过的隔离数据根(用来证明「隔离真生效」,而不只是「真目录没变」)。 */
+const ISO_ROOTS = [];
+/* 数一个目录下的文件数(递归),用来判断隔离根里到底有没有写入。 */
+function countFiles(dir) {
+  let n = 0;
+  const walk = (d) => {
+    let entries = [];
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.isDirectory()) walk(path.join(d, e.name));
+      else n++;
+    }
+  };
+  walk(dir);
+  return n;
+}
 const realDataSnapshot = () => {
   const out = {};
   const walk = (dir, prefix) => {
@@ -349,6 +381,9 @@ async function launchWith(w, h, fixture, port, tag) {
     BITBOT_DATA_ROOT: path.join(iso, "data"),
     BITBOT_CN_INBOUND_PORT: String(port),
   }));
+  /* **实际交给 app 的**数据根 —— 判「隔离是否真生效」要量的是这个,
+     不是我们心里想的那个。 */
+  const DATA_ROOT_USED = env.BITBOT_DATA_ROOT;
   const app = await _electron.launch({
     executablePath: ELECTRON,
     args: [
@@ -366,6 +401,9 @@ async function launchWith(w, h, fixture, port, tag) {
     for (const w of BrowserWindow.getAllWindows()) { w.setAutoHideMenuBar(true); w.setMenuBarVisibility(false); }
   }).catch(() => {});
   await win.waitForSelector("#composer #text", { timeout: 30000 });
+  /* 记下**实际交给 app 的**数据根(env 里那个),不是我们自己想的那个 ——
+     变异对照证明:如果 env 指的是真目录,这一条必须能抓到。 */
+  if (iso) ISO_ROOTS.push({ root: path.join(iso, "data"), used: DATA_ROOT_USED, files: 0 });
   return { app, win, iso };
 }
 
@@ -405,7 +443,12 @@ async function runViewport(w, h, fixture, port) {
       const why = "活视口 " + vp.w + "×" + vp.h + " ≠ 请求的 " + w + "×" + h + "（显示器/窗口管理器给不出这一档视口）";
       for (const id of VIEWPORT_CLAIMS) skip(id, tag + " 这一档没跑", why);
       await shutdown(app);
-      try { fs.rmSync(iso, { recursive: true, force: true }); } catch { /* ignore */ }
+      try {
+        /* 删之前先记「隔离根里到底写了多少文件」——删了就量不到了。
+         * 这一条是 TA-13b 的证据:隔离根必须**有**写入,否则「真目录没被碰」是空话。 */
+        for (const rec of ISO_ROOTS) if (rec.root === path.join(iso, "data")) rec.files = countFiles(rec.root);
+        fs.rmSync(iso, { recursive: true, force: true });
+      } catch { /* ignore */ }
       return;
     }
 
@@ -613,7 +656,10 @@ async function runViewport(w, h, fixture, port) {
     bad("门禁主体出错（" + w + "×" + h + "）", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));
   } finally {
     try { await shutdown(app); } catch { /* ignore */ }
-    try { if (iso) fs.rmSync(iso, { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      for (const rec of ISO_ROOTS) if (rec.root === path.join(iso, "data")) rec.files = countFiles(rec.root);
+      fs.rmSync(iso, { recursive: true, force: true });
+    } catch { /* ignore */ }
   }
 }
 
@@ -645,7 +691,10 @@ async function runNoPending(w, h, port) {
     skip("TA-04", "没有待办那一档没跑起来", msg);
   } finally {
     try { await shutdown(app); } catch { /* ignore */ }
-    try { if (iso) fs.rmSync(iso, { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      for (const rec of ISO_ROOTS) if (rec.root === path.join(iso, "data")) rec.files = countFiles(rec.root);
+      fs.rmSync(iso, { recursive: true, force: true });
+    } catch { /* ignore */ }
   }
 }
 
@@ -709,9 +758,37 @@ async function runNoPending(w, h, port) {
   for (const f of Object.keys(REAL_DATA_BEFORE)) if (realAfter[f] !== REAL_DATA_BEFORE[f]) leaked.push(f);
   for (const f of Object.keys(realAfter)) if (!(f in REAL_DATA_BEFORE)) leaked.push(f + "(新增)");
   if (!leaked.length) {
-    ok("[TA-13] 用户的真数据目录一个字节没动（门禁跑在隔离的 BITBOT_DATA_ROOT 里；真仓库 data/ 共 " + Object.keys(REAL_DATA_BEFORE).length + " 个文件，比对无差异）");
+    ok("[TA-13] 用户的真数据目录一个字节没动（门禁跑在隔离的 BITBOT_DATA_ROOT 里；真仓库 data/ 共 " +
+      Object.keys(REAL_DATA_BEFORE).length + " 个文件 sha256 比对无差异）");
   } else {
-    bad("TA-13 门禁碰了用户的真数据目录", leaked.join(", "));
+    bad("[TA-13] 门禁碰了用户的真数据目录", leaked.join(", "));
+  }
+
+  /* TA-13b **隔离真生效了** —— 这是 TA-13 的另一半牙齿。
+   * TA-13 只说「真 data/ 没被碰」,那**也可能只是因为门禁压根没写任何东西**
+   * (隔离根是空的 ⇒ 什么都没写 ⇒ 真目录当然没变 ⇒ TA-13 恒绿 ⇒ 假牙)。
+   * ⇒ 这里钉住两条:**隔离根 ≠ 用户真 data/**,**且隔离根里确实有写入**。
+   * ⇒ 只有这两条同时成立,「真目录没被碰」才是有意义的证据。 */
+  const isoRoots = [...new Map(ISO_ROOTS.filter(Boolean).map((r) => [r.root, r])).values()];
+  if (!isoRoots.length) {
+    bad("[TA-13b] 没有记录到任何隔离根 ⇒ 隔离是否生效根本没被量到");
+  } else {
+    /* 两条都要查:① 我们记录的隔离根 ② **实际交给 app 的**那个(used) */
+    const wrongRoot = isoRoots.filter((r) => path.resolve(r.root) === path.resolve(REAL_DATA) ||
+      path.resolve(r.used || r.root) === path.resolve(REAL_DATA));
+    if (wrongRoot.length) {
+      bad("[TA-13b] 隔离根就是用户的真数据目录 ⇒ 等于没隔离", wrongRoot.map((r) => r.used || r.root).join(", "));
+    } else {
+      ok("[TA-13b] 隔离根与用户真数据目录不是同一个（" + isoRoots.length + " 个隔离根）");
+    }
+    const noWrite = isoRoots.filter((r) => !r.files);
+    if (noWrite.length) {
+      bad("[TA-13b] 隔离根里一个文件都没有 ⇒ 门禁没在写任何数据 ⇒「真目录没被碰」是空话（假牙）",
+        noWrite.map((r) => r.root).join(", "));
+    } else {
+      ok("[TA-13b] 隔离根里确实有写入（" + isoRoots.map((r) => r.files + " 个文件").join(", ") +
+        "）⇒ 隔离既生效、门禁也真的在干活");
+    }
   }
 
   console.log("\nprove_task_axis_pixels: PASS=" + STAT.pass + " FAIL=" + STAT.fail + " SKIP=" + STAT.skip);
