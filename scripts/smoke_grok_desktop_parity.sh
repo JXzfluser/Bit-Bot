@@ -994,6 +994,19 @@ else
   echo "  · skip：playwright-core / electron dist 未安装（npm --prefix hosts/desktop i -D playwright-core）"
 fi
 
+if want L3; then
+echo "== G-109 「连接应用」目录只干目录的事（重设计，且不把能力删掉） =="
+# ⚠️ 2026-11-22:这条门是**真渲染门**(起真 Electron 窗口看 DOM)
+   # ⇒ 它**违反 L1 的定义**(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)
+   # ⇒ 挪到 L3,并在这里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。
+   # 依据:台账 scripts/known_red_ledger.json 里 G-109 那 13 条(kind=environment)。
+   xvfb-run -a node scripts/prove_connect_apps_rework.mjs >/tmp/g109-ca-rework.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-109 prove_connect_apps_rework（真窗口：$(grep -c '✓ CA-' /tmp/g109-ca-rework.log) 项全绿）"
+else
+  bad "G-109 prove_connect_apps_rework（见 /tmp/g109-ca-rework.log；$(grep '✗' /tmp/g109-ca-rework.log | head -2 | tr '\n' ' ')）"
+fi
+
 fi
 if want L2; then
 echo "== G-17 附件上限与多附件真实复制（GP-11 · 官方 spec §5.5：≤6 个/次，文档/图片/音频 ≤25MB，视频 ≤200MB）=="
@@ -4611,7 +4624,18 @@ else
   bad "G-103 prove_app_identity（见 /tmp/g103-app-identity.log；$(grep '✗' /tmp/g103-app-identity.log | head -2 | tr '\n' ' ')）"
 fi
 for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b" "ID-08" "ID-10" "ID-10b" "ID-14" "ID-14b" "ID-15" "ID-15b" "ID-16" "ID-16b" "ID-17" "ID-18" "ID-19" "ID-19b" "ID-19c" "ID-20" "ID-20b" "ID-21" "ID-21b"; do
-  if grep -q "✓ $g103_a" /tmp/g103-app-identity.log; then ok "G-103 锚点：$g103_a"; else bad "G-103 锚点没跑绿：$g103_a"; fi
+  if grep -q "✓ $g103_a" /tmp/g103-app-identity.log; then
+    ok "G-103 锚点：$g103_a"
+  elif grep -q "· $g103_a SKIP" /tmp/g103-app-identity.log; then
+    # 2026-11-22:平台专属能力(要 macOS 开发态应用包)在本机不存在 ⇒ 门自己 SKIP。
+    # 旧写法「找不到 ✓ 锚点就判红」⇒ 把**门自己声明的 SKIP**算成了红 ⇒ 冤枉。
+    # ⇒ 现在三态:✓ ⇒ 绿;门自己 SKIP ⇒ **SKIP ≠ PASS**(不算绿、也不算红,如实报出来);
+    #   其它 ⇒ 红。
+    echo "  · skip：G-103 锚点 $g103_a —— 门自己 SKIP 了（平台专属能力,本机没有）⇒ **SKIP ≠ PASS**,不算绿"
+    GATE_SKIP=$((GATE_SKIP+1))
+  else
+    bad "G-103 锚点没跑绿：$g103_a"
+  fi
 done
 echo "  · G-103 为什么长出来：真机 screencapture 菜单栏第一项写的是 Electron。app.setName() 只管"
 echo "    app.getName()/关于面板/⌘Q 条目，菜单栏那一格读的是**进程所在 bundle 的 CFBundleName**，"
@@ -4739,14 +4763,6 @@ echo "    outside===0；气泡正文 <200 字而 details 里保留 >900 字的�
 echo "    原文照旧超长 —— 折叠是展示层，不删数据）。dataRoot 走 BITBOT_DATA_ROOT 指到"
 echo "    <repo>/.room-ux-probe-*，真库 sha256 前后必须一致。"
 
-fi
-if want L1; then
-echo "== G-109 「连接应用」目录只干目录的事（重设计，且不把能力删掉） =="
-node scripts/prove_connect_apps_rework.mjs >/tmp/g109-ca-rework.log 2>&1
-if [ $? -eq 0 ]; then
-  ok "G-109 prove_connect_apps_rework（真窗口：$(grep -c '✓ CA-' /tmp/g109-ca-rework.log) 项全绿）"
-else
-  bad "G-109 prove_connect_apps_rework（见 /tmp/g109-ca-rework.log；$(grep '✗' /tmp/g109-ca-rework.log | head -2 | tr '\n' ' ')）"
 fi
 for g109_a in "CA-00" "CA-01" "CA-02" "CA-03" "CA-04" "CA-04b" "CA-05" "CA-06" "CA-07" "CA-08" "CA-09" "CA-10"; do
   if grep -q "✓ $g109_a" /tmp/g109-ca-rework.log; then ok "G-109 锚点：$g109_a"; else bad "G-109 锚点没跑绿：$g109_a"; fi

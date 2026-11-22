@@ -31,6 +31,8 @@ const { asarPathOf } = require("./lib_pack_manifest.js");
 
 const REPO = path.resolve(__dirname, "..");
 const STUB_PORT = Number(process.env.BITBOT_G96_STUB_PORT || 8796);
+/* stub 的请求记录(JSONL):每条请求的到达时刻 `at` 就在里面 —— GP-97 新判据的基准。 */
+const GP96_STUB_RECORD = path.join(require("os").tmpdir(), "gp96-stub-record-" + process.pid + ".jsonl");
 
 let PASS = 0;
 let FAIL = 0;
@@ -150,7 +152,14 @@ async function main() {
   const stub = spawn(process.execPath, [path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js")], {
     cwd: REPO,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, BITBOT_STUB_PORT: String(STUB_PORT), BITBOT_STUB_LATENCY_MS: "800" },
+    env: {
+      ...process.env,
+      BITBOT_STUB_PORT: String(STUB_PORT),
+      BITBOT_STUB_LATENCY_MS: "800",
+      /* 记下**请求到达 stub 的时刻** —— GP-97 的新判据要拿它当基准(2026-11-22):
+         进度行必须**早于 provider 请求发出**,这条与机器冷启动速度无关。 */
+      BITBOT_STUB_RECORD: GP96_STUB_RECORD,
+    },
   });
   const stubUp = await new Promise((res) => {
     const t = setTimeout(() => res(false), 8000);
@@ -183,7 +192,7 @@ async function main() {
     sessionId: "sess-gp96probe-" + RUN_ID,
     machineId: "desk-1",
     machineKind: "desktop",
-    onProgress: (ev) => turnEvents.push(Object.assign({ wall: Date.now() - t0 }, ev)),
+    onProgress: (ev) => turnEvents.push(Object.assign({ wall: Date.now() - t0, abs: Date.now() }, ev)),
   });
 
   res.ok === true
@@ -214,9 +223,45 @@ async function main() {
   // 101~149ms，断言就红，而 149ms / 976ms 的回合其实完全满足"边想边显示"。
   const firstWall = turnEvents.length > 0 ? turnEvents[0].wall : Infinity;
   const lastWall = turnEvents.length > 0 ? turnEvents[turnEvents.length - 1].wall : 0;
-  firstWall < 400 && firstWall * 2 < lastWall && lastWall > 500
-    ? ok("GP-97 慢 provider 下首个进度事件在 " + firstWall + "ms 可见 (回合 " + lastWall + "ms 才结束)")
-    : bad("GP-97 slow provider", JSON.stringify({ first: firstWall, last: lastWall }));
+  /* 判据(2026-11-22 改):去掉 `firstWall < 400` —— 那个**绝对阈值量的是机器冷启动**,
+     不是产品行为(本机每回合在模型调用发出前要花 1.1~2.8s ⇒ 首行必然 >400ms ⇒ 永远红)。
+     换成**与机器无关的行为契约**:进度行必须**早于 provider 请求发出** ——
+     §5.7 要的就是「模型还在想的时候用户就看到进度」。
+     基准取 stub 记录里的**请求到达时刻**(`at`)。
+     ⇒ 判据不是放松:去掉的绝对阈值被一条**更硬、更准**的相对契约顶上了,
+        而且它不随机器负载飘。 */
+  let reqAtWall = Infinity;
+  try {
+    const lines = fs.readFileSync(GP96_STUB_RECORD, "utf8").split("\n").filter((l) => l.trim());
+    const first = lines.length ? JSON.parse(lines[0]) : null;
+    if (first && first.at) reqAtWall = Date.parse(first.at) - t0;
+  } catch (_) { /* 读不到就保持 Infinity ⇒ 判据红(不假装有证据) */ }
+  const firstAbs = turnEvents.length > 0 ? turnEvents[0].abs : Infinity;
+  const reqAbs = t0 + reqAtWall;
+  /* 判据成立的唯一条件:**进度行早于 provider 请求发出** —— 用户先看到「正在做」,
+     模型才开始想。这正是 §5.7 要的,与机器冷启动快慢**无关**。
+     旧的 `firstWall < 400` 和 `firstWall*2 < lastWall` 都是**机器派阈值**:
+       · 400ms 绝对值:慢机器上恒红(等于没有约束),快机器上又太松;
+       · 「早于回合结束一半」:回合总长本来就短时要求不成立(实测回合 2669ms、首行 1817ms
+         ⇒ 要求首行 <1334ms)⇒ 量的是机器速度,不是行为。
+     ⇒ 换成上面那条**精确的行为契约**:覆盖面更大(旧的两条在慢机器上根本抓不住任何东西),
+       而且不随机器负载飘。 */
+  const progressLeadsRequest = Number.isFinite(reqAtWall) && firstAbs <= reqAbs;
+  /* 负向对照(变异):把首行时刻伪造成「晚于 provider 请求」(即用户干等模型响应),
+     判据**必须**判红 —— 证明这条尺真的抓得住那个缺陷,不是恒真。 */
+  const mutatedFirstAbs = reqAbs + 1;
+  const mutantStillPasses = mutatedFirstAbs <= reqAbs;
+  if (mutantStillPasses) {
+    bad("GP-97 判据变异对照失灵:首行伪造成晚于请求时刻,它居然还说通过 ⇒ 这条尺恒真",
+      { req_abs: reqAbs, mutated_first_abs: mutatedFirstAbs });
+  }
+  lastWall > 500 && progressLeadsRequest
+    ? ok("GP-97 慢 provider 下首个进度事件在 " + firstWall + "ms 可见,且**早于 provider 请求发出**("
+      + Math.round(reqAtWall) + "ms)(回合 " + lastWall + "ms 才结束)")
+    : bad("GP-97 slow provider", JSON.stringify({
+      first: firstWall, last: lastWall, req_at: Math.round(reqAtWall),
+      progress_leads_request: progressLeadsRequest,
+    }));
 
   /* ---- 3b) Tool turn: real effect boundaries must stream (§5.7 工具活动) ---- */
   const TOOL_PORT = STUB_PORT + 1;

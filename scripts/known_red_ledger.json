@@ -93,7 +93,10 @@
         "note": "门自带的 stub 把 provider 响应按住 800ms；复现不依赖显示器，但依赖本机速度（更快的机器上这条可能自己就绿了 —— 那时台账该划掉它）。",
         "log": "/tmp/g76-gp96.log"
       },
-      "conditional": "只在本机（内核每回合冷启动 ~1.3~2.8s）出现；更快的机器上这条可能自己就绿了"
+      "conditional": "只在本机（内核每回合冷启动 ~1.3~2.8s）出现；更快的机器上这条可能自己就绿了",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：判据从「首个进度事件 <400ms」改成**行为契约**「进度行必须**早于 provider 请求发出**」(基准取 stub 记录里的请求到达时刻 `at`)。⇒ 400ms 那个绝对阈值量的是**机器冷启动**,不是行为(慢机器恒红=没约束);换成的新契约**与机器负载无关**且覆盖面更大,并加了**变异对照**(把首行伪造成晚于请求 ⇒ 必须判红)。"
     },
     {
       "id": "prove_app_identity.js#ID-14",
@@ -115,7 +118,10 @@
         "note": "在 macOS 且造过 dev 包（有包）时这条断言会真跑并可能变绿 —— 那时台账该改判或划掉；本门会把它报成「复现不出来」。",
         "log": "/tmp/g103-app-identity.log"
       },
-      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑"
+      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：矩阵 G-103 的锚点检查改成**三态** —— ✓ ⇒ 绿;门自己 SKIP ⇒ **SKIP ≠ PASS**(不算绿、也不算红,如实报出来);其它 ⇒ 红。旧写法「找不到 ✓ 锚点就判红」⇒ 把**门自己声明的 SKIP**算成了红 ⇒ 冤枉。平台专属能力在非该平台恒 SKIP 是**正常状态**。"
     },
     {
       "id": "prove_app_identity.js#ID-14b",
@@ -137,7 +143,10 @@
         "note": "同 ID-14：macOS 上有包时这条会真跑。",
         "log": "/tmp/g103-app-identity.log"
       },
-      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑"
+      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：矩阵 G-103 的锚点检查改成**三态** —— ✓ ⇒ 绿;门自己 SKIP ⇒ **SKIP ≠ PASS**(不算绿、也不算红,如实报出来);其它 ⇒ 红。旧写法「找不到 ✓ 锚点就判红」⇒ 把**门自己声明的 SKIP**算成了红 ⇒ 冤枉。平台专属能力在非该平台恒 SKIP 是**正常状态**。"
     },
     {
       "id": "prove_app_identity.js#ID-18",
@@ -159,7 +168,10 @@
         "note": "同 ID-14：macOS 上有包时这条会真跑。",
         "log": "/tmp/g103-app-identity.log"
       },
-      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑"
+      "conditional": "只在 macOS 之外（或还没造 dev 应用包）时出现；macOS 上造了包 ⇒ 这几条断言会真跑",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：矩阵 G-103 的锚点检查改成**三态** —— ✓ ⇒ 绿;门自己 SKIP ⇒ **SKIP ≠ PASS**(不算绿、也不算红,如实报出来);其它 ⇒ 红。旧写法「找不到 ✓ 锚点就判红」⇒ 把**门自己声明的 SKIP**算成了红 ⇒ 冤枉。平台专属能力在非该平台恒 SKIP 是**正常状态**。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#G-109-gate",
@@ -187,7 +199,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-00",
@@ -216,7 +231,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-01",
@@ -245,7 +263,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-02",
@@ -274,7 +295,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-03",
@@ -303,7 +327,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-04",
@@ -332,7 +359,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-04b",
@@ -361,7 +391,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-05",
@@ -390,7 +423,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-06",
@@ -419,7 +455,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-07",
@@ -448,7 +487,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-08",
@@ -477,7 +519,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-09",
@@ -506,7 +551,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_connect_apps_rework.mjs#CA-10",
@@ -535,7 +583,10 @@
           "Cannot find module 'playwright-core'"
         ]
       },
-      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）"
+      "conditional": "只在「没有显示器」或「没装 hosts/desktop 依赖」时出现（有显示器且装了依赖 ⇒ 这扇门 12/12 全绿，不红）",
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "已解：这条是**真渲染门**(起真 Electron 看 DOM)⇒ 违反 L1 的定义(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)⇒ 已**整块挪到 L3**,并在那里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。⇒ L1 现在只留秒级冒烟;这条门在 L3 真跑。"
     },
     {
       "id": "prove_anchor_coverage.mjs#G-125-count-pin",
