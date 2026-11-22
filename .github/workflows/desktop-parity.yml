@@ -24,9 +24,17 @@ on:
     branches:
       - cursor/next-target-v1
       - main
+      # 2026-11-22:这条 workflow **一次都没跑过** —— 查 GitHub Actions API 的
+      # actions/runs 返回空。机械原因就在这一段:push 只监听
+      # `cursor/next-target-v1` 与 `main`,而实际开发线一直在 `feat/**` 上
+      # ⇒ push 到那条线**根本不触发** ⇒ ⇒ 「CI 跑 all ⇒ 含 L3」这个保障
+      # 只是纸面上的,产品主键门(黄金旅程)坏了几个月都没人知道。
+      # ⇒ 加上 `feat/**`:任何开发分支的 push 都跑全量矩阵。
+      - 'feat/**'
   pull_request:
     branches:
       - main
+      - 'feat/**' 
 
 # 矩阵要 15 分钟上下；新推一次就取消旧的那次，别让两条抢同一个 Xvfb/端口。
 concurrency:
