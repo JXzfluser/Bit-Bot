@@ -417,9 +417,11 @@ try {
     const recAfter = (surface.listTasks() || []).find((r) => String(r.id) === SIG) || {};
     check("TC-21", String(recAfter.task || "") === "Alice 改写成交付稿",
       "TC-21 Task 实体的目标确实更新了", JSON.stringify({ before: recBefore.task, after: recAfter.task }));
-    /* 真的重跑了:重跑是 fire-and-forget ⇒ 等它落盘(有界等待)。 */
+    /* 真的重跑了:重跑是 fire-and-forget ⇒ 等它落盘(有界等待)。
+       窗口给得宽(机器忙的时候机器上别的门也在跑)—— 但**有界**:等不到就是红,
+       绝不无限等。 */
     let after = beforeReplies;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 150; i++) {
       after = txRows().filter((e) => e && e.kind === "bot_reply").length;
       if (after > beforeReplies) break;
       await sleep(100);
@@ -468,13 +470,20 @@ try {
       message_id: "msg-2", deps: { runResponderTurn: slowRunner },
     });
     let isRunning = false;
-    for (let i = 0; i < 60; i++) {
-      if (surface.taskIsRunning(SIG2)) { isRunning = true; break; }
+    let memberStarted = false;
+    /* 等两件事都成立:**在跑**（surface 的「在跑的任务表」里有它）**且**
+       **成员回合真的开始了**（runner 已被调用）。
+       —— 两件事的先后不固定（scope 先登记、回合后起），所以要一起等，
+          只等其中一件会偶发地判错(机器忙的时候更明显)。 */
+    for (let i = 0; i < 150; i++) {
+      isRunning = surface.taskIsRunning(SIG2);
+      memberStarted = slowTurns > 0;
+      if (isRunning && memberStarted) break;
       await sleep(50);
     }
     check("TC-22", isRunning,
       "TC-22 那一轮**真的在跑**(桌面那份 surface 的「在跑的任务表」里有它)");
-    check("TC-22", slowTurns > 0, "TC-22 成员回合真的在执行(不是 stub 数据)", String(slowTurns));
+    check("TC-22", memberStarted, "TC-22 成员回合真的在执行(不是 stub 数据)", String(slowTurns));
 
     const res = await postSigned("/v1/tasks/" + encodeURIComponent(SIG2) + "/cancel",
       { room_id: ROOM_ID, reason: "user_stop" });
@@ -491,7 +500,7 @@ try {
       "TC-24 负向:对不在跑的任务再点 ⇒ 409 no_running_task", again.rawBody);
 
     /* 那张卡从「在跑」掉出去(Task 实体的状态变了 ⇒ 桶不再是 working)。 */
-    await Promise.race([running, sleep(4000)]);
+    await Promise.race([running, sleep(8000)]);
     await sleep(200);
     const rec = (surface.listTasks() || []).find((r) => String(r.id) === SIG2) || {};
     /* 诚实:实体里的最终 state 由**那一轮收尾的 final_report** 决定 ——
