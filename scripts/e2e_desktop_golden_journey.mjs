@@ -600,7 +600,8 @@ async function shot(name) {
       const cmdState = await win.evaluate(() => {
         const detail = document.getElementById("cmd-detail");
         const duty = document.getElementById("cmd-duty");
-        const review = document.getElementById("cmd-review");
+        /* 复盘并进 #cmd-done(见下面 GJ-23 的说明):读现在真实存在的容器。 */
+        const review = document.getElementById("cmd-done-list") || document.getElementById("cmd-review");
         return {
           cards: document.querySelectorAll("#cmd-detail [data-cmd-task]").length,
           steps: Array.from(document.querySelectorAll(".cmd-step-name")).map((n) => String(n.textContent || "")),
@@ -885,11 +886,17 @@ async function shot(name) {
        * ─────────────────────────────────────────────────────────── */
       await win.evaluate(() => window.__bitbotCommand && window.__bitbotCommand.refresh()).catch(() => {});
       await sleep(1200);
+      /* 「复盘」段在 P1 批 1 之后并进了「已完成」折叠区(#cmd-done)——
+       * 原 #cmd-review 容器与它的渲染函数已删(D-7),**行 class 没改名**(仍是 .cmd-review-row)。
+       * ⇒ 这条门以前读的是**已经被删掉的** #cmd-review ⇒ 恒读到 null ⇒ 恒判「复盘段是空的」。
+       * ⇒ 门禁失修(门没跟上产品改动)—— 门要读**现在真实存在**的那个容器。
+       *   (产品主键的门失修 = 主键失灵 ⇒ 这种失修比一条产品缺陷更危险。)
+       */
       const review = await win.evaluate(() => {
-        const host = document.getElementById("cmd-review");
+        const host = document.getElementById("cmd-done-list") || document.getElementById("cmd-review");
         return {
           text: String((host && host.innerText) || ""),
-          rows: document.querySelectorAll("#cmd-review .cmd-review-row").length,
+          rows: document.querySelectorAll("#cmd-done-list .cmd-review-row, #cmd-review .cmd-review-row").length,
         };
       }).catch(() => ({ text: "", rows: 0 }));
       const doneTasks = taskRows().filter((t) => t && t.state === "done");
