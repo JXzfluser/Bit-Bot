@@ -106,6 +106,21 @@ function json(res, code, obj) {
   res.end(body);
 }
 
+/* 手机端「指挥」四条路由的错误码 → HTTP 状态（方案 §3.2.1 写死的那句：
+ *   「参数缺失 400、业务失败 409、找不到任务 404」）。
+ * 码一律来自产品自己（product_surface.js 的四个函数），**不自造**：
+ *   · *_required            ⇒ 400（参数缺失）
+ *   · room_not_found        ⇒ 404（找不到那间群）
+ *   · bot_not_found         ⇒ 404（找不到那个人）
+ *   · same_bot / bot_not_in_room / no_running_task ⇒ 409（业务失败）
+ */
+function taskCommandStatus(code) {
+  const c = String(code || "");
+  if (/_required$/.test(c)) return 400;
+  if (c === "room_not_found" || c === "bot_not_found") return 404;
+  return 409;
+}
+
 /* ---------- 配对落地页（只读）----------
  * 桌面弹窗里那颗按钮叫「复制配对链接」。既然叫链接，点开就必须是一页纸 ——
  * 以前它回的是 unknown_cn_inbound_route 的 JSON 404，用户粘到微信里就是一条
@@ -716,7 +731,15 @@ function createCnInboundServer(opts = {}) {
   }
 
   // 跨端审批的队列住在 surface 里(pending-approvals.jsonl)。
-  const surface = createProductSurfaceRef(repoRoot, path.join(repoRoot, "data"));
+  /* 【P1 批 4 · §3.2.3】surface **优先用调用方注入的那一份**。
+     为什么要注入:desktop 的 surface 是 createProductSurface() 工厂造出来的,
+     它的「在跑的任务表」(_taskScopes / _activeRoomScopes)是**工厂内的内存状态**
+     —— 另建一个实例(旧写法)⇒ HTTP 侧刹停永远命中不到桌面那批在跑的任务
+     (cancelRoomTask 只会回 no_running_task)。
+     注入同一份实例 ⇒ HTTP 与 IPC 共用一张表 ⇒ 刹停真能停掉桌面在跑的那批。
+     没注入时(例如 box_main.js 那条没有 Electron surface 的路径)仍回落
+     createProductSurfaceRef —— 读面照旧可用,只是刹停不到内存里的那批。 */
+  const surface = opts.surface || createProductSurfaceRef(repoRoot, path.join(repoRoot, "data"));
   const logDir = ensureDir(path.join(repoRoot, "data", "routines", "webhooks", "cn-inbound"));
   const pendingPath = path.join(
     repoRoot,
@@ -1223,6 +1246,186 @@ function createCnInboundServer(opts = {}) {
           tasks: items,
         });
         return;
+      }
+
+      // ===== 手机端「指挥」（P1 批 4）=====================================
+      // 插话 / 改向 / 刹停 / 换人 —— 走**桌面那同一个 surface 实例**（§3.2.3 (a)），
+      // 调**桌面那四个函数**（§1.3）：语义一个字不改，只是把 IPC 换成 HTTP。
+      //
+      // 五条不许越过的线（方案 §3.2.1 / §3.3）：
+      //   ① 鉴权**只认设备签名**（与 /v1/approvals、/v1/tasks 同构），**不回落共享 bearer**
+      //      —— 指挥那台机器上的团队，权限比发一轮对话重；
+      //   ② `task_sig` 形状是 `<room_id>|<message_id>`（带 `|`）⇒ 路径段必须
+      //      encodeURIComponent（寻址契约在 hosts/shared/task_view.js，**不许另抄一份正则**）；
+      //   ③ 错误码**一律如实回**产品已有的码，**不编**；
+      //   ④ 写操作全部落**可审计**的转录行（task_state/steered|replanned|cancelled|reassigned），
+      //      不静默；
+      //   ⑤ **不是新数据源**：Task 实体只有数据根里那**一份**，转录也只有那**一份**
+      //      （各自一个文件，桌面主进程与入站服务读的是同一批）。
+      {
+        const cmdRoute = taskView.matchTaskSigRoute(p);
+        if (cmdRoute) {
+          if (req.method !== "POST") {
+            json(res, 405, { ok: false, error: "method_not_allowed", allow: "POST" });
+            return;
+          }
+          const auth = deviceKeys.verifyDeviceTurn(deviceStoreNow(), req, raw, { nonceStore });
+          if (auth.ok && auth.device_id) deviceKeys.touchDevice(devicesPath, auth.device_id);
+          if (!auth.ok) {
+            // A2-4 同一口径：错误码一字不改，真原因与下一步放新增字段（不裸返回 code）。
+            json(res, 401, {
+              ok: false,
+              error: auth.error || "unauthorized",
+              ...(auth.error !== "unauthorized" ? { device_error: auth.error } : {}),
+              error_description: describeDeviceAuthFailure(auth.error, req),
+              next_step:
+                auth.error === "missing_device_credential"
+                  ? "重新配对一次，让这台设备把公钥登记到机器上（之后请求要带设备签名）"
+                  : auth.error === "unknown_device"
+                    ? "这台设备不在这台机器的登记表里（可能被吊销或配到了另一台机器），请重新配对"
+                    : auth.error === "stale_timestamp"
+                      ? "设备与这台机器的时间差太大，请校准系统时间后重试"
+                      : auth.error === "nonce_reused"
+                        ? "这个请求号已经被用过，请重试一次（每次请求要换新 nonce）"
+                        : auth.error === "bad_signature"
+                          ? "签名验不过：私钥与登记的公钥不是同一对，请重新配对"
+                          : "请重新配对这台设备",
+            });
+            return;
+          }
+          if (!surface) {
+            json(res, 503, { ok: false, error: "task_command_unavailable" });
+            return;
+          }
+          const body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+          const sig = String(cmdRoute.sig || "").trim();
+          const action = String(cmdRoute.action || "");
+          const roomId = String(body.room_id || "").trim();
+
+          /* 参数校验：错误码与**桌面那四个函数自己的校验顺序一致**
+             (product_surface.js 的 steerRoomTask / replanRoomTask /
+              reassignRoomTask / cancelRoomTask)—— 同一份输入，两边同一个码。 */
+          if (!sig) {
+            json(res, 400, { ok: false, error: "task_sig_required", action });
+            return;
+          }
+          if (!roomId) {
+            // 四个动作都要落可审计的转录行（§3.3）⇒ 没有群号就写不了 ⇒ 如实说缺。
+            json(res, 400, { ok: false, error: "room_id_required", action });
+            return;
+          }
+
+          let out = null;
+          try {
+            if (action === "steer") {
+              const text = String(body.text || "").trim();
+              if (!text) {
+                json(res, 400, { ok: false, error: "text_required", action });
+                return;
+              }
+              // 桌面 IPC:bitbot:rooms:task:steer → surface.steerRoomTask(...)
+              out = surface.steerRoomTask(sig, roomId, text);
+            } else if (action === "replan") {
+              const task = String(body.task || "").trim();
+              if (!task) {
+                json(res, 400, { ok: false, error: "task_required", action });
+                return;
+              }
+              // 桌面 IPC:bitbot:rooms:task:replan → surface.replanRoomTask(...)
+              out = surface.replanRoomTask(sig, roomId, task);
+            } else if (action === "cancel") {
+              const reason = String(body.reason || "user_stop").trim() || "user_stop";
+              // 桌面 IPC:bitbot:rooms:task:cancel → surface.cancelRoomTask(...)
+              out = surface.cancelRoomTask(sig, reason);
+            } else if (action === "swap") {
+              const fromBot = String(body.from_bot || "").trim();
+              const toBot = String(body.to_bot || "").trim();
+              if (!fromBot) {
+                json(res, 400, { ok: false, error: "from_bot_required", action });
+                return;
+              }
+              if (!toBot) {
+                json(res, 400, { ok: false, error: "to_bot_required", action });
+                return;
+              }
+              // 桌面 IPC:bitbot:rooms:task:reassign → surface.reassignRoomTask(...)
+              out = surface.reassignRoomTask(sig, roomId, fromBot, toBot);
+            } else {
+              json(res, 404, { ok: false, error: "task_command_not_found" });
+              return;
+            }
+          } catch (e) {
+            json(res, 500, { ok: false, error: "task_command_failed", action });
+            return;
+          }
+
+          if (!out || out.ok !== true) {
+            // 业务失败：如实回产品自己的码 + 对应的 HTTP 状态（参数缺失 400 /
+            // 找不到 404 / 业务失败 409），**不假装**。
+            const code = (out && out.error) || "task_command_failed";
+            json(res, taskCommandStatus(code), {
+              ok: false,
+              error: code,
+              action,
+              task_sig: sig,
+              room_id: roomId,
+            });
+            return;
+          }
+
+          /* 成功：回执按 §3.2.1 的形状（ok / device_id / …），并把产品自己的
+             诚实边界原样带出去（插话是「下一棒看得见」、换人是「下一棒生效」）。 */
+          const reply = {
+            ok: true,
+            device_id: auth.device_id,
+            action,
+            task_sig: sig,
+            room_id: roomId,
+          };
+          if (action === "steer") {
+            reply.scope = out.scope || "";
+            reply.current_turn_sees = out.current_turn_sees === true;
+          } else if (action === "replan") {
+            reply.task = String(out.task || "");
+            reply.message_id = String(out.message_id || "");
+            /* 【§3.2.4】改向的「立刻重跑」—— 桌面侧是 IPC handler 里
+               fire-and-forget 调 surface.orchestrateRoom({force:true})
+               (hosts/desktop/main.js 的 bitbot:rooms:task:replan)。
+               HTTP 侧**必须复刻这一步**，而且必须走**同一个 surface 实例**：
+               否则手机点了「改向」，转录里多了一条 replanned，但**没有人重跑**
+               —— 界面会说谎。 */
+            try {
+              Promise.resolve(
+                surface.orchestrateRoom({
+                  room: roomId,
+                  task: out.task,
+                  message_id: out.message_id,
+                  force: true,
+                }),
+              ).catch(() => { /* 重跑失败会自己落转录，这里不重复报 */ });
+            } catch (_) { /* 同上 */ }
+            reply.restarted = true;
+          } else if (action === "cancel") {
+            reply.cancelled = Number(out.cancelled || 0);
+            /* 桌面 IPC 在停掉之后会补一条 task_state/cancelled 转录行
+               (main.js 的 bitbot:rooms:task:cancel)—— HTTP 侧同样补：
+               没有这一行，Task 实体的状态不会变，指挥台上的这张卡**还停在「在跑」**。 */
+            try {
+              surface.appendRoomTranscript(roomId, {
+                kind: "task_state", room_id: roomId, task_sig: sig,
+                state: "cancelled", reason: String(body.reason || "user_stop").trim() || "user_stop",
+                at: new Date().toISOString(),
+              });
+            } catch (_) { /* 落盘失败不该让「已经停了」变成「没停」 */ }
+          } else if (action === "swap") {
+            reply.from_bot = String(out.from_bot || "");
+            reply.to_bot = String(out.to_bot || "");
+            reply.to_bot_name = String(out.to_bot_name || "");
+            reply.scope = out.scope || "";
+          }
+          json(res, 200, reply);
+          return;
+        }
       }
       // 配对落地页（只读）：桌面「复制配对链接」复制出去的就是这一页。
       // GET / 与 GET /pair 同页 —— 用户常常只粘得到裸地址，别让他撞 404。

@@ -3101,6 +3101,23 @@ const runRoomResponderTurn = roomRuntime.runResponderTurn;
 const runRoomDiscretionTurn = roomRuntime.runDiscretionTurn;
 const selectRoomResponders = roomRuntime.selectResponders;
 
+/* 【P1 批 4 · §3.2.4】把群回合的运行时依赖**登记到 surface 上**。
+   没有这一行:任何**不显式传 deps** 的编排调用都拿不到 runner ——
+   而「改向 ⇒ 立刻重跑」正是这种调用:
+     · 桌面 IPC 的 bitbot:rooms:task:replan(main.js 的「改向」按钮);
+     · 手机端 POST /v1/tasks/<sig>/replan(批 4 新增的那条路由)。
+   两处都只传 {room, task, message_id, force:true} ⇒ orchestrateRoom 直接回
+   responder_runner_required ⇒ 转录里多了一条 replanned,**却没有人重跑**
+   —— 界面会说谎(这正是 §3.2.4 写明要避免的那件事)。
+   登记之后,「立刻重跑」真的跑起来了。
+   诚实边界:回落这条路**没有综合回合** —— orchestrateRoom 的综合只认**显式**的
+   deps.synthesize,不读 roomRuntimeDeps.synthesize ⇒ 重跑写出的 final_report 里
+   synthesis 是 synthesizer_not_configured(不影响「真的重跑了」这条判据)。 */
+surface.setRoomRuntimeDeps({
+  runResponderTurn: runRoomResponderTurn,
+  selectResponders: selectRoomResponders,
+});
+
 
 /* B-8 批 3:刹停一个正在跑的任务。
    语义要点:
@@ -5127,6 +5144,14 @@ async function ensureCnInbound() {
     }
     cnInbound = createCnInboundServer({
       repoRoot: REPO_ROOT,
+      /* 【P1 批 4 · §3.2.3】把**桌面这一份 surface** 注入进去。
+         为什么必须注入:_taskScopes / _activeRoomScopes 是 createProductSurface()
+         **工厂内**的内存状态(在跑的任务表)—— 入站服务另建一个实例的话,
+         手机点「刹停」命中的是另一张**空表** ⇒ 永远回 no_running_task,
+         而桌面主进程那一轮还在跑(界面会说谎)。
+         注入同一份实例 ⇒ HTTP 与 IPC 共用一张表 ⇒ 刹停真能停掉。
+         没注入时入站服务仍回落 createProductSurfaceRef(box_main.js 那条路)。 */
+      surface,
       pairingManager: pairingCodeManager,
       onTurn: async (prompt, meta) => {
         const channel = (meta && meta.channel) || "in";

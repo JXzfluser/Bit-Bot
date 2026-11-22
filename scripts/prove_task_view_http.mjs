@@ -59,7 +59,7 @@ const skip = (id, m, why) => { SKIP++; console.log("  · [" + id + "] SKIP " + m
    所以清单第一项前面得有个占位,否则第一个编号认不到。
    这份清单**不是装饰**:check() 逐条核对「用的编号在不在清单里」,
    收尾再核对「清单里的每个编号都真的被用到了」—— 清单与实现漂了就红。 */
-const CLAIM_IDS = ["(head)", "TV-01", "TV-02", "TV-03", "TV-04", "TV-10", "TV-11", "TV-12", "TV-13", "TV-14", "TV-15", "TV-16", "TV-17", "TV-18", "TV-19", "TV-20", "TV-21"];
+const CLAIM_IDS = ["(head)", "TV-01", "TV-02", "TV-03", "TV-04", "TV-10", "TV-11", "TV-12", "TV-13", "TV-14", "TV-15", "TV-16", "TV-17", "TV-18", "TV-19", "TV-20", "TV-21", "TV-22", "TV-23", "TV-24", "TV-25", "TV-26"];
 const CLAIM_ID_SET = new Set(CLAIM_IDS.filter((x) => x !== "(head)"));
 const usedIds = new Set();
 const check = (id, cond, m, d) => {
@@ -126,6 +126,37 @@ function pickBindablePort() {
   });
 }
 
+/* POST 用的真 HTTP 往返(与 GET 同一套传输层证据)。 */
+function httpPostJson(port, urlPath, headers, bodyObj) {
+  return new Promise((resolve, reject) => {
+    const body = bodyObj === undefined ? "" : JSON.stringify(bodyObj);
+    const h = Object.assign({}, headers || {});
+    if (body) {
+      h["content-type"] = "application/json";
+      h["content-length"] = String(Buffer.byteLength(body));
+    }
+    const req = http.request(
+      { host: "127.0.0.1", port, path: urlPath, method: "POST", headers: h },
+      (res) => {
+        let raw = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => { raw += c; });
+        res.on("end", () => {
+          let json = null;
+          try { json = JSON.parse(raw); } catch { /* 非 JSON 就是非 JSON */ }
+          resolve({
+            viaNetwork: true, statusCode: res.statusCode, headers: res.headers,
+            rawBody: raw, json, peerPort: req.socket && req.socket.remotePort,
+          });
+        });
+      },
+    );
+    req.on("error", reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
 /* ── 夹具:同一份 rooms + tasks,两个面各读各的 ────────────────────────────
  * 夹具刻意覆盖:① 一个群里两段 bot_reply(并行)+ 一行 final_report;
  * ② 一个 confirm_request(要你拍板);③ 一段没有 task_sig 的 bot_reply(从转录推「在跑」);
@@ -180,6 +211,15 @@ function makeSandbox(label) {
   fs.mkdirSync(path.join(tmp, "data", "host"), { recursive: true });
   fs.writeFileSync(path.join(tmp, "data", "desktop", "rooms.json"), JSON.stringify(FIXTURE_ROOMS, null, 2));
   fs.writeFileSync(path.join(tmp, "data", "desktop", "tasks.json"), JSON.stringify(FIXTURE_TASKS, null, 2));
+  /* 批 4:「换人」要有一个**真实存在**的成员(产品会查名册 ⇒ 查不到就回 bot_not_found)。
+     房间 r-done 的成员就是 t1/t2 ⇒ 名册里也得有这两个人。 */
+  fs.writeFileSync(path.join(tmp, "data", "desktop", "bots.json"), JSON.stringify({
+    version: 1, primary_id: "t1",
+    bots: [
+      { id: "t1", name: "Alice", job: "research", description: "", hidden: false },
+      { id: "t2", name: "Bob", job: "write", description: "", hidden: false },
+    ],
+  }, null, 2));
   return tmp;
 }
 
@@ -316,6 +356,19 @@ try {
       "x-bitbot-signature": sig,
     };
   };
+  /* POST 的签名头:签的是**请求体的字节**(与手机端 DeviceIdentity 同一套口径)。 */
+  const deviceHeadersFor = (bodyStr) => {
+    const ts = String(Date.now());
+    const nonce = "n-" + crypto.randomBytes(8).toString("hex");
+    const sig = deviceKeys.signTurn(device.private_key_pem, device.id, ts, nonce,
+      Buffer.from(String(bodyStr == null ? "" : bodyStr), "utf8"));
+    return {
+      "x-bitbot-device": device.id,
+      "x-bitbot-timestamp": ts,
+      "x-bitbot-nonce": nonce,
+      "x-bitbot-signature": sig,
+    };
+  };
 
   /* ── 鉴权三档(§3.2.1:只认设备签名,不回落共享 bearer)── */
   const noAuth = await httpGetJson(serverStatus.port, "/v1/tasks", {});
@@ -435,6 +488,80 @@ try {
     "TV-16 反向:畸形的百分号编码 ⇒ 解码回空串(不抛、不半解)");
   check("TV-16", items.every((x) => !String(x.task_sig || "").includes("%")),
     "TV-16 回执里的 task_sig 是**原样**(没被提前 encode 过)");
+
+  /* ── 批 4 的四条「指挥」路由:同一个真 HTTP 面 ──────────────────────
+   * 这一门本来只钉「看」(GET /v1/tasks)。批 4 加了四条写路由,
+   * 它们**就在这个已经在跑的真服务上** ⇒ 这里顺手验一下它们真的在位、
+   * 真的按 §3.2.1 的契约工作(寻址、鉴权、错误码)。
+   * 四个动作的**完整**验收(真起一轮、真取消、真重跑)在
+   * scripts/prove_task_command_http.mjs —— 那是批 4 的主门。 */
+  {
+    const cmdSig = sigWithPipe || "r-done|msg-1";
+    const encCmd = taskView.encodeTaskSig(cmdSig);
+    const postSigned = (urlPath, bodyObj) => {
+      const bodyStr = JSON.stringify(bodyObj == null ? {} : bodyObj);
+      return httpPostJson(serverStatus.port, urlPath, deviceHeadersFor(bodyStr), bodyObj);
+    };
+    /* 插话:写操作 ⇒ 必须落可审计的转录行。 */
+    const steer = await postSigned("/v1/tasks/" + encCmd + "/steer",
+      { room_id: "r-done", text: "手机端插话:先看数据" });
+    check("TV-22", steer.statusCode === 200 && steer.json && steer.json.ok === true,
+      "TV-22 POST /v1/tasks/<sig>/steer ⇒ 200(批 4 的路由在同一个真 HTTP 面上)", steer.rawBody);
+    check("TV-22", steer.json && steer.json.scope === "next_hop" && steer.json.current_turn_sees === false,
+      "TV-22 回执如实带着诚实边界(下一棒看得见、当前这轮看不见)", steer.rawBody);
+    const roomsAfter = surface.roomsStoreStatus().rooms.rooms || [];
+    const steeredRow = ((roomsAfter.find((r) => r.id === "r-done") || {}).transcript || [])
+      .find((e) => e && e.kind === "task_state" && e.state === "steered");
+    check("TV-22", !!steeredRow,
+      "TV-22 插话真的落了 task_state/steered 转录行(可审计)", JSON.stringify(steeredRow || null));
+
+    /* 改向 / 换人:路由在位 + 错误码如实回。 */
+    const replan = await postSigned("/v1/tasks/" + encCmd + "/replan",
+      { room_id: "r-done", task: "改写成交付稿" });
+    check("TV-23", replan.statusCode === 200 && replan.json && replan.json.ok === true
+      && replan.json.restarted === true,
+      "TV-23 POST /v1/tasks/<sig>/replan ⇒ 200 且写明 restarted", replan.rawBody);
+    const swap = await postSigned("/v1/tasks/" + encCmd + "/swap",
+      { room_id: "r-done", from_bot: "t1", to_bot: "t2" });
+    check("TV-23", swap.statusCode === 200 && swap.json && swap.json.ok === true,
+      "TV-23 POST /v1/tasks/<sig>/swap ⇒ 200", swap.rawBody);
+    /* 刹停:这条任务本来就没在跑 ⇒ 如实回 409 no_running_task(不假装停掉了什么)。 */
+    const cancel = await postSigned("/v1/tasks/" + encCmd + "/cancel", { room_id: "r-done" });
+    check("TV-24", cancel.statusCode === 409 && cancel.json && cancel.json.error === "no_running_task",
+      "TV-24 对没在跑的任务点刹停 ⇒ 409 no_running_task(不假装停掉了什么)", cancel.rawBody);
+
+    /* 鉴权:控制面只认设备签名(带 bearer 一律 401)。 */
+    const cmdNoAuth = await httpPostJson(serverStatus.port,
+      "/v1/tasks/" + encCmd + "/steer", { "content-type": "application/json" },
+      { room_id: "r-done", text: "未签名" });
+    check("TV-25", cmdNoAuth.statusCode === 401,
+      "TV-25 指挥路由不带设备签名 ⇒ 401", String(cmdNoAuth.statusCode));
+    const cmdBearer = await httpPostJson(serverStatus.port,
+      "/v1/tasks/" + encCmd + "/steer",
+      { "content-type": "application/json", Authorization: "Bearer " + bearerToken },
+      { room_id: "r-done", text: "只带 bearer" });
+    check("TV-25", cmdBearer.statusCode === 401,
+      "TV-25 指挥路由只带 bearer ⇒ 401(控制面不回落共享令牌)", String(cmdBearer.statusCode));
+
+    /* 批 3.5 的不变量在 HTTP 面上也成立:同一个 task_sig 只有一张卡,
+       而且那张卡的 state 取自 Task 实体。
+       ⇒ 用**有实体记录**的那一条(没有记录的那条 state 本来就是空串,
+         拿它来验「state 取自实体」是验不出东西的)。 */
+    const recSig = Object.keys(recordsById).find((s) => s.includes("|")) || sigWithPipe;
+    const sigSeen = {};
+    for (const it of items) {
+      const k = String(it.task_sig || "");
+      sigSeen[k] = (sigSeen[k] || 0) + 1;
+    }
+    check("TV-26", (sigSeen[recSig] || 0) === 1,
+      "TV-26 同一个 task_sig 在清单里只有**一条**(批 3.5:不再一张「仅记录」+一张转录推导)",
+      JSON.stringify(sigSeen));
+    const one = items.find((x) => String(x.task_sig || "") === recSig);
+    const wantState = String((recordsById[String(recSig || "")] || {}).state || "");
+    check("TV-26", one && String(one.state || "") === wantState && wantState !== "",
+      "TV-26 那一条的 state 取自 Task 实体(不是空串)",
+      JSON.stringify({ got: one && one.state, want: wantState }));
+  }
 
   /* ── 没有任务时:count 0 / tasks [] ,不编一条 ── */
   fs.writeFileSync(path.join(TMP, "data", "desktop", "rooms.json"),

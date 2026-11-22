@@ -1088,7 +1088,7 @@ if [ $? -eq 0 ]; then
 else
   bad "G-137 prove_task_view_http（见 /tmp/g137-task-view-http.log；$(grep '✗' /tmp/g137-task-view-http.log | head -2 | tr '\n' ' ')）"
 fi
-for gTV_id in TV-01 TV-02 TV-03 TV-04 TV-10 TV-11 TV-12 TV-13 TV-14 TV-15 TV-16 TV-17 TV-18 TV-19 TV-20 TV-21; do
+for gTV_id in TV-01 TV-02 TV-03 TV-04 TV-10 TV-11 TV-12 TV-13 TV-14 TV-15 TV-16 TV-17 TV-18 TV-19 TV-20 TV-21 TV-22 TV-23 TV-24 TV-25 TV-26; do
   if grep -q "\[$gTV_id\]" /tmp/g137-task-view-http.log; then
     ok "G-137 锚点：$gTV_id"
   elif grep -q "\[$gTV_id\] SKIP" /tmp/g137-task-view-http.log; then
@@ -1108,6 +1108,43 @@ echo "    (不带凭证⇒401、只带 bearer⇒401,且 401 不泄露任何任�
 echo "    (响应的对端端口 == 服务在监听的端口 + 原始 body 文本 + HTTP 层头 + 连关着的"
 echo "    端口必须失败的对照);④ 隔离数据根:用户真实 data/ 一个字节没动;⑤ 两组变异对照:"
 echo "    把产品副本改坏(HTTP 侧换另一套聚合 / 不起服务只测函数)⇒ 判据必须翻红。"
+echo "== G-138 P1 批 4 手机端「指挥」（真入站服务 + 真 HTTP + 真取消）=="
+# 这条门**要起进程、要打真 HTTP** ⇒ 它**违反 L1 的定义**
+#   (L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)
+#   ⇒ 落在 L2(真内核 + 真 Host + 真文件,不开 Electron、不联网,只打 127.0.0.1),
+#     与兄弟门 G-137(prove_task_view_http)同一层、同一形状。
+node scripts/prove_task_command_http.mjs >/tmp/g138-task-command-http.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-138 prove_task_command_http（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g138-task-command-http.log)）"
+else
+  bad "G-138 prove_task_command_http（见 /tmp/g138-task-command-http.log；$(grep '✗' /tmp/g138-task-command-http.log | head -2 | tr '\n' ' ')）"
+fi
+for gTC_id in TC-01 TC-02 TC-03 TC-04 TC-05 TC-10 TC-11 TC-12 TC-13 TC-20 TC-21 TC-22 TC-23 TC-24 TC-25 TC-26 TC-27 TC-28 TC-29 TC-30 TC-40 TC-41 TC-42 TC-50; do
+  if grep -q "\[$gTC_id\]" /tmp/g138-task-command-http.log; then
+    ok "G-138 锚点：$gTC_id"
+  elif grep -q "\[$gTC_id\] SKIP" /tmp/g138-task-command-http.log; then
+    # 门自己声明的 SKIP(环境不具备)⇒ **SKIP ≠ PASS**,不算绿也不算红(如实报出)。
+    echo "  · skip：G-138 锚点 $gTC_id —— 门自己 SKIP 了 ⇒ **SKIP ≠ PASS**，不算绿"
+    GATE_SKIP=$((GATE_SKIP+1))
+  else
+    bad "G-138 锚点没跑绿：$gTC_id"
+  fi
+done
+echo "  · G-138 为什么长出来：批 3 让手机能「看」任务,批 4 让手机能「指挥」"
+echo "    (插话 / 改向 / 刹停 / 换人)。四件套早就实现了、只挂在桌面 IPC 上 ——"
+echo "    手机够不着。这一门钉的是「手机真的能指挥」而且是**真 HTTP**。"
+echo "  · G-138 判据：① 真起一轮(走产品的 orchestrateRoom)⇒ 手机端 POST /steer ⇒"
+echo "    **共享板**里出现该条、群里转录出现 task_state/steered;② POST /replan ⇒"
+echo "    转录/Task 状态确实更新,而且**真的重跑了**(新的一轮 bot_reply 真的出现);"
+echo "    ③ **真跑一轮再真取消**(不是 stub)⇒ 回执就是 {\"ok\":true,\"cancelled\":1},"
+echo "    且那张卡从「在跑」掉出去 —— 这一条同时钉住跨实例那个坑(注入的是**同一份**"
+echo "    surface ⇒ HTTP 侧发出的取消命中桌面主进程那份「在跑的任务表」);"
+echo "    ④ 负向:对不在跑的任务再点 ⇒ 409 no_running_task;换成不在群里的人 ⇒ 409"
+echo "    bot_not_in_room;参数缺失 ⇒ 400;**不带设备签名 ⇒ 401 且不产生任何 effect**"
+echo "    (钉「没有转录行/没有板子消息/没改 Task 实体」,不只是看错误文案);"
+echo "    ⑤ 隔离数据根:用户真实 data/ 一个字节没动;⑥ 三组变异对照(把产品副本改坏):"
+echo "    HTTP 侧换另一套聚合 ⇒ 清单一致性判红;不起服务只测函数 ⇒ 真起服务判红;"
+echo "    去掉设备签名校验 ⇒ 未签名请求判红。"
 fi
 if want L2; then
 echo "== G-17 附件上限与多附件真实复制（GP-11 · 官方 spec §5.5：≤6 个/次，文档/图片/音频 ≤25MB，视频 ≤200MB）=="
