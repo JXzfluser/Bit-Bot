@@ -1872,6 +1872,15 @@
    "reason": "门：prove_surface_parity.mjs — G-125 对账尺门（#81 / §8.159 定稿口径）。；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
   },
   {
+   "file": "prove_task_axis_pixels.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_task_axis_pixels.mjs — P1 批 2：指挥台「任务主轴」两档像素回归门（真 Electron 1440×900 / 480×720，与基线逐像素比、基线只读、两条负向对照）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-136"
+  },
+  {
    "file": "prove_team_brief.js",
    "layer": "L2",
    "blocking": true,

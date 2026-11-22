@@ -4155,3 +4155,25 @@ body.grok-ui .cn-hint {
 }
 .cmd-fold-count { font-size: var(--text-xs); font-weight: 400; opacity: .75; }
 .cmd-fold[open] .cmd-fold-summary { color: var(--ink); }
+
+/* ── P1 批 2:窄窗下指挥台是**浮层**,不许画到浮动输入区底下 ──────────────────
+   #command-panel 是 #main 里的一个 flex 项,而 #main 是一列**固定高度**的盒子。
+   宽窗(>900px)下指挥台装得下,像素零变化 —— 这条规则只在窄窗生效。
+   窄窗(≤900px,产品 minWidth 就是 480)下主列本来就矮:指挥台的内容
+   (批 2 的像素门实测 817px)装不进主列(实测 552px),而 #main 的 flex 项
+   默认**不许**比自己的内容矮 ⇒ 指挥台溢出 #main,直接画到下面那条浮动
+   输入区(composer)底下 ⇒ 底下那截既看不见也点不到(实测 480×720:
+   面板底 855px > 输入区顶 608px,溢出 247px)。
+   ⇒ 窄窗时指挥台改成**浮层**:铺满主列、自己滚动。壳层在窄窗下已经是
+   「rail 当浮层、不挤主列」这条路(layout-contract.md §3.2),指挥台走同一条:
+   既不画到输入区底下,也不把对话挤没。 */
+@media (max-width: 900px) {
+  .cmd-panel {
+    position: absolute;
+    inset: 0 16px 8px;
+    margin: 0;
+    overflow-y: auto;
+    background: var(--bg0);
+    z-index: 3;
+  }
+}

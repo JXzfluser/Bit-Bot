@@ -26843,7 +26843,13 @@
         var t = ev.target;
         if (!t || !t.getAttribute) return;
         // P1 批 1 D-2:桶 tab —— 点一下就切到那个桶,只看那个桶的卡。
-        var tabKey = t.getAttribute("data-cmd-tab");
+        // P1 批 2 修:tab 按钮里包着两个 span(.cmd-tab-label / .cmd-tab-count),
+        // **点文字时 ev.target 是那个 span**,不是按钮 ⇒ 以前只认
+        // t.getAttribute("data-cmd-tab") ⇒ 点「在跑」两个字没反应、
+        // 点按钮的空白处才切(批 2 的像素门真点 tab 时当场抓到)。
+        // ⇒ 改成 closest() 往上找那个带 data-cmd-tab 的按钮。
+        var tabEl = t.closest ? t.closest("[data-cmd-tab]") : null;
+        var tabKey = tabEl ? tabEl.getAttribute("data-cmd-tab") : (t.getAttribute("data-cmd-tab") || null);
         if (tabKey) {
           CMD_STATE.tab = tabKey;
           cmdRender();

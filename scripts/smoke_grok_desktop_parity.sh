@@ -1010,6 +1010,40 @@ else
   bad "G-109 prove_connect_apps_rework（见 /tmp/g109-ca-rework.log；$(grep '✗' /tmp/g109-ca-rework.log | head -2 | tr '\n' ' ')）"
 fi
 
+echo "== G-136 指挥台「任务主轴」两档像素回归门（1440×900 / 480×720）=="
+# ⚠️ 这条门是**真渲染 + 像素回归**门(起真 Electron 窗口、截图、跟基线逐像素比)
+   # ⇒ 它**违反 L1 的定义**(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)
+   # ⇒ 落在 L3,并套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。
+# 屏幕必须 ≥1440 宽:xvfb 默认 1280×1024 ⇒ 窗口宽度被钳到 1280 ⇒ 那一档量到的
+   # 根本不是 1440×900(门自己量**活着的**视口,量不到就如实 SKIP,不拿 1280 冒充 1440)。
+xvfb-run -a -s "-screen 0 1600x1000x24" node scripts/prove_task_axis_pixels.mjs >/tmp/g136-task-axis-pixels.log 2>&1
+if [ $? -eq 0 ]; then
+  ok "G-136 prove_task_axis_pixels（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g136-task-axis-pixels.log)）"
+else
+  bad "G-136 prove_task_axis_pixels（见 /tmp/g136-task-axis-pixels.log；$(grep '✗' /tmp/g136-task-axis-pixels.log | head -2 | tr '\n' ' ')）"
+fi
+for gTA_id in TA-01 TA-02 TA-03 TA-04 TA-05 TA-06 TA-07 TA-08 TA-09 TA-10 TA-11 TA-12 TA-13 TA-14 TA-15 TA-16; do
+  if grep -q "\[$gTA_id\]" /tmp/g136-task-axis-pixels.log; then
+    ok "G-136 锚点：$gTA_id"
+  elif grep -q "· $gTA_id SKIP" /tmp/g136-task-axis-pixels.log; then
+    # 门自己声明的 SKIP(环境不具备那一档视口 / 基线还没入仓)⇒ **SKIP ≠ PASS**,
+    # 不算绿也不算红,如实报出(与 G-103 同一口径)。
+    echo "  · skip：G-136 锚点 $gTA_id —— 门自己 SKIP 了 ⇒ **SKIP ≠ PASS**，不算绿"
+    GATE_SKIP=$((GATE_SKIP+1))
+  else
+    bad "G-136 锚点没跑绿：$gTA_id"
+  fi
+done
+echo "  · G-136 为什么长出来：P1 批 1 把指挥台改成了「任务为主轴」的骨架(四个桶变可点 tab +"
+echo "    一级「要你拍板」区),但**没有**任何门盯着它长什么样 —— 批 2 补两档像素回归门。"
+echo "  · G-136 判据：① 真 Electron 两档视口下打开指挥台,量**活着的**视口;"
+echo "    ② 行动区第一张卡完全在视口内(命中测试落在卡上,没被浮动输入区遮住、没被裁切);"
+echo "    ③ 四个桶 tab 逐个真点,每次只显示对应 data-bucket 的卡;"
+echo "    ④ 无横向滚动、卡片之间不重叠;⑤ 480 宽下四个动作按钮逐个可点;"
+echo "    ⑥ 与基线逐像素比(差异 ≤ 0.5%);⑦ 基线只读:跑前跑后各记一次 reference/ 全目录"
+echo "    sha256,门禁自己动基线就红;⑧ 两条负向对照:改 1% 像素 ⇒ 像素判据翻红;"
+echo "    把卡片推出视口 ⇒ 几何判据翻红(判据不是恒真)。"
+
 fi
 if want L2; then
 echo "== G-17 附件上限与多附件真实复制（GP-11 · 官方 spec §5.5：≤6 个/次，文档/图片/音频 ≤25MB，视频 ≤200MB）=="
