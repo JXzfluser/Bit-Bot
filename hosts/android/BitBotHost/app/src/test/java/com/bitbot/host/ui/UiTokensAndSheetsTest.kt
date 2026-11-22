@@ -313,6 +313,8 @@ class UiTokensAndSheetsTest {
     compose.onNodeWithText("能力").assertExists()
     // B-6：手机上「批」的入口必须在这块面板里，不是另开一屏。
     compose.onNodeWithText("审批").assertExists()
+    // P1 批 5：手机上「指挥」的入口也在这块面板里（插话 / 改向 / 刹停 / 换人）。
+    compose.onNodeWithText("指挥任务").assertExists()
     compose.onNodeWithText("连接 Desktop").assertExists()
   }
 

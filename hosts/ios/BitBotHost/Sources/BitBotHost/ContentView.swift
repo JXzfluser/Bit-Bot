@@ -14,6 +14,8 @@ struct ContentView: View {
   @State private var showCapabilities = false
   @State private var showCredentials = false
   @State private var showApprovals = false
+  // 手机上也能**指挥**(P1 批 5):插话 / 改向 / 刹停 / 换人。
+  @State private var showTaskCommand = false
   @State private var hostUrlDraft = TurnBridge.configuredHostURL() ?? ""
   @State private var delivery = SendToUserSurface.Summary()
   @State private var statusHint =
@@ -272,9 +274,16 @@ struct ContentView: View {
         ToolbarItem(placement: .topBarTrailing) {
           Button("审批") { showApprovals = true }
         }
+        // 手机上也能**指挥**(P1 批 5):插话 / 改向 / 刹停 / 换人。
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("指挥") { showTaskCommand = true }
+        }
       }
       .sheet(isPresented: $showApprovals) {
         ApprovalSheet()
+      }
+      .sheet(isPresented: $showTaskCommand) {
+        TaskCommandSheet()
       }
       .sheet(isPresented: $showCredentials) {
         NavigationStack {

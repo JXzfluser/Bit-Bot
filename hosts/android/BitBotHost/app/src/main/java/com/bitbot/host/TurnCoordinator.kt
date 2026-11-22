@@ -79,6 +79,16 @@ object TurnCoordinator {
   var fallbackMessage by mutableStateOf<String?>(null)
     private set
 
+  /**
+   * P1 批 5：回合结束（`turn_ended`）时 +1。
+   *
+   * 手机上的「指挥」面板据此刷新一次任务清单 —— 那一轮跑完了，卡上的状态才变。
+   * 为什么放这里而不是让面板自己轮询：轮询是第二条真相（手机会以为"没在跑"），
+   * 而"回合结束"这个事实只有这一层知道。
+   */
+  var taskEpoch by mutableIntStateOf(0)
+    private set
+
   /** 每个 Activity 实例 onCreate 时 bind 一次：文件路径是同一份，协程与状态只有一份。 */
   fun bind(context: Context) {
     store = ChatHistoryStore(context)
@@ -215,6 +225,8 @@ object TurnCoordinator {
             val status = event.payload?.optString("status")?.takeIf { it.isNotEmpty() }
             val line = EventStreamMessages.turnEnded(status)
             progressLines = progressLines + line
+            // P1 批 5：回合结束这一刻，任务清单该重读了（那一轮的状态刚变）。
+            taskEpoch++
             stopEventStreamSubscription()
           }
         }

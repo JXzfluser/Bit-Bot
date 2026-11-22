@@ -30,6 +30,7 @@ import com.bitbot.host.ui.PairingDesktop
 import com.bitbot.host.ui.PairingRedeemState
 import com.bitbot.host.ui.PairingScanState
 import com.bitbot.host.ui.PairingSheet
+import com.bitbot.host.ui.TaskCommandSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -291,6 +292,18 @@ class MainActivity : ComponentActivity() {
   }
 
   /**
+   * 手机上的**指挥**客户端（P1 批 5）：插话 / 改向 / 刹停 / 换人 + 看任务清单。
+   *
+   * 与审批客户端同一套前提：地址取配对里的那台机器，身份取本机的设备密钥 ——
+   * 这四条路由**只认设备签名**，没有身份就发不出去（那时如实说"还没配对"）。
+   */
+  private fun taskCommandClientNow(): TaskCommandClient? {
+    val host = TurnBridge.hostUrl() ?: return null
+    if (DeviceIdentity.loadOrCreate(this)?.deviceId.isNullOrEmpty()) return null
+    return TaskCommandClient(this, host)
+  }
+
+  /**
    * A3-17：每次回到前台 +1，组合里据此重新探活。
    *
    * 为什么不做定时轮询：手机上的「在线」只在对用户可见时才有意义，
@@ -323,6 +336,8 @@ class MainActivity : ComponentActivity() {
     var showCapabilities by remember { mutableStateOf(false) }
     // 手机上也能**批**(B-6):之前手机只能看审批卡,点不动。
     var showApprovals by remember { mutableStateOf(false) }
+    // 手机上也能**指挥**(P1 批 5):插话 / 改向 / 刹停 / 换人。
+    var showTaskCommand by remember { mutableStateOf(false) }
     var showCredentials by remember { mutableStateOf(false) }
     var showPairing by remember { mutableStateOf(false) }
     var hostDraft by remember { mutableStateOf(TurnBridge.hostUrl().orEmpty()) }
@@ -460,6 +475,7 @@ class MainActivity : ComponentActivity() {
         onCredentials = { openCredentials() },
         onCapabilities = { showMenu = false; showCapabilities = true },
         onApprovals = { showMenu = false; showApprovals = true },
+        onTaskCommand = { showMenu = false; showTaskCommand = true },
         onPairing = { showMenu = false; showPairing = true },
         onClearChat = { showMenu = false; clearChat() },
         onDismiss = { showMenu = false },
@@ -503,6 +519,15 @@ class MainActivity : ComponentActivity() {
       ApprovalSheet(
         client = approvalClientNow(),
         onDismiss = { showApprovals = false },
+      )
+    }
+
+    if (showTaskCommand) {
+      TaskCommandSheet(
+        client = taskCommandClientNow(),
+        // 回合结束(turn_ended)时 +1 ⇒ 这一屏据此刷新一次任务清单。
+        epoch = TurnCoordinator.taskEpoch,
+        onDismiss = { showTaskCommand = false },
       )
     }
 

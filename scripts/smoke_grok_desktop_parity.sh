@@ -5996,6 +5996,42 @@ echo "    本轮统一的一处分歧：尺的缓存处原要求 anomalies 字�
 echo "    统一到宽的一侧（3/4 处如此，且 foldPages 返回体始终带该字段）—— 口径写在 fold_state 头注释里，不是悄悄选边。"
 
 fi
+if want L1; then
+echo "== G-139 手机端「指挥」客户端口径门（P1 批 5：端上抄的契约 vs 服务端源码）=="
+# 这条门是**纯源码断言**：只读仓内文件（端上 Kotlin/Swift + 服务端 JS），不起进程、
+#   不联网、不碰 Electron ⇒ 它**符合** L1 的定义 ⇒ 落在 L1（每次提交都跑，秒级）。
+# 服务端那半边的**真 HTTP**由 G-137(prove_task_view_http)与 G-138(prove_task_command_http)
+#   守着 —— 本门**不重复起服务**，它量的是「端上抄的那份」有没有和服务端漂。
+if timeout 300 node scripts/prove_mobile_task_client.js > /tmp/g139-mobile-task-client.log 2>&1; then
+  ok "G-139 prove_mobile_task_client（$(grep -m1 -o 'PASS=[0-9]* FAIL=[0-9]* SKIP=[0-9]*' /tmp/g139-mobile-task-client.log)）"
+else
+  bad "G-139 prove_mobile_task_client（见 /tmp/g139-mobile-task-client.log；$(grep '✗' /tmp/g139-mobile-task-client.log | head -3 | tr '\n' ' ')）"
+fi
+# 锚点钉 [MT-nn] 编号（契约写在门头注释里）：判据表可以改措辞，编号和「这条真的绿过」不能消失。
+for g139_id in MT-01 MT-02 MT-03 MT-04 MT-05 MT-06 MT-07 MT-08 MT-09 MT-10 MT-11 MT-12 MT-13; do
+  if grep -q "\[$g139_id\]" /tmp/g139-mobile-task-client.log 2>/dev/null; then
+    ok "G-139 锚点：$g139_id"
+  else
+    bad "G-139 锚点没跑绿：$g139_id（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+# 计数锚点：绿行条数 + FAIL=0 一起钉（删一条断言 ⇒ 立刻红）。
+if [ "$(grep -c '^  ✓' /tmp/g139-mobile-task-client.log)" -ge 95 ] \
+   && grep -q "FAIL=0" /tmp/g139-mobile-task-client.log; then
+  ok "G-139 计数钉：绿行 $(grep -c '^  ✓' /tmp/g139-mobile-task-client.log) ≥ 95 且 FAIL=0"
+else
+  bad "G-139 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g139-mobile-task-client.log)、$(tail -1 /tmp/g139-mobile-task-client.log)"
+fi
+echo "  · G-139 口径（诚实）：① 端点路径、② 四个动作的词表、③ 四个桶的词表、"
+echo "    ④ 清单字段（顶层 + 嵌套 steps/needs_you/can）、⑤ 四个动作各送哪些 body 字段、"
+echo "    ⑥ 错误码 → HTTP 状态（与服务端 taskCommandStatus 同一套）、⑦ 鉴权只认设备签名 —— "
+echo "    全部从**服务端源码**里抠出来再与端上比对（不手抄、不字符串包含了事）。"
+echo "    门自带四组反向对照（端点路径抄错 / 词表 cancel→stop / 状态映射抄错 / 读服务端没有的字段）"
+echo "    ⇒ 判据有牙；变异跑在**副本**上，源文件一个字节不动。"
+echo "  · 这条门**证明不了**什么（诚实）：沙箱无 Swift/Kotlin 编译器 ⇒ 原生代码能不能编译、"
+echo "    真机上点不点得通，本门都验不了（Android JVM 单测与 iOS 编译另列，见批 5 报告的残留）。"
+
+fi
 if want L3; then
 echo "== G-127 Grok 真源规格门（§4.4 消息列重锚 + 编号契约 SP-01..05）=="
 echo "  · 这条门原本也是孤门（AC-07 读出来的）。它此前唯一红的那条「消息文字列 558.4」量到 62 —— 是探针往 #log 塞 5 个字符的合成 .body 再量宽度，"

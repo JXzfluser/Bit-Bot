@@ -1406,6 +1406,15 @@
       "wired_in": "G-131"
     },
     {
+      "file": "prove_mobile_task_client.js",
+      "layer": "L1",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_mobile_task_client.js — P1 批 5：手机端「指挥」客户端口径（Android/iOS 抄的端点路径、清单字段、四个动作词表、四个桶词表、按动作的 body 字段、错误码→HTTP 状态，逐条与服务端 hosts/shared/cn_inbound_server.js + hosts/shared/task_view.js 对齐；只认设备签名；端上不另起数据源；自带四组变异对照）；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+      "wired_in": "G-139"
+    },
+    {
       "file": "prove_multihost_common.mjs",
       "layer": "L1",
       "blocking": true,

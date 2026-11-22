@@ -88,6 +88,11 @@ fun MenuSheet(
   onPairing: () -> Unit,
   onClearChat: () -> Unit,
   onDismiss: () -> Unit,
+  /**
+   * P1 批 5：手机上也能**指挥**这台机器上的团队（插话 / 改向 / 刹停 / 换人）。
+   * 默认空实现是为了不打爆既有调用点与既有 UI 单测 —— 不传就是老版面。
+   */
+  onTaskCommand: () -> Unit = {},
 ) {
   BitBotSheet(onDismiss = onDismiss) {
     SheetHeader(title = "Bit Bot", subtitle = if (paired) "已配对 · ${hostLabel ?: "桌面"}" else "还没配对桌面大脑", onClose = onDismiss)
@@ -96,6 +101,8 @@ fun MenuSheet(
     SheetActionRow(title = "能力", detail = "国内渠道 / 设备 / 定时", onClick = onCapabilities)
     // 手机上也能**批**(B-6):之前手机只能看审批卡,点不动。
     SheetActionRow(title = "审批", detail = "这台机器上等着批的操作", onClick = onApprovals)
+    // 手机上也能**指挥**(P1 批 5):插话 / 改向 / 刹停 / 换人,以前只挂在桌面 IPC 上。
+    SheetActionRow(title = "指挥任务", detail = "这台机器上正在跑、要你拍板的任务", onClick = onTaskCommand)
     SheetActionRow(
       title = if (paired) "重新配对" else "连接 Desktop",
       detail = "局域网自动发现，输 6 位配对码",
