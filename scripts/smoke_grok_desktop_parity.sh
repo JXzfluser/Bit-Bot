@@ -66,7 +66,16 @@ gate_real_data_manifest() {
 }
 
 gate_seed_shadow
-export BITBOT_DATA_ROOT="$GATE_SHADOW/data"
+# **刻意不 export BITBOT_DATA_ROOT / BITBOT_REPO_ROOT**（2026-11-22，踩过坑）：
+#   全局 export BITBOT_DATA_ROOT 会**顶掉每扇门自己的隔离根** ——
+#   paths.js:113 里 BITBOT_DATA_ROOT 的优先级高于 repoRoot ⇒ 门用
+#   isolatedRepoRoot()+gateAppEnv() 造的夹具，app 却去读矩阵的影子根 ⇒
+#   「门自己造的 Bot 侧栏里没有」这类假红（实测 command_channel 25/15）。
+#   而矩阵**自己**的隔离不需要全局变量：内联的 node -e 全都用 process.cwd()
+#   （= 影子根）⇒ createProductSurface(process.cwd()) / createHostFfi(process.cwd())
+#   天然落在影子根；只有下面三处会拉起独立进程（CLI / daemon / tick），
+#   它们自己认 repoRoot（run_turn.js:57 写死模块位置），所以**逐个调用**显式给
+#   BITBOT_DATA_ROOT ⇒ 精确、且不污染别的门的环境。
 gate_real_data_manifest > "$GATE_REAL_DATA_MANIFEST"
 cd "$GATE_SHADOW" || exit 1
 
@@ -159,7 +168,8 @@ turn_json() { # $1 = user phrase, optional env BITBOT_APPROVED=1
   # 下展开空数组会报 "extra[@]: unbound variable"，整条命令根本不执行。
   # 后果不是难看：这条函数是全部 kind 断言的入口，它一失败，门禁在 macOS 上
   # 永远是「✗ create bot chain」这样的连锁红（实测 296 项红），红的却不是产品。
-  node hosts/cli_host/run_turn.js ${extra[@]+"${extra[@]}"} "$1" 2>/dev/null | tail -1
+  BITBOT_DATA_ROOT="$GATE_SHADOW/data" \
+    node hosts/cli_host/run_turn.js ${extra[@]+"${extra[@]}"} "$1" 2>/dev/null | tail -1
 }
 
 # ---- 这两件「Linux 自带」的东西，macOS 上没有；缺一件就会把门禁整片判红 -----
@@ -782,7 +792,8 @@ const fs=require('fs');
 const p='data/routines/fires.jsonl';
 const lines=fs.existsSync(p)?fs.readFileSync(p,'utf8').trim().split('\n').filter(Boolean):[];
 console.log(lines.filter(l=>l.includes('\"id\":\"r-$m11id-m11\"')).length)")
-bash scripts/host_routine_daemon.sh >/dev/null 2>&1
+BITBOT_REPO_ROOT="$GATE_SHADOW" BITBOT_DATA_ROOT="$GATE_SHADOW/data" \
+  bash scripts/host_routine_daemon.sh >/dev/null 2>&1
 node -e "
 const fs=require('fs');
 const t=JSON.parse(fs.readFileSync('data/routines/last-tick.json','utf8'));
@@ -3008,7 +3019,8 @@ const surface=createProductSurface(ROOT,{dataRoot:DATA});
 })().catch((e)=>{console.error("探针异常 "+String((e&&e.message)||e));process.exit(5);});
 ' /tmp/gp56-proof.json >/tmp/gp56-setup.log 2>&1 && gp56probe=1
   if [ "$gp56probe" = "1" ]; then
-    BITBOT_NEST_DEPTH=1 timeout 180 node hosts/cli_host/run_turn.js "tick routines" >/tmp/gp56-tick.json 2>/dev/null
+    BITBOT_NEST_DEPTH=1 BITBOT_DATA_ROOT="$GATE_SHADOW/data" \
+      timeout 180 node hosts/cli_host/run_turn.js "tick routines" >/tmp/gp56-tick.json 2>/dev/null
     node -e '
 const fs=require("fs");
 const info=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
@@ -6296,8 +6308,13 @@ echo "== G-129 B-8 指挥台(团队四原语 + Task 实体)=="
 # 门名必须**字面**出现在 `node scripts/<门名>` 上:AC-07 的字面正则会跳过含 `$` 的文件名
 # (拼名变量它不展开),写成 `node "scripts/prove_$1.js"` 等于没接线。
 g129_check() {
-  # $1=日志路径  $2=门名(仅用于文案)
-  if [ "$3" = "skip" ]; then
+  # $1=日志路径  $2=门名(仅用于文案)  $3=可选("skip" 表示本机没跑,别当红)
+  # ⚠️ $3 必须写成 ${3:-}：下面两处调用**只传两个参数**(command_panel /
+  # command_task_control 的 else 分支),而脚本开头是 `set -u` ⇒
+  # "$3" 未绑定变量 ⇒ **矩阵在这一行直接崩掉**。
+  # 后果比一条红更严重：L3 这一层从此**跑不到最终小结**(只到 G-129 就断),
+  # 于是「L3 有没有跑完、有几条红」根本没人看得见 —— 2026-11-22 才被抓出来。
+  if [ "${3:-}" = "skip" ]; then
     echo "  · skip：prove_$2 需要浏览器/外部条件，本机没跑（SKIP ≠ PASS）"
     return 0
   fi
