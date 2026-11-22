@@ -1,2250 +1,2250 @@
 {
-  "version": 2,
-  "updated": "2026-11-22",
-  "owner": "team/t3-gate-tiering",
-  "purpose": "门禁分层清单（可执行）：每一层都是 scripts/smoke_grok_desktop_parity.sh 里的一段；门名必须字面出现在矩阵里（AC-07 的接线口径）。",
-  "how_to_run": {
-    "L1": "bash scripts/smoke_grok_desktop_parity.sh L1",
-    "L2": "bash scripts/smoke_grok_desktop_parity.sh L2",
-    "L3": "bash scripts/smoke_grok_desktop_parity.sh L3",
-    "all": "bash scripts/smoke_grok_desktop_parity.sh（默认 = all，保持 CI 现有行为）"
+ "version": 2,
+ "updated": "2026-11-21",
+ "owner": "team/t3-gate-tiering",
+ "purpose": "门禁分层清单（可执行）：每一层都是 scripts/smoke_grok_desktop_parity.sh 里的一段；门名必须字面出现在矩阵里（AC-07 的接线口径）。",
+ "how_to_run": {
+  "L1": "bash scripts/smoke_grok_desktop_parity.sh L1",
+  "L2": "bash scripts/smoke_grok_desktop_parity.sh L2",
+  "L3": "bash scripts/smoke_grok_desktop_parity.sh L3",
+  "all": "bash scripts/smoke_grok_desktop_parity.sh（默认 = all，保持 CI 现有行为）"
+ },
+ "layer_rules": {
+  "L1": "冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级",
+  "L2": "真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑",
+  "L3": "重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布"
+ },
+ "one_entry_point": "一门一入口：成对的 prove_X.sh / prove_X.js，矩阵跑的是**文档里写的那个入口**（外壳）；内层 .js 由 AC-07 的传递接线认领。外壳自带 moon build/test、xvfb、tee 查密钥等增量 ⇒ 归 L3。",
+ "frozen_policy": {
+  "what": "元工作门禁 = 检查别的门禁 / 检查覆盖率 / 检查计数（行数、条数）/ 维护文档账本",
+  "rule": "本轮起**禁止新增**这一类；已存在的打上 frozen 标记：仍会跑、如实报数，但**不再作为阻塞项**",
+  "ban": "新增一个「检查别的门禁/覆盖率/计数」的门 = 违规：它不会让 CI 变红，却会让人以为多了一道保险。",
+  "frozen_count": 10,
+  "enforcement": "runner 的 L1 段跑 scripts/gate_roster_check.mjs：新门禁不登记 ⇒ 当场红；冻结份数只许往下 ⇒ 冻结清单被撑大时当场红。"
+ },
+ "orphan_baseline": 0,
+ "orphan_rule": "scripts/ 下每个门禁文件必须字面接进矩阵（node scripts/X / bash scripts/X.sh）或被明确退役；孤门数上限 = 0，由 prove_anchor_coverage.mjs 的 AC-07 看着，逐条处置见 orphan_dispositions。",
+ "gates": [
+  {
+   "file": "diagnose_surfaces.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "诊断工具",
+   "reason": "诊断工具：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
   },
-  "layer_rules": {
-    "L1": "冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级",
-    "L2": "真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑",
-    "L3": "重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布"
+  {
+   "file": "e2e_android_roster.v2.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_android_roster.v2.mjs — 「桌面看得见手机在不在线」的真渲染门禁（v2，取代 e2e_android_roster.mjs）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
   },
-  "one_entry_point": "一门一入口：成对的 prove_X.sh / prove_X.js，矩阵跑的是**文档里写的那个入口**（外壳）；内层 .js 由 AC-07 的传递接线认领。外壳自带 moon build/test、xvfb、tee 查密钥等增量 ⇒ 归 L3。",
-  "frozen_policy": {
-    "what": "元工作门禁 = 检查别的门禁 / 检查覆盖率 / 检查计数（行数、条数）/ 维护文档账本",
-    "rule": "本轮起**禁止新增**这一类；已存在的打上 frozen 标记：仍会跑、如实报数，但**不再作为阻塞项**",
-    "ban": "新增一个「检查别的门禁/覆盖率/计数」的门 = 违规：它不会让 CI 变红，却会让人以为多了一道保险。",
-    "frozen_count": 10,
-    "enforcement": "runner 的 L1 段跑 scripts/gate_roster_check.mjs：新门禁不登记 ⇒ 当场红；冻结份数只许往下 ⇒ 冻结清单被撑大时当场红。"
+  {
+   "file": "e2e_android_turn.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_android_turn.mjs — 安卓「手机发消息 → 桌面大脑回话」这条真链路的门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-47"
   },
-  "orphan_baseline": 0,
-  "orphan_rule": "scripts/ 下每个门禁文件必须字面接进矩阵（node scripts/X / bash scripts/X.sh）或被明确退役；孤门数上限 = 0，由 prove_anchor_coverage.mjs 的 AC-07 看着，逐条处置见 orphan_dispositions。",
-  "gates": [
-    {
-      "file": "diagnose_surfaces.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "诊断工具",
-      "reason": "诊断工具：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_android_roster.v2.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_android_roster.v2.mjs — 「桌面看得见手机在不在线」的真渲染门禁（v2，取代 e2e_android_roster.mjs）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_android_turn.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_android_turn.mjs — 安卓「手机发消息 → 桌面大脑回话」这条真链路的门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-47"
-    },
-    {
-      "file": "e2e_desktop_artifacts.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_artifacts.mjs — 产物落库之后「刷新不丢卡」；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_bot_group_menu.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_bot_group_menu.mjs — Bot 右键菜单「移动到分组」的真渲染门禁。；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_bottom_archive.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_bottom_archive.mjs — M52 两项能力的真渲染验证；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_chatsurface.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_chatsurface.mjs — 聊天面四项新能力的真渲染验证；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_cn_channel_guard.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_cn_channel_guard.mjs — 国内渠道凭证不许「裸奔」的真渲染门禁（CN-01..CN-08）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-51"
-    },
-    {
-      "file": "e2e_desktop_cn_secret_inputs.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_cn_secret_inputs.mjs — 国内渠道「加签 / 回调」密钥能不能在界面上配（CN-SEC-01..06）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-52"
-    },
-    {
-      "file": "e2e_desktop_command_channel.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_command_channel.mjs — 「命令不进对话」+「一句话组队」的真渲染门禁（G-28 #12）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_creator_pipeline.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_creator_pipeline.mjs — GP-155 场景验收：自媒体博主的日更流水线；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_event_dualwrite_live.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_event_dualwrite_live.mjs — T1-03 双写在「真 Electron」上的对账门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-70"
-    },
-    {
-      "file": "e2e_desktop_failure_code.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_failure_code.mjs — KP-03「清空 key 后发一条消息」的界面可感面；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_golden_journey.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_golden_journey.mjs — 黄金旅程门禁（产品的定义就是这一条旅程）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_grok_import.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_grok_import.mjs — 「从 Grok 搬过来」的界面到底能不能用；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_layout_target.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_layout_target.mjs — Layout Contract v1 real-render gates.；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_llm_key_paste_guard.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_llm_key_paste_guard.mjs — 模型密钥粘错了，要在写盘之前当场说清楚（LK-01..07）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-54"
-    },
-    {
-      "file": "e2e_desktop_mobile_control.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_mobile_control.mjs — 「移动端远程控制」独立弹窗的真渲染门禁（MC-01..MC-10）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-67"
-    },
-    {
-      "file": "e2e_desktop_optimistic.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_optimistic.mjs — KP-08 T3-04 的可感面：回车立刻上屏、落库后 echo 对上、拒绝变红带 KP-03 的码；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-121"
-    },
-    {
-      "file": "e2e_desktop_packaged.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_packaged.mjs — GP-172：装出来的 App 在「没有源码树」的机器上能起、能扫；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_pair_page.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_pair_page.mjs — 配对落地页 /pair 的真 HTTP 门禁（PP-01..PP-10）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-68"
-    },
-    {
-      "file": "e2e_desktop_quit.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_quit.mjs — 「应用退不掉」的回归门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_room_orchestration.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_room_orchestration.mjs — GP-143/144/145/146 真链验收；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_room_progress.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_room_progress.mjs — KP-01「群进度死线」到底接活没有（真渲染 + 真回合）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_shell_v2.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_shell_v2.mjs — Desktop UI overhaul (target-v2) real-render gate.；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_sidebar_adapt.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_sidebar_adapt.mjs — 窄窗口下「主列还剩多少」的回归门禁；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_sidebar_diff.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_sidebar_diff.mjs — KP-07 可感面：一条长回复流式写入时，侧栏不整列闪动、滚动不跳；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_single_instance.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_single_instance.mjs — 「能同时启动两个应用」的回归门禁；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_stream_typing.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_stream_typing.mjs — 「打字效果」真的在屏幕上发生过吗（§8.121④ 前置账第 1 步，KP-08 尾账 #67）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_sweep_timer.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_sweep_timer.mjs — GP-170：装着 Bit Bot 的电脑自己会醒；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_team_ui.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_team_ui.mjs — 团队/群组 UI 的真渲染门禁。；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_token_parity.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_token_parity.mjs — 视觉 token 一致性的**真渲染**门禁（G-28 #9）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_turn_cancel.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_turn_cancel.mjs — KP-02「停止」到底能不能按到（真渲染 + 真回合）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_turn_latency.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_turn_latency.mjs — KP-04「连发三条、数字各不相同且可核对」的真机可感面；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_desktop_unread_summary.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_unread_summary.mjs — P1-6 未读汇总 + P2-7 未读落盘 的回归门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_desktop_user_journeys.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_desktop_user_journeys.mjs — J1–J4 用户旅程验收（唯一标准：真实 Electron 里走不走得通）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-130"
-    },
-    {
-      "file": "e2e_grok_desktop_boot.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-16"
-    },
-    {
-      "file": "e2e_grok_desktop_spec.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_grok_desktop_spec.mjs — D-ST-UI: computed-style gate for Grok parity (G-28).；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-127"
-    },
-    {
-      "file": "e2e_modal_computed.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_modal_computed.mjs — D-ST: computed-style gate for sheet/modal chrome.；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "e2e_remote_progress_stream.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：e2e_remote_progress_stream.mjs — 路线 A · W2 收口门（A1-3 / A1-4 的服务端侧）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_account_email.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_agent_context.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_agent_context.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_agent_loop_a7_a8.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_agent_loop_a7_a8.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_agent_loop_electron_midrun.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：Live Electron composer mid-run.；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_agent_loop_electron_midrun.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_agent_loop_product_wire.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_agent_loop_product_wire.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_anchor_coverage.mjs",
-      "layer": "L1",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（检查矩阵锚点覆盖（别人的断言有没有被看守）—— 典型「给门禁的门禁」；本轮把孤门基线压到 0 之后，它只剩自证价值）⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
-      "wired_in": "G-125"
-    },
-    {
-      "file": "prove_android_build.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_android_build.mjs — 安卓版「真的能装」的门禁（G-47）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞"
-    },
-    {
-      "file": "prove_android_event_stream.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-77"
-    },
-    {
-      "file": "prove_app_identity.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-103"
-    },
-    {
-      "file": "prove_approval_scope.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_approve_cli.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_approve_cli.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_avatar_contrast.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-105"
-    },
-    {
-      "file": "prove_bot_manager.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_bot_manager.js — 机器人管理（渠道 + 扫码关联）的门。；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "special": "normal"
-    },
-    {
-      "file": "prove_box_pack_closure.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-57"
-    },
-    {
-      "file": "prove_box_routine_sweep.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_box_routine_sweep.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_box_two_machines.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_box_two_machines.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_broadcast_diff.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_capability_matrix.mjs",
-      "layer": "L1",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（检查能力矩阵账本的行与证据文件（文档账本））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类"
-    },
-    {
-      "file": "prove_checklist_freshness.js",
-      "layer": "L1",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（检查验收清单/文档与代码是否说反话（文档账本））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
-      "wired_in": "G-96"
-    },
-    {
-      "file": "prove_client_core.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_cn_connection_strategy.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-81"
-    },
-    {
-      "file": "prove_cn_device_roster.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-78"
-    },
-    {
-      "file": "prove_cn_events_sse.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-73"
-    },
-    {
-      "file": "prove_cn_product_acceptance.sh",
-      "layer": "L2",
-      "blocking": false,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；**已知红** ⇒ 诚实验收门：CN 真模型 key 未配 / 桌面凭证配置 UX 缺失 / 真渠道 live gate 缺失三条残留未关 ⇒ 按契约判红。红要说出来，不拖红矩阵（与 G-130 同一口径）",
-      "special": "known_red"
-    },
-    {
-      "file": "prove_cn_relay_image.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-79"
-    },
-    {
-      "file": "prove_cn_relay_invisible.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-80"
-    },
-    {
-      "file": "prove_cn_turn_events.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-74"
-    },
-    {
-      "file": "prove_command_panel.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_command_task_control.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_connect_apps_rework.mjs",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_connect_apps_rework.mjs — 「连接应用」重设计：目录只干目录的事。；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-109"
-    },
-    {
-      "file": "prove_contract_layer.mjs",
-      "layer": "L1",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（盘点「已实现但没有生产消费者」的能力（文档账本））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类"
-    },
-    {
-      "file": "prove_copy_contract.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_cursor_subscribe.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-118"
-    },
-    {
-      "file": "prove_desktop_shot_attach.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_desktop_start.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-100"
-    },
-    {
-      "file": "prove_device_keys.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_device_keys.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_effect_contract.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_electron_app_path.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-102"
-    },
-    {
-      "file": "prove_event_dual_write.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_event_dual_write.mjs — T1-03 双写旁路门禁（DW-01..DW-10）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-62"
-    },
-    {
-      "file": "prove_event_log.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_event_log.mjs — T1-02 事件日志适配器门禁；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-61"
-    },
-    {
-      "file": "prove_event_only.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_event_only.mjs — T1-05 停写 JSON 门禁（EO-01..EO-07）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-66"
-    },
-    {
-      "file": "prove_event_read_model.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_event_read_model.mjs — T1-04 读切换门禁（RM-01..RM-09）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-65"
-    },
-    {
-      "file": "prove_expectations_fresh.mjs",
-      "layer": "L1",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（检查门读的期望文件是不是当前真源的派生物（门禁自身的期望新鲜度））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
-      "wired_in": "G-128"
-    },
-    {
-      "file": "prove_failure_codes.js",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-116"
-    },
-    {
-      "file": "prove_fold_state_owner.mjs",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-126"
-    },
-    {
-      "file": "prove_gate_proc_count.mjs",
-      "layer": "L3",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（数门禁自己有没有留下残留进程（检查别的门禁的卫生））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
-      "wired_in": "G-46"
-    },
-    {
-      "file": "prove_gp135_skill_sources.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp138_routine_interval.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp140_shared_computer.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp142_unreadable.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp143_orchestration.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_gp14_reply.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-18"
-    },
-    {
-      "file": "prove_gp153_cron_next_due.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-45"
-    },
-    {
-      "file": "prove_gp156_routine_approval.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp157_once_not_loop.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp158_routine_pause.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp159_approval_window.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp161_routine_remove.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp162_orphan_approval.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp163_room_attribution.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp164_room_library.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_gp168_handoff_wake.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-56"
-    },
-    {
-      "file": "prove_gp93_links.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-19"
-    },
-    {
-      "file": "prove_gp96_progress.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-76"
-    },
-    {
-      "file": "prove_host_approval_ui.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：Live Host approval UI.；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_host_approval_ui.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_i18n_render.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_identity_render.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_identity_render.mjs — 真起 Electron，验「身份类文案」在真渲染里对不对。；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-104"
-    },
-    {
-      "file": "prove_ios_device_identity.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_kernel_binary.sh",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞"
-    },
-    {
-      "file": "prove_kernel_resident.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_kernel_resident.mjs — T1-07 常驻内核进程门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-58"
-    },
-    {
-      "file": "prove_kp09_event_only_concurrency.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-124"
-    },
-    {
-      "file": "prove_locexec_single_entry.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_m20_ui.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-20"
-    },
-    {
-      "file": "prove_m21_trust.js",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-21"
-    },
-    {
-      "file": "prove_m22_readfirst.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-22"
-    },
-    {
-      "file": "prove_m23_memory.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-23"
-    },
-    {
-      "file": "prove_m24_window.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-24"
-    },
-    {
-      "file": "prove_m25_profile.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-25"
-    },
-    {
-      "file": "prove_m26_botpanel.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-26"
-    },
-    {
-      "file": "prove_m27_convrail.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-27"
-    },
-    {
-      "file": "prove_m28_usage.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-28"
-    },
-    {
-      "file": "prove_m29_roomchat.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-29"
-    },
-    {
-      "file": "prove_m30_attachpreview.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-30"
-    },
-    {
-      "file": "prove_m31_reactions.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-31"
-    },
-    {
-      "file": "prove_m33_grokchrome.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-33"
-    },
-    {
-      "file": "prove_m34_account_actions.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-34"
-    },
-    {
-      "file": "prove_m35_hotkeys.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-35"
-    },
-    {
-      "file": "prove_m36_voicehotkey.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-36"
-    },
-    {
-      "file": "prove_m37_layout.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-37"
-    },
-    {
-      "file": "prove_m38_copy.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-38"
-    },
-    {
-      "file": "prove_m39_micro.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-39"
-    },
-    {
-      "file": "prove_m40_a11y.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-40"
-    },
-    {
-      "file": "prove_m41_cn.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-41"
-    },
-    {
-      "file": "prove_m42_stream.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-42"
-    },
-    {
-      "file": "prove_m43_settings.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-43"
-    },
-    {
-      "file": "prove_m44_header.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-44"
-    },
-    {
-      "file": "prove_m51_chatsurface.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_m52_archive_bottom.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_m52b_artifact_persist.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_m53_userbubble_order.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_m53b_turn_cancel.js",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-114"
-    },
-    {
-      "file": "prove_m53c_grok_task_import.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_m53d_grok_bot_import.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_machine_identity.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_machine_identity.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_memory_prompt.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_memory_prompt.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_mobile_approval_client.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_multihost_common.mjs",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_multihost_common.mjs — GP-185：多端通用逻辑只能有一份。；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-63"
-    },
-    {
-      "file": "prove_p0_inbound_host_checks.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_p0_inbound_security.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_pack_artifacts.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_pack_artifacts.mjs — 打包产物门禁（T0-02 / T0-03）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-58"
-    },
-    {
-      "file": "prove_pairing_code.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-49"
-    },
-    {
-      "file": "prove_pairing_lan_rank.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_pairing_lan_rank.mjs — 「手机配对」那一行给的到底是哪个地址（LR）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-48"
-    },
-    {
-      "file": "prove_pairing_relay_handoff.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-82"
-    },
-    {
-      "file": "prove_presence_durability.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_presence_durability.mjs — 「多端在线」那份证据能不能扛住并发与崩溃；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_product_tools.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_product_tools.sh",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞"
-    },
-    {
-      "file": "prove_production_provider.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；真供应商门：没有 key 时按契约退出 NEEDS_LIVE（矩阵记 skip，SKIP ≠ PASS）；有 key 时它红就是真红",
-      "special": "needs_live"
-    },
-    {
-      "file": "prove_production_provider.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_public_entry.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-95"
-    },
-    {
-      "file": "prove_public_relay_setup.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-91"
-    },
-    {
-      "file": "prove_qr_code.js",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-101"
-    },
-    {
-      "file": "prove_readiness_ledger.mjs",
-      "layer": "L1",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（维护产品就绪账本的数字（文档账本））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类"
-    },
-    {
-      "file": "prove_relay_bootstrap.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-93"
-    },
-    {
-      "file": "prove_relay_box_registration.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-83"
-    },
-    {
-      "file": "prove_relay_config_hot_reload.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-87"
-    },
-    {
-      "file": "prove_relay_diagnostics.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-97"
-    },
-    {
-      "file": "prove_relay_docker.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_relay_failure_copy.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-99"
-    },
-    {
-      "file": "prove_relay_host_audit.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-92"
-    },
-    {
-      "file": "prove_relay_reverse_resilience.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-85"
-    },
-    {
-      "file": "prove_relay_reverse_tunnel.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-84"
-    },
-    {
-      "file": "prove_relay_secure_config.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-88"
-    },
-    {
-      "file": "prove_relay_settings.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-90"
-    },
-    {
-      "file": "prove_relay_stream_backpressure.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-89"
-    },
-    {
-      "file": "prove_release_tag_gate.mjs",
-      "layer": "L1",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（检查发布 tag 与 CI 触发条件是否一致（CI 配置一致性））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
-      "wired_in": "G-69"
-    },
-    {
-      "file": "prove_reload_policy.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-112"
-    },
-    {
-      "file": "prove_remote_turn.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_repo_integrity.mjs",
-      "layer": "L2",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（检查被提交的源码本身是否可解析/无冲突标记（仓库卫生））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
-      "wired_in": "G-60"
-    },
-    {
-      "file": "prove_report_history_intact.mjs",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-50"
-    },
-    {
-      "file": "prove_room_context.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_room_context_reset.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-111"
-    },
-    {
-      "file": "prove_room_discretion.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_room_dispatch.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_room_dispatch.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_room_failure_surfaces.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_room_orchestrator.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-55"
-    },
-    {
-      "file": "prove_room_progress_wiring.js",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-115"
-    },
-    {
-      "file": "prove_room_relay.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-110"
-    },
-    {
-      "file": "prove_room_rename.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-107"
-    },
-    {
-      "file": "prove_room_single_routine.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_room_ux_render.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_room_ux_render.mjs — 群聊这两件事必须在**真窗口**里成立：；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-108"
-    },
-    {
-      "file": "prove_routine_dispatch.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_sandbox_secrets.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_sandbox_secrets.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_secret_shapes.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞"
-    },
-    {
-      "file": "prove_sessions_single_writer.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-122"
-    },
-    {
-      "file": "prove_settings_credentials_zones.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-63"
-    },
-    {
-      "file": "prove_skill_reaches_model.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-123"
-    },
-    {
-      "file": "prove_surface_parity.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_surface_parity.mjs — G-125 对账尺门（#81 / §8.159 定稿口径）。；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_team_brief.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_team_division.js",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-129"
-    },
-    {
-      "file": "prove_template_market_render.mjs",
-      "layer": "L2",
-      "blocking": false,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_template_market_render.mjs — 模板市场里真的能看到用户自己的模板。；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；**已知红** ⇒ 接进矩阵当场暴露的**真实红**：TM-02「自媒体/团队分类没画出来」（cats 只剩「其他」）。红要说出来，不拖红矩阵（与 G-130 同一口径）—— 它是缺陷清单第 1 条，别用别的门全绿去抵消它",
-      "special": "known_red"
-    },
-    {
-      "file": "prove_template_store.js",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
-      "wired_in": "G-106"
-    },
-    {
-      "file": "prove_tool_names.mjs",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞"
-    },
-    {
-      "file": "prove_trace_replay.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_trace_replay.sh",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-131"
-    },
-    {
-      "file": "prove_turn_cancel_receipt.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_turn_latency.mjs",
-      "layer": "L3",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_turn_latency.mjs — KP-04 计时模块的验收门（纯逻辑 + 落盘往返 + 反向对照）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
-      "wired_in": "G-117"
-    },
-    {
-      "file": "prove_ui_simplicity.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
-    },
-    {
-      "file": "prove_ui_tokens.js",
-      "layer": "L1",
-      "blocking": false,
-      "frozen": true,
-      "kind": "门",
-      "reason": "元工作门禁（UI 债务计数 ratchet（硬编码色值/!important 的条数不许涨 —— 计数类度量））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类"
-    },
-    {
-      "file": "prove_vault_keychain.js",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-94"
-    },
-    {
-      "file": "prove_w0_no_visual_change.mjs",
-      "layer": "L2",
-      "blocking": false,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_w0_no_visual_change.mjs — 证明 W0 收敛「视觉零变化」，而不是声称它；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；**门自身过期** ⇒ 像素回归门，但它的一次性前置 w0_palette_consolidate.mjs 已随 W0 落进源码而失效（:root 现在在第 16 行，工具按行号取旧块、自己拒绝跑）⇒ 这条门**跑不起来**，既不算绿也不算产品红；如实测出报",
-      "special": "stale"
-    },
-    {
-      "file": "prove_w3_device_trust.mjs",
-      "layer": "L2",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
-      "wired_in": "G-78"
-    },
-    {
-      "file": "prove_all.sh",
-      "layer": "L2",
-      "blocking": false,
-      "frozen": false,
-      "kind": "已退役",
-      "retired": true,
-      "reason": "退役：元工作 runner（已退役）：它会把 scripts/prove_* 全跑一遍 —— 分层后它是第二个 runner，与矩阵互相调用（且可能递归）。唯一 runner 是 scripts/smoke_grok_desktop_parity.sh；文件留在 scripts/retired/prove_all.sh 备查"
-    },
-    {
-      "file": "e2e_android_roster.mjs",
-      "layer": "L3",
-      "blocking": false,
-      "frozen": false,
-      "kind": "已退役",
-      "retired": true,
-      "reason": "退役：被 e2e_android_roster.v2.mjs 取代（文件头写明 2026-11-01 起停用：上游删了设置里的「手机」页签，旧尺跑到 AR-08 就断，实测 PASS=8 FAIL=1）；v2 已接在矩阵 G-47 ⇒ 覆盖没丢。文件留在 scripts/retired/e2e_android_roster.mjs 备查"
-    },
-    {
-      "file": "prove_known_red_ledger.mjs",
-      "layer": "L1",
-      "blocking": true,
-      "frozen": false,
-      "kind": "门",
-      "reason": "门：prove_known_red_ledger.mjs — 已知红台账对账：把 scripts/known_red_ledger.json 与**本轮矩阵真实打出来的红行**逐条对上（每条红都实跑复现 + grep 自己的锚点；本轮红不许漏在台账外；已标 resolved 的条目**反过来**要求它不再出现在红行里）。**不是元工作门禁**：它不看任何门禁的判据、不断言任何门禁的条数/覆盖率/行数 —— 它只保证「红有台账、台账里的红真还红、已修的确实不红了」；L1 冒烟/快 ⇒ 每次提交都跑，红即阻塞",
-      "wired_in": "G-135"
-    }
-  ],
-  "frozen": [
-    {
-      "file": "prove_anchor_coverage.mjs",
-      "reason": "检查矩阵锚点覆盖（别人的断言有没有被看守）—— 典型「给门禁的门禁」；本轮把孤门基线压到 0 之后，它只剩自证价值"
-    },
-    {
-      "file": "prove_capability_matrix.mjs",
-      "reason": "检查能力矩阵账本的行与证据文件（文档账本）"
-    },
-    {
-      "file": "prove_checklist_freshness.js",
-      "reason": "检查验收清单/文档与代码是否说反话（文档账本）"
-    },
-    {
-      "file": "prove_contract_layer.mjs",
-      "reason": "盘点「已实现但没有生产消费者」的能力（文档账本）"
-    },
-    {
-      "file": "prove_expectations_fresh.mjs",
-      "reason": "检查门读的期望文件是不是当前真源的派生物（门禁自身的期望新鲜度）"
-    },
-    {
-      "file": "prove_gate_proc_count.mjs",
-      "reason": "数门禁自己有没有留下残留进程（检查别的门禁的卫生）"
-    },
-    {
-      "file": "prove_readiness_ledger.mjs",
-      "reason": "维护产品就绪账本的数字（文档账本）"
-    },
-    {
-      "file": "prove_release_tag_gate.mjs",
-      "reason": "检查发布 tag 与 CI 触发条件是否一致（CI 配置一致性）"
-    },
-    {
-      "file": "prove_repo_integrity.mjs",
-      "reason": "检查被提交的源码本身是否可解析/无冲突标记（仓库卫生）"
-    },
-    {
-      "file": "prove_ui_tokens.js",
-      "reason": "UI 债务计数 ratchet（硬编码色值/!important 的条数不许涨 —— 计数类度量）"
-    }
-  ],
-  "retired": [
-    {
-      "file": "prove_all.sh",
-      "layer": "L2",
-      "reason": "元工作 runner（已退役）：它会把 scripts/prove_* 全跑一遍 —— 分层后它是第二个 runner，与矩阵互相调用（且可能递归）。唯一 runner 是 scripts/smoke_grok_desktop_parity.sh；文件留在 scripts/retired/prove_all.sh 备查"
-    },
-    {
-      "file": "e2e_android_roster.mjs",
-      "layer": "L3",
-      "reason": "被 e2e_android_roster.v2.mjs 取代（文件头写明 2026-11-01 起停用：上游删了设置里的「手机」页签，旧尺跑到 AR-08 就断，实测 PASS=8 FAIL=1）；v2 已接在矩阵 G-47 ⇒ 覆盖没丢。文件留在 scripts/retired/e2e_android_roster.mjs 备查"
-    }
-  ],
-  "orphan_dispositions": [
-    {
-      "file": "e2e_android_roster.mjs",
-      "disposition": "retired",
-      "layer": "L3",
-      "reason": "退役：被 v2 取代（见 retired 段）⇒ 覆盖没丢"
-    },
-    {
-      "file": "prove_agent_context.sh",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（外壳自带 moon build ⇒ 属重的一层）；内层 prove_agent_context.js 由传递接线认领"
-    },
-    {
-      "file": "prove_agent_loop_a7_a8.js",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（经外壳 prove_agent_loop_a7_a8.sh：门 + moon test -p runtime）"
-    },
-    {
-      "file": "prove_agent_loop_a7_a8.sh",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134，作为该门**唯一**的入口（一门一入口）"
-    },
-    {
-      "file": "prove_agent_loop_electron_midrun.mjs",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（经外壳 prove_agent_loop_electron_midrun.sh）"
-    },
-    {
-      "file": "prove_agent_loop_electron_midrun.sh",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_agent_loop_product_wire.sh",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134，作为该门**唯一**的入口；内层 .js 此前只被 workflow 的一句注释提到（等于没人跑），这轮起真跑"
-    },
-    {
-      "file": "prove_all.sh",
-      "disposition": "retired",
-      "layer": "L2",
-      "reason": "退役：元工作 runner（第二个 runner 会与矩阵互相调用）⇒ 见 retired 段"
-    },
-    {
-      "file": "prove_approve_cli.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-131，作为该门**唯一**的入口（内层 .js 由传递接线认领）"
-    },
-    {
-      "file": "prove_bot_manager.js",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-133（真起 cn_inbound 跑绑定流程，PASS=25 FAIL=0）"
-    },
-    {
-      "file": "prove_box_routine_sweep.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-57，作为该门**唯一**的入口（内层 .js 由传递接线认领）"
-    },
-    {
-      "file": "prove_box_two_machines.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_cn_product_acceptance.sh",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（诚实验收门；本机实测为红 ⇒ 走「已知红如实报出」口径）"
-    },
-    {
-      "file": "prove_desktop_shot_attach.mjs",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（截屏真进附件、真守限额，PASS=8 FAIL=0）"
-    },
-    {
-      "file": "prove_device_keys.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_host_approval_ui.mjs",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（经外壳 prove_host_approval_ui.sh；实测 pass=69 fail=0）"
-    },
-    {
-      "file": "prove_host_approval_ui.sh",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_locexec_single_entry.mjs",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（xvfb 下实测 pass=10 fail=0）"
-    },
-    {
-      "file": "prove_machine_identity.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_memory_prompt.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_production_provider.js",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-133（经外壳 prove_production_provider.sh：门 + tee 查密钥明文 + 退出码透传）"
-    },
-    {
-      "file": "prove_production_provider.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-133，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_relay_docker.sh",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（真 build 真起 relay 镜像；无 docker 时干净 SKIP ≠ PASS）"
-    },
-    {
-      "file": "prove_room_dispatch.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_sandbox_secrets.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_surface_parity.mjs",
-      "disposition": "wired",
-      "layer": "L1",
-      "reason": "接进矩阵 G-132（日志面 vs 旁路 JSON 对账，PASS=42 FAIL=0 SKIP=1）"
-    },
-    {
-      "file": "prove_template_market_render.mjs",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（**矩阵此前接线写的是不存在的 .js** —— 那条调用一直打在空文件上；这轮改成字面 .mjs）"
-    },
-    {
-      "file": "prove_trace_replay.sh",
-      "disposition": "wired",
-      "layer": "L2",
-      "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
-    },
-    {
-      "file": "prove_w0_no_visual_change.mjs",
-      "disposition": "wired",
-      "layer": "L3",
-      "reason": "接进矩阵 G-134（像素回归；前置已漂移 ⇒ 跑不起来，如实报出）"
-    }
-  ],
-  "runner_helpers": [
-    {
-      "file": "scripts/gate_roster_check.mjs",
-      "why": "runner 的清单自检（**不是门禁**：不做任何产品断言、不数行数、不算覆盖率）。它只保证「清单 ↔ 磁盘 ↔ 孤门基线」三者一致 —— 否则冻结后的分层清单会悄悄过期。"
-    }
-  ]
+  {
+   "file": "e2e_desktop_artifacts.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_artifacts.mjs — 产物落库之后「刷新不丢卡」；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_bot_group_menu.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_bot_group_menu.mjs — Bot 右键菜单「移动到分组」的真渲染门禁。；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_bottom_archive.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_bottom_archive.mjs — M52 两项能力的真渲染验证；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_chatsurface.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_chatsurface.mjs — 聊天面四项新能力的真渲染验证；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_cn_channel_guard.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_cn_channel_guard.mjs — 国内渠道凭证不许「裸奔」的真渲染门禁（CN-01..CN-08）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-51"
+  },
+  {
+   "file": "e2e_desktop_cn_secret_inputs.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_cn_secret_inputs.mjs — 国内渠道「加签 / 回调」密钥能不能在界面上配（CN-SEC-01..06）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-52"
+  },
+  {
+   "file": "e2e_desktop_command_channel.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_command_channel.mjs — 「命令不进对话」+「一句话组队」的真渲染门禁（G-28 #12）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_creator_pipeline.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_creator_pipeline.mjs — GP-155 场景验收：自媒体博主的日更流水线；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_event_dualwrite_live.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_event_dualwrite_live.mjs — T1-03 双写在「真 Electron」上的对账门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-70"
+  },
+  {
+   "file": "e2e_desktop_failure_code.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_failure_code.mjs — KP-03「清空 key 后发一条消息」的界面可感面；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_golden_journey.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_golden_journey.mjs — 黄金旅程门禁（产品的定义就是这一条旅程）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_grok_import.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_grok_import.mjs — 「从 Grok 搬过来」的界面到底能不能用；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_layout_target.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_layout_target.mjs — Layout Contract v1 real-render gates.；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_llm_key_paste_guard.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_llm_key_paste_guard.mjs — 模型密钥粘错了，要在写盘之前当场说清楚（LK-01..07）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-54"
+  },
+  {
+   "file": "e2e_desktop_mobile_control.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_mobile_control.mjs — 「移动端远程控制」独立弹窗的真渲染门禁（MC-01..MC-10）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-67"
+  },
+  {
+   "file": "e2e_desktop_optimistic.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_optimistic.mjs — KP-08 T3-04 的可感面：回车立刻上屏、落库后 echo 对上、拒绝变红带 KP-03 的码；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-121"
+  },
+  {
+   "file": "e2e_desktop_packaged.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_packaged.mjs — GP-172：装出来的 App 在「没有源码树」的机器上能起、能扫；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_pair_page.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_pair_page.mjs — 配对落地页 /pair 的真 HTTP 门禁（PP-01..PP-10）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-68"
+  },
+  {
+   "file": "e2e_desktop_quit.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_quit.mjs — 「应用退不掉」的回归门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_room_orchestration.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_room_orchestration.mjs — GP-143/144/145/146 真链验收；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_room_progress.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_room_progress.mjs — KP-01「群进度死线」到底接活没有（真渲染 + 真回合）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_shell_v2.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_shell_v2.mjs — Desktop UI overhaul (target-v2) real-render gate.；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_sidebar_adapt.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_sidebar_adapt.mjs — 窄窗口下「主列还剩多少」的回归门禁；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_sidebar_diff.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_sidebar_diff.mjs — KP-07 可感面：一条长回复流式写入时，侧栏不整列闪动、滚动不跳；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_single_instance.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_single_instance.mjs — 「能同时启动两个应用」的回归门禁；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_stream_typing.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_stream_typing.mjs — 「打字效果」真的在屏幕上发生过吗（§8.121④ 前置账第 1 步，KP-08 尾账 #67）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_sweep_timer.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_sweep_timer.mjs — GP-170：装着 Bit Bot 的电脑自己会醒；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_team_ui.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_team_ui.mjs — 团队/群组 UI 的真渲染门禁。；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_token_parity.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_token_parity.mjs — 视觉 token 一致性的**真渲染**门禁（G-28 #9）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_turn_cancel.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_turn_cancel.mjs — KP-02「停止」到底能不能按到（真渲染 + 真回合）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_turn_latency.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_turn_latency.mjs — KP-04「连发三条、数字各不相同且可核对」的真机可感面；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_desktop_unread_summary.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_unread_summary.mjs — P1-6 未读汇总 + P2-7 未读落盘 的回归门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_desktop_user_journeys.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_desktop_user_journeys.mjs — J1–J4 用户旅程验收（唯一标准：真实 Electron 里走不走得通）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-130"
+  },
+  {
+   "file": "e2e_grok_desktop_boot.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-16"
+  },
+  {
+   "file": "e2e_grok_desktop_spec.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_grok_desktop_spec.mjs — D-ST-UI: computed-style gate for Grok parity (G-28).；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-127"
+  },
+  {
+   "file": "e2e_modal_computed.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_modal_computed.mjs — D-ST: computed-style gate for sheet/modal chrome.；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "e2e_remote_progress_stream.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：e2e_remote_progress_stream.mjs — 路线 A · W2 收口门（A1-3 / A1-4 的服务端侧）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_account_email.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_agent_context.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_agent_context.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_agent_loop_a7_a8.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_agent_loop_a7_a8.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_agent_loop_electron_midrun.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：Live Electron composer mid-run.；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_agent_loop_electron_midrun.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_agent_loop_product_wire.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_agent_loop_product_wire.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_anchor_coverage.mjs",
+   "layer": "L1",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（检查矩阵锚点覆盖（别人的断言有没有被看守）—— 典型「给门禁的门禁」；本轮把孤门基线压到 0 之后，它只剩自证价值）⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
+   "wired_in": "G-125"
+  },
+  {
+   "file": "prove_android_build.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_android_build.mjs — 安卓版「真的能装」的门禁（G-47）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞"
+  },
+  {
+   "file": "prove_android_event_stream.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-77"
+  },
+  {
+   "file": "prove_app_identity.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-103"
+  },
+  {
+   "file": "prove_approval_scope.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_approve_cli.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_approve_cli.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_avatar_contrast.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-105"
+  },
+  {
+   "file": "prove_bot_manager.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_bot_manager.js — 机器人管理（渠道 + 扫码关联）的门。；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "special": "normal"
+  },
+  {
+   "file": "prove_box_pack_closure.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-57"
+  },
+  {
+   "file": "prove_box_routine_sweep.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_box_routine_sweep.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_box_two_machines.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_box_two_machines.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_broadcast_diff.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_capability_matrix.mjs",
+   "layer": "L1",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（检查能力矩阵账本的行与证据文件（文档账本））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类"
+  },
+  {
+   "file": "prove_checklist_freshness.js",
+   "layer": "L1",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（检查验收清单/文档与代码是否说反话（文档账本））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
+   "wired_in": "G-96"
+  },
+  {
+   "file": "prove_client_core.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_cn_connection_strategy.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-81"
+  },
+  {
+   "file": "prove_cn_device_roster.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-78"
+  },
+  {
+   "file": "prove_cn_events_sse.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-73"
+  },
+  {
+   "file": "prove_cn_product_acceptance.sh",
+   "layer": "L2",
+   "blocking": false,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；**已知红** ⇒ 诚实验收门：CN 真模型 key 未配 / 桌面凭证配置 UX 缺失 / 真渠道 live gate 缺失三条残留未关 ⇒ 按契约判红。红要说出来，不拖红矩阵（与 G-130 同一口径）",
+   "special": "known_red"
+  },
+  {
+   "file": "prove_cn_relay_image.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-79"
+  },
+  {
+   "file": "prove_cn_relay_invisible.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-80"
+  },
+  {
+   "file": "prove_cn_turn_events.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-74"
+  },
+  {
+   "file": "prove_command_panel.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_command_task_control.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_connect_apps_rework.mjs",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_connect_apps_rework.mjs — 「连接应用」重设计：目录只干目录的事。；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-109"
+  },
+  {
+   "file": "prove_contract_layer.mjs",
+   "layer": "L1",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（盘点「已实现但没有生产消费者」的能力（文档账本））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类"
+  },
+  {
+   "file": "prove_copy_contract.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_cursor_subscribe.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-118"
+  },
+  {
+   "file": "prove_desktop_shot_attach.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_desktop_start.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-100"
+  },
+  {
+   "file": "prove_device_keys.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_device_keys.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_effect_contract.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_electron_app_path.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-102"
+  },
+  {
+   "file": "prove_event_dual_write.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_event_dual_write.mjs — T1-03 双写旁路门禁（DW-01..DW-10）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-62"
+  },
+  {
+   "file": "prove_event_log.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_event_log.mjs — T1-02 事件日志适配器门禁；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-61"
+  },
+  {
+   "file": "prove_event_only.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_event_only.mjs — T1-05 停写 JSON 门禁（EO-01..EO-07）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-66"
+  },
+  {
+   "file": "prove_event_read_model.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_event_read_model.mjs — T1-04 读切换门禁（RM-01..RM-09）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-65"
+  },
+  {
+   "file": "prove_expectations_fresh.mjs",
+   "layer": "L1",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（检查门读的期望文件是不是当前真源的派生物（门禁自身的期望新鲜度））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
+   "wired_in": "G-128"
+  },
+  {
+   "file": "prove_failure_codes.js",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-116"
+  },
+  {
+   "file": "prove_fold_state_owner.mjs",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-126"
+  },
+  {
+   "file": "prove_gate_proc_count.mjs",
+   "layer": "L3",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（数门禁自己有没有留下残留进程（检查别的门禁的卫生））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
+   "wired_in": "G-46"
+  },
+  {
+   "file": "prove_gp135_skill_sources.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp138_routine_interval.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp140_shared_computer.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp142_unreadable.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp143_orchestration.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_gp14_reply.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-18"
+  },
+  {
+   "file": "prove_gp153_cron_next_due.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-45"
+  },
+  {
+   "file": "prove_gp156_routine_approval.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp157_once_not_loop.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp158_routine_pause.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp159_approval_window.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp161_routine_remove.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp162_orphan_approval.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp163_room_attribution.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp164_room_library.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_gp168_handoff_wake.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-56"
+  },
+  {
+   "file": "prove_gp93_links.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-19"
+  },
+  {
+   "file": "prove_gp96_progress.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-76"
+  },
+  {
+   "file": "prove_host_approval_ui.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：Live Host approval UI.；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_host_approval_ui.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_i18n_render.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_identity_render.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_identity_render.mjs — 真起 Electron，验「身份类文案」在真渲染里对不对。；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-104"
+  },
+  {
+   "file": "prove_ios_device_identity.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_kernel_binary.sh",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞"
+  },
+  {
+   "file": "prove_kernel_resident.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_kernel_resident.mjs — T1-07 常驻内核进程门禁；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-58"
+  },
+  {
+   "file": "prove_known_red_ledger.mjs",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_known_red_ledger.mjs — 已知红台账的对账门：把 scripts/known_red_ledger.json（20 条既有红，逐条写了为什么红/谁修/怎么复现）与本轮矩阵真实打出来的红行逐条对上。它**不**看任何门禁的判据、不断言任何门禁的条数或覆盖率、不维护别的账本 —— 所以不是元工作门禁（那一类本轮起冻结，禁止新增）；它是台账纪律：红条不许悄悄漂移、不许被偷偷删掉。；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-135"
+  },
+  {
+   "file": "prove_kp09_event_only_concurrency.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-124"
+  },
+  {
+   "file": "prove_locexec_single_entry.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_m20_ui.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-20"
+  },
+  {
+   "file": "prove_m21_trust.js",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-21"
+  },
+  {
+   "file": "prove_m22_readfirst.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-22"
+  },
+  {
+   "file": "prove_m23_memory.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-23"
+  },
+  {
+   "file": "prove_m24_window.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-24"
+  },
+  {
+   "file": "prove_m25_profile.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-25"
+  },
+  {
+   "file": "prove_m26_botpanel.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-26"
+  },
+  {
+   "file": "prove_m27_convrail.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-27"
+  },
+  {
+   "file": "prove_m28_usage.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-28"
+  },
+  {
+   "file": "prove_m29_roomchat.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-29"
+  },
+  {
+   "file": "prove_m30_attachpreview.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-30"
+  },
+  {
+   "file": "prove_m31_reactions.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-31"
+  },
+  {
+   "file": "prove_m33_grokchrome.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-33"
+  },
+  {
+   "file": "prove_m34_account_actions.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-34"
+  },
+  {
+   "file": "prove_m35_hotkeys.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-35"
+  },
+  {
+   "file": "prove_m36_voicehotkey.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-36"
+  },
+  {
+   "file": "prove_m37_layout.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-37"
+  },
+  {
+   "file": "prove_m38_copy.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-38"
+  },
+  {
+   "file": "prove_m39_micro.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-39"
+  },
+  {
+   "file": "prove_m40_a11y.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-40"
+  },
+  {
+   "file": "prove_m41_cn.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-41"
+  },
+  {
+   "file": "prove_m42_stream.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-42"
+  },
+  {
+   "file": "prove_m43_settings.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-43"
+  },
+  {
+   "file": "prove_m44_header.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-44"
+  },
+  {
+   "file": "prove_m51_chatsurface.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_m52_archive_bottom.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_m52b_artifact_persist.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_m53_userbubble_order.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_m53b_turn_cancel.js",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-114"
+  },
+  {
+   "file": "prove_m53c_grok_task_import.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_m53d_grok_bot_import.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_machine_identity.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_machine_identity.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_memory_prompt.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_memory_prompt.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_mobile_approval_client.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_multihost_common.mjs",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_multihost_common.mjs — GP-185：多端通用逻辑只能有一份。；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-63"
+  },
+  {
+   "file": "prove_p0_inbound_host_checks.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_p0_inbound_security.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_pack_artifacts.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_pack_artifacts.mjs — 打包产物门禁（T0-02 / T0-03）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-58"
+  },
+  {
+   "file": "prove_pairing_code.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-49"
+  },
+  {
+   "file": "prove_pairing_lan_rank.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_pairing_lan_rank.mjs — 「手机配对」那一行给的到底是哪个地址（LR）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-48"
+  },
+  {
+   "file": "prove_pairing_relay_handoff.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-82"
+  },
+  {
+   "file": "prove_presence_durability.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_presence_durability.mjs — 「多端在线」那份证据能不能扛住并发与崩溃；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_product_tools.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_product_tools.sh",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞"
+  },
+  {
+   "file": "prove_production_provider.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；真供应商门：没有 key 时按契约退出 NEEDS_LIVE（矩阵记 skip，SKIP ≠ PASS）；有 key 时它红就是真红",
+   "special": "needs_live"
+  },
+  {
+   "file": "prove_production_provider.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_public_entry.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-95"
+  },
+  {
+   "file": "prove_public_relay_setup.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-91"
+  },
+  {
+   "file": "prove_qr_code.js",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-101"
+  },
+  {
+   "file": "prove_readiness_ledger.mjs",
+   "layer": "L1",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（维护产品就绪账本的数字（文档账本））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类"
+  },
+  {
+   "file": "prove_relay_bootstrap.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-93"
+  },
+  {
+   "file": "prove_relay_box_registration.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-83"
+  },
+  {
+   "file": "prove_relay_config_hot_reload.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-87"
+  },
+  {
+   "file": "prove_relay_diagnostics.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-97"
+  },
+  {
+   "file": "prove_relay_docker.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_relay_failure_copy.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-99"
+  },
+  {
+   "file": "prove_relay_host_audit.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-92"
+  },
+  {
+   "file": "prove_relay_reverse_resilience.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-85"
+  },
+  {
+   "file": "prove_relay_reverse_tunnel.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-84"
+  },
+  {
+   "file": "prove_relay_secure_config.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-88"
+  },
+  {
+   "file": "prove_relay_settings.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-90"
+  },
+  {
+   "file": "prove_relay_stream_backpressure.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-89"
+  },
+  {
+   "file": "prove_release_tag_gate.mjs",
+   "layer": "L1",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（检查发布 tag 与 CI 触发条件是否一致（CI 配置一致性））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
+   "wired_in": "G-69"
+  },
+  {
+   "file": "prove_reload_policy.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-112"
+  },
+  {
+   "file": "prove_remote_turn.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_repo_integrity.mjs",
+   "layer": "L2",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（检查被提交的源码本身是否可解析/无冲突标记（仓库卫生））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类",
+   "wired_in": "G-60"
+  },
+  {
+   "file": "prove_report_history_intact.mjs",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-50"
+  },
+  {
+   "file": "prove_room_context.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_room_context_reset.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-111"
+  },
+  {
+   "file": "prove_room_discretion.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_room_dispatch.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_room_dispatch.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_room_failure_surfaces.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_room_orchestrator.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-55"
+  },
+  {
+   "file": "prove_room_progress_wiring.js",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-115"
+  },
+  {
+   "file": "prove_room_relay.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-110"
+  },
+  {
+   "file": "prove_room_rename.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-107"
+  },
+  {
+   "file": "prove_room_single_routine.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_room_ux_render.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_room_ux_render.mjs — 群聊这两件事必须在**真窗口**里成立：；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-108"
+  },
+  {
+   "file": "prove_routine_dispatch.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_sandbox_secrets.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_sandbox_secrets.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_secret_shapes.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞"
+  },
+  {
+   "file": "prove_sessions_single_writer.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-122"
+  },
+  {
+   "file": "prove_settings_credentials_zones.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-63"
+  },
+  {
+   "file": "prove_skill_reaches_model.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-123"
+  },
+  {
+   "file": "prove_surface_parity.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_surface_parity.mjs — G-125 对账尺门（#81 / §8.159 定稿口径）。；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_team_brief.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_team_division.js",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-129"
+  },
+  {
+   "file": "prove_template_market_render.mjs",
+   "layer": "L2",
+   "blocking": false,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_template_market_render.mjs — 模板市场里真的能看到用户自己的模板。；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；**已知红** ⇒ 接进矩阵当场暴露的**真实红**：TM-02「自媒体/团队分类没画出来」（cats 只剩「其他」）。红要说出来，不拖红矩阵（与 G-130 同一口径）—— 它是缺陷清单第 1 条，别用别的门全绿去抵消它",
+   "special": "known_red"
+  },
+  {
+   "file": "prove_template_store.js",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞",
+   "wired_in": "G-106"
+  },
+  {
+   "file": "prove_tool_names.mjs",
+   "layer": "L1",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L1 冒烟/快：只读仓内源文件做断言，不起进程、不联网、不碰 Electron ⇒ 每次提交都跑，秒级；红即阻塞"
+  },
+  {
+   "file": "prove_trace_replay.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_trace_replay.sh",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env bash；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-131"
+  },
+  {
+   "file": "prove_turn_cancel_receipt.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_turn_latency.mjs",
+   "layer": "L3",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_turn_latency.mjs — KP-04 计时模块的验收门（纯逻辑 + 落盘往返 + 反向对照）；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
+   "wired_in": "G-117"
+  },
+  {
+   "file": "prove_ui_simplicity.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞"
+  },
+  {
+   "file": "prove_ui_tokens.js",
+   "layer": "L1",
+   "blocking": false,
+   "frozen": true,
+   "kind": "门",
+   "reason": "元工作门禁（UI 债务计数 ratchet（硬编码色值/!important 的条数不许涨 —— 计数类度量））⇒ **冻结**：仍跑、如实报数，但不再作为阻塞项；本轮起禁止再新增这一类"
+  },
+  {
+   "file": "prove_vault_keychain.js",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-94"
+  },
+  {
+   "file": "prove_w0_no_visual_change.mjs",
+   "layer": "L2",
+   "blocking": false,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：prove_w0_no_visual_change.mjs — 证明 W0 收敛「视觉零变化」，而不是声称它；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；**门自身过期** ⇒ 像素回归门，但它的一次性前置 w0_palette_consolidate.mjs 已随 W0 落进源码而失效（:root 现在在第 16 行，工具按行号取旧块、自己拒绝跑）⇒ 这条门**跑不起来**，既不算绿也不算产品红；如实测出报",
+   "special": "stale"
+  },
+  {
+   "file": "prove_w3_device_trust.mjs",
+   "layer": "L2",
+   "blocking": true,
+   "frozen": false,
+   "kind": "门",
+   "reason": "门：!/usr/bin/env node；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
+   "wired_in": "G-78"
+  },
+  {
+   "file": "prove_all.sh",
+   "layer": "L2",
+   "blocking": false,
+   "frozen": false,
+   "kind": "已退役",
+   "retired": true,
+   "reason": "退役：元工作 runner（已退役）：它会把 scripts/prove_* 全跑一遍 —— 分层后它是第二个 runner，与矩阵互相调用（且可能递归）。唯一 runner 是 scripts/smoke_grok_desktop_parity.sh；文件留在 scripts/retired/prove_all.sh 备查"
+  },
+  {
+   "file": "e2e_android_roster.mjs",
+   "layer": "L3",
+   "blocking": false,
+   "frozen": false,
+   "kind": "已退役",
+   "retired": true,
+   "reason": "退役：被 e2e_android_roster.v2.mjs 取代（文件头写明 2026-11-01 起停用：上游删了设置里的「手机」页签，旧尺跑到 AR-08 就断，实测 PASS=8 FAIL=1）；v2 已接在矩阵 G-47 ⇒ 覆盖没丢。文件留在 scripts/retired/e2e_android_roster.mjs 备查"
+  }
+ ],
+ "frozen": [
+  {
+   "file": "prove_anchor_coverage.mjs",
+   "reason": "检查矩阵锚点覆盖（别人的断言有没有被看守）—— 典型「给门禁的门禁」；本轮把孤门基线压到 0 之后，它只剩自证价值"
+  },
+  {
+   "file": "prove_capability_matrix.mjs",
+   "reason": "检查能力矩阵账本的行与证据文件（文档账本）"
+  },
+  {
+   "file": "prove_checklist_freshness.js",
+   "reason": "检查验收清单/文档与代码是否说反话（文档账本）"
+  },
+  {
+   "file": "prove_contract_layer.mjs",
+   "reason": "盘点「已实现但没有生产消费者」的能力（文档账本）"
+  },
+  {
+   "file": "prove_expectations_fresh.mjs",
+   "reason": "检查门读的期望文件是不是当前真源的派生物（门禁自身的期望新鲜度）"
+  },
+  {
+   "file": "prove_gate_proc_count.mjs",
+   "reason": "数门禁自己有没有留下残留进程（检查别的门禁的卫生）"
+  },
+  {
+   "file": "prove_readiness_ledger.mjs",
+   "reason": "维护产品就绪账本的数字（文档账本）"
+  },
+  {
+   "file": "prove_release_tag_gate.mjs",
+   "reason": "检查发布 tag 与 CI 触发条件是否一致（CI 配置一致性）"
+  },
+  {
+   "file": "prove_repo_integrity.mjs",
+   "reason": "检查被提交的源码本身是否可解析/无冲突标记（仓库卫生）"
+  },
+  {
+   "file": "prove_ui_tokens.js",
+   "reason": "UI 债务计数 ratchet（硬编码色值/!important 的条数不许涨 —— 计数类度量）"
+  }
+ ],
+ "retired": [
+  {
+   "file": "prove_all.sh",
+   "layer": "L2",
+   "reason": "元工作 runner（已退役）：它会把 scripts/prove_* 全跑一遍 —— 分层后它是第二个 runner，与矩阵互相调用（且可能递归）。唯一 runner 是 scripts/smoke_grok_desktop_parity.sh；文件留在 scripts/retired/prove_all.sh 备查"
+  },
+  {
+   "file": "e2e_android_roster.mjs",
+   "layer": "L3",
+   "reason": "被 e2e_android_roster.v2.mjs 取代（文件头写明 2026-11-01 起停用：上游删了设置里的「手机」页签，旧尺跑到 AR-08 就断，实测 PASS=8 FAIL=1）；v2 已接在矩阵 G-47 ⇒ 覆盖没丢。文件留在 scripts/retired/e2e_android_roster.mjs 备查"
+  }
+ ],
+ "orphan_dispositions": [
+  {
+   "file": "e2e_android_roster.mjs",
+   "disposition": "retired",
+   "layer": "L3",
+   "reason": "退役：被 v2 取代（见 retired 段）⇒ 覆盖没丢"
+  },
+  {
+   "file": "prove_agent_context.sh",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（外壳自带 moon build ⇒ 属重的一层）；内层 prove_agent_context.js 由传递接线认领"
+  },
+  {
+   "file": "prove_agent_loop_a7_a8.js",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（经外壳 prove_agent_loop_a7_a8.sh：门 + moon test -p runtime）"
+  },
+  {
+   "file": "prove_agent_loop_a7_a8.sh",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134，作为该门**唯一**的入口（一门一入口）"
+  },
+  {
+   "file": "prove_agent_loop_electron_midrun.mjs",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（经外壳 prove_agent_loop_electron_midrun.sh）"
+  },
+  {
+   "file": "prove_agent_loop_electron_midrun.sh",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_agent_loop_product_wire.sh",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134，作为该门**唯一**的入口；内层 .js 此前只被 workflow 的一句注释提到（等于没人跑），这轮起真跑"
+  },
+  {
+   "file": "prove_all.sh",
+   "disposition": "retired",
+   "layer": "L2",
+   "reason": "退役：元工作 runner（第二个 runner 会与矩阵互相调用）⇒ 见 retired 段"
+  },
+  {
+   "file": "prove_approve_cli.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-131，作为该门**唯一**的入口（内层 .js 由传递接线认领）"
+  },
+  {
+   "file": "prove_bot_manager.js",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-133（真起 cn_inbound 跑绑定流程，PASS=25 FAIL=0）"
+  },
+  {
+   "file": "prove_box_routine_sweep.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-57，作为该门**唯一**的入口（内层 .js 由传递接线认领）"
+  },
+  {
+   "file": "prove_box_two_machines.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_cn_product_acceptance.sh",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（诚实验收门；本机实测为红 ⇒ 走「已知红如实报出」口径）"
+  },
+  {
+   "file": "prove_desktop_shot_attach.mjs",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（截屏真进附件、真守限额，PASS=8 FAIL=0）"
+  },
+  {
+   "file": "prove_device_keys.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_host_approval_ui.mjs",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（经外壳 prove_host_approval_ui.sh；实测 pass=69 fail=0）"
+  },
+  {
+   "file": "prove_host_approval_ui.sh",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_locexec_single_entry.mjs",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（xvfb 下实测 pass=10 fail=0）"
+  },
+  {
+   "file": "prove_machine_identity.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_memory_prompt.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_production_provider.js",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-133（经外壳 prove_production_provider.sh：门 + tee 查密钥明文 + 退出码透传）"
+  },
+  {
+   "file": "prove_production_provider.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-133，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_relay_docker.sh",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（真 build 真起 relay 镜像；无 docker 时干净 SKIP ≠ PASS）"
+  },
+  {
+   "file": "prove_room_dispatch.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_sandbox_secrets.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_surface_parity.mjs",
+   "disposition": "wired",
+   "layer": "L1",
+   "reason": "接进矩阵 G-132（日志面 vs 旁路 JSON 对账，PASS=42 FAIL=0 SKIP=1）"
+  },
+  {
+   "file": "prove_template_market_render.mjs",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（**矩阵此前接线写的是不存在的 .js** —— 那条调用一直打在空文件上；这轮改成字面 .mjs）"
+  },
+  {
+   "file": "prove_trace_replay.sh",
+   "disposition": "wired",
+   "layer": "L2",
+   "reason": "接进矩阵 G-131，作为该门**唯一**的入口"
+  },
+  {
+   "file": "prove_w0_no_visual_change.mjs",
+   "disposition": "wired",
+   "layer": "L3",
+   "reason": "接进矩阵 G-134（像素回归；前置已漂移 ⇒ 跑不起来，如实报出）"
+  }
+ ],
+ "runner_helpers": [
+  {
+   "file": "scripts/gate_roster_check.mjs",
+   "why": "runner 的清单自检（**不是门禁**：不做任何产品断言、不数行数、不算覆盖率）。它只保证「清单 ↔ 磁盘 ↔ 孤门基线」三者一致 —— 否则冻结后的分层清单会悄悄过期。"
+  }
+ ]
 }

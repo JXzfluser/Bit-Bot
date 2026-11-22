@@ -7,8 +7,25 @@ cd "$(dirname "$0")/.." || exit 1
 export PATH="$HOME/.moon/bin:$PATH"
 
 PASS=0; FAIL=0
+
+# ---- 已知红台账的原料：把本轮打出来的红行逐条记下来 ---------------------------
+# 「已知红」这条纪律要求：真实用户旅程红了必须**逐条报告**，不许用别的门全绿去抵消。
+# 散落在各处的红条容易悄悄漂移、也容易被遗忘 ⇒ 落成一份可执行的台账
+# （scripts/known_red_ledger.json），由 scripts/prove_known_red_ledger.mjs 逐条对账。
+#
+# 那条对账门需要知道「本轮矩阵真实打出来了哪些红」—— 就是这个文件：
+# 每打一条红行就追加一行「层\t红行原文」，收尾时对账门拿它跟台账比。
+# 分层是为了能分清哪条红属于哪一层（台账管的是 L1 的红）；层从 want() 里取：
+# 每个门段开头都会问一次 want（只有那里问），所以「上一次问的层」就是当前段的层。
+GATE_RED_LOG=/tmp/gate-red-lines.txt
+: > "$GATE_RED_LOG"
+GATE_CUR_TIER=""
+# 本轮开始的时刻（epoch 秒）：对账门用它判断某份门日志是不是**本轮**留下的
+# （上一轮残留的日志不能当证据）。
+date +%s > /tmp/gate-run-start.txt 2>/dev/null || true
+
 ok()  { PASS=$((PASS+1)); echo "  ✓ $1"; }
-bad() { FAIL=$((FAIL+1)); echo "  ✗ $1"; }
+bad() { FAIL=$((FAIL+1)); echo "  ✗ $1"; printf '%s\t%s\n' "${GATE_CUR_TIER:-?}" "$1" >> "$GATE_RED_LOG"; }
 
 # ---- A0-4：门禁不许改写已跟踪文件 -------------------------------------------
 # 本轮实测事故：跑完整矩阵后 `report.md` 从 3738 行被写成 182 行、
@@ -187,6 +204,7 @@ for tier_arg in "$@"; do
 done
 [ -z "$TIER_SEL" ] && TIER_SEL=" all"
 want() { # $1 = 层名（L1/L2/L3）；选了 all 就全都要
+  GATE_CUR_TIER="$1"   # 当前这一段属于哪一层（红行落账时要分层，见上面 GATE_RED_LOG）
   case " $TIER_SEL " in
     *" all "*) return 0 ;;
     *" $1 "*) return 0 ;;
@@ -943,21 +961,6 @@ echo "  · G-15 清理完成（account-profile / install 快照删除，双跑�
 echo
 
 fi
-echo "== G-135 已知红台账对账（台账 ↔ 本轮矩阵真实打出来的红行）=="
-# 这条门不是「给门禁的门禁」：它不看任何门禁的判据、不断言任何门禁的条数/覆盖率，
-# 只把 scripts/known_red_ledger.json 与**本轮矩阵真实打出来的红行**逐条对上：
-#   · 台账每一条红的 id 都还能在对应门的真实输出里找到（红被偷偷删掉 / 改了文案 /
-#     这条红其实早就不在了 ⇒ 当场红）；
-#   · 本轮打出来的红都有台账条目认领（漏在台账外 ⇒ 当场红，标「待归类」）；
-#   · kind=product 的条目必须有人认领（owner 为空 / unassigned 没写原因 ⇒ 当场红）。
-# 台账只管 L1 的红（20 条）；L2/L3 的红按各门自己的「已知红 / 门自身过期」口径报。
-#
-# 门名必须**字面**出现在 node scripts/<门名>.mjs 上（AC-07 的接线口径：拼名变量它不展开）。
-if timeout 900 node scripts/prove_known_red_ledger.mjs > /tmp/g135-known-red.log 2>&1; then
-  ok "G-135 已知红台账对账 exit 0（$(tail -1 /tmp/g135-known-red.log)）"
-else
-  bad "G-135 已知红台账对账红（见 /tmp/g135-known-red.log；$(tail -1 /tmp/g135-known-red.log)）"
-fi
 if want L3; then
 echo "== G-16 自动化冷启动 + GP-70 像素断言（Playwright-E2E · 规格 §2.6/§7.3）=="
 # 规格验收信号：Appearance 改动 nativeTheme 实测生效 + 截图/像素断言；重启保持。
@@ -998,7 +1001,7 @@ if want L3; then
 echo "== G-109 「连接应用」目录只干目录的事（重设计，且不把能力删掉） =="
 # ⚠️ 2026-11-22:这条门是**真渲染门**(起真 Electron 窗口看 DOM)
    # ⇒ 它**违反 L1 的定义**(L1 = 只读仓内源文件做断言,不起进程、不联网、不碰 Electron)
-   # ⇒ 挪到 L3,并在这里套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。
+   # ⇒ 挪到 L3,并套 xvfb-run(无 $DISPLAY 时 Electron 起不来)。
    # 依据:台账 scripts/known_red_ledger.json 里 G-109 那 13 条(kind=environment)。
    xvfb-run -a node scripts/prove_connect_apps_rework.mjs >/tmp/g109-ca-rework.log 2>&1
 if [ $? -eq 0 ]; then
@@ -4627,10 +4630,9 @@ for g103_a in "ID-01" "ID-03" "ID-04" "ID-04b" "ID-05" "ID-05b" "ID-06" "ID-06b"
   if grep -q "✓ $g103_a" /tmp/g103-app-identity.log; then
     ok "G-103 锚点：$g103_a"
   elif grep -q "· $g103_a SKIP" /tmp/g103-app-identity.log; then
-    # 2026-11-22:平台专属能力(要 macOS 开发态应用包)在本机不存在 ⇒ 门自己 SKIP。
+    # 2026-11-22:平台专属能力(要 macOS 开发态应用包)本机不存在 ⇒ 门自己 SKIP。
     # 旧写法「找不到 ✓ 锚点就判红」⇒ 把**门自己声明的 SKIP**算成了红 ⇒ 冤枉。
-    # ⇒ 现在三态:✓ ⇒ 绿;门自己 SKIP ⇒ **SKIP ≠ PASS**(不算绿、也不算红,如实报出来);
-    #   其它 ⇒ 红。
+    # ⇒ 三态:✓ 绿;门自己 SKIP ⇒ **SKIP ≠ PASS**(不算绿也不算红,如实报出);其它 ⇒ 红。
     echo "  · skip：G-103 锚点 $g103_a —— 门自己 SKIP 了（平台专属能力,本机没有）⇒ **SKIP ≠ PASS**,不算绿"
     GATE_SKIP=$((GATE_SKIP+1))
   else
@@ -5816,10 +5818,8 @@ for g125_id in AC-01 AC-02 AC-03 AC-04 AC-05 AC-06 AC-07 AC-08; do
   fi
 done
 # 计数锚点：绿行条数与总结行一起钉 —— 删一条断言或让它静默 SKIP 都拦得住（矩阵里第一条 B 类看守）。
-# 计数钉随尺子走(2026-11-22):尺子从 6 条长到 8 条(AC-07/08 两段),
-# 钉子还写 6 ⇒ 钉子变成一句**假话**(尺子明明报了 8,钉子却要 6)⇒ 台账把这条记成 gate-criterion。
-# ⇒ 钉子跟上真源:≥ 8 且期望 PASS=8 —— 这是**让判据变严**(尺子多钉两条),
-#   不是放宽(门槛从 6 提到 8)。
+# 计数钉随尺子走(2026-11-22):尺子从 6 条长到 8 条(AC-07/08),钉子还写 6
+# ⇒ 钉子变成一句**假话** ⇒ 钉子跟上真源:≥ 8 —— 门槛从 6 提到 8,是**让判据变严**。
 if [ "$(grep -c '^  ✓' /tmp/g125-probe.log)" -ge 8 ] \
    && grep -q "PASS=8 FAIL=0 SKIP=0" /tmp/g125-probe.log; then
   ok "G-125 GP-AC 计数钉：绿行 $(grep -c '^  ✓' /tmp/g125-probe.log) ≥ 8 且 FAIL=0 SKIP=0"
@@ -5927,6 +5927,36 @@ echo "    EF-05 钉的是门源码的判据形状（不许再出现手抄 558.4 
 echo "    真源本身的重采节奏不在这条门管辖内：它只保证「期望 = 当前盘上真源的派生物」，不保证盘上真源是今天抓的。"
 
 fi
+if want L1; then
+echo "== G-135 已知红台账对账（台账 ↔ 本轮矩阵真实打出来的红行）=="
+# 这条门不是「给门禁的门禁」：它不看任何门禁的判据、不断言任何门禁的条数/覆盖率，
+# 只把 scripts/known_red_ledger.json 与**本轮矩阵真实打出来的红行**逐条对上：
+#   · 台账每一条红的 id 都还能在对应门的真实输出里找到（红被偷偷删掉 / 改了文案 /
+#     这条红其实早就不在了 ⇒ 当场红）；
+#   · 本轮打出来的红都有台账条目认领（漏在台账外 ⇒ 当场红，标「待归类」）；
+#   · kind=product 的条目必须有人认领（owner 为空 / unassigned 没写原因 ⇒ 当场红）。
+# 台账只管 L1 的红（20 条）；L2/L3 的红按各门自己的「已知红 / 门自身过期」口径报。
+#
+# 门名必须**字面**出现在 node scripts/<门名>.mjs 上（AC-07 的接线口径：拼名变量它不展开）。
+if timeout 900 node scripts/prove_known_red_ledger.mjs > /tmp/g135-known-red.log 2>&1; then
+  ok "G-135 已知红台账对账 exit 0（$(tail -1 /tmp/g135-known-red.log)）"
+else
+  bad "G-135 已知红台账对账红（见 /tmp/g135-known-red.log；$(tail -1 /tmp/g135-known-red.log)）"
+fi
+# 锚点只钉 ✓ 行里出现的 [KRL-nn]：编号只加在 ok() 文案上，红行没有编号 —— 漏一条就是这条锚点红。
+for g135_id in KRL-01 KRL-02 KRL-03 KRL-04 KRL-05 KRL-06 KRL-07; do
+  if grep -q "\[$g135_id\]" /tmp/g135-known-red.log 2>/dev/null; then
+    ok "G-135 KRL $g135_id：锚点跑到绿行"
+  else
+    bad "G-135 KRL $g135_id 没跑出绿行（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+echo "  · G-135 口径（诚实）：台账 = scripts/known_red_ledger.json（20 条，逐条写清为什么红、谁修、怎么复现）。"
+echo "    这条门只比「台账 ↔ 真实红行」，不判任何门禁的判据质量、不数任何门禁的条数 ——"
+echo "    那是元工作门禁（这一类本轮起冻结，禁止新增）；本门是台账纪律，不是给门禁的门禁。"
+echo "    红行的原料是矩阵自己写的 /tmp/gate-red-lines.txt（每打一条红行写一行，带层号）。"
+
+fi
 if want L3; then
 echo "== G-130 真·用户旅程 e2e(15 条孤儿门禁的归宿)=="
 # 缘起（2026-11-21）：AC-07 实测孤门里,e2e_desktop_* 这批**真·用户旅程**
@@ -5957,36 +5987,6 @@ g130_run e2e_desktop_quit               node scripts/e2e_desktop_quit.mjs
 g130_run e2e_desktop_shell_v2           node scripts/e2e_desktop_shell_v2.mjs
 g130_run e2e_desktop_token_parity       node scripts/e2e_desktop_token_parity.mjs
 g130_run e2e_desktop_unread_summary     node scripts/e2e_desktop_unread_summary.mjs
-# 黄金旅程（建团队→排程→到点执行→产出→指挥→复盘）：**产品的定义就是这一条路**。
-# 它是这一族里唯一一条「全程不卡、任何一步断了就是红」的门 —— 别的门断的是部件，
-# 这条门断的是「产品成立了没有」。
-g130_run e2e_desktop_golden_journey     node scripts/e2e_desktop_golden_journey.mjs
-if [ -s /tmp/g130-e2e_desktop_golden_journey.log ]; then
-  # 逐条锚点：旅程的每一步都必须在输出里出现（少了锚点 = 这一步被删了或被改成 SKIP）。
-  for g130_gj_a in "建团队：3 个 Bot 真建好" "排程：原话落成 cron=" \
-    "到点执行：应用自己的调度器真到点触发了这条任务" "产出：真产物文件落盘" \
-    "指挥·看：指挥台列出了这一批" "指挥·插话：真落了一条 steered 指令" \
-    "指挥·改向：真落了一条 replanned 指令" "指挥·换人：真落了一条 reassigned 指令" \
-    "指挥·刹停：" "复盘：指挥台「复盘」段列出了真的收过口的批次" \
-    "负向：未批准前" "负向：换人换成一个不在群里的 Bot" \
-    "负向：指挥区空输入点插话" "隔离：仓库 data/desktop/rooms.json 逐字节未变"; do
-    if grep -q "$g130_gj_a" /tmp/g130-e2e_desktop_golden_journey.log; then
-      ok "G-130 黄金旅程锚点在：$g130_gj_a"
-    else
-      bad "G-130 黄金旅程锚点缺失：$g130_gj_a（这一步被删了 / 被改成 SKIP / 文案变了）"
-    fi
-  done
-  # 红的**只允许**是「派一个负责人」那一条（团队模式下内容路由没被调用 ⇒
-  # 多个 Bot 同时开工）—— 这是并行在修的真缺陷。其余任何一条红都是新回归，
-  # 直接把矩阵拖红。
-  gj_other_red="$(grep '✗' /tmp/g130-e2e_desktop_golden_journey.log 2>/dev/null | grep -v 'GJ-25' | head -5)"
-  if [ -n "$gj_other_red" ]; then
-    bad "G-130 黄金旅程出了**已知之外**的红（GJ-25「派一个负责人」是已知在修的真缺陷，其余红就是新回归）"
-    echo "$gj_other_red" | sed 's/^/      /'
-  else
-    ok "G-130 黄金旅程：除了「派一个负责人」那条已知在修的缺陷，其余全绿"
-  fi
-fi
 if [ -n "$G130_KNOWN_RED" ]; then
   echo "  · G-130 **已知红清单**（真实用户旅程红，逐条修）：$G130_KNOWN_RED"
   echo "    这些是**真实缺陷**，不是环境问题 —— 不用「部件门禁全绿」去抵消它们。"

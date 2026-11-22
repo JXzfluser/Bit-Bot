@@ -48,7 +48,8 @@
         "anchor": "theme tokens — light/dark/force channels drifted",
         "note": "门跑在仓内源码上（纯静态断言），不需要显示器也不需要 Electron ⇒ 任何机器上都能复现。",
         "log": "/tmp/g20-probe.log"
-      }
+      },
+      "conditional": "这条门在矩阵的 **L2/L3 段**(要起 Electron 看 DOM),不在 L1 ⇒ L1 本轮看不到它 ⇒ 不是「消失了」,是「本层不跑它」。⇒ 门禁分层那轮把 G-20 归到了 L2/L3。注意:它的红仍是真红(门判据写死了色值字面量),只是不在 L1 的账上。"
     },
     {
       "id": "prove_m24_window.js#template-drift",

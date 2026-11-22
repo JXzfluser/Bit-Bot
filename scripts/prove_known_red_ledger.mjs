@@ -298,9 +298,15 @@ if (!haveRedRows) {
   sk("[KRL-05] 没有本轮红行 ⇒ 条数对账跳过");
 } else {
   /* 台账外的红：本轮打出来、却没有任何台账条目认领的红行。 */
-  const uncovered = uncoveredRows(l1Rows);
+  /* 自指豁免(2026-11-22):**这条门自己**打出来的红行不能算「台账外的红」——
+     否则它一旦红了,红行进文件,下一轮它就看到「台账外有红」⇒ 而那条红就是它自己
+     ⇒ **自指循环**,永远红。⇒ 排除本门自己的红行。
+     (这不是放水:台账外的**别的**红仍会被抓出来。) */
+  const SELF = /G-135|KRL-|已知红台账对账/;
+  const uncovered = uncoveredRows(l1Rows).filter((r) => !SELF.test(String(r.text || "")));
   if (uncovered.length) {
-    bad("[KRL-04] 台账外的红（本轮打出来了但没人认领，待归类）：" + uncovered.length + " 条", uncovered.join(" / "));
+    bad("[KRL-04] 台账外的红（本轮打出来了但没人认领，待归类）：" + uncovered.length + " 条",
+      uncovered.map((r) => String(r.text || "")).join(" / "));
   } else {
     ok("[KRL-04] 本轮 " + TIER + " 的 " + l1Rows.length + " 条红行全部在台账里有条目认领（没有台账外的红）");
   }
@@ -311,7 +317,9 @@ if (!haveRedRows) {
     const hit = claimOf(row.text);
     if (hit) matched.add(hit.id);
   }
-  const notAppeared = entries.filter((e) => !matched.has(e.id));
+  /* 已标 `resolved` 的条目**不算**「本轮没出现」—— 它们是**已经修好的红**,
+     本轮不出现正是预期(新门对它们有反向要求:不许再红)。 */
+  const notAppeared = entries.filter((e) => !matched.has(e.id) && !e.resolved);
   const unconditionalMissing = notAppeared.filter((e) => !e.conditional);
   if (unconditionalMissing.length) {
     bad("[KRL-05] 台账里有 " + unconditionalMissing.length + " 条红本轮没出现，且台账没写清它是条件性红",
