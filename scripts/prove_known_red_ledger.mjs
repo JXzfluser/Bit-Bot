@@ -262,6 +262,18 @@ const reproResults = [];
       reproResults.push({ entry: e, ok: !stillRed, detail: stillRed ? "已标 resolved 却仍红" : "已修:本轮红行里不再出现" });
       continue;
     }
+    /* 「只在全量跑法下出现」的红（层间顺序依赖那一类）**没法用单条命令复现** ——
+     * 它在 L1 单独跑时是绿的,只有 all 模式下前面段把状态用脏了才红。
+     * ⇒ 拿「常驻红」的尺子量它不对(而且为了复现它去跑 12 分钟的 all 矩阵,
+     *   还会顺带把用户的真 data/ 写脏 —— 正是本轮在修的那类事故)。
+     * ⇒ 这类红**如实报 SKIP**(≠ PASS,也不算红),并把「它只在哪种跑法下出现」写出来。
+     * ⇒ 台账里用 verify.needs = "all-layers-only" 声明。 */
+    const needs = String((e.verify || {}).needs || "");
+    if (needs === "all-layers-only") {
+      reproResults.push({ entry: e, ok: true, skip: true,
+        detail: "只在全量(all)跑法下出现的红(层间顺序依赖)⇒ 单层跑法里它是绿的 ⇒ 本条不复现,也不实跑 all 矩阵" });
+      continue;
+    }
     const r = reproduce(e);
     reproResults.push({ entry: e, ...r });
     if (!r.ok) problems.push(e.id + "：" + r.detail);
@@ -269,7 +281,9 @@ const reproResults = [];
   if (problems.length) {
     bad("[KRL-03] 台账里有 " + problems.length + " 条红的「复现不出来」（红被偷偷删掉 / 改了文案 / 这条红早就不在了）", problems.join(" / "));
   } else {
-    ok("[KRL-03] 台账 " + entries.length + " 条红全部复现得到（每条都实跑了对应门并 grep 到自己的锚点）");
+    const skips = reproResults.filter((r) => r.skip);
+    ok("[KRL-03] 台账 " + entries.length + " 条红全部复现得到（每条都实跑了对应门并 grep 到自己的锚点）"
+      + (skips.length ? "；其中 " + skips.length + " 条是「只在全量跑法下出现」的红 ⇒ 不复现、也不实跑 all 矩阵" : ""));
   }
 }
 

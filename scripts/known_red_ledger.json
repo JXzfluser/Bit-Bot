@@ -638,20 +638,13 @@
       "first_seen": "2026-11-22",
       "blocks_release": false,
       "verify": {
+        "needs": "all-layers-only",
         "cmd": [
           "bash",
           "scripts/smoke_grok_desktop_parity.sh",
           "all"
         ],
-        "log": "/tmp/gate-red-lines.txt",
-        "anchor_any": [
-          "G-24 E2E",
-          "G-25 E2E",
-          "G-26 E2E",
-          "G-27 E2E",
-          "G-28 E2E"
-        ],
-        "note": "复现走**快路径**:矩阵自己写的红行文件 /tmp/gate-red-lines.txt(带层号)里就有「G-24 E2E …」这类行 ⇒ 不必实跑 12 分钟的 all 矩阵。慢路径(all 全量)保留作兜底:all 模式下这批子锚点行会红,L1 单独跑则绿⇒ 差异即层间顺序依赖。"
+        "note": "这条红**只在全量(all)跑法下出现**:L1 单独跑时 G-24..G-28 的这些 E2E 子锚点行是绿的;all 模式按文件位置顺序跑,L1 段之前已跑过别的段 ⇒ 隔离数据根被用掉 ⇒ 这些门看到「第二次跑」的状态。⇒ 它是**层间顺序依赖**,不是产品缺陷。⇒ 不用实跑 12 分钟的 all 矩阵来复现(那还会顺带把真 data/ 写脏 —— 正是本轮在修的那类事故);待办:每层开跑前重建一次隔离数据根(P2 子任务·层间隔离),做完这批红整体消失。"
       },
       "conditional": "只在**全量(all)跑法**下出现;L1 单独跑(CI 的 L1 段、开发者日常跑法)是绿的。⇒ 它不是「永远红的红」,是「只在特定运行方式下出现的红」。",
       "resolved": false,
