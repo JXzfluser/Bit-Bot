@@ -649,6 +649,30 @@
       "conditional": "只在**全量(all)跑法**下出现;L1 单独跑(CI 的 L1 段、开发者日常跑法)是绿的。⇒ 它不是「永远红的红」,是「只在特定运行方式下出现的红」。",
       "resolved": false,
       "other_gates": "同族还有 G-25/G-26/G-27/G-28 各自的门(矩阵行前缀 G-25 E2E … G-28 E2E)"
+    },
+    {
+      "id": "scripts/smoke_grok_desktop_parity.sh#real-data-must-not-change",
+      "gate": "scripts/smoke_grok_desktop_parity.sh",
+      "matrix_line_prefix": "真 data/ 被门禁改写了",
+      "kind": "gate-criterion",
+      "reason": "矩阵全程在**用户的真 data/ 目录**上跑（cwd = 仓库根 ⇒ 相对路径全落在真目录；且内核按 cwd 相对写）。这是门禁自己的问题，不是产品缺陷：门禁改用户数据比红更严重。已用影子根 .gate-matrix/ 修掉，并在矩阵收尾加了一条「真 data/ 逐文件指纹跑前跑后一致」的硬断言 —— 这条红一旦再出现，就说明隔离又漏了。",
+      "evidence": "事故证据：2026-11-22 17:36–17:38（全量矩阵 L3 在跑的时间窗），仓库真 data/ 有 1092 个文件被改写；data/desktop/bots.json 从 1 个 Bot 涨到 42 个（含 40 个门禁 Bot 情报侦察员/选题策划师/内容主笔/事实编辑/数据复盘师 + M11Probe），data/desktop/rooms.json 攒了 8 个「自媒体内容团队」群（每群只有一句『已创建群聊…』，成员就是那 5 个模板 Bot）。对照实验 scripts/probe_data_root_isolation.sh 证明隔离根放在 checkout 内（带 cmd/moon.mod/_build 软链）时，真 data 指纹 0 变化、内核与 Host 同源。",
+      "owner": "unassigned",
+      "owner_reason": "已修，不需要产品侧表态；留一条是为了防止复发。",
+      "first_seen": "2026-11-22",
+      "blocks_release": false,
+      "resolved": true,
+      "resolved_at": "2026-11-22",
+      "resolved_note": "矩阵改为在影子根 .gate-matrix/ 里跑（数据根 = 隔离 data/），并加「真 data/ 逐文件未被改写」断言；复跑 L1 = 105/0，真 data/ 指纹 1767 个文件全未变。",
+      "verify": {
+        "cmd": [
+          "bash",
+          "scripts/smoke_grok_desktop_parity.sh",
+          "L1"
+        ],
+        "expect": "矩阵收尾出现绿行「真 data/ 逐文件未被改写」，且不出现本条前缀。",
+        "needs": "all-layers-only"
+      }
     }
   ],
   "notes_layer_isolation": {
@@ -658,5 +682,12 @@
     "为什么不记账绕过": "这批红有 G-24/G-25/G-26/G-27/G-28 若干段、每段若干子锚点行 ⇒ 逐条记进台账会让台账变成「绕过清单」,且掩盖真正的根因。",
     "待办(P2 子任务 · 层间隔离)": "**每层开跑前重建一次隔离数据根**,让「单跑某层」与「全量跑」结果一致。做完这批红整体消失,不需要任何台账条目。",
     "当前影响": "L1(CI 路径)干净:89/0。all 全量模式的层间隔离未做,如实记录在此。"
+  },
+  "notes_user_journeys_in_matrix": {
+    "问题": "同一扇门 `e2e_desktop_user_journeys` **单独跑是 70/0**，在矩阵的 L3 段却跑成 **53/4**；`e2e_desktop_creator_pipeline` 同形（单独 30/0 / 矩阵 9/1）。",
+    "真根因（2026-11-22 查实，不是猜测）": "**矩阵没有隔离数据根**。矩阵全程 cwd = 仓库根 ⇒ 117 处 `data/...` 相对路径与 `DATA=data/desktop` 全部落在**用户的真 data/** 上；跑完全量矩阵实测真 data/ 有 1092 个文件被改写，data/desktop/bots.json 里堆了 41 个门禁 Bot、8 个「自媒体内容团队」群。于是后面的门看到的是前面门留下的脏状态 ⇒ 判红。",
+    "另一半根因（半隔离）": "只设 BITBOT_DATA_ROOT 不够：内核那一半按 cwd 相对写（host_ffi.js:183 KERNEL_CWD = dirname(DATA_ROOT)）⇒ Host 写隔离根、内核照样写真 data/。修法见矩阵里的影子根 .gate-matrix/。",
+    "已修": "矩阵改为在 checkout 内的影子根 .gate-matrix/ 里跑（data/ 是种子拷贝，其余顶层条目软链回仓库）⇒ 相对路径与内核 cwd 都落在隔离 data/；并在矩阵收尾加了「真 data/ 逐文件指纹未变」的硬断言。",
+    "当前影响": "L1 = 105 PASS / 0 FAIL（含新增的真 data/ 守卫）；真 data/ 已清掉门禁垃圾（42 → 1 个 Bot，8 → 0 个群，备份在 /workspace/output/data-backup-2026-11-22/）。"
   }
 }

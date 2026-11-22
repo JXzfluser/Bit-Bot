@@ -6,6 +6,70 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 export PATH="$HOME/.moon/bin:$PATH"
 
+# ---- 数据根隔离（2026-11-22，事故驱动）--------------------------------------
+# 事故：跑完全量矩阵之后，**仓库真 data/** 有 1092 个文件在 17:36–17:38 被改写
+# （正是 L3 在跑的时间窗）；data/desktop/bots.json 里塞进了 41 个门禁 Bot、
+# 8 个「自媒体内容团队」群（8 轮门禁各建一次，从来没清过）。
+# 门禁改用户数据是最严重的一类事故 —— 比红更严重，红还能修，数据没了就没了。
+#
+# 根因有两层，**缺一层就还是半隔离**：
+#   1) 矩阵全程 cwd = 仓库根 ⇒ 117 处 `data/...` 相对路径 + `DATA=data/desktop`
+#      全部落在**用户的真数据目录**上；
+#   2) 内核那一半按 cwd 相对写（host_ffi.js:183：KERNEL_CWD = dirname(DATA_ROOT)），
+#      所以**只设 BITBOT_DATA_ROOT 是不够的**：Host 写隔离根、内核照样写真 data/。
+#      （host_ffi.js:168 的注释早就写过这件事："half a move"。）
+#
+# 修法（实测有效；对照实验见 scripts/probe_data_root_isolation.sh）：
+#   建一个 checkout 内的**影子根** .gate-matrix/：
+#     · 除 data/ 外，顶层条目全部软链回仓库（相对路径照常能用）；
+#     · data/ 是仓库 data/ 的一份种子拷贝（跳 tmp / import-backup-*，前者 192MB 纯浪费）；
+#   然后矩阵全程 cd 到影子根里跑：
+#     · 相对路径自动落在隔离 data/；
+#     · 内核 cwd = dirname(BITBOT_DATA_ROOT) = 影子根 ⇒ 内核那一半也落在隔离 data/；
+#     · 影子根**必须在 checkout 内** —— moon run 要在这里解析 moon.mod / cmd / _build。
+#   收尾：EXIT trap 把影子根删掉（它是用户数据的一份拷贝，不许留在仓里）。
+GATE_REPO_ROOT="$PWD"
+GATE_SCRIPT_ABS="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+GATE_REAL_DATA="$PWD/data"
+GATE_SHADOW="$PWD/.gate-matrix"
+GATE_REAL_DATA_MANIFEST=/tmp/gate-real-data-manifest.txt
+
+gate_seed_shadow() {
+  rm -rf "$GATE_SHADOW" 2>/dev/null || true
+  mkdir -p "$GATE_SHADOW/data" || return 1
+  local entry name d
+  for entry in "$GATE_REPO_ROOT"/* "$GATE_REPO_ROOT"/.[!.]*; do
+    [ -e "$entry" ] || continue
+    name="$(basename "$entry")"
+    case "$name" in data|.gate-matrix|.git) continue ;; esac
+    ln -s "$entry" "$GATE_SHADOW/$name" 2>/dev/null || true
+  done
+  for d in $(ls "$GATE_REAL_DATA" 2>/dev/null); do
+    case "$d" in tmp|import-backup-*) continue ;; esac
+    cp -r "$GATE_REAL_DATA/$d" "$GATE_SHADOW/data/" 2>/dev/null || true
+  done
+}
+
+# 真 data/ 的文件级指纹（路径 + 大小 + mtime）。用 node 而不是 find -printf：
+# 后者是 GNU 扩展，macOS 自带的 BSD find 没有 ⇒ 矩阵本来就照顾 macOS，这里不能破例。
+gate_real_data_manifest() {
+  node -e '
+    const fs=require("fs"),path=require("path");
+    const root=process.argv[1];const out=[];
+    (function walk(d){let es;try{es=fs.readdirSync(d,{withFileTypes:true});}catch(e){return;}
+      for(const e of es){const p=path.join(d,e.name);
+        if(e.isDirectory()){if(e.name==="tmp")continue;walk(p);}
+        else if(e.isFile()){let st;try{st=fs.statSync(p);}catch(_){continue;}
+          out.push(path.relative(root,p)+"\t"+st.size+"\t"+st.mtimeMs);}}})(root);
+    out.sort();process.stdout.write(out.join("\n"));
+  ' "$GATE_REAL_DATA"
+}
+
+gate_seed_shadow
+export BITBOT_DATA_ROOT="$GATE_SHADOW/data"
+gate_real_data_manifest > "$GATE_REAL_DATA_MANIFEST"
+cd "$GATE_SHADOW" || exit 1
+
 PASS=0; FAIL=0
 
 # ---- 已知红台账的原料：把本轮打出来的红行逐条记下来 ---------------------------
@@ -185,7 +249,8 @@ console.log("夹具 Bot "+drop(bp,"bots",(s)=>FIXTURE_BOT.test(s))+"、夹具群
 # ⇒ 没有 setsid 就退回原样（宁可不杀，也不误杀）。
 if [ -z "${BITBOT_GATE_PGID_OK:-}" ] && command -v setsid >/dev/null 2>&1; then
   export BITBOT_GATE_PGID_OK=1
-  exec setsid bash "$0" "$@"
+  # 用**绝对**路径重启：矩阵现在会 cd 到影子根，相对的 $0 就不认得了。
+  exec setsid bash "$GATE_SCRIPT_ABS" "$@"
 fi
 
 # 杀**自己这一组**里除自己以外的进程（孤儿 electron / moon / node）。
@@ -201,7 +266,7 @@ gate_kill_own_group() {
     kill -9 "$p" 2>/dev/null || true
   done
 }
-trap 'gate_kill_own_group >/dev/null 2>&1; purge_gate_fixtures >/dev/null 2>&1; gate_llm_restore >/dev/null 2>&1' EXIT
+trap 'gate_kill_own_group >/dev/null 2>&1; purge_gate_fixtures >/dev/null 2>&1; gate_llm_restore >/dev/null 2>&1; rm -rf "$GATE_SHADOW" >/dev/null 2>&1' EXIT
 # 信号也要走同一套收尾：外层 timeout 默认发 SIGTERM ⇒ 只挂 EXIT 的话，
 # bash 会退出并跑 EXIT trap，但先把整组带走更干净（SIGKILL 无能为力）。
 trap 'gate_kill_own_group >/dev/null 2>&1; exit 130' INT
@@ -6380,12 +6445,24 @@ if [ -n "$GATE_KNOWN_RED" ]; then
 fi
 fi
 
+# ---- 真 data/ 守卫：矩阵不许碰用户数据 ---------------------------------------
+# 这条不是「给门禁的门禁」，是**用户数据的保护栏**：矩阵跑完之后，
+# 仓库真 data/ 的文件级指纹必须与开跑前**逐条一致**。
+# 有了影子根，这一条应该恒绿；它恒红，说明又有人把相对路径写回了真目录。
+gate_real_data_manifest > /tmp/gate-real-data-after.txt
+if diff -q "$GATE_REAL_DATA_MANIFEST" /tmp/gate-real-data-after.txt >/dev/null 2>&1; then
+  ok "真 data/ 逐文件未被改写（跑前跑后指纹一致：$(wc -l < "$GATE_REAL_DATA_MANIFEST" | tr -d ' ') 个文件）"
+else
+  diff "$GATE_REAL_DATA_MANIFEST" /tmp/gate-real-data-after.txt > /tmp/gate-real-data-diff.txt 2>&1 || true
+  bad "真 data/ 被门禁改写了（指纹不一致，差异见 /tmp/gate-real-data-diff.txt）—— 门禁不许碰用户数据"
+fi
+
 echo "== 分层小结 =="
 echo "  · 本次跑的层：${TIER_SEL}"
 echo "  · 已知红（真实缺陷，如实报出、不拖红矩阵）：${GATE_KNOWN_RED:-（无）}"
 echo "  · 跳过（环境不具备；SKIP ≠ PASS）：${GATE_SKIP} 条"
 
-echo "  · 收尾自清：$(purge_gate_fixtures)（本轮矩阵造的 Smoke 夹具不留在用户数据里；异常退出由 EXIT trap 兜）"
+echo "  · 数据隔离：矩阵全程在影子根 .gate-matrix/ 里跑（数据根 = 隔离 data/），用户真 data/ 逐文件未变"
 echo
 echo "smoke_grok_desktop_parity: PASS=$PASS FAIL=$FAIL SKIP=$GATE_SKIP tiers=${TIER_SEL}"
 [ "$FAIL" -eq 0 ]

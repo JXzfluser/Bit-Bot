@@ -29,9 +29,26 @@ const T = req(path.join(REPO, "hosts/shared/turn_latency.js"));
 const { _electron } = createRequire(path.join(DESKTOP, "package.json"))("playwright-core");
 const ELECTRON = resolveElectronBinary(DESKTOP);
 const UD = electronUserDataDir("turn-latency");
-const DATA = path.join(REPO, "data/desktop");
+/* 数据根隔离（2026-11-22 补）：这扇门以前**直接在仓库真 data/ 上跑** ——
+ * 应用没设 BITBOT_DATA_ROOT，于是 Host 与内核都写真目录；门再从真目录读 latency 记录，
+ * 所以它"跑得通"，代价是用户的数据目录被门禁反复写。
+ * 现在：种子拷到 <tmp根>/data，应用与门都走这一份。
+ * 形状必须是 <根>/data —— 内核 cwd = dirname(DATA_ROOT)（host_ffi.js:183），
+ * 内核按 cwd 相对写 `data/...` ⇒ 这样内核那一半与 Host 那一半才落在同一处。 */
+const GATE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-e2e-latency-"));
+const GATE_DATA = path.join(GATE_ROOT, "data");
+fs.mkdirSync(GATE_DATA, { recursive: true });
+try { fs.symlinkSync(path.join(REPO, "cmd"), path.join(GATE_ROOT, "cmd"), "dir"); } catch { /* 已在或不存在 */ }
+process.on("exit", () => { try { fs.rmSync(GATE_ROOT, { recursive: true, force: true }); } catch { /* 收尾失败不改判据 */ } });
+(function copyTree(src, dst) {
+  if (!fs.existsSync(src)) return;
+  const st = fs.statSync(src);
+  if (st.isDirectory()) { fs.mkdirSync(dst, { recursive: true }); for (const e of fs.readdirSync(src)) copyTree(path.join(src, e), path.join(dst, e)); }
+  else { fs.mkdirSync(path.dirname(dst), { recursive: true }); try { fs.copyFileSync(src, dst); } catch { /* 大文件/占用 ⇒ 跳过 */ } }
+})(path.join(REPO, "data"), GATE_DATA);
+const DATA = path.join(GATE_DATA, "desktop");
 const BOTS = path.join(DATA, "bots.json");
-const LAT_DIR = path.join(REPO, "data/latency");
+const LAT_DIR = path.join(GATE_DATA, "latency");
 const BOT_NAME = "KP04计时Bot";
 const STUB_PORT = Number(process.env.KP04_STUB_PORT || 8817);
 // 三条消息的**已知**首字下限（ms）：彼此相隔 300ms，ms 抖动不可能把它们撞成相等。
@@ -77,7 +94,7 @@ function sweepFixtures() {
 }
 const dayFile = () => path.join(LAT_DIR, T.dayKey(Date.now()) + ".jsonl");
 const snapBytes = fs.existsSync(dayFile()) ? fs.readFileSync(dayFile()) : null;
-const beforeIds = new Set(T.readRecords(path.join(REPO, "data"), {}).map((r) => r.turn_id));
+const beforeIds = new Set(T.readRecords(GATE_DATA, {}).map((r) => r.turn_id));
 function restore() {
   try {
     const p = dayFile();
@@ -125,6 +142,8 @@ const launchEnv = electronLaunchEnv({
   PATH: (process.env.HOME || "") + "/.moon/bin:" + (process.env.PATH || ""),
   MOON_BIN: process.env.MOON_BIN || path.join(os.homedir(), ".moon/bin/moon"),
   BITBOT_REPO_ROOT: REPO,
+  // 应用与门读同一份隔离数据 —— 仓库真 data/ 一个字节都不碰。
+  BITBOT_DATA_ROOT: GATE_DATA,
   BITBOT_NO_SECRET_SYNC: "1",
   BITBOT_DESKTOP_AUTOSTART: "0",
   // 真流式：默认开（wantStream 只要 != "0"），让首个 delta 触发 first_token 打点。
@@ -183,7 +202,7 @@ try {
   });
 
   const newRecords = () =>
-    T.readRecords(path.join(REPO, "data"), { limit: 200 }).filter((r) => !beforeIds.has(r.turn_id));
+    T.readRecords(GATE_DATA, { limit: 200 }).filter((r) => !beforeIds.has(r.turn_id));
 
   for (let i = 0; i < FLOORS.length; i++) {
     const prevCount = newRecords().length;

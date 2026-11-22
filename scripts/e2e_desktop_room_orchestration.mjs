@@ -63,6 +63,22 @@ const REPO = path.resolve(__dirname, "..");
  */
 process.env.BITBOT_ROOM_TEAM_MODE = "0";
 const DESKTOP = path.join(REPO, "hosts/desktop");
+
+/* ---- 进程清理必须**按路径限定**（2026-11-22 补）------------------------------
+ * 原来这里按**名字**清：`pkill -9 -f "electron/dist/electron"` /
+ * `pkill -9 -f "openai_compat_stub.js"`。
+ * `-f` 匹配的是**整条命令行**，而同一台机器上可能有**另一个 checkout（worktree）
+ * 正在跑门禁** ⇒ 它的 electron / stub 一样命中 ⇒ 跨 worktree 互杀。
+ * 症状很有迷惑性：被杀的那扇门报
+ *   「Target page, context or browser has been closed」
+ * 看着像自己的应用崩了，其实是别人清的。
+ * 现在只清**自己这份 checkout** 的进程。 */
+const ELECTRON_BIN_PATH = path.join(DESKTOP, "node_modules/electron/dist/electron");
+const STUB_BIN_PATH = path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js");
+const killOnlyMine = (absPath) => {
+  const pattern = absPath.replace(/[.]/g, "[.]");
+  try { execSync("pkill -9 -f " + JSON.stringify(pattern), { stdio: "ignore" }); } catch { /* 没有就没事 */ }
+};
 const ELECTRON = resolveElectronBinary(DESKTOP);
 const ROOMS = path.join(REPO, "data/desktop/rooms.json");
 const SESSIONS = path.join(REPO, "data/desktop/sessions.json");
@@ -1044,11 +1060,11 @@ const DOM_COUNTS = () => ({
       try {
         await app.evaluate(({ app: electronApp }) => { electronApp.isQuiting = true; electronApp.quit(); });
         await Promise.race([app.close(), new Promise((_, rej) => setTimeout(() => rej(new Error("close timeout")), 15000))]);
-      } catch { try { execSync('pkill -9 -f "electron/dist/electron"', { stdio: "ignore" }); } catch { /* ignore */ } }
+      } catch { killOnlyMine(ELECTRON_BIN_PATH); }
     }
     if (stub) { try { stub.kill("SIGKILL"); } catch { /* ignore */ } }
-    try { execSync('pkill -9 -f "electron/dist/electron"', { stdio: "ignore" }); } catch { /* ignore */ }
-    try { execSync('pkill -9 -f "openai_compat_stub.js"', { stdio: "ignore" }); } catch { /* ignore */ }
+    killOnlyMine(ELECTRON_BIN_PATH);
+    killOnlyMine(STUB_BIN_PATH);
     try {
       fs.writeFileSync(path.join(SHOT_DIR, "gp145-rooms-evidence.json"), JSON.stringify(evidence, null, 2));
     } catch { /* ignore */ }

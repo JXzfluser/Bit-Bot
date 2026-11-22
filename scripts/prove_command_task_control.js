@@ -593,6 +593,44 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
   check(oneCard.bucket === "closed" && oneCard.steps === 1 && oneCard.archived === false,
     "TC-32 那张卡既带着转录里的成员明细、又不是「仅记录」卡", JSON.stringify(oneCard));
 
+  /* 【口径 2026-11-22】**按钮只在点了能成的时候才渲染** —— 桌面与服务端同一把尺:
+   *   · 服务端 can.steer / can.replan = !!task_sig
+   *     (scripts/prove_task_view_http.mjs TV-15);没有 sig 时命令接口回 task_sig_required。
+   *   · 桌面「刹停」早就是这么做的(bucket==working && task_sig 才给按钮)。
+   * 以前插话/改向是**无条件**渲染的 ⇒ 桌上出现「按下去必然失败」的按钮。
+   * 这条断言**双向**都钉:
+   *   · 有 sig 的卡 ⇒ 插话/改向按钮在(不许把能用的也藏了);
+   *   · 没有 sig 的卡 ⇒ 按钮和输入框都不在(不许留一个填了也发不出去的口子)。 */
+  const afford = await page.evaluate(() => {
+    const api = window.__bitbotCommand;
+    const keep = api.state.tasks.slice();
+    const mk = (sig) => ({
+      id: sig ? "r-sig" : "r-nosig", title: "x", task: "x", bucket: "working",
+      task_sig: sig || "", state: "working", steps: [], members: [],
+      room_id: "r", room_title: "r", line: "", at: "2026-11-22T10:00:00.000Z",
+    });
+    const probe = () => ({
+      input: document.querySelectorAll("#cmd-detail .cmd-input").length,
+      steer: document.querySelectorAll("#cmd-detail [data-cmd-steer]").length,
+      replan: document.querySelectorAll("#cmd-detail [data-cmd-replan]").length,
+    });
+    api.state.tasks = [mk("sig-yes")];
+    api.render();
+    const withSig = probe();
+    api.state.tasks = [mk("")];
+    api.render();
+    const noSig = probe();
+    api.state.tasks = keep;
+    api.render();
+    return { withSig, noSig };
+  });
+  check(afford.withSig.input >= 1 && afford.withSig.steer >= 1 && afford.withSig.replan >= 1,
+    "TC-33 有 task_sig 的卡 ⇒ 插话/改向按钮和输入框都在(不许把能用的也藏了)",
+    JSON.stringify(afford.withSig));
+  check(afford.noSig.input === 0 && afford.noSig.steer === 0 && afford.noSig.replan === 0,
+    "TC-33 没有 task_sig 的卡 ⇒ 按钮和输入框都不渲染(点了也只会拿到 task_sig_required)",
+    JSON.stringify(afford.noSig));
+
   // 批 H:值班区
   const dutyUi = await page.evaluate(() => {
     const d = document.getElementById("cmd-duty");

@@ -26508,17 +26508,29 @@
         // 否则并行只会变成"一堆 bot 同时动但说不清"。
         cmdRenderSteps(t.steps, t.task_sig, t.room_id) +
         // 指挥区:一句输入,两个动作 —— 插话(下一棒看见) / 改向(立刻重跑)。
-        '<div class="cmd-command">' +
-        '<input class="cmd-input" type="text" data-i18n-placeholder="cmdCmdPlaceholder" placeholder="' +
-          cmdEsc(cmdT("cmdCmdPlaceholder")) + '">' +
-        '<button type="button" class="bb-btn bb-btn-sm" data-cmd-steer="' + cmdEsc(t.task_sig) +
-          '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdSteer">' + cmdEsc(cmdT("cmdSteer")) + "</button>" +
-        '<button type="button" class="bb-btn bb-btn-sm" data-cmd-replan="' + cmdEsc(t.task_sig) +
-          '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdReplan">' + cmdEsc(cmdT("cmdReplan")) + "</button>" +
-        // 插话的诚实边界常驻小字(product_surface.js:2756 scope:"next_hop"):
-        // 下一棒看得见,**当前这一轮看不见** —— 不许让用户以为插话能打断这一轮。
-        '<span class="cmd-note cmd-steer-hint" data-i18n="cmdSteerScopeHint">' + cmdEsc(cmdT("cmdSteerScopeHint")) + "</span>" +
-        "</div>" +
+        //
+        // 【口径(2026-11-22)】**按钮只在点了能成的时候才渲染**。
+        // 这不是新规矩,是把「刹停」的先例补齐到插话/改向上:
+        //   · 刹停早就这么做了 —— `t.bucket === "working" && t.task_sig` 才给按钮
+        //     (下面那段),理由写在注释里:「没有在跑的,按下去只会得到一句 no_running_task」。
+        //   · 服务端同一把尺:can.steer / can.replan = !!task_sig
+        //     (scripts/prove_task_view_http.mjs TV-15);没有 sig 时命令接口回 task_sig_required。
+        //   · 而输入框只被插话/改向用(它取的是 [data-cmd-steer]/[data-cmd-replan] 上的 sig),
+        //     所以没有 sig 时,连输入框一起不渲染 —— 留一个填了也发不出去的口子更糟。
+        // ⇒ 桌面与服务端从此是同一把尺,不再出现「按钮在、点了必失败」。
+        (t.task_sig
+          ? '<div class="cmd-command">' +
+              '<input class="cmd-input" type="text" data-i18n-placeholder="cmdCmdPlaceholder" placeholder="' +
+                cmdEsc(cmdT("cmdCmdPlaceholder")) + '">' +
+              '<button type="button" class="bb-btn bb-btn-sm" data-cmd-steer="' + cmdEsc(t.task_sig) +
+                '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdSteer">' + cmdEsc(cmdT("cmdSteer")) + "</button>" +
+              '<button type="button" class="bb-btn bb-btn-sm" data-cmd-replan="' + cmdEsc(t.task_sig) +
+                '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdReplan">' + cmdEsc(cmdT("cmdReplan")) + "</button>" +
+              // 插话的诚实边界常驻小字(product_surface.js:2756 scope:"next_hop"):
+              // 下一棒看得见,**当前这一轮看不见** —— 不许让用户以为插话能打断这一轮。
+              '<span class="cmd-note cmd-steer-hint" data-i18n="cmdSteerScopeHint">' + cmdEsc(cmdT("cmdSteerScopeHint")) + "</span>" +
+            "</div>"
+          : "") +
         '<div class="cmd-actions">' +
         '<button type="button" class="bb-btn bb-btn-sm" data-cmd-open-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">' + cmdEsc(cmdT("cmdOpenRoom")) + "</button>" +
         // 「刹停」只在**真在跑**且有 task_sig 时才给 —— 没有在跑的,

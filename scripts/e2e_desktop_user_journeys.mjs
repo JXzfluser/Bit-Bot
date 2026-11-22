@@ -41,6 +41,22 @@ const UD = electronUserDataDir("user-journeys");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
+
+/* ---- 进程清理必须**按路径限定**（2026-11-22 补）------------------------------
+ * 原来这里按**名字**清：`pkill -9 -f "electron/dist/electron"` /
+ * `pkill -9 -f "openai_compat_stub.js"`。
+ * `-f` 匹配的是**整条命令行**，而同一台机器上可能有**另一个 checkout（worktree）
+ * 正在跑门禁** ⇒ 它的 electron / stub 一样命中 ⇒ 跨 worktree 互杀。
+ * 症状很有迷惑性：被杀的那扇门报
+ *   「Target page, context or browser has been closed」
+ * 看着像自己的应用崩了，其实是别人清的。
+ * 现在只清**自己这份 checkout** 的进程。 */
+const ELECTRON_BIN_PATH = path.join(DESKTOP, "node_modules/electron/dist/electron");
+const STUB_BIN_PATH = path.join(REPO, "scripts/dev_stubs/openai_compat_stub.js");
+const killOnlyMine = (absPath) => {
+  const pattern = absPath.replace(/[.]/g, "[.]");
+  try { execSync("pkill -9 -f " + JSON.stringify(pattern), { stdio: "ignore" }); } catch { /* 没有就没事 */ }
+};
 const ELECTRON = resolveElectronBinary(DESKTOP);
 /* 隔离数据目录（2026-11-21 修）：
  * 原来这里直接用 **仓库真实的 data/**。dev 模式下应用写的也是仓库的 data/
@@ -52,9 +68,18 @@ const ELECTRON = resolveElectronBinary(DESKTOP);
  * ⇒ 门禁必须有自己的一份数据目录：应用与门禁都指向它，仓库那份不碰。
  *   模式照抄 e2e_desktop_artifacts 等已隔离的脚本（gateAppEnv + BITBOT_DATA_ROOT）。
  */
-const GATE_DATA = path.join(os.tmpdir(), "bitbot-e2e-data-user-journeys");
-fs.rmSync(GATE_DATA, { recursive: true, force: true });
+/* 数据根的形状有讲究（2026-11-22 补）：**必须是 <根>/data 这种形状**。
+ * 因为 KERNEL_CWD = dirname(DATA_ROOT)（hosts/shared/host_ffi.js:183），
+ * 内核按 cwd 相对写 `data/...` ⇒ 若 DATA_ROOT 直接放在 tmpdir 下面，
+ * 内核那一半会写到 /tmp/data，与 Host 写的 GATE_DATA **分叉**（半隔离）。
+ * 改成 <tmp根>/data 之后：内核 cwd = <tmp根> ⇒ 内核写 <tmp根>/data = GATE_DATA，
+ * Host 也写 GATE_DATA ⇒ 两侧同源。
+ * 另：给 <tmp根> 加一条 cmd 软链，万一走 `moon run`（没钉二进制时）也能解析 cmd/。 */
+const GATE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-e2e-uj-"));
+const GATE_DATA = path.join(GATE_ROOT, "data");
 fs.mkdirSync(GATE_DATA, { recursive: true });
+try { fs.symlinkSync(path.join(REPO, "cmd"), path.join(GATE_ROOT, "cmd"), "dir"); } catch { /* 已在或不存在 */ }
+process.on("exit", () => { try { fs.rmSync(GATE_ROOT, { recursive: true, force: true }); } catch { /* 收尾失败不改判据 */ } });
 /* 拷一份 **快照**:应用启动需要 data/ 里的若干骨架(app-install / 模板 / provider
    配置 / 设置…)。缺了会卡在启动(实测:只建两个空目录 ⇒ 窗口起不来,门禁只打一行)。
  * 快照是**拷贝**,仓库那份一个字节都不动 —— 门禁在自己的副本上跑。 */
@@ -1299,7 +1324,12 @@ const forbiddenHit = (text) => {
         bad("GP-168 真唤醒取证没能在真 Electron 里验：渲染入口不在页面作用域", JSON.stringify(reach168));
       } else {
         const R168 = "uj-gp168";
-        const STUB_DIR = path.join(REPO, "data", "agents", "handoffs");
+        /* 这一格以前读写真实仓库 data/（STUB_DIR 指向 REPO/data/agents/handoffs、
+         * surface 的 dataRoot 也指向 REPO/data）⇒ 门禁在**用户的数据目录**里建夹具，
+         * 而且它的判据（「数据根里已有非探针的转交挂账 ⇒ skip」）读的是用户目录 ——
+         * 于是真数据里堆的挂账越多，这一格越容易被判成 skip/红。
+         * 现在两侧都走隔离根 GATE_DATA：门只跟自己的副本打交道。 */
+        const STUB_DIR = path.join(GATE_DATA, "agents", "handoffs");
         const others168 = (() => {
           try { return fs.readdirSync(STUB_DIR).filter((f) => /^handoff-.+\.json$/.test(f)); } catch (_) { return []; }
         })();
@@ -1318,7 +1348,7 @@ const forbiddenHit = (text) => {
           rs168.rooms.push({ id: R168, title: "UJ GP168 唤醒探针", members: [from168, to168], transcript: [] });
           fs.writeFileSync(ROOMS, JSON.stringify(rs168, null, 2));
           const { createProductSurface } = require(path.join(DESKTOP, "product_surface.js"));
-          const surface168 = createProductSurface(REPO, { dataRoot: path.join(REPO, "data") });
+          const surface168 = createProductSurface(REPO, { dataRoot: GATE_DATA });
           const pend168 = await surface168.handoffTaskAsync(
             { room: R168, from_bot: from168, to_bot: to168, task: "【GP168 探针】昨晚定时发文挂了的稿子" },
             { runResponderTurn: async () => ({ ok: false, error: "provider down", text: "", artifacts: [] }) },
@@ -1332,7 +1362,9 @@ const forbiddenHit = (text) => {
             const stubNow = () => { try { return JSON.parse(fs.readFileSync(stubFile, "utf8")); } catch (_) { return {}; } };
             const sweep = () => execFileSync("node", ["hosts/cli_host/run_turn.js", "tick routines"], {
               cwd: REPO, encoding: "utf8", timeout: 240000, stdio: ["ignore", "pipe", "ignore"],
-              env: { ...process.env, BITBOT_NEST_DEPTH: "1" },
+              /* 数据根必须显式传下去：这个子进程是独立入口，不继承门禁自己的隔离根，
+               * 少了它就会落回 REPO/data（用户真数据）。 */
+              env: { ...process.env, BITBOT_NEST_DEPTH: "1", BITBOT_DATA_ROOT: GATE_DATA },
             });
             const render168 = async () => {
               await win.evaluate((id) => renderRoomTranscript(id), R168);
@@ -1371,8 +1403,8 @@ const forbiddenHit = (text) => {
     await quitApp().catch(() => {});
     if (stubMain) { try { stubMain.kill("SIGKILL"); } catch { /* ignore */ } }
     if (stubQwen) { try { stubQwen.kill("SIGKILL"); } catch { /* ignore */ } }
-    try { execSync('pkill -9 -f "dist/[e]lectron"', { stdio: "ignore" }); } catch { /* ignore */ }
-    try { execSync('pkill -9 -f "openai_compat_stub.js"', { stdio: "ignore" }); } catch { /* ignore */ }
+    killOnlyMine(ELECTRON_BIN_PATH);
+    killOnlyMine(STUB_BIN_PATH);
     try { fs.writeFileSync(path.join(ART, "uj-journeys-evidence.json"), JSON.stringify(evidence, null, 2)); } catch { /* ignore */ }
     // 运行期文件复原：不删用户历史，只回到本次运行前的样子
     const restore = (p, buf) => { if (buf !== null) fs.writeFileSync(p, buf); else if (fs.existsSync(p)) fs.rmSync(p, { force: true }); };

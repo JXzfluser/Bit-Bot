@@ -120,3 +120,6 @@ docs/design/desktop-target/reference/modal-computed.json
 # 交付物不进仓：worker 的交付物写到 /workspace/output/ 与自己的 worktree 根，
 # 但那是过程产物，不属于产品仓库。
 deliverable.md
+
+# 门禁影子根（矩阵的数据隔离根；里面是用户 data/ 的一份拷贝，绝不能进仓）
+/.gate-matrix/

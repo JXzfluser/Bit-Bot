@@ -572,10 +572,16 @@ async function setTheme(win, mode) {
         : bad("user bubble drifted (§4.4 wants #1c1c1c / white / 18 / inset)", JSON.stringify(u));
     }
 
-    const out = path.join(REPO, "docs/design/desktop-target/reference/grok-spec-computed.json");
+    /* 快照是**本轮实测产物**，不是期望基线 ⇒ 必须写 artifacts/。
+     * 以前它写 docs/design/desktop-target/reference/grok-spec-computed.json ——
+     * 那是 reference/ 目录，期望基线住在里面，只有人能改。
+     * 于是门禁每跑一次就把「我方当前长什么样」覆盖进 reference/，
+     * 而这份文件恰恰是 §8.97 那次自证循环里被当成「真源」引用的那一类。
+     * 现在：产物进 artifacts/grok-spec/，reference/ 里的那份保持人工版本不动。 */
+    const out = path.join(REPO, "artifacts/grok-spec/grok-spec-computed.json");
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, JSON.stringify(snapshot, null, 2) + "\n");
-    console.log(`  · snapshot → ${path.relative(REPO, out)}`);
+    console.log(`  · snapshot → ${path.relative(REPO, out)}（产物，不是基线；reference/ 未动）`);
   } catch (e) {
     bad("gate block", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));
   } finally {
