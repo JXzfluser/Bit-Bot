@@ -120,3 +120,8 @@ docs/design/desktop-target/reference/modal-computed.json
 # 交付物不进仓：worker 的交付物写到 /workspace/output/ 与自己的 worktree 根，
 # 但那是过程产物，不属于产品仓库。
 deliverable.md
+
+# 门禁的隔离数据根（scripts/e2e_desktop_shell_v2.mjs 等）：跑在 checkout 的
+# 直接子目录里（内核的 cwd = dirname(DATA_ROOT)，见 hosts/desktop/paths.js），
+# 跑完自删；万一有一次被强杀，留下的目录也不该进版本库。
+/.gate-data-*/

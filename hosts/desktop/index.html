@@ -9577,9 +9577,15 @@
     // Display-only localization for the English template metadata. The backend
     // ids / job / description in the Host catalog are NEVER changed — this is a
     // pure view map keyed by id, so marketplace cards and the prefilled create
-    // form read in the current UI language. Lang keys use zh_cn / zh_tw (not the
-    // quoted "zh-CN"/"zh-TW" dict anchors) so this map can never be mistaken for
-    // an i18n dictionary by the structural gates.
+    // form read in the current UI language. Lang keys use zh_cn / zh_tw / en
+    // (not the quoted "zh-CN"/"zh-TW"/"en" dict anchors) so this map can never
+    // be mistaken for an i18n dictionary by the structural gates.
+    //
+    // 【2026-11-22 修】三语必须**齐全**：以前只有 media-content-team 有 en，
+    // 另外 6 条只有 zh_cn/zh_tw ⇒ 英文界面里模板市场整屏中文（标题/岗位/描述
+    // 全是 Host 目录里的中文原文）。en 缺一条 = 那个模板在英文界面里说中文。
+    // scripts/prove_copy_contract.js 的 CC-14 现在按「三件套键集合一致」盯着
+    // 这张表（再加一条 en ⇒ CC-14 当场翻红）。
     const TPL_COPY = {
       "media-content-team": {
         zh_cn: { name: "自媒体内容团队", job: "内容流水线", desc: "追踪 AI 科技热点 → 整理成稿 → 排出可发布的排版稿。每一棒只交草稿,发布与发送等你点头。" },
@@ -9589,31 +9595,40 @@
       "sales-outbound": {
         zh_cn: { name: "Ivy", job: "外呼销售", desc: "调研目标客户、整理联系人，并以我的口吻起草外呼内容，草稿需审批。未经批准绝不发送。" },
         zh_tw: { name: "Ivy", job: "外呼業務開發", desc: "調研目標客戶、整理聯絡人，並以我的口吻起草外呼內容，草稿需審批。未經批准絕不發送。" },
+        en: { name: "Ivy", job: "Outbound sales", desc: "Research target customers, tidy up contacts, and draft outreach in my voice. Drafts need approval; nothing is ever sent without it." },
       },
       "talent-scout": {
         zh_cn: { name: "Sage", job: "人才搜寻", desc: "按岗位要求筛选候选人、保留链接、区分证据与推测。绝不直接联系候选人。" },
         zh_tw: { name: "Sage", job: "人才搜尋", desc: "依崗位要求篩選候選人、保留連結、區分證據與推測。絕不直接聯絡候選人。" },
+        en: { name: "Sage", job: "Talent scouting", desc: "Screen candidates against the role, keep the source links, and separate evidence from guesswork. Never contacts candidates directly." },
       },
       "paid-media": {
         zh_cn: { name: "Ad", job: "付费投放", desc: "在各投放平台规划并起草投放调整，明确预算上限，准备素材供审阅。未经批准绝不上线或改预算。" },
         zh_tw: { name: "Ad", job: "付費投放", desc: "在各投放平台規劃並起草投放調整，明確預算上限，準備素材供審閱。未經批准絕不上線或改預算。" },
+        en: { name: "Ad", job: "Paid media", desc: "Plan and draft ad changes across platforms, with a hard budget ceiling and creative ready for review. Nothing goes live and no budget moves without approval." },
       },
       "expense-manager": {
         zh_cn: { name: "Ledger", job: "报销管理", desc: "收集票据、对照政策核对、准备审批清单。未经明确批准绝不提交报销。" },
         zh_tw: { name: "Ledger", job: "報銷管理", desc: "收集票據、對照政策核對、準備審批清單。未經明確批准絕不提交報銷。" },
+        en: { name: "Ledger", job: "Expense admin", desc: "Collect receipts, reconcile them against policy, and prepare the approval list. Never submits an expense without explicit approval." },
       },
       "bug-reproduction": {
         zh_cn: { name: "Repro", job: "缺陷复现", desc: "在 Bot 电脑的浏览器里复现所报缺陷，捕获步骤与截图，撰写复现说明。绝不改动生产设置。" },
         zh_tw: { name: "Repro", job: "缺陷重現", desc: "在 Bot 電腦的瀏覽器裡重現所報缺陷，捕獲步驟與截圖，撰寫重現說明。絕不改動生產設定。" },
+        en: { name: "Repro", job: "Bug reproduction", desc: "Reproduce the reported defect in the Bot's browser, capture the steps and screenshots, and write up the repro. Never changes production settings." },
       },
       "chief-of-staff": {
         zh_cn: { name: "Chief", job: "幕僚长", desc: "梳理收件箱与日历，以我的口吻起草回复，维护含待决策项的每日简报。未经批准绝不代发或提交。" },
         zh_tw: { name: "Chief", job: "幕僚長", desc: "梳理收件匣與日曆，以我的口吻起草回覆，維護含待決策項的每日簡報。未經批准絕不代發或提交。" },
+        en: { name: "Chief", job: "Chief of staff", desc: "Triage the inbox and calendar, draft replies in my voice, and keep a daily brief with the open decisions. Never sends or submits without approval." },
       },
     };
     function tplCopy(tpl) {
       const id = tpl && tpl.id;
-      const code = wavegLang === "zh-CN" ? "zh_cn" : wavegLang === "zh-TW" ? "zh_tw" : null;
+      /* 【2026-11-22 修】英文也要有分支。以前这里只认 zh_cn / zh_tw，英文落到
+         null ⇒ 直接用 Host 目录里的**中文原文**当显示文案 ⇒ 英文界面里模板市场
+         整屏中文（TPL_COPY 里写好的 en 词条根本到不了）。 */
+      const code = wavegLang === "zh-CN" ? "zh_cn" : wavegLang === "zh-TW" ? "zh_tw" : wavegLang === "en" ? "en" : null;
       const map = code && id && TPL_COPY[id] ? TPL_COPY[id][code] : null;
       return map || { name: (tpl && tpl.default_name) || "", job: (tpl && tpl.job) || "", desc: (tpl && tpl.description) || "" };
     }
@@ -9687,7 +9702,7 @@
           }
           const btn = document.createElement("button");
           btn.type = "button";
-          btn.textContent = isTeam ? "一键成队" : wavegT("mkCreate");
+          btn.textContent = isTeam ? wavegT("mkCreateTeam") : wavegT("mkCreate");
           btn.style.cssText =
             "align-self:flex-start;background:var(--accent);color:var(--accent-ink);border:0;" +
             "border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:12px";
@@ -9726,6 +9741,12 @@
       if (n) n.value = c.name || "";
       if (j) j.value = c.job || "";
       if (d) d.value = c.desc || "";
+      /* 【2026-11-22 修】预填完把「描述字数」和「头像首字母」跟着刷一遍。
+         openBotForm() 是在**空值**状态下算这两个的（描述 0 字、头像字母 B），
+         模板预填发生在它之后 ⇒ 表单上写着「0 字」、头像还是 B，
+         跟他即将建出来的那个 Bot 对不上（真机上看得见）。 */
+      if (typeof bfSyncDescCount === "function") bfSyncDescCount();
+      if (typeof bfRenderAvatar === "function") bfRenderAvatar((n && n.value) || "");
     }
     let _mkError = false;
     async function refreshMarketplace() {
@@ -18802,6 +18823,7 @@
         settingsRefused: "设置暂时无法打开",
         mkEmpty: "本机没有可用模板。",
         mkCreate: "创建",
+        mkCreateTeam: "一键成队",
         mkUse: "使用",
         roomEmpty: "还没有群组。",
         roomListReadFail: "群组列表暂时读不到（存储不可读）—— 这不是没有群，恢复后列表仍在。",
@@ -20320,6 +20342,7 @@
         settingsRefused: "設定暫時無法開啟",
         mkEmpty: "Host 沒有可用模板。",
         mkCreate: "建立",
+        mkCreateTeam: "一鍵成隊",
         mkUse: "使用",
         roomEmpty: "還沒有群組。",
         roomListReadFail: "群組清單暫時讀不到（儲存不可讀）—— 這不是沒有群，恢復後清單仍在。",
@@ -21834,6 +21857,7 @@
         settingsRefused: "Settings cannot be opened right now",
         mkEmpty: "The Host has no templates.",
         mkCreate: "Create",
+        mkCreateTeam: "Build team",
         mkUse: "Use",
         roomEmpty: "No groups yet.",
         roomListReadFail: "Group list is unreadable right now (store unavailable) — these groups are not gone; the list returns when it recovers.",
@@ -23232,6 +23256,13 @@
           if (window.__bitbotCommand && typeof window.__bitbotCommand.render === "function")
             window.__bitbotCommand.render();
         } catch (_) { /* 指挥台还没起来 */ }
+        // 【2026-11-22 修】模板市场（GP-116）也是**渲染那一刻取词**的：卡片标题 /
+        // 岗位 / 描述 / 按钮文案都是 JS 画的（TPL_COPY 视图映射 + wavegT）。
+        // 以前换语言后不重画 ⇒ 面板开着的时候切语言，屏幕上留着上一种语言
+        // （英文界面里那张卡片还是中文）。跟上面指挥台那条同一个病，同一个修法。
+        try {
+          if (typeof renderMarketplace === "function") renderMarketplace();
+        } catch (_) { /* 模板目录还没就绪（mkTemplates / TPL_COPY 还在 TDZ） */ }
       } catch (_) { /* not booted yet */ }
     }
     /** GP-70b: renderer-side theme override follows persisted appearance. */

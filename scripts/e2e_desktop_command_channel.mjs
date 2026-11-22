@@ -26,7 +26,7 @@ import { fileURLToPath } from "url";
 import { createRequire } from "module";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir, isolatedRepoRoot, gateAppEnv, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, isolatedRepoRoot, gateAppEnv, hasDisplay, waitForUiSettled, waitForToast } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -151,6 +151,11 @@ const readSchedules = () => {
    （CSS display:none，Alt+D 才显示），textContent 会把它们一起读出来，
    用它断言就会把"已经藏好了"误判成"泄漏"。 */
 const bubbleCount = (win) => win.evaluate(() => document.querySelectorAll("#log .msg").length);
+/* 【不要】另立一个「只数看得见的气泡」的尺来断「有没有多一行」：
+   #log 里那些 debug-only 行（CSS display:none）**也在** .msg 里，
+   bubbleCount 把它们一起数上 —— 这才是更严的那把尺（用户面前多一行 = 多一行）。
+   若把判据改成「只算可见的」，等于把「一条都没多」放宽成「可见的一条都没多」，
+   施工说明行就能白送。 */
 const bubbleTexts = (win) =>
   win.evaluate(() =>
     Array.from(document.querySelectorAll("#log .msg"))
@@ -255,21 +260,30 @@ async function waitFor(fn, ms, step) {
     await win.waitForTimeout(1000);
 
     /* ---------- C-01 外观命令：不进对话 + 真的生效 ---------- */
+    /* 基线必须等消息流**安静下来**再拍：应用启动后会插一行自己的占位气泡
+     * （空 assistant 气泡 + .typing 指示器）。抢在它前面拍基线、之后量 ⇒
+     * 凭空多一行 ⇒ 判成「命令泄漏进对话」。等状态，不靠猜 sleep。
+     * （占位那行是**应用自己的**，与用户发什么毫无关系；判据仍是
+     *   「一条气泡都没多」——bubbleCount 把 debug 行也算上，更严。） */
+    await waitForUiSettled(win);
     const b0 = await bubbleCount(win);
     await say(win, "set appearance dark");
     const b1 = await bubbleCount(win);
     const darkOn = await win.evaluate(() => document.body.classList.contains("force-dark"));
-    const t1 = await toastState(win);
+    /* 回执是**异步**的（命令 → 内核静默通道 → settings → toast）：等它真的
+     * 出现再读，别赌 900ms 之后它已经到了。判据不变（可见 + 有字）。 */
+    const t1 = await waitForToast(win, {});
+    const t1State = await toastState(win);
     b1 === b0
       ? ok("C-01 `set appearance dark` 没有新增任何气泡（" + b0 + " → " + b1 + "）")
       : bad("C-01 command leaked into the transcript", JSON.stringify({ before: b0, after: b1 }));
     darkOn ? ok("C-01 主题真的切到深色（body.force-dark）") : bad("C-01 appearance not applied", String(darkOn));
-    !t1.hidden && t1.text
+    t1.matched
       ? ok("C-01 回执落在 #cmd-toast：" + t1.text)
       : bad("C-01 no toast receipt", JSON.stringify(t1));
-    t1.pe === "none"
+    t1State.pe === "none"
       ? ok("C-01 回执不拦点击（pointer-events: none）")
-      : bad("C-01 toast blocks clicks", String(t1.pe));
+      : bad("C-01 toast blocks clicks", String(t1State.pe));
 
     const set1 = readJson("settings.json") || {};
     String(set1.appearance || "") === "dark"
@@ -313,20 +327,25 @@ async function waitFor(fn, ms, step) {
     b3 === b2after
       ? ok("C-03 组队全程 0 气泡（结果只在侧栏 + 一行回执）")
       : bad("C-03 team brief leaked into transcript", JSON.stringify({ before: b2after, after: b3 }));
-    const t3 = await toastState(win);
+    /* 组队是「建 3 个 Bot + 建群 + 派活」几串 IPC，回执要 ~1.5s 才到。
+     * 原来在 say() 的 900ms 就去读 toast ⇒ 读到的是**上一条命令**的回执
+     * （"已设置：总是允许"）⇒ 判成「回执含糊」。等「真属于这一条」的回执。 */
+    const t3 = await waitForToast(win, { match: /新团队/ });
     /3/.test(t3.text) && /新团队/.test(t3.text)
       ? ok("C-03 回执说清了「建了几个 + 哪个团队」：" + t3.text)
-      : bad("C-03 receipt vague", JSON.stringify(t3.text));
+      : bad("C-03 receipt vague", JSON.stringify({ text: t3.text, matched: t3.matched }));
 
     /* ---------- C-04 只说「组建团队」：不造东西，教怎么说话 ---------- */
     const before4 = botsNow().length;
     await say(win, "组建团队");
     const after4 = botsNow().length;
-    const t4 = await toastState(win);
+    /* 等**这一条**的回执：warn 且与上一条不同（否则迟到的 C-03 回执会把 C-04
+     * 的判据顶掉 —— 那正是「C-03 回执盖掉 C-04 ⇒ 没有提示 toast」那个红）。 */
+    const t4 = await waitForToast(win, { warn: true, differsFrom: t3.text });
     after4 === before4
       ? ok("C-04 没给角色时不建任何 Bot（不猜）")
       : bad("C-04 built bots without roles", JSON.stringify({ before: before4, after: after4 }));
-    !t4.hidden && t4.text && t4.warn
+    t4.matched
       ? ok("C-04 回执教了一句怎么说话：" + t4.text)
       : bad("C-04 no hint toast", JSON.stringify(t4));
 
