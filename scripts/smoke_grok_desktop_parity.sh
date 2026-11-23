@@ -5029,6 +5029,43 @@ echo "    J 一句「好。」这种短答复不落 .md（deliverable_skipped=to
 echo "    把这一轮算成 partial。"
 
 fi
+if want L2; then
+echo "== G-140 产物契约门：成员交上来的必须是「成果本身」，不是对成果的转述 =="
+# 批次 1（2026-11-23）：团队模板的角色 prompt 里**早就写死了**【固定交付】（写哪个文件）
+#   与【验收】——「完成后只汇报文件路径、条数和未完成原因」⇒ 产物本来就是**那个文件**；
+#   而 Host 侧不认这个契约 ⇒ 拿成员那句「已看过上一棒…差异点已标注出处」的**汇报**当交付
+#   落盘 ⇒ 实测产物只有 882 字节的转述，而且两棒成员交的话**一字不差**（没在干各自的活）。
+# ⇒ 本门钉住：正例（产物正文 = 文件正文）、负例（只交转述 ⇒ 驳回/下游不接力/产物不落盘/
+#   群里说清原因）、变异对照（关掉验收 ⇒ 负例必须翻红 ⇒ 判据有牙）、隔离（真数据没动）。
+if timeout 300 node scripts/prove_stage_artifact_contract.js > /tmp/g140-stage-contract.log 2>&1; then
+  ok "G-140 prove_stage_artifact_contract（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g140-stage-contract.log | tail -1)）"
+else
+  bad "G-140 prove_stage_artifact_contract（见 /tmp/g140-stage-contract.log；$(grep '✗' /tmp/g140-stage-contract.log | head -3 | tr '\n' ' ')）"
+fi
+# 锚点钉 [SA-nn]/[SB-nn]/[SC-nn]/[SD-nn]：编号只加在 ok() 文案上，红行没有编号 ⇒ 漏一条就红。
+for g140_id in SA-01 SA-02 SA-03 SA-04 SA-05 SA-06 SA-07 SA-08 SA-09 SA-10 \
+                SB-01 SB-02 SB-03 SB-04 SB-05 SB-06 SB-07 SC-01 SC-02 SC-03 SD-01; do
+  if grep -q "\[$g140_id\]" /tmp/g140-stage-contract.log 2>/dev/null; then
+    ok "G-140 锚点：$g140_id"
+  else
+    bad "G-140 锚点没跑绿：$g140_id（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+# 计数钉：绿行条数 + FAIL=0 一起钉（删一条断言 ⇒ 立刻红）。
+if [ "$(grep -c '^  ✓' /tmp/g140-stage-contract.log)" -ge 21 ] \
+   && grep -q "FAIL=0" /tmp/g140-stage-contract.log; then
+  ok "G-140 计数钉：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log) ≥ 21 且 FAIL=0"
+else
+  bad "G-140 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log)、$(tail -1 /tmp/g140-stage-contract.log)"
+fi
+echo "  · G-140 口径（诚实）：本门测的是**契约生效时**的行为（房间/任务带交付契约 ⇒ 产物"
+echo "    取自成员写下的那个文件）；**没有契约时行为一字未变**（普通短任务不会被误伤），"
+echo "    只把「这棒像转述」记成 warn。契约的数据源（把角色 prompt 里的【固定交付】结构化、"
+echo "    建团时写进成员记录）属于批次 2 —— 未接之前，这条门守的是**机制**，不是已启用的产品路径。"
+echo "  · 判定怎么落到产品上的：role prompt 写【固定交付】(人读) ⇒ 模板结构化出 path/rules"
+echo "    (机器读) ⇒ 建团时写进 bot.deliverable ⇒ 接力时按契约查文件、验收、决定这棒算不算交付。"
+
+fi
 if want L1; then
 echo "== G-111 群成员上下文超预算要能自愈（不再每轮都 token budget exhausted） =="
 node scripts/prove_room_context_reset.js >/tmp/g111-ctx.log 2>&1

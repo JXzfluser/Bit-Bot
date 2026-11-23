@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated": "2026-11-22",
+  "updated": "2026-11-23",
   "owner": "team/t3-gate-tiering",
   "purpose": "门禁分层清单（可执行）：每一层都是 scripts/smoke_grok_desktop_parity.sh 里的一段；门名必须字面出现在矩阵里（AC-07 的接线口径）。",
   "how_to_run": {
@@ -1774,6 +1774,15 @@
       "kind": "门",
       "reason": "门：!/usr/bin/env node；L3 重/慢：e2e、真 Electron 渲染、像素回归、moon 构建/测试、APK/打包、docker、公网 ⇒ 定时跑，拦发布；红即阻塞",
       "wired_in": "G-115"
+    },
+    {
+      "file": "prove_stage_artifact_contract.js",
+      "layer": "L2",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_stage_artifact_contract.js — 产物契约门：角色 prompt 里早就写死了【固定交付】（写哪个文件）与【验收】，而 Host 侧不认这个契约 ⇒ 拿成员那句「已看过上一棒…差异点已标注出处」的**汇报**当交付落盘（实测产物只有 882 字节的转述，两棒成员交的话一字不差）。本门钉住：正例（产物正文 = 成员写下的文件正文）、负例（只交转述 ⇒ 驳回/下游不接力/产物不落盘/群里说清原因）、变异对照（关掉验收 ⇒ 负例必须翻红，判据有牙）、隔离（用户真数据一个字节没动）；L2 真实用户旅程：真 Host + 真文件 + 隔离数据根，不开 Electron ⇒ 合并/提频跑；红即阻塞",
+      "wired_in": "G-140"
     },
     {
       "file": "prove_room_relay.js",

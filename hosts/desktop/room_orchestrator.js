@@ -475,7 +475,10 @@ function composeDeliverable(input) {
   //                    所有成功成果并列成交付内容，谁写了什么都留着。
   const parallel = String(opts.mode || "relay") === "parallel";
   const title = clip(task || "群任务产物", 80);
-  const done = relay.filter((r) => r && r.ok && String(r.text || "").trim());
+  /* 交付内容优先取**成员写下的那个文件**（delivered_content，契约验收通过时由 Host 写入），
+     没有契约时退回成员交上来的文本。两者都不是「对成果的转述」以外的东西。 */
+  const bodyOf = (r) => String((r && (r.delivered_content || r.text)) || "").trim();
+  const done = relay.filter((r) => r && r.ok && bodyOf(r));
   const lines = [];
   lines.push("# " + title);
   lines.push("");
@@ -496,11 +499,11 @@ function composeDeliverable(input) {
       for (const r of done) {
         lines.push("### " + String(r.name || r.bot_id || ""));
         lines.push("");
-        lines.push(String(r.text || "").trim());
+        lines.push(bodyOf(r));
         lines.push("");
       }
     } else {
-      lines.push(String(done[done.length - 1].text || "").trim());
+      lines.push(bodyOf(done[done.length - 1]));
       lines.push("");
       if (done.length > 1) {
         lines.push("## 过程");
@@ -508,7 +511,7 @@ function composeDeliverable(input) {
         for (let i = 0; i < done.length - 1; i++) {
           lines.push("### 第 " + (i + 1) + " 棒 · " + String(done[i].name || done[i].bot_id || ""));
           lines.push("");
-          lines.push(String(done[i].text || "").trim());
+          lines.push(bodyOf(done[i]));
           lines.push("");
         }
       }
@@ -893,6 +896,198 @@ function createCancelScope() {
   };
 }
 
+/* ===== 产物验收：成员交上来的必须是「成果本身」，不是对成果的转述 =====
+ *
+ * 缘起（2026-11-23，截图实证）：
+ *   团队模板的角色 prompt 里**早就写死了**【固定交付】与【验收】——
+ *   「写入 /workspace/content-team/01-inbox/YYYY-MM-DD.md，每次最多 8 条……
+ *     完成后只汇报文件路径、条数和未完成原因。」
+ *   ⇒ 也就是说：**产物本来就是那个文件**；成员按 prompt 只汇报「路径+条数」，
+ *     而**那句汇报恰恰是转述**。
+ *   而 Host 侧当时**不认这个契约**：buildRelayPrompt 第 3 条虽然写着
+ *   「交付时直接给成果本身，不要只写『已完成』」——**指令对了，但没有强制**；
+ *   Host 拿成员的汇报文本当交付，下限只有 20 字符，于是照样落盘。
+ *   实测：群里「收齐 3/3」「产物已落盘」全绿，产物却只有 882 字节的转述，
+ *   而且两棒成员交的话**一字不差**（没在干各自的活）。
+ *
+ * ⇒ 这里把「指令」变成「验收」：
+ *   · **契约存在**时（角色自带 / 任务带 / 房间带）：交付内容取自**成员写下的那个文件**；
+ *     文件不在、内容不够 ⇒ 这一棒**不算交付**（驳回）、**下游不接力**、产物不落盘。
+ *   · **契约不存在**时：**一字不改**地放行（opt-in 语义，不误伤普通短任务），
+ *     但会把「这棒看起来只交了转述」记成 warn，让复盘能看见。
+ *
+ * 契约是**声明式**的（不解析自然语言）：角色 prompt 里的散文给人看，
+ * Host 认的是这里的字段；两者必须由**同一处模板**生成，否则又是一份第二真相。
+ */
+
+/* 没有契约时的兜底判据（只用于 warn，不用于驳回）。 */
+const NARRATION_PATTERNS = [
+  /^已完成/, /^已看过上一棒/, /^请(?:复核|审阅|确认|检查|把)/,
+  /请把.*(?:收成|整理成|并补)/, /^(?:如上|同上|以上)[。.]?$/,
+];
+
+function looksLikeNarration(text) {
+  const t = String(text || "").trim();
+  if (!t) return true;
+  return NARRATION_PATTERNS.some((re) => re.test(t));
+}
+
+/** 契约里的路径 → 真实路径。
+ *  · `/workspace/x` ⇒ `<dataRoot>/workspace/x`（角色 prompt 用的就是 /workspace 口径）
+ *  · `YYYY-MM-DD` / `{date}` ⇒ 当天日期
+ *  · 相对路径 ⇒ 相对 <dataRoot>
+ */
+function resolveDeliverablePath(spec, opts) {
+  const o = opts || {};
+  let p = String(spec || "").trim();
+  if (!p) return "";
+  const date = String(o.date || new Date().toISOString().slice(0, 10));
+  p = p.replace(/\{date\}/g, date).replace(/YYYY-MM-DD/g, date);
+  const root = String(o.dataRoot || "").trim();
+  if (p.startsWith("/workspace/")) {
+    if (!root) return "";
+    return path.join(root, "workspace", p.slice("/workspace/".length));
+  }
+  if (path.isAbsolute(p)) return p;
+  if (!root) return "";
+  return path.join(root, p);
+}
+
+/** 数条目（列表项）：`- xxx` / `1. xxx` / `1、xxx`。 */
+function countDeliverableItems(content) {
+  const lines = String(content || "").split(/\r?\n/);
+  let n = 0;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t) continue;
+    if (/^[-*•]\s+/.test(t) || /^\d+[.、)]\s*/.test(t)) n++;
+  }
+  return n;
+}
+
+/** 按契约把交付文件读出来（读不到就说读不到，不猜）。 */
+function readDeliverableArtifact(contract, opts) {
+  const o = opts || {};
+  const file = resolveDeliverablePath(contract && contract.path, o);
+  if (!file) return { ok: false, error: "no_path", path: "", reason: "契约里没写交付路径" };
+  if (!fs.existsSync(file)) return { ok: false, error: "not_found", path: file, reason: "文件不存在" };
+  let content = "";
+  try {
+    content = fs.readFileSync(file, "utf8");
+  } catch (e) {
+    return { ok: false, error: "read_failed", path: file, reason: String((e && e.message) || e) };
+  }
+  const chars = content.trim().length;
+  if (!chars) return { ok: false, error: "empty", path: file, reason: "文件是空的" };
+  return { ok: true, path: file, content, chars, bytes: Buffer.byteLength(content, "utf8") };
+}
+
+/**
+ * 验收一棒。
+ * @param {object} input
+ *   text      成员这一棒交上来的**汇报文本**
+ *   contract  这一棒的交付契约（没有 ⇒ 不驳回，只记 warn）
+ *   dataRoot  数据根（用于解析 /workspace 与相对路径）
+ *   rules     契约里的验收规则 {min_chars, max_items, min_items, must_include[]}
+ * @returns {{pass:boolean, code:string, reason:string, chars:number, artifact:object|null, warn:string}}
+ */
+function judgeStage(input) {
+  const o = input || {};
+  const text = String(o.text || "").trim();
+  const contract = o.contract || null;
+  const rules = Object.assign({}, (contract && contract.rules) || {}, o.rules || {});
+  const out = { pass: true, code: "ok", reason: "", chars: text.length, artifact: null, warn: "" };
+
+  /* 没有契约 ⇒ 放行，但把「像转述」记下来（复盘可见，不拦人）。 */
+  if (!contract || !contract.path) {
+    if (looksLikeNarration(text)) {
+      out.warn = "这一棒只交了转述，没有交成果本身";
+    }
+    out.reason = out.warn ? out.warn : "无交付契约，按原文放行";
+    out.code = out.warn ? "narration_only_warn" : "no_contract";
+    return out;
+  }
+
+  /* 有契约 ⇒ 交付内容必须来自**成员写下的那个文件**。 */
+  const art = readDeliverableArtifact(contract, { dataRoot: o.dataRoot, date: o.date });
+  out.artifact = art;
+  if (!art.ok) {
+    out.pass = false;
+    out.code = art.error === "not_found" ? "no_deliverable_file" : ("artifact_" + art.error);
+    out.reason = "这一棒没有交出约定的交付文件（" + (art.path || contract.path) + "）：" + (art.reason || "");
+    return out;
+  }
+  out.chars = art.chars;
+  if (rules.min_chars && art.chars < Number(rules.min_chars)) {
+    out.pass = false;
+    out.code = "too_short";
+    out.reason = "交付文件内容太短（" + art.chars + " 字，要求 ≥ " + rules.min_chars + " 字）";
+    return out;
+  }
+  if (rules.min_items) {
+    const n = countDeliverableItems(art.content);
+    out.items = n;
+    if (n < Number(rules.min_items)) {
+      out.pass = false;
+      out.code = "too_few_items";
+      out.reason = "交付文件条目太少（" + n + " 条，要求 ≥ " + rules.min_items + " 条）";
+      return out;
+    }
+  }
+  if (rules.max_items) {
+    const n = countDeliverableItems(art.content);
+    out.items = n;
+    if (n > Number(rules.max_items)) {
+      out.pass = false;
+      out.code = "too_many_items";
+      out.reason = "交付文件条目超了（" + n + " 条，上限 " + rules.max_items + " 条）";
+      return out;
+    }
+  }
+  for (const need of (rules.must_include || [])) {
+    if (!art.content.includes(String(need))) {
+      out.pass = false;
+      out.code = "missing_content";
+      out.reason = "交付文件里缺少「" + String(need) + "」";
+      return out;
+    }
+  }
+  out.reason = "通过（交付文件 " + art.chars + " 字）";
+  return out;
+}
+
+/** 从任务/房间/成员三处挑出这一棒该用的契约。 */
+function pickStageContract(input) {
+  const o = input || {};
+  const hop = Number(o.hop || 0);
+  const bot = o.bot || {};
+  const contracts = [];
+  if (o.contract) contracts.push(o.contract);
+  if (o.roomContract) contracts.push(o.roomContract);
+  if (bot && bot.deliverable) contracts.push({ deliverable: bot.deliverable });
+  for (const c of contracts) {
+    if (!c) continue;
+    const stages = Array.isArray(c.stages) ? c.stages : null;
+    if (stages) {
+      for (const st of stages) {
+        if (!st) continue;
+        const m = st.match || {};
+        const hitName = m.name && String(m.name) === String(bot.name || "");
+        const hitId = m.bot_id && String(m.bot_id) === String(bot.id || "");
+        const hitJob = m.job && String(m.job) === String(bot.job || "");
+        const hitHop = Number.isFinite(Number(m.hop)) && Number(m.hop) === hop;
+        if (hitName || hitId || hitJob || hitHop) {
+          return Object.assign({}, st, { rules: st.rules || c.rules || {} });
+        }
+      }
+      continue;
+    }
+    const d = c.deliverable || c;
+    if (d && d.path) return Object.assign({}, d, { rules: d.rules || c.rules || {} });
+  }
+  return null;
+}
+
 module.exports = {
   BOARD_DIR_REL,
   BOARD_MAX_CHARS,
@@ -919,6 +1114,12 @@ module.exports = {
   assignSubtasks,
   duplicateWorkRate,
   estimateTokens,
+  judgeStage,
+  pickStageContract,
+  readDeliverableArtifact,
+  resolveDeliverablePath,
+  countDeliverableItems,
+  looksLikeNarration,
   createTeamBudget,
   createCancelScope,
   sanitizeBoardKey,

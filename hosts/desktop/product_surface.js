@@ -2882,9 +2882,24 @@ function createProductSurface(repoRoot, opts = {}) {
   function deliverableFromTurns(input) {
     const o = input || {};
     const turns = Array.isArray(o.turns) ? o.turns : [];
-    const usable = turns.filter((t) => t && t.ok && String(t.text || "").trim());
+    /* 交付内容 = 契约验收通过的**文件正文**（delivered_content）优先，
+       没有契约时才是成员交上来的文本。被驳回的棒 text 已清空 ⇒ 自动不计入。 */
+    const bodyOf = (t) => String((t && (t.delivered_content || t.text)) || "").trim();
+    /* 有棒被驳回 ⇒ **整个产物不落盘**。
+     * 否则会出现「半个状态」：第一棒过了、第二棒被驳回，却把第一棒的内容
+     * 当成完整交付写进文件 —— 用户看到的是一份缺了一半、却标着「已交付」的产物。 */
+    const rejected = turns.find((t) => t && t.rejected);
+    if (rejected) {
+      return {
+        ok: false, error: "stage_rejected",
+        reason: "第 " + (Number(rejected.hop || 0) + 1) + " 棒（" + (rejected.name || rejected.bot_id || "?") +
+          "）未通过验收：" + (rejected.reject_reason || "未通过验收") + " ⇒ 接力已停下，产物不落盘（不留半个状态）",
+        rejected_bot: rejected.bot_id || "",
+      };
+    }
+    const usable = turns.filter((t) => t && t.ok && bodyOf(t));
     if (!usable.length) return { ok: false, error: "no_content" };
-    const chars = usable.reduce((n, t) => n + String(t.text || "").trim().length, 0);
+    const chars = usable.reduce((n, t) => n + bodyOf(t).length, 0);
     if (chars < MIN_DELIVERABLE_CHARS) return { ok: false, error: "too_short", chars };
     try {
       const markdown = roomOrchestrator.composeDeliverable({
@@ -3272,6 +3287,43 @@ function createProductSurface(repoRoot, opts = {}) {
             error: String((e && e.message) || e), cancelled: true, hop,
           };
         }
+        /* ---- 产物验收：这一棒交上来的是「成果本身」还是「对成果的转述」？----
+         * 缘起见 room_orchestrator.judgeStage 的注释：角色 prompt 早就写死了
+         * 【固定交付】（写哪个文件）与【验收】，但 Host 当时不认这个契约 ——
+         * 于是拿成员那句「已看过上一棒…差异点已标注出处」的**汇报**当成交付落盘
+         *（实测产物只有 882 字节，而两棒成员交的话一字不差）。
+         * ⇒ 有契约时：交付内容取自**成员写下的那个文件**；文件不在/不合格
+         *   ⇒ 这一棒不算交付（ok=false）⇒ 下面那句 `if (!res.ok) break;`
+         *   自然就把**下游接力停掉**（失败不留半个状态）⇒ 产物也不落盘。
+         * ⇒ 没有契约时：一字不改地放行（不误伤普通短任务），只记一个 warn。
+         */
+        {
+          const stageContract = roomOrchestrator.pickStageContract({
+            contract: opts.contract,
+            roomContract: room.contract,
+            bot: current,
+            hop,
+          });
+          const verdict = roomOrchestrator.judgeStage({
+            text: res.text,
+            contract: stageContract,
+            dataRoot: DATA_ROOT,
+          });
+          res.stage = verdict;
+          if (verdict.pass && verdict.artifact && verdict.artifact.ok) {
+            /* 交付内容 = 成员写下的文件正文（不是那句汇报）。 */
+            res.delivered_content = verdict.artifact.content;
+            res.delivered_path = verdict.artifact.path;
+            res.delivered_bytes = verdict.artifact.bytes;
+          }
+          if (!verdict.pass) {
+            res.ok = false;
+            res.rejected = true;
+            res.reject_reason = verdict.reason;
+            res.error = verdict.reason;
+            res.text = ""; // 汇报不算交付：别让它进产物
+          }
+        }
         // 转录一行：和扇出路径同 schema（渲染层不变），只是多了 hop。
         const body = clipRoomText(res.text, ROOM_TEXT_MAX);
         const row = {
@@ -3369,13 +3421,30 @@ function createProductSurface(repoRoot, opts = {}) {
         returned: okChain.length,
         partial: okChain.length < chain.length,
         sections: chain.map((c) => {
-          const sum = clipRoomText(c.ok ? c.text : "(" + (c.error || "no reply") + ")", ROOM_SUMMARY_MAX);
+          const sum = clipRoomText(c.ok ? (c.delivered_content || c.text) : "(" + (c.error || "no reply") + ")", ROOM_SUMMARY_MAX);
           return {
             bot_id: c.bot_id, name: c.name, ok: c.ok,
             summary: sum.text, summary_truncated: sum.truncated || undefined,
             artifacts: c.artifacts || [],
+            /* 验收结论：这一棒交的是成果本身还是转述？过没过、为什么。 */
+            stage: c.stage ? {
+              pass: !!c.stage.pass, code: c.stage.code || "", reason: c.stage.reason || "",
+              warn: c.stage.warn || "", chars: c.stage.chars || 0,
+              artifact_path: c.delivered_path || (c.stage.artifact && c.stage.artifact.path) || "",
+            } : undefined,
+            rejected: !!c.rejected,
+            reject_reason: c.reject_reason || "",
           };
         }),
+        /* 验收小结：哪棒过了、哪棒被驳回、为什么 —— 复盘与指挥台直接读这个。 */
+        stage_results: chain.map((c) => ({
+          bot_id: c.bot_id, name: c.name, hop: c.hop, ok: !!c.ok,
+          pass: !!(c.stage && c.stage.pass),
+          rejected: !!c.rejected, reason: c.reject_reason || (c.stage && c.stage.reason) || "",
+          code: (c.stage && c.stage.code) || "",
+          chars: (c.stage && c.stage.chars) || 0,
+          artifact_path: c.delivered_path || "",
+        })),
         artifacts: chain.flatMap((c) => c.artifacts || []),
         route: routeOut,
         relay: chainOut,
@@ -3399,7 +3468,7 @@ function createProductSurface(repoRoot, opts = {}) {
          同一件事说两遍只会把群消息流撑长。系统行只承载**卡里没有的信息** ——
          为什么没产出、预算是怎么停的。 */
       if (deliverable && !deliverable.ok && final_report.deliverable_error) {
-        notice.push("产物没能落盘：" + final_report.deliverable_error);
+        notice.push("产物没能落盘：" + (deliverable.reason || final_report.deliverable_error));
       }
       if (budget.snapshot().exceeded) {
         notice.push("团队预算用尽（" + (budget.snapshot().reason || "exhausted") + "），接力的后续棒次已停止。");
