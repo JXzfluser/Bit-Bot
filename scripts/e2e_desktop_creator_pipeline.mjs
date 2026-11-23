@@ -82,7 +82,7 @@ const SEND_DIR = D("mail/sends");
 const TZ = process.env.GP155_TZ || "Asia/Shanghai";
 const MAIL_TO = "news@example.com";
 
-let PASS = 0, FAIL = 0;
+let PASS = 0, FAIL = 0, SKIP = 0;
 const ok = (m) => { PASS++; console.log("  ✓ " + m); };
 const bad = (m, d) => {
   FAIL++;
@@ -755,11 +755,61 @@ function startStub() {
           : bad("P12 面板管不住这条任务", JSON.stringify(paused12 && { e: paused12.enabled, l: paused12.lifecycle }).slice(0, 250));
       }
     }
+    /* ---------- P13: 模板「一键成队」⇒ 第一件事**真的**发起了 ---------- */
+    /* 为什么加这条：以前模板路径传的是空任务 ⇒ 队伍建好了、群里空着、
+       成员回合一次都没被触发 —— 用户看到的是「队伍建好了」，然后什么也没发生。
+       这正是「入口零学习成本」要消灭的东西：建团之后就该有一件事在跑。 */
+    {
+      await win.evaluate(() => { const g = document.getElementById("mk-grid"); if (g) g.innerHTML = ""; });
+      await win.click("#account-avatar-btn").catch(() => {});
+      await win.waitForSelector("#ap-market", { state: "visible", timeout: 5000 }).catch(() => {});
+      await win.click("#ap-market").catch(() => {});
+      const card = await win
+        .waitForSelector('#mk-grid .ca-card[data-template-id="media-content-team"]', { timeout: 15000 })
+        .catch(() => null);
+      if (!card) {
+        SKIP++;
+        console.log("  · P13 SKIP 本机环境里模板市场没有团队卡（Host 目录为空）—— 跳过这条，不算绿");
+      } else {
+        /* 点的是**按钮**，不是卡片：处理函数挂在按钮上（btn.addEventListener），
+           点卡片等于没点 —— 这个坑我自己踩过一次。 */
+        await win.click('#mk-grid .ca-card[data-template-id="media-content-team"] button').catch(() => {});
+        /* 等群建出来 + 第一件事真的跑起来（成员回合或最终汇报行都算「跑起来了」）。 */
+        let room13 = null;
+        let tx13 = [];
+        for (let i = 0; i < 160; i += 1) {
+          const rooms = readJson(ROOMS, { rooms: [] });
+          const list = Array.isArray(rooms.rooms) ? rooms.rooms : [];
+          room13 = list.find((r) => r && String(r.title || "").indexOf("自媒体内容团队") >= 0) || null;
+          if (room13) {
+            tx13 = Array.isArray(room13.transcript) ? room13.transcript : [];
+            const acted = tx13.some((e) => e && (e.kind === "bot_reply" || e.kind === "bot_reply_error" || e.kind === "final_report"));
+            if (acted) break;
+          }
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        room13
+          ? ok("P13 「一键成队」把团队建起来了（群名=" + String(room13.title || "") + "，成员 " +
+              (Array.isArray(room13.members) ? room13.members.length : 0) + " 个）")
+          : bad("P13 「一键成队」之后连群都没建起来", JSON.stringify(readJson(ROOMS, {}).rooms || []).slice(0, 200));
+        const acted13 = tx13.some((e) => e && (e.kind === "bot_reply" || e.kind === "bot_reply_error" || e.kind === "final_report"));
+        acted13
+          ? ok("P13 第一件事**真的发起了**：建团完群里立刻有成员回合（不是「队伍建好了，然后什么也没发生」）")
+          : bad("P13 建团之后第一件事没跑起来（群里空着）", JSON.stringify(tx13.map((e) => e && e.kind)).slice(0, 200));
+        /* 成员的交付契约落进成员记录了 ⇒ 接力才可能按契约验收、按契约落盘。 */
+        const bots13 = readJson(BOTS, { bots: [] });
+        const withContract = (bots13.bots || []).filter((b) => b && b.deliverable && b.deliverable.dir);
+        withContract.length >= 3
+          ? ok("P13 角色把交付契约带进了成员记录（" + withContract.length + " 个成员带契约）")
+          : bad("P13 成员记录里没有交付契约（接力会退回老行为：拿汇报当交付）",
+                JSON.stringify((bots13.bots || []).map((b) => [b && b.name, !!(b && b.deliverable)])).slice(0, 240));
+      }
+    }
   } catch (e) {
     bad("gate block", (e && e.stack || String(e)).split("\n").slice(0, 3).join(" | "));
   }
   // 结果先落盘再收尾：关窗卡住也不能让已经跑出来的断言丢掉。
-  console.log("e2e_desktop_creator_pipeline: PASS=" + PASS + " FAIL=" + FAIL + " SKIP=0");
+  console.log("e2e_desktop_creator_pipeline: PASS=" + PASS + " FAIL=" + FAIL + " SKIP=" + SKIP);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
     if (app) {

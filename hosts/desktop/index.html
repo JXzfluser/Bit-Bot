@@ -9725,7 +9725,11 @@
         title: tpl.default_name || tpl.job || "",
         roles,
         rules: tpl.rules || "",
-        task: "",
+        /* 第一件事：模板自带 ⇒ 建团完**立刻**把这件事派进群。
+           以前这里传的是空串 ⇒ 队伍建好了、群里空着、成员回合一次都没被触发
+           （用户看到的是「队伍建好了」，然后什么也没发生）。
+           不想它现在就跑？群里随时可以刹停/改向 —— 这本来就是可指挥的。 */
+        task: String(tpl.first_task || "").trim(),
       });
     }
     // "创建" opens the EXISTING Bot-creation flow, prefilled from the template
@@ -11260,6 +11264,7 @@
             n: ex.roles.length,
             dir: ws && ws.ok ? t("teamSharedDir", { path: ws.path }) : "",
             files: tail + roleFiles,
+            started: ex.task ? t("teamStartedFirst", { task: String(ex.task).slice(0, 40) }) : "",
           }),
           "ok",
         );
@@ -20064,6 +20069,7 @@
         taskUnrecognized: "（未识别）",
         teamBuiltFromTutorial: "按教程识别到团队：《{{title}}》\n角色：{{roles}}\n目标：{{task}}",
         teamBuiltToast: "已按教程搭好团队《{{title}}》：{{n}} 个岗位 Bot + 协作群{{dir}}{{files}}",
+        teamStartedFirst: "，并已发起第一件事「{{task}}…」（不想它现在跑，群里随时刹停）",
         toastFetchingLink: "正在抓取链接内容…",
         toastInferringFromText: "正在从正文反推团队结构…",
         toastLinkFailed: "没能读取这个链接：{{why}}",
@@ -21583,6 +21589,7 @@
         taskUnrecognized: "（未識別）",
         teamBuiltFromTutorial: "按教學識別到團隊：《{{title}}》\n角色：{{roles}}\n目標：{{task}}",
         teamBuiltToast: "已按教學搭好團隊《{{title}}》：{{n}} 個崗位 Bot + 協作群{{dir}}{{files}}",
+        teamStartedFirst: "，並已發起第一件事「{{task}}…」（不想它現在跑，隨時可在群裡煞停）",
         toastFetchingLink: "正在抓取連結內容…",
         toastInferringFromText: "正在從正文反推團隊結構…",
         toastLinkFailed: "沒能讀取這個連結：{{why}}",
@@ -23102,6 +23109,7 @@
         taskUnrecognized: "(not recognized)",
         teamBuiltFromTutorial: "Team detected from the guide: 《{{title}}》\nRoles: {{roles}}\nGoal: {{task}}",
         teamBuiltToast: "Team 《{{title}}》 set up: {{n}} role bots + a collaboration group{{dir}}{{files}}",
+        teamStartedFirst: ", and the first job is already running ({{task}}…) — stop it any time in the group",
         toastFetchingLink: "Fetching the link…",
         toastInferringFromText: "Inferring the team structure from the text…",
         toastLinkFailed: "Couldn't read this link: {{why}}",
