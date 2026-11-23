@@ -15,10 +15,11 @@
  * 跑法：node scripts/prove_template_market_render.mjs
  */
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, gateIsolatedDataRoot } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -26,6 +27,38 @@ const DESKTOP = path.join(REPO, "hosts/desktop");
 const require = createRequire(path.join(DESKTOP, "package.json"));
 const { _electron } = require("playwright-core");
 const ELECTRON = resolveElectronBinary(DESKTOP);
+
+/* ── 隔离根（2026-11-23 补）─────────────────────────────────────────────
+ * 这扇门原来**直接跑在真仓库上**：app 的数据根 = 真仓库的 data/ ⇒
+ * app 自己的启动记录、routine sweep、journal 全部写进**用户的** data/
+ * （实测：跑完 data/routines/{daemon-status,daemon-sweep-1,last-tick}.json、
+ *   data/routines/wakes.jsonl、data/journal/host-delivery.jsonl 全变了）。
+ * 门禁没有这个权限：用户数据不该被门禁写。
+ */
+const ISO = gateIsolatedDataRoot(REPO, "tpl-market-render");
+/* 模板目录要画得出卡片 ⇒ 只读真文件、拷进隔离根；之后 app 的写入都落隔离根。 */
+for (const _n of ["bot-templates.json", "bots.json", "rooms.json", "sessions.json"]) {
+  try { fs.copyFileSync(path.join(REPO, "data/desktop", _n), path.join(ISO.filesDir, _n)); } catch { /* 没有就不拷 */ }
+}
+process.on("exit", () => ISO.cleanup());
+/** 真 data/ 的指纹（跑前跑后必须一致）。 */
+function realDataFingerprint() {
+  const out = [];
+  const walk = (d, depth) => {
+    if (depth > 2) return;
+    let ents = [];
+    try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of ents.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p, depth + 1);
+      else if (e.isFile()) {
+        try { const st = fs.statSync(p); out.push(p + ":" + st.size + ":" + Math.floor(st.mtimeMs)); } catch { /* ignore */ }
+      }
+    }
+  };
+  walk(path.join(REPO, "data"), 0);
+  return out.join("\n");
+}
 
 const BUILTIN = [
   "sales-outbound",
@@ -43,6 +76,7 @@ const bad = (m, extra) => {
   console.log("  ✗ " + m + (extra !== undefined ? " — " + JSON.stringify(extra) : ""));
 };
 
+const realBefore = realDataFingerprint();
 const app = await _electron.launch({
   executablePath: ELECTRON,
   args: [
@@ -53,6 +87,12 @@ const app = await _electron.launch({
   ],
   cwd: REPO,
   env: electronLaunchEnv({
+    /* 隔离：数据根指向隔离目录、别自动拉起 routine daemon、别把密钥同步进
+       真 .env.local（gateAppEnv 的三条口径，这里手写等价项）。 */
+    BITBOT_DATA_ROOT: ISO.dataRoot,
+    BITBOT_ROUTINE_DAEMON_AUTOSTART: "0",
+    BITBOT_DESKTOP_AUTOSTART: "0",
+    BITBOT_NO_SECRET_SYNC: "1",
     BITBOT_LLM_BASE_URL: "http://127.0.0.1:9/v1",
     BITBOT_LLM_API_KEY: "proof-no-call",
     BITBOT_LLM_MODEL: "proof-no-call",
@@ -161,6 +201,18 @@ try {
   console.log("  · 证据截图：" + shot);
 } finally {
   await app.close();
+}
+
+/* TM-05 门禁不许碰用户真数据：跑前跑后指纹必须逐条一致。
+   （这扇门原来直接跑在真仓库上 —— app 的启动记录、routine sweep、journal
+     全写进了用户的 data/。） */
+if (realDataFingerprint() === realBefore) {
+  ok("TM-05 用户真实数据目录一个字节没动（门禁跑在隔离数据根里）");
+} else {
+  code = 1;
+  bad("TM-05 用户真实数据目录被门禁改了（隔离没生效）", {
+    hint: "看真 data/ 里最近被改写的文件；门禁不许碰用户数据",
+  });
 }
 
 console.log("\nprove_template_market_render: " + (code ? "FAIL" : "PASS"));

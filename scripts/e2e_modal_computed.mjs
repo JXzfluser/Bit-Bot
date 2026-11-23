@@ -23,7 +23,7 @@ import { createRequire } from "module";
 import { execSync } from "child_process";
 
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir, hasDisplay } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, hasDisplay, gateIsolatedDataRoot } from "./electron_env.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const DESKTOP = path.join(REPO, "hosts/desktop");
@@ -130,6 +130,15 @@ async function shutdown(app) {
 (async () => {
   /* 独立的 user-data 目录：门禁必须能在用户自己开着 Bit Bot 的时候跑，
      否则会撞上单实例锁、Electron 直接退出（典型报错 Target page ... has been closed）。 */
+/* 【2026-11-23】门禁隔离：这扇门原来没给数据根 ⇒ app 直接跑在**真仓库的 data/** 上
+   （启动记录 / routine sweep / journal 全写进用户目录）。数据根必须在 checkout 的
+   直接子目录（内核 cwd = dirname(DATA_ROOT)，要在这儿才找得到 moon.mod）。 */
+const ISO = gateIsolatedDataRoot(REPO, "modal-computed");
+for (const _n of ["bot-templates.json", "bots.json", "rooms.json", "sessions.json", "settings.json"]) {
+  try { fs.copyFileSync(path.join(REPO, "data/desktop", _n), path.join(ISO.filesDir, _n)); } catch { /* 没有就不拷 */ }
+}
+process.on("exit", () => ISO.cleanup());
+
   const args = [path.join(DESKTOP, "main.js"), "--no-sandbox", "--disable-gpu", "--user-data-dir=" + electronUserDataDir("modal-computed")];
   const app = await _electron.launch({
     executablePath: ELECTRON,
@@ -137,7 +146,11 @@ async function shutdown(app) {
     cwd: REPO,
     /* ELECTRON_RUN_AS_NODE=1 会让 electron 退化成纯 node（ipcMain undefined），
        这里显式剔除；门禁也不该改用户 macOS 的开机自启设置。 */
-    env: electronLaunchEnv({ BITBOT_DESKTOP_AUTOSTART: "0" }),
+    env: electronLaunchEnv({
+    BITBOT_DATA_ROOT: ISO.dataRoot,
+    BITBOT_ROUTINE_DAEMON_AUTOSTART: "0",
+    BITBOT_NO_SECRET_SYNC: "1",
+     BITBOT_DESKTOP_AUTOSTART: "0" }),
   });
   const win = await app.firstWindow();
   try {

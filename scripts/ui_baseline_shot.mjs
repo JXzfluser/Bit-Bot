@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv } from "./electron_env.mjs";
+import { electronLaunchEnv, gateIsolatedDataRoot } from "./electron_env.mjs";
 const require = createRequire(import.meta.url);
 const { _electron } = require(path.join(process.cwd(), "hosts/desktop/node_modules/playwright-core"));
 
@@ -23,12 +23,25 @@ function liveDisplay() {
   return process.env.DISPLAY || ":99";
 }
 
+/* 【2026-11-23】门禁隔离：这扇门原来没给数据根 ⇒ app 直接跑在**真仓库的 data/** 上
+   （启动记录 / routine sweep / journal 全写进用户目录）。数据根必须在 checkout 的
+   直接子目录（内核 cwd = dirname(DATA_ROOT)，要在这儿才找得到 moon.mod）。 */
+const ISO = gateIsolatedDataRoot(REPO, "ui-baseline");
+for (const _n of ["bot-templates.json", "bots.json", "rooms.json", "sessions.json", "settings.json"]) {
+  try { fs.copyFileSync(path.join(REPO, "data/desktop", _n), path.join(ISO.filesDir, _n)); } catch { /* 没有就不拷 */ }
+}
+process.on("exit", () => ISO.cleanup());
+
 async function main() {
   const app = await _electron.launch({
     executablePath: electronBinary,
     args: [path.join(REPO, "hosts/desktop/main.js"), "--no-sandbox", "--disable-gpu"],
     cwd: REPO,
-    env: electronLaunchEnv({ DISPLAY: liveDisplay(), BITBOT_DESKTOP_AUTOSTART: "0" }),
+    env: electronLaunchEnv({
+    BITBOT_DATA_ROOT: ISO.dataRoot,
+    BITBOT_ROUTINE_DAEMON_AUTOSTART: "0",
+    BITBOT_NO_SECRET_SYNC: "1",
+     DISPLAY: liveDisplay(), BITBOT_DESKTOP_AUTOSTART: "0" }),
     timeout: 60000,
   });
   const win = await app.firstWindow({ timeout: 60000 });

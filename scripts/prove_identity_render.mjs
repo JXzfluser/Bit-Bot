@@ -20,10 +20,11 @@
  * 跑法：node scripts/prove_identity_render.mjs
  */
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, gateIsolatedDataRoot } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -43,6 +44,15 @@ const bad = (m, extra) => {
    渲染给用户的那一行里一个都不许有。 */
 const SYMBOL_RE = /[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*|\b(llm_chat|exec_tool|request_approval|deliver)\b/;
 
+/* 【2026-11-23】门禁隔离：这扇门原来没给数据根 ⇒ app 直接跑在**真仓库的 data/** 上
+   （启动记录 / routine sweep / journal 全写进用户目录）。数据根必须在 checkout 的
+   直接子目录（内核 cwd = dirname(DATA_ROOT)，要在这儿才找得到 moon.mod）。 */
+const ISO = gateIsolatedDataRoot(REPO, "identity-render");
+for (const _n of ["bot-templates.json", "bots.json", "rooms.json", "sessions.json", "settings.json"]) {
+  try { fs.copyFileSync(path.join(REPO, "data/desktop", _n), path.join(ISO.filesDir, _n)); } catch { /* 没有就不拷 */ }
+}
+process.on("exit", () => ISO.cleanup());
+
 const app = await _electron.launch({
   executablePath: ELECTRON,
   args: [
@@ -53,6 +63,10 @@ const app = await _electron.launch({
   ],
   cwd: REPO,
   env: electronLaunchEnv({
+    BITBOT_DATA_ROOT: ISO.dataRoot,
+    BITBOT_ROUTINE_DAEMON_AUTOSTART: "0",
+    BITBOT_NO_SECRET_SYNC: "1",
+    
     BITBOT_LLM_BASE_URL: "http://127.0.0.1:9/v1",
     BITBOT_LLM_API_KEY: "proof-no-call",
     BITBOT_LLM_MODEL: "proof-no-call",

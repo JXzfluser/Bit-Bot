@@ -14,7 +14,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import { resolveElectronBinary } from "./electron_bin.mjs";
-import { electronLaunchEnv, electronUserDataDir } from "./electron_env.mjs";
+import { electronLaunchEnv, electronUserDataDir, gateIsolatedDataRoot } from "./electron_env.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
@@ -48,6 +48,15 @@ const EXPECT = {
 };
 const LANGS = Object.keys(EXPECT);
 
+/* 【2026-11-23】门禁隔离：这扇门原来没给数据根 ⇒ app 直接跑在**真仓库的 data/** 上
+   （启动记录 / routine sweep / journal 全写进用户目录）。数据根必须在 checkout 的
+   直接子目录（内核 cwd = dirname(DATA_ROOT)，要在这儿才找得到 moon.mod）。 */
+const ISO = gateIsolatedDataRoot(REPO, "shot-bot-i18n");
+for (const _n of ["bot-templates.json", "bots.json", "rooms.json", "sessions.json", "settings.json"]) {
+  try { fs.copyFileSync(path.join(REPO, "data/desktop", _n), path.join(ISO.filesDir, _n)); } catch { /* 没有就不拷 */ }
+}
+process.on("exit", () => ISO.cleanup());
+
 let code = 0;
 const app = await _electron.launch({
   executablePath: ELECTRON,
@@ -59,6 +68,10 @@ const app = await _electron.launch({
   ],
   cwd: REPO,
   env: electronLaunchEnv({
+    BITBOT_DATA_ROOT: ISO.dataRoot,
+    BITBOT_ROUTINE_DAEMON_AUTOSTART: "0",
+    BITBOT_NO_SECRET_SYNC: "1",
+    
     BITBOT_LLM_BASE_URL: "http://127.0.0.1:9/v1",
     BITBOT_LLM_API_KEY: "shot-no-call",
     BITBOT_LLM_MODEL: "shot-no-call",

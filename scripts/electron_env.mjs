@@ -264,6 +264,41 @@ export function isolatedRepoRoot(realRepo, tag, files) {
 }
 
 /**
+ * 给「还没隔离」的门禁准备一个**隔离数据根**。
+ *
+ * 为什么要有这个：门禁起 app 时如果没给 BITBOT_DATA_ROOT / BITBOT_REPO_ROOT，
+ * app 的数据根就落在**真仓库的 data/** ⇒ app 自己的启动记录、routine sweep、
+ * journal、pending-approvals 全写进用户的目录（实测：跑一扇模板市场门，
+ * data/routines/{daemon-status,daemon-sweep-1,last-tick}.json、
+ * data/routines/wakes.jsonl、data/journal/host-delivery.jsonl 全部被改写）。
+ * 用户数据不该被门禁写 —— 门禁没有这个权限。
+ *
+ * 隔离根必须放在**本 checkout 的直接子目录**：内核的 cwd = dirname(DATA_ROOT)，
+ * 要在 checkout 里才找得到 moon.mod（paths.js 的硬约束）。
+ * .gitignore 已经收了 .gate-data- 开头的目录。
+ *
+ * @param {string} realRepo  真仓库根
+ * @param {string} tag       用途标签（目录名里带，避免两扇门互相踩）
+ * @param {object} [files]   要拷进隔离根的夹具（文件名 → 字符串/对象）
+ * @returns {{root:string, dataRoot:string, filesDir:string, cleanup:Function}}
+ */
+export function gateIsolatedDataRoot(realRepo, tag, files) {
+  /* 复用 isolatedRepoRoot（**已验证**的隔离根形状：cmd 软链 + data/desktop 夹具）。
+     自己另写一份的结果是：内核找不到 moon.mod ⇒ moon 退 255 ⇒ 应用启动后自己退出
+     ⇒ 门禁报「Target page, context or browser has been closed」——
+     实测过一次（prove_identity_render），教训记在这儿，别再另写一份。 */
+  const root = isolatedRepoRoot(realRepo, tag || "run", files || {});
+  return {
+    root,
+    dataRoot: path.join(root, "data"),
+    filesDir: path.join(root, "data", "desktop"),
+    cleanup() {
+      try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* 收尾失败不改判据 */ }
+    },
+  };
+}
+
+/**
  * 门禁启动 app 时的 app 级环境变量。
  *
  * - BITBOT_REPO_ROOT：数据根指向隔离目录，门禁碰不到用户的 data/。

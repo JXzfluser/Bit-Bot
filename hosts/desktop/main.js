@@ -1722,8 +1722,9 @@ ipcMain.handle("bitbot:boot", async () => runner.bootBanner());
 const links = createLinkOpen({
   repoRoot: REPO_ROOT,
   // Tests point the audit at their own file so hover/click row counts are exact;
-  // production keeps data/desktop/links.jsonl.
-  auditPath: process.env.BITBOT_LINKS_AUDIT_PATH || undefined,
+  // production keeps data/desktop/links.jsonl —— 但落在 **DATA_ROOT** 下
+  // （隔离门禁里 REPO_ROOT 仍是真 checkout ⇒ 写 REPO_ROOT/data 就是写用户目录）。
+  auditPath: process.env.BITBOT_LINKS_AUDIT_PATH || path.join(DATA_ROOT, "desktop", "links.jsonl"),
   openExternal: async (url) => {
     // Test hook (same spirit as BITBOT_SAVE_ARTIFACT_DIR): under Xvfb a real
     // browser launch is environment-dependent, so a run can record the exact
@@ -5160,6 +5161,8 @@ async function ensureCnInbound() {
     }
     cnInbound = createCnInboundServer({
       repoRoot: REPO_ROOT,
+      /* 设备登记表跟 DATA_ROOT 走（隔离门禁里别写回用户的真目录）。 */
+      devicesPath: path.join(DATA_ROOT, "host", "devices.json"),
       /* 【P1 批 4 · §3.2.3】把**桌面这一份 surface** 注入进去。
          为什么必须注入:_taskScopes / _activeRoomScopes 是 createProductSurface()
          **工厂内**的内存状态(在跑的任务表)—— 入站服务另建一个实例的话,
@@ -5268,7 +5271,11 @@ async function ensureCnInbound() {
  * data/desktop/pairing.json：一个新增的本地文件，不动既有 store 契约。
  * ------------------------------------------------------------------------ */
 function pairingPrefsFile() {
-  return path.join(REPO_ROOT, "data", "desktop", "pairing.json");
+  /* 用 **DATA_ROOT**，不是 REPO_ROOT/data。
+   * 打包/dev 下两者相同（REPO_ROOT = dirname(DATA_ROOT)），但**隔离门禁**里
+   * DATA_ROOT = 隔离根、REPO_ROOT = 真 checkout ⇒ 写 REPO_ROOT/data 就等于
+   * 往用户的真目录里写（实测：跑一扇截图门，用户的 data/desktop/pairing.json 被改写）。 */
+  return path.join(DATA_ROOT, "desktop", "pairing.json");
 }
 
 function readPairingPrefs() {
@@ -5338,7 +5345,8 @@ function maskPairingToken(value) {
 
 function turnTokenValue() {
   try {
-    return String(p0.resolveTurnToken(REPO_ROOT, process.env, {}).token || "");
+    /* turn token 文件跟着 DATA_ROOT 走（隔离门禁里别读/写真目录）。 */
+    return String(p0.resolveTurnToken(path.dirname(DATA_ROOT), process.env, {}).token || "");
   } catch (_e) {
     return "";
   }
@@ -5393,7 +5401,8 @@ ipcMain.handle("bitbot:pairing:state", async () => pairingState());
 // A2-5 设备花名册：读 devices.json 成「桌面花名册 UI 要的那几列」，吊销走同一份文件。
 // 路径必须与入站服务写 last_seen_at 的路径一致（REPO_ROOT/data/host/devices.json），
 // 否则 UI 看到的「最近活跃」永远读不到鉴权落盘的时间。
-const devicesPath = path.join(REPO_ROOT, "data", "host", "devices.json");
+/* 设备登记表跟 pairing.json 同理：跟着 DATA_ROOT 走，别在隔离门禁里写回真目录。 */
+const devicesPath = path.join(DATA_ROOT, "host", "devices.json");
 
 ipcMain.handle("bitbot:devices:list", async () => {
   try {
