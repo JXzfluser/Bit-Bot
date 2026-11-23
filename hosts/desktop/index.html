@@ -19157,6 +19157,10 @@
         cmdEmpty: "还没有任务",
         cmdMembers: "成员",
         cmdPartial: "部分完成",
+        cmdDuration: "耗时",
+        cmdRework: "返工",
+        cmdTimes: "次",
+        cmdStagePass: "验收",
         cmdOpenRoom: "打开群",
         cmdClose: "关闭",
         cmdRefresh: "刷新",
@@ -20672,6 +20676,10 @@
         cmdEmpty: "還沒有任務",
         cmdMembers: "成員",
         cmdPartial: "部分完成",
+        cmdDuration: "耗時",
+        cmdRework: "返工",
+        cmdTimes: "次",
+        cmdStagePass: "驗收",
         cmdOpenRoom: "開啟群",
         cmdClose: "關閉",
         cmdRefresh: "重新整理",
@@ -22187,6 +22195,10 @@
         cmdEmpty: "No tasks yet",
         cmdMembers: "Members",
         cmdPartial: "Partial",
+        cmdDuration: "Took",
+        cmdRework: "Rework",
+        cmdTimes: "times",
+        cmdStagePass: "Stages",
         cmdOpenRoom: "Open room",
         cmdClose: "Close",
         cmdRefresh: "Refresh",
@@ -26478,6 +26490,17 @@
      * 复盘 = 已完 = **同一份 Task 实体** ⇒ 原 #cmd-review 容器与 cmdRenderReview
      * 已删(D-7),行仍然叫 .cmd-review-row(门禁按 class 找,不改名)。
      */
+    /** 毫秒 → 人话（复盘用）。1.2s / 850ms / 2m05s。 */
+    function cmdFmtDur(ms) {
+      var v = Number(ms || 0);
+      if (!(v > 0)) return "";
+      if (v < 1000) return Math.round(v) + "ms";
+      if (v < 60000) return (v / 1000).toFixed(1) + "s";
+      var m = Math.floor(v / 60000);
+      var sec = Math.floor((v % 60000) / 1000);
+      return m + "m" + (sec < 10 ? "0" : "") + sec + "s";
+    }
+
     function cmdRenderDone(records) {
       var host = document.getElementById("cmd-done-list");
       if (!host) return;
@@ -26497,11 +26520,43 @@
       for (var i = 0; i < list.length; i++) {
         var rec = list[i] || {};
         var when = String(rec.closed_at || rec.updated_at || "");
+        /* 复盘三件套（批次 2）：整轮用时 / 返工次数 / 验收通过数 ——
+           数据来自 Task 实体里那几份字段（唯一真源），没有就**不显示**，
+           绝不编一个「0 次返工」出来。 */
+        var sub = cmdEsc(when) +
+          (rec.total ? " · " + cmdEsc(String(rec.returned || 0) + "/" + String(rec.total)) : "") +
+          (rec.partial ? " · " + cmdT("cmdPartial") : "");
+        if (rec.duration_ms) {
+          sub += " · " + cmdT("cmdDuration") + " " + cmdEsc(cmdFmtDur(rec.duration_ms));
+        }
+        if (Number(rec.rework_count || 0) > 0) {
+          sub += " · " + cmdT("cmdRework") + " " + cmdEsc(String(rec.rework_count)) + " " + cmdT("cmdTimes");
+        }
+        var stg = Array.isArray(rec.stages) ? rec.stages : [];
+        if (stg.length) {
+          var passed = 0;
+          for (var si = 0; si < stg.length; si++) if (stg[si] && stg[si].pass) passed++;
+          sub += " · " + cmdT("cmdStagePass") + " " + cmdEsc(String(passed) + "/" + String(stg.length));
+        }
+        /* 每棒一行：谁做的、多久、过没过（不过的带原因）。
+           数据来自实体里的 stages[] —— 看不到的那一段就**不画**，不编。 */
+        var stageLine = "";
+        if (stg.length) {
+          var bits = [];
+          for (var k = 0; k < stg.length; k++) {
+            var x = stg[k] || {};
+            var nm = String(x.name || x.bot_id || "").slice(0, 20);
+            if (!nm) continue;
+            var mark = x.pass === true ? "✓" : "✗";
+            var dur = x.duration_ms ? " " + cmdFmtDur(x.duration_ms) : "";
+            var why = x.pass === true ? "" : "（" + String(x.reason || "").slice(0, 60) + "）";
+            bits.push(nm + " " + mark + dur + why);
+          }
+          if (bits.length) stageLine = '<div class="cmd-sub">' + cmdEsc(bits.join(" · ")) + "</div>";
+        }
         html += '<div class="frame-box cmd-review-row">' +
           '<div class="cmd-line">' + cmdEsc(String(rec.title || rec.task || rec.id || "").slice(0, 120)) + "</div>" +
-          '<div class="cmd-sub">' + cmdEsc(when) +
-          (rec.total ? " · " + cmdEsc(String(rec.returned || 0) + "/" + String(rec.total)) : "") +
-          (rec.partial ? " · " + cmdT("cmdPartial") : "") + "</div></div>";
+          '<div class="cmd-sub">' + sub + "</div>" + stageLine + "</div>";
       }
       host.innerHTML = html;
     }

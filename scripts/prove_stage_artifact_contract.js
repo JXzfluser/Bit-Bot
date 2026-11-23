@@ -460,6 +460,60 @@ async function sectionF() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * G. 复盘三件套：整轮用时 / 每棒用时 / 返工次数 —— 落进 Task 实体
+ * ══════════════════════════════════════════════════════════════════════════ */
+async function sectionG() {
+  console.log("── G. 复盘数据（耗时 · 每棒用时 · 返工次数）落 Task 实体 ──");
+
+  const { surface, root } = mkSurface(Object.assign({}, ROOM, { contract: null, transcript: [] }));
+  const taskText = "帮我定一个题：园区光伏值不值得做，受众是制造业园区的能源负责人";
+  const deps = {
+    runResponderTurn: async (botId) => {
+      if (botId === "b2") return { ok: true, text: DRAFT_BODY };
+      return { ok: true, text: NARRATION_B1 + "【交给】脚本撰写" };
+    },
+  };
+  /* 同一个投递 id（messageId）⇒ 同一个任务号 ⇒ 第二轮就是**返工**
+     （口径：同一 task_sig 的执行轮次 − 1；新的一次投递是**新任务**，不是返工）。 */
+  const msgId = "room-msg-rework-test";
+  await dispatchRoomTurn({ surface, roomId: ROOM.id, text: taskText, messageId: msgId, deps });
+  const tasksPath = path.join(root, "data", "desktop", "tasks.json");
+  const readTasks = () => {
+    try { return JSON.parse(fs.readFileSync(tasksPath, "utf8")); } catch (_) { return { tasks: [] }; }
+  };
+  const rec = (readTasks().tasks || [])[0] || {};
+
+  check("SG-01", rec && rec.state === "done",
+    "SG-01 跑完之后 Task 实体在（state=done）", JSON.stringify(rec).slice(0, 200));
+
+  check("SG-02", Number(rec.duration_ms || 0) > 0,
+    "SG-02 整轮用时落进实体（duration_ms > 0）", String(rec.duration_ms));
+
+  const stg = Array.isArray(rec.stages) ? rec.stages : [];
+  check("SG-03", stg.length === 2 && stg.every((x) => typeof x.duration_ms === "number" && x.pass === true),
+    "SG-03 每一棒的用时与验收结论都在实体里", JSON.stringify(stg));
+
+  check("SG-04", Number(rec.rework_count || 0) === 0,
+    "SG-04 第一轮跑完：返工 0 次", String(rec.rework_count));
+
+  /* 同一批任务再跑一遍 ⇒ 返工 1 次（口径：同一 task_sig 的执行轮次 − 1）。 */
+  /* 返工在产品里的真路径 = **改向后重跑**：沿用原 message_id（同一个任务号）+
+     force:true（真的重跑，而不是被幂等挡掉）。 */
+  await surface.orchestrateRoom({
+    room: ROOM.id, task: taskText, message_id: msgId, force: true, deps,
+  });
+  const rec2 = (readTasks().tasks || [])[0] || {};
+  check("SG-05", Number(rec2.rework_count || 0) === 1,
+    "SG-05 同一批又跑一遍 ⇒ 返工 1 次（复盘看得见返工）", String(rec2.rework_count));
+
+  const frs = txOf(surface).filter((e) => e.kind === "final_report");
+  check("SG-06", frs.length === 2 && frs.every((f) => Number(f.duration_ms || 0) >= 0 &&
+      Array.isArray(f.stage_results) && f.stage_results.every((x) => typeof x.duration_ms === "number")),
+    "SG-06 转录里的 final_report 也带用时与每棒用时（真源不只实体有）",
+    JSON.stringify(frs.map((f) => [f.duration_ms, (f.stage_results || []).length])));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * C. 变异对照：把验收关掉 ⇒ 负例必须翻绿（否则负例没牙）
  *    —— 只改**副本**，源文件一个字节不动。
  * ══════════════════════════════════════════════════════════════════════════ */
@@ -548,6 +602,7 @@ function userDataFingerprint() {
     await sectionB();
     await sectionENegative();
   }
+  if (MODE === "all" || MODE === "positive") await sectionG();
   if (MODE === "all") sectionC();
 
   if (MODE === "all") {

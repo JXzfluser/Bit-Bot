@@ -5047,6 +5047,7 @@ for g140_id in SA-01 SA-02 SA-03 SA-04 SA-05 SA-06 SA-07 SA-08 SA-09 SA-10 \
                 SB-01 SB-02 SB-03 SB-04 SB-05 SB-06 SB-07 \
                 SE-01 SE-02 SE-03 SE-04 SE-05 SE-06 SE-07 SE-08 SE-09 \
                 SF-01 SF-02 SF-03 SF-04 SF-05 SF-06 SF-07 SF-08 \
+                SG-01 SG-02 SG-03 SG-04 SG-05 SG-06 \
                 SC-01 SC-02 SC-03 SD-01; do
   if grep -q "\[$g140_id\]" /tmp/g140-stage-contract.log 2>/dev/null; then
     ok "G-140 锚点：$g140_id"
@@ -5055,9 +5056,9 @@ for g140_id in SA-01 SA-02 SA-03 SA-04 SA-05 SA-06 SA-07 SA-08 SA-09 SA-10 \
   fi
 done
 # 计数钉：绿行条数 + FAIL=0 一起钉（删一条断言 ⇒ 立刻红）。
-if [ "$(grep -c '^  ✓' /tmp/g140-stage-contract.log)" -ge 38 ] \
+if [ "$(grep -c '^  ✓' /tmp/g140-stage-contract.log)" -ge 44 ] \
    && grep -q "FAIL=0" /tmp/g140-stage-contract.log; then
-  ok "G-140 计数钉：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log) ≥ 38 且 FAIL=0"
+  ok "G-140 计数钉：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log) ≥ 44 且 FAIL=0"
 else
   bad "G-140 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log)、$(tail -1 /tmp/g140-stage-contract.log)"
 fi

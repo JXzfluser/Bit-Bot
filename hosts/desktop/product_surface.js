@@ -2545,18 +2545,49 @@ function createProductSurface(repoRoot, opts = {}) {
   /* Task 状态**只在这里**同步:appendRoomTranscript 是转录的唯一写入口,
      所以这里是唯一能保证「转录与 Task 不分叉」的地方。
      状态来自行本身的 kind —— 不猜、不编。 */
-  function syncTaskFromTranscript(entry) {
+  /* 复盘三件套（批次 2）：整轮用时、每棒用时、返工次数。
+   * 返工次数 = **同一 task_sig 在本群转录里的执行轮次 − 1** ——
+   * 口径写在转录上（唯一真源），不另造计数器：
+   *   第 1 轮跑完 ⇒ 返工 0；同样的任务又跑了一遍 ⇒ 返工 1。
+   * 被驳回后用户让「改向」重跑、或同一批又来一次，都算返工。 */
+  function countRuns(room, sig) {
+    const tx = (room && Array.isArray(room.transcript)) ? room.transcript : [];
+    let n = 0;
+    for (const e of tx) {
+      if (e && e.kind === "final_report" && String(e.task_sig || "") === sig) n++;
+    }
+    return n;
+  }
+
+  function syncTaskFromTranscript(entry, room) {
     if (!entry || !entry.kind) return;
     const sig = String(entry.task_sig || "").trim();
     if (!sig) return;
     const roomId = String(entry.room_id || "");
     if (entry.kind === "final_report") {
+      const stages = Array.isArray(entry.stage_results) ? entry.stage_results : [];
       upsertTask({
         id: sig, room_id: roomId, state: "done",
         task: String(entry.task || ""), title: String(entry.task_title || entry.task || ""),
         total: Number(entry.total || 0), returned: Number(entry.returned || 0),
         partial: entry.partial === true,
         closed_at: nowIso(),
+        /* 复盘数据：跟着 final_report 一起落进 Task 实体 ——
+           指挥台的「已完成」区读的就是这份实体（不新增平行数据源）。 */
+        duration_ms: Number(entry.duration_ms || 0),
+        rework_count: Math.max(0, countRuns(room, sig) - 1),
+        stages: stages.map((x) => ({
+          bot_id: String(x.bot_id || ""), name: String(x.name || ""),
+          ok: x.ok === true, pass: x.pass === true,
+          duration_ms: Number(x.duration_ms || 0),
+          reason: String(x.reason || ""), code: String(x.code || ""),
+          artifact_path: String(x.artifact_path || ""),
+        })),
+        deliverable: entry.deliverable ? {
+          name: String(entry.deliverable.name || ""),
+          path: String(entry.deliverable.path || ""),
+          bytes: Number(entry.deliverable.bytes || 0),
+        } : null,
       });
       return;
     }
@@ -2589,7 +2620,7 @@ function createProductSurface(repoRoot, opts = {}) {
     // Task 状态在**转录写成功之后**同步 —— 写转录失败就不会留下一个
     // "转录里没有、Task 里有" 的幽灵状态。
     try {
-      syncTaskFromTranscript(entry);
+      syncTaskFromTranscript(entry, room);
     } catch (_) {
       // Task 同步失败**不许**让转录写入变成失败:转录已经是真相了。
     }
@@ -3119,6 +3150,7 @@ function createProductSurface(repoRoot, opts = {}) {
     const timeoutMs = Number(deps.timeoutMs || 120000);
     const decisionTimeoutMs = Number(deps.discretionTimeoutMs || Math.min(timeoutMs, 30000));
     const at = nowIso();
+    const roundStart = Date.now(); /* 整轮用时（复盘：这一批总共花了多久） */
     const withTimeout = withCancelTimeout;
     const candidates = responders.slice();
     // 换人指令:把被换的成员换成新人 —— **下一棒**生效。
@@ -3339,6 +3371,7 @@ function createProductSurface(repoRoot, opts = {}) {
         };
         budget.spend({ turns: 1, tokens: promptTokens });
         let res;
+        const stageStart = Date.now();
         try {
           const out = await withTimeout(
             runResponderTurn(current.id, prompt, ctx).finally(() => forgetRoomScope(scope)),
@@ -3350,12 +3383,16 @@ function createProductSurface(repoRoot, opts = {}) {
           res = {
             bot_id: current.id, name: current.name, ok: !!(out && out.ok !== false),
             text, artifacts: (out && out.artifacts) || [], error: (out && out.error) || null, hop,
+            /* 这一棒用时（毫秒）—— 复盘要看得见「谁慢」，
+               不然「一队人把事做完」只有结果、没有过程。 */
+            duration_ms: Math.max(0, Date.now() - stageStart),
           };
         } catch (e) {
           scope.cancel("timeout_or_error");
           res = {
             bot_id: current.id, name: current.name, ok: false, text: "", artifacts: [],
             error: String((e && e.message) || e), cancelled: true, hop,
+            duration_ms: Math.max(0, Date.now() - stageStart),
           };
         }
         /* ---- 产物验收：这一棒交上来的是「成果本身」还是「对成果的转述」？----
@@ -3520,6 +3557,7 @@ function createProductSurface(repoRoot, opts = {}) {
         stage_results: chain.map((c) => ({
           bot_id: c.bot_id, name: c.name, hop: c.hop, ok: !!c.ok,
           pass: !!(c.stage && c.stage.pass),
+          duration_ms: Number(c.duration_ms || 0),
           rejected: !!c.rejected, reason: c.reject_reason || (c.stage && c.stage.reason) || "",
           code: (c.stage && c.stage.code) || "",
           chars: (c.stage && c.stage.chars) || 0,
@@ -3539,6 +3577,9 @@ function createProductSurface(repoRoot, opts = {}) {
         deliverable_skipped: deliverable && !deliverable.ok ? deliverable.error : undefined,
         budget: budget.snapshot(),
         duplication,
+        /* 复盘三件套：整轮用时 / 每棒用时（stage_results[].duration_ms）/
+           返工次数（syncTaskFromTranscript 按同一 task_sig 的执行轮次算）。 */
+        duration_ms: Math.max(0, Date.now() - roundStart),
         at,
       };
       appendRoomTranscript(room.id, final_report);
