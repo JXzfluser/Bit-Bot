@@ -450,6 +450,17 @@ function buildRelayPrompt(input) {
   lines.push(
     "3. 交付时直接给**成果本身**（成稿的正文、脚本、清单、结论都行），不要只写「已完成」「如上」。",
   );
+  /* 有交付契约时，把这一棒的落点说清楚 —— 否则成员会以为要自己写文件，
+     而实际上它**没有写文件的工具**（write_result 是 Gmail 的 MCP 工具），
+     于是它只会交一句「已写入 xxx」，Host 把那句话当交付 ⇒ 产物成了转述。 */
+  if (opts.contract && (opts.contract.dir || opts.contract.path)) {
+    const where = String(opts.contract.dir || opts.contract.path).trim();
+    lines.push(
+      "   这一棒有交付约定：成果会被 Host 落到「" + where + "」下。" +
+      "你**不用自己写文件**，把成果正文完整写在这条回复里就行；" +
+      "只交一句「已完成」或一个路径，Host 会判这一棒没交出成果（后面的人不接力，产物也不落盘）。",
+    );
+  }
   lines.push(
     "4. 确实需要另一位成员的专业能力才能继续时，另起一行写：" +
       RELAY_MARKERS.handoff + "<成员名字>：<要他做什么>。能自己做完就不要写。",
@@ -932,25 +943,64 @@ function looksLikeNarration(text) {
   return NARRATION_PATTERNS.some((re) => re.test(t));
 }
 
-/** 契约里的路径 → 真实路径。
- *  · `/workspace/x` ⇒ `<dataRoot>/workspace/x`（角色 prompt 用的就是 /workspace 口径）
- *  · `YYYY-MM-DD` / `{date}` ⇒ 当天日期
- *  · 相对路径 ⇒ 相对 <dataRoot>
+/** 团队共享目录名（与 hosts/desktop/main.js 的 teamCreateWorkspace 同一条口径：
+ *  目录名 = 标题去掉非法字符后截 48 —— 两边必须一致，否则成员按 prompt 写的路径
+ *  和 Host 建的目录对不上。）。 */
+function sanitizeTeamDir(title) {
+  return String(title || "team").replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 48) || "team";
+}
+
+/**
+ * 交付契约的目标路径解析（唯一一份）。
+ * spec: {path?, dir?, file?}
+ * opts: {dataRoot, roomTitle, date, botName, scope}
+ *   scope="team"（默认）⇒ 相对路径落在**团队共享目录** <dataRoot>/workspace/<团队名>/
+ *                       （团队成员真正看得到的那棵树）
+ *   scope="data"        ⇒ 相对路径落在 <dataRoot>/
+ *   "/workspace/x"      ⇒ 一律 <dataRoot>/workspace/x
+ * 占位符：{date} / YYYY-MM-DD / {title}（团队名）/ {bot}（成员名）
  */
 function resolveDeliverablePath(spec, opts) {
   const o = opts || {};
-  let p = String(spec || "").trim();
+  const c = typeof spec === "string" ? { path: spec } : (spec || {});
+  let p = String(c.path || "").trim();
+  if (!p && c.dir) {
+    const dir = String(c.dir).trim().replace(/\/+$/, "");
+    const file = String(c.file || "{date}.md").trim();
+    p = dir ? dir + "/" + file : file;
+  }
   if (!p) return "";
   const date = String(o.date || new Date().toISOString().slice(0, 10));
-  p = p.replace(/\{date\}/g, date).replace(/YYYY-MM-DD/g, date);
+  const week = String(o.week || isoWeekOf(date));
+  p = p
+    .replace(/\{date\}/g, date)
+    .replace(/YYYY-MM-DD/g, date)
+    .replace(/\{week\}/g, week)
+    .replace(/YYYY-WW/g, week.slice(0, 4) + "-W" + week.slice(5, 7))
+    .replace(/\{title\}/g, sanitizeTeamDir(o.roomTitle || o.title || ""))
+    .replace(/\{bot\}/g, sanitizeTeamDir(o.botName || o.bot || ""));
   const root = String(o.dataRoot || "").trim();
+  if (!root) return "";
   if (p.startsWith("/workspace/")) {
-    if (!root) return "";
     return path.join(root, "workspace", p.slice("/workspace/".length));
   }
   if (path.isAbsolute(p)) return p;
-  if (!root) return "";
-  return path.join(root, p);
+  const scope = String(o.scope || "team");
+  if (scope === "data") return path.join(root, p);
+  return path.join(root, "workspace", sanitizeTeamDir(o.roomTitle || o.title || ""), p);
+}
+
+/** ISO 周（YYYY-Www）—— 复盘类交付物按周命名。 */
+function isoWeekOf(dateStr) {
+  const d = new Date(String(dateStr || "") + "T00:00:00Z");
+  if (isNaN(d.getTime())) return "";
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+  const ww = String(week).padStart(2, "0");
+  return String(t.getUTCFullYear()) + "-W" + ww;
 }
 
 /** 数条目（列表项）：`- xxx` / `1. xxx` / `1、xxx`。 */
@@ -968,7 +1018,7 @@ function countDeliverableItems(content) {
 /** 按契约把交付文件读出来（读不到就说读不到，不猜）。 */
 function readDeliverableArtifact(contract, opts) {
   const o = opts || {};
-  const file = resolveDeliverablePath(contract && contract.path, o);
+  const file = resolveDeliverablePath(contract, o);
   if (!file) return { ok: false, error: "no_path", path: "", reason: "契约里没写交付路径" };
   if (!fs.existsSync(file)) return { ok: false, error: "not_found", path: file, reason: "文件不存在" };
   let content = "";
@@ -996,10 +1046,10 @@ function judgeStage(input) {
   const text = String(o.text || "").trim();
   const contract = o.contract || null;
   const rules = Object.assign({}, (contract && contract.rules) || {}, o.rules || {});
-  const out = { pass: true, code: "ok", reason: "", chars: text.length, artifact: null, warn: "" };
+  const out = { pass: true, code: "ok", reason: "", chars: text.length, artifact: null, warn: "", content: "", target_path: "" };
 
   /* 没有契约 ⇒ 放行，但把「像转述」记下来（复盘可见，不拦人）。 */
-  if (!contract || !contract.path) {
+  if (!contract || (!contract.path && !contract.dir)) {
     if (looksLikeNarration(text)) {
       out.warn = "这一棒只交了转述，没有交成果本身";
     }
@@ -1008,52 +1058,78 @@ function judgeStage(input) {
     return out;
   }
 
-  /* 有契约 ⇒ 交付内容必须来自**成员写下的那个文件**。 */
-  const art = readDeliverableArtifact(contract, { dataRoot: o.dataRoot, date: o.date });
-  out.artifact = art;
-  if (!art.ok) {
-    out.pass = false;
-    out.code = art.error === "not_found" ? "no_deliverable_file" : ("artifact_" + art.error);
-    out.reason = "这一棒没有交出约定的交付文件（" + (art.path || contract.path) + "）：" + (art.reason || "");
+  const target = resolveDeliverablePath(contract, {
+    dataRoot: o.dataRoot, date: o.date, roomTitle: o.roomTitle, botName: o.botName,
+  });
+  out.target_path = target;
+
+  /* ── 通道 A：成员自己写文件（expect_file）──────────────────────────────
+   * 交付内容 = 那个文件的正文；文件不在/不合格 ⇒ 这一棒不算交付。 */
+  if (contract.expect_file === true || contract.expect_file === "true") {
+    const art = readDeliverableArtifact(contract, {
+      dataRoot: o.dataRoot, date: o.date, roomTitle: o.roomTitle, botName: o.botName,
+    });
+    out.artifact = art;
+    if (!art.ok) {
+      out.pass = false;
+      out.code = art.error === "not_found" ? "no_deliverable_file" : ("artifact_" + art.error);
+      out.reason = "这一棒没有交出约定的交付文件（" + (art.path || target) + "）：" + (art.reason || "");
+      return out;
+    }
+    out.chars = art.chars;
+    const verdict = checkContentRules(art.content, rules, "交付文件");
+    if (!verdict.pass) { out.pass = false; out.code = verdict.code; out.reason = verdict.reason; out.items = verdict.items; return out; }
+    out.reason = "通过（交付文件 " + art.chars + " 字）";
     return out;
   }
-  out.chars = art.chars;
-  if (rules.min_chars && art.chars < Number(rules.min_chars)) {
+
+  /* ── 通道 B（默认）：成员在回复里交正文，Host 按契约代写落盘 ────────────
+   * 为什么需要这条通道：实测发现**成员并没有写文件的工具**（write_result 是
+   * Gmail 的 MCP 工具，不是通用写文件能力）⇒ 角色 prompt 里「写入 xxx.md」
+   * 这句话成员根本兑现不了 ⇒ 它唯一能交的是回复文本 ⇒ 而 prompt 又让它
+   * 「只汇报路径和条数」⇒ Host 把汇报当交付落盘 ⇒ 882 字节的转述。
+   * ⇒ 于是把「写文件」这件事从成员身上挪回 Host：成员交**正文**，Host 落盘。 */
+  if (!text.length) {
     out.pass = false;
-    out.code = "too_short";
-    out.reason = "交付文件内容太短（" + art.chars + " 字，要求 ≥ " + rules.min_chars + " 字）";
+    out.code = "empty";
+    out.reason = "这一棒没有交出任何内容";
     return out;
   }
-  if (rules.min_items) {
-    const n = countDeliverableItems(art.content);
-    out.items = n;
-    if (n < Number(rules.min_items)) {
-      out.pass = false;
-      out.code = "too_few_items";
-      out.reason = "交付文件条目太少（" + n + " 条，要求 ≥ " + rules.min_items + " 条）";
-      return out;
-    }
+  if (looksLikeNarration(text)) {
+    out.pass = false;
+    out.code = "narration_only";
+    out.reason = "这一棒只交了转述（" + clip(text, 40) + "），没有交成果本身";
+    return out;
   }
-  if (rules.max_items) {
-    const n = countDeliverableItems(art.content);
-    out.items = n;
-    if (n > Number(rules.max_items)) {
-      out.pass = false;
-      out.code = "too_many_items";
-      out.reason = "交付文件条目超了（" + n + " 条，上限 " + rules.max_items + " 条）";
-      return out;
-    }
-  }
-  for (const need of (rules.must_include || [])) {
-    if (!art.content.includes(String(need))) {
-      out.pass = false;
-      out.code = "missing_content";
-      out.reason = "交付文件里缺少「" + String(need) + "」";
-      return out;
-    }
-  }
-  out.reason = "通过（交付文件 " + art.chars + " 字）";
+  const verdict = checkContentRules(text, rules, "交付内容");
+  if (!verdict.pass) { out.pass = false; out.code = verdict.code; out.reason = verdict.reason; out.items = verdict.items; return out; }
+  out.content = text;
+  out.reason = "通过（正文 " + text.length + " 字）";
   return out;
+}
+
+/** 内容规则（长度 / 条目数 / 必含）—— 两种通道共用一份判据。 */
+function checkContentRules(content, rules, what) {
+  const text = String(content || "");
+  const chars = text.trim().length;
+  const r = rules || {};
+  if (r.min_chars && chars < Number(r.min_chars)) {
+    return { pass: false, code: "too_short", reason: what + "太短（" + chars + " 字，要求 ≥ " + r.min_chars + " 字）" };
+  }
+  let items = 0;
+  if (r.min_items || r.max_items) items = countDeliverableItems(text);
+  if (r.min_items && items < Number(r.min_items)) {
+    return { pass: false, code: "too_few_items", items, reason: what + "条目太少（" + items + " 条，要求 ≥ " + r.min_items + " 条）" };
+  }
+  if (r.max_items && items > Number(r.max_items)) {
+    return { pass: false, code: "too_many_items", items, reason: what + "条目超了（" + items + " 条，上限 " + r.max_items + " 条）" };
+  }
+  for (const need of (r.must_include || [])) {
+    if (!text.includes(String(need))) {
+      return { pass: false, code: "missing_content", items, reason: what + "里缺少「" + String(need) + "」" };
+    }
+  }
+  return { pass: true, code: "ok", items };
 }
 
 /** 从任务/房间/成员三处挑出这一棒该用的契约。 */
@@ -1083,7 +1159,7 @@ function pickStageContract(input) {
       continue;
     }
     const d = c.deliverable || c;
-    if (d && d.path) return Object.assign({}, d, { rules: d.rules || c.rules || {} });
+    if (d && (d.path || d.dir)) return Object.assign({}, d, { rules: d.rules || c.rules || {} });
   }
   return null;
 }

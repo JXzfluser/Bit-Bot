@@ -11089,6 +11089,12 @@
         made.push(b);
         // 分组复用 bots.json 的 group：不另造「团队」实体，侧栏直接就成形。
         await window.bitbot.bots.setGroup(b.id, title).catch(() => {});
+        /* 交付契约落进成员记录（批次 1.5）：角色 prompt 里的【固定交付】/【验收】
+           结构化之后写在这儿 ⇒ 接力时 Host 按这份契约验收、按它落盘。
+           没有契约的角色（比如用户自己写的团队）⇒ 行为一字不变。 */
+        if (role && role.deliverable) {
+          await window.bitbot.bots.setDeliverable(b.id, role.deliverable).catch(() => {});
+        }
       }
       if (!made.length) {
         cmdToast(wavegT("teamFailed"), "warn");

@@ -1888,6 +1888,22 @@ ipcMain.handle("bitbot:bots:setGroup", async (_e, payload) => {
 /** GP-122 (§2.2): OS image picker for the Bot avatar. The Host validates the
  *  real path on save (`bot_update` rejects missing files); this handler only
  *  returns the path plus a bounded data URL for the in-dialog preview. */
+/* 交付契约落盘（批次 1.5）：建团时把模板角色的【固定交付】写进成员记录，
+   接力时按成员查契约、按契约验收、按契约落盘 —— 全程只有成员记录里那一份。 */
+ipcMain.handle("bitbot:bots:setDeliverable", async (_e, payload) => {
+  const p = payload || {};
+  try {
+    const r = surface.updateBot({
+      bot_id: p.bot_id,
+      deliverable: p.deliverable === undefined ? undefined : p.deliverable,
+    });
+    if (r && r.ok) broadcastSurface("bots", surface.listViews());
+    return r;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), mode: "host_bot_update" };
+  }
+});
+
 ipcMain.handle("bitbot:bots:pickAvatar", async () => {
   try {
     const win = BrowserWindow.getFocusedWindow() || mainWindow;

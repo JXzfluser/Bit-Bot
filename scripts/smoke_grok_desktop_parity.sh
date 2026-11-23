@@ -5044,7 +5044,10 @@ else
 fi
 # 锚点钉 [SA-nn]/[SB-nn]/[SC-nn]/[SD-nn]：编号只加在 ok() 文案上，红行没有编号 ⇒ 漏一条就红。
 for g140_id in SA-01 SA-02 SA-03 SA-04 SA-05 SA-06 SA-07 SA-08 SA-09 SA-10 \
-                SB-01 SB-02 SB-03 SB-04 SB-05 SB-06 SB-07 SC-01 SC-02 SC-03 SD-01; do
+                SB-01 SB-02 SB-03 SB-04 SB-05 SB-06 SB-07 \
+                SE-01 SE-02 SE-03 SE-04 SE-05 SE-06 SE-07 SE-08 SE-09 \
+                SF-01 SF-02 SF-03 SF-04 SF-05 SF-06 SF-07 SF-08 \
+                SC-01 SC-02 SC-03 SD-01; do
   if grep -q "\[$g140_id\]" /tmp/g140-stage-contract.log 2>/dev/null; then
     ok "G-140 锚点：$g140_id"
   else
@@ -5052,12 +5055,17 @@ for g140_id in SA-01 SA-02 SA-03 SA-04 SA-05 SA-06 SA-07 SA-08 SA-09 SA-10 \
   fi
 done
 # 计数钉：绿行条数 + FAIL=0 一起钉（删一条断言 ⇒ 立刻红）。
-if [ "$(grep -c '^  ✓' /tmp/g140-stage-contract.log)" -ge 21 ] \
+if [ "$(grep -c '^  ✓' /tmp/g140-stage-contract.log)" -ge 38 ] \
    && grep -q "FAIL=0" /tmp/g140-stage-contract.log; then
-  ok "G-140 计数钉：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log) ≥ 21 且 FAIL=0"
+  ok "G-140 计数钉：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log) ≥ 38 且 FAIL=0"
 else
   bad "G-140 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log)、$(tail -1 /tmp/g140-stage-contract.log)"
 fi
+echo "  · G-140 两条交付通道：A 成员自己写文件（expect_file）；B **成员交正文、Host 代写**"
+echo "    —— 实测成员**没有写文件的工具**（write_result 是 Gmail 的 MCP 工具）⇒ 角色 prompt"
+echo "    里的「写入 xxx.md」成员兑现不了 ⇒ 它只能交回复文本 ⇒ prompt 又让它「只汇报路径和"
+echo "    条数」⇒ Host 把汇报当交付落盘 ⇒ 882 字节的转述。B 通道把「写文件」这件事从成员"
+echo "    身上挪回 Host：成员交**正文**，Host 按契约落盘并验收。"
 echo "  · G-140 口径（诚实）：本门测的是**契约生效时**的行为（房间/任务带交付契约 ⇒ 产物"
 echo "    取自成员写下的那个文件）；**没有契约时行为一字未变**（普通短任务不会被误伤），"
 echo "    只把「这棒像转述」记成 warn。契约的数据源（把角色 prompt 里的【固定交付】结构化、"

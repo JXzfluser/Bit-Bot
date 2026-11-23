@@ -73,11 +73,26 @@ const CONTRACT = {
     {
       match: { name: "选题策划" },
       path: "/workspace/content-team/02-briefs/{date}.md",
+      expect_file: true,
       rules: { min_chars: 120, min_items: 2 },
     },
     {
       match: { name: "脚本撰写" },
       path: "/workspace/content-team/03-drafts/{date}.md",
+      expect_file: true,
+      rules: { min_chars: 120 },
+    },
+  ],
+};
+
+/* 通道 B 的契约：成员**没有写文件的工具** ⇒ 成员交正文，Host 按契约代写落盘。
+   dir/file 是相对**团队共享目录**（<dataRoot>/workspace/<团队名>/）的。 */
+const CONTRACT_REPLY = {
+  stages: [
+    {
+      match: { name: "脚本撰写" },
+      dir: "03-draft",
+      file: "{date}-draft.md",
       rules: { min_chars: 120 },
     },
   ],
@@ -118,11 +133,11 @@ const DRAFT_BODY = [
 const NARRATION_B1 = "已看过上一棒：情报线索已看过一遍，园区光伏这条最值得做。";
 const NARRATION_B2 = "已看过上一棒：选题 brief 已看过一遍，可以开写。";
 
-function mkSurface(roomDef) {
+function mkSurface(roomDef, bots) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "stage-contract-")));
   const dir = path.join(root, "data", "desktop");
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "bots.json"), JSON.stringify(BOTS));
+  fs.writeFileSync(path.join(dir, "bots.json"), JSON.stringify(bots || BOTS));
   fs.writeFileSync(path.join(dir, "rooms.json"), JSON.stringify({ version: 1, rooms: [roomDef] }));
   return { surface: createProductSurface(root), root };
 }
@@ -163,8 +178,16 @@ function deliverableFiles(root) {
  */
 async function runRelay(opts) {
   const writeFiles = !!opts.writeFiles;
-  const roomDef = Object.assign({}, ROOM, { transcript: [] });
-  const { surface, root } = mkSurface(roomDef);
+  const roomDef = Object.assign({}, ROOM, {
+    /* 契约来源：opts.contract（任务级）> roomContract（房间级，默认用 CONTRACT）
+       > 成员记录里那份。opts.roomContract=null ⇒ 房间**不带**契约（真实产品路径：
+       建团时把契约落进成员记录就够了，不需要房间再带一份）。 */
+    contract: opts.roomContract !== undefined
+      ? opts.roomContract
+      : (opts.contract || CONTRACT),
+    transcript: [],
+  });
+  const { surface, root } = mkSurface(roomDef, opts.bots);
   const calls = [];
   const r = await dispatchRoomTurn({
     surface,
@@ -180,7 +203,9 @@ async function runRelay(opts) {
         }
         if (botId === "b2") {
           if (writeFiles) writeArtifact(root, CONTRACT.stages[1].path, DRAFT_BODY);
-          return { ok: true, text: (writeFiles ? "已写入 /workspace/content-team/03-drafts/" : "") + NARRATION_B2 };
+          /* replyBody：成员直接把**正文**交上来（通道 B 的正常形态）。 */
+          const body = opts.replyBody ? String(opts.replyBody) : "";
+          return { ok: true, text: (writeFiles ? "已写入 /workspace/content-team/03-drafts/" : "") + (body || NARRATION_B2) };
         }
         return { ok: true, text: "（核查完成）" };
       },
@@ -282,6 +307,159 @@ async function sectionB() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * E. 通道 B：成员交正文，Host 代写落盘（成员**没有**写文件的工具）
+ * ══════════════════════════════════════════════════════════════════════════ */
+async function sectionEPositive() {
+  console.log("── E1. 通道 B 正例（成员交正文 ⇒ Host 代写落盘）──");
+  const c = await runRelay({ writeFiles: false, contract: CONTRACT_REPLY, replyBody: DRAFT_BODY });
+
+  const sr = (c.fr && c.fr.stage_results) || [];
+  const last = sr[sr.length - 1] || {};
+  check("SE-01", !!last.artifact_path && fs.existsSync(last.artifact_path),
+    "SE-01 Host 把成员交的正文**代写成了交付文件**（文件真的在磁盘上）",
+    JSON.stringify(sr.map((s) => s.artifact_path)));
+
+  check("SE-02", last.artifact_path && last.artifact_path.indexOf("/workspace/") >= 0,
+    "SE-02 落盘位置在**团队共享目录**下（路径是 Host 算的，不是模型给的）",
+    String(last.artifact_path || ""));
+
+  if (last.artifact_path && fs.existsSync(last.artifact_path)) {
+    const onDisk = fs.readFileSync(last.artifact_path, "utf8");
+    check("SE-03", onDisk === DRAFT_BODY,
+      "SE-03 文件内容 = 成员交上来的正文（逐字节一致）",
+      JSON.stringify({ disk: onDisk.slice(0, 80), expected: DRAFT_BODY.slice(0, 80) }));
+  } else {
+    check("SE-03", false, "SE-03 文件内容 = 成员交上来的正文（逐字节一致）", "文件不存在，没法比");
+  }
+
+  check("SE-04", c.artifact.indexOf("你有没有算过，园区屋顶那一片光伏") >= 0,
+    "SE-04 产物正文里有成员的正文（最后一棒为权威交付）", c.artifact.slice(0, 160));
+
+  check("SE-05", c.fr && c.fr.deliverable && fs.existsSync(c.fr.deliverable.path),
+    "SE-05 汇总产物也落盘了", JSON.stringify(c.fr && c.fr.deliverable));
+  return c;
+}
+
+async function sectionENegative() {
+  console.log("── E2. 通道 B 负例（只交转述 ⇒ 驳回、产物不落盘）──");
+  const c = await runRelay({ writeFiles: false, contract: CONTRACT_REPLY, replyBody: NARRATION_B2 });
+
+  const sr = (c.fr && c.fr.stage_results) || [];
+  const last = sr[sr.length - 1] || {};
+  check("SE-06", last.rejected === true && last.code === "narration_only",
+    "SE-06 正文只有转述 ⇒ 这一棒被驳回（code=narration_only）", JSON.stringify(sr));
+
+  check("SE-07", String(last.reason || "").indexOf("只交了转述") >= 0,
+    "SE-07 驳回理由点名「只交了转述」", String(last.reason || ""));
+
+  check("SE-08", !(c.fr && c.fr.deliverable) && c.files.length === 0,
+    "SE-08 **产物不落盘**（不留半个状态）",
+    JSON.stringify({ deliverable: c.fr && c.fr.deliverable, files: c.files }));
+
+  const teamFiles = [];
+  const teamDir = path.join(c.root, "data", "workspace");
+  if (fs.existsSync(teamDir)) {
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith(".md")) teamFiles.push(p);
+      }
+    };
+    walk(teamDir);
+  }
+  check("SE-09", teamFiles.length === 0,
+    "SE-09 团队共享目录里也没落下半个交付文件", JSON.stringify(teamFiles));
+  return c;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * F. 真实产品路径：契约在**成员记录**里 ⇒ 接力自动按契约验收
+ *    （建团时从模板角色的【固定交付】落进来 ⇒ 接力时不用再传任何参数）
+ * ══════════════════════════════════════════════════════════════════════════ */
+const BOTS_WITH_CONTRACT = {
+  version: 1,
+  primary_id: "b1",
+  bots: [
+    Object.assign({}, BOTS.bots[0]),
+    Object.assign({}, BOTS.bots[1], {
+      deliverable: { dir: "03-draft", file: "{date}-draft.md", rules: { min_chars: 120 } },
+    }),
+    Object.assign({}, BOTS.bots[2]),
+  ],
+};
+
+async function sectionF() {
+  console.log("── F. 真实产品路径（契约在成员记录里）+ 模板两份真相 ──");
+
+  /* F-01/F-02：模板侧 —— 角色带结构化契约，且两份真相逐字一致。 */
+  const tplFile = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "data", "desktop", "bot-templates.json"), "utf8"));
+  const media = (tplFile.templates || []).find((t) => t.id === "media-content-team");
+  const roles = (media && media.roles) || [];
+  check("SF-01", roles.length === 5 && roles.every((r) => r.deliverable && r.deliverable.dir && r.deliverable.file && r.deliverable.rules),
+    "SF-01 模板的五个角色都带**结构化交付契约**（dir + file + rules）",
+    JSON.stringify(roles.map((r) => [r.name, r.deliverable && r.deliverable.dir])));
+
+  const oldWay = roles.filter((r) => /只汇报|并只汇报/.test(String(r.prompt || "")));
+  check("SF-02", oldWay.length === 0,
+    "SF-02 角色 prompt 里不再要求「只汇报文件路径」（旧口径必须消失：汇报不是交付）",
+    JSON.stringify(oldWay.map((r) => r.name)));
+
+  const newWay = roles.filter((r) => /正文完整写在回复里/.test(String(r.prompt || "")));
+  check("SF-03", newWay.length === roles.length,
+    "SF-03 每个角色都被要求「把正文完整写在回复里」（Host 会替你落盘）",
+    JSON.stringify(roles.map((r) => [r.name, /正文完整写在回复里/.test(String(r.prompt || ""))])));
+
+  const seedSrc = fs.readFileSync(path.resolve(__dirname, "..", "hosts", "shared", "host_ffi.js"), "utf8");
+  let seedSame = true;
+  for (const r of roles) {
+    const a = seedSrc.indexOf("name: `" + r.name + "`");
+    const ps = seedSrc.indexOf("prompt:", a);
+    const lb = seedSrc.indexOf("`", ps);
+    const le = seedSrc.indexOf("`,\n", lb);
+    const lit = seedSrc.slice(lb + 1, le);
+    if (lit !== r.prompt) { seedSame = false; break; }
+  }
+  check("SF-04", seedSame,
+    "SF-04 模板的**两份真相**（host_ffi 种子 ↔ bot-templates.json）逐字一致（不能各写一份）");
+
+  /* F-05/F-06：成员记录带契约 ⇒ 接力自动验收（正例）。 */
+  const c = await runRelay({
+    writeFiles: false,
+    bots: BOTS_WITH_CONTRACT,
+    replyBody: DRAFT_BODY,
+    roomContract: null,
+    task: "帮我定一个题：园区光伏值不值得做，受众是制造业园区的能源负责人",
+  });
+  const sr = (c.fr && c.fr.stage_results) || [];
+  const last = sr[sr.length - 1] || {};
+  check("SF-05", !!last.artifact_path && fs.existsSync(last.artifact_path),
+    "SF-05 成员记录里带契约 ⇒ 这一棒**自动**被验收并代写落盘（不用传任何参数）",
+    JSON.stringify(sr.map((s) => [s.bot_id, s.pass, s.artifact_path])));
+
+  check("SF-06", last.artifact_path && last.artifact_path.indexOf("/workspace/" + ROOM.title + "/03-draft/") >= 0,
+    "SF-06 落盘位置 = 团队共享目录 03-draft/ 下（契约里的 dir 说了算）",
+    String(last.artifact_path || ""));
+
+  check("SF-07", c.artifact.indexOf("你有没有算过，园区屋顶那一片光伏") >= 0,
+    "SF-07 产物正文 = 成员交上来的正文", c.artifact.slice(0, 140));
+
+  /* F-08：同一份契约，成员只交转述 ⇒ 驳回、产物不落盘。 */
+  const c2 = await runRelay({
+    writeFiles: false,
+    bots: BOTS_WITH_CONTRACT,
+    replyBody: "",
+    roomContract: null,
+    task: "帮我定一个题：园区光伏值不值得做，受众是制造业园区的能源负责人",
+  });
+  const sr2 = (c2.fr && c2.fr.stage_results) || [];
+  const last2 = sr2[sr2.length - 1] || {};
+  check("SF-08", last2.rejected === true && !(c2.fr && c2.fr.deliverable) && c2.files.length === 0,
+    "SF-08 同一份契约：只交转述 ⇒ 驳回 + 产物不落盘",
+    JSON.stringify({ sr2, deliverable: c2.fr && c2.fr.deliverable, files: c2.files }));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * C. 变异对照：把验收关掉 ⇒ 负例必须翻绿（否则负例没牙）
  *    —— 只改**副本**，源文件一个字节不动。
  * ══════════════════════════════════════════════════════════════════════════ */
@@ -303,7 +481,7 @@ function sectionC() {
   const anchor = "function judgeStage(input) {\n  const o = input || {};";
   const mutant = src.replace(anchor,
     "function judgeStage(input) {\n" +
-    "  { const om = input || {}; if (om && om.contract && om.contract.path) return { pass: true, code: \"mutant_always_pass\", reason: \"变异：永远放行\", chars: 0, artifact: null, warn: \"\" }; }\n" +
+    "  { const om = input || {}; if (om && om.contract && (om.contract.path || om.contract.dir)) return { pass: true, code: \"mutant_always_pass\", reason: \"变异：永远放行\", chars: 0, artifact: null, warn: \"\" }; }\n" +
     "  const o = input || {};");
   if (mutant === src) {
     fail++; console.log("  ✗ [SC-01] 变异没打上（judgeStage 的锚点变了）⇒ 下面的对照没意义");
@@ -319,9 +497,10 @@ function sectionC() {
   });
   const out = String(r.stdout || "") + String(r.stderr || "");
   const sb04Red = /✗ \[SB-04\]/.test(out);
-  check("SC-02", r.status !== 0 && sb04Red,
-    "SC-02 关掉验收后，负例的 SB-04（产物不落盘）判红 ⇒ 负例确实咬在验收上",
-    "status=" + r.status + " / " + out.split("\n").filter((l) => l.indexOf("SB-04") >= 0).join(" | ").slice(0, 240));
+  const se08Red = /✗ \[SE-08\]/.test(out);
+  check("SC-02", r.status !== 0 && sb04Red && se08Red,
+    "SC-02 关掉验收后，两条负例（SB-04 / SE-08「产物不落盘」）都判红 ⇒ 负例确实咬在验收上",
+    "status=" + r.status + " / " + out.split("\n").filter((l) => l.indexOf("SB-04") >= 0 || l.indexOf("SE-08") >= 0).join(" | ").slice(0, 240));
 
   const after = crypto.createHash("sha256").update(fs.readFileSync(judgePath)).digest("hex");
   check("SC-03", before === after,
@@ -360,8 +539,15 @@ function userDataFingerprint() {
   console.log("prove_stage_artifact_contract — 产物契约：交上来的必须是成果本身（G-140）");
   const userBefore = userDataFingerprint();
 
-  if (MODE === "all" || MODE === "positive") await sectionA();
-  if (MODE === "all" || MODE === "negative") await sectionB();
+  if (MODE === "all" || MODE === "positive") {
+    await sectionA();
+    await sectionEPositive();
+    await sectionF();
+  }
+  if (MODE === "all" || MODE === "negative") {
+    await sectionB();
+    await sectionENegative();
+  }
   if (MODE === "all") sectionC();
 
   if (MODE === "all") {

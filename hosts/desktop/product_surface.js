@@ -568,7 +568,36 @@ function createProductSurface(repoRoot, opts = {}) {
     };
   }
 
-  function botsUpdate({ bot_id, name, job, description, avatar, tags, group }) {
+  /* 交付契约（声明式）：{dir?, path?, file?, rules?, expect_file?}。
+   * 只认白名单字段与白名单规则键 —— 契约是**机器输入**，不能带任意内容进来。 */
+  const DELIVERABLE_RULE_KEYS = ["min_chars", "max_chars", "min_items", "max_items"];
+  function normalizeDeliverable(input) {
+    if (input === null || input === "" || input === "-") return null;
+    if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+    const out = {};
+    const dir = String(input.dir || "").trim();
+    const pathSpec = String(input.path || "").trim();
+    const file = String(input.file || "").trim();
+    if (dir) out.dir = dir.slice(0, 120);
+    if (pathSpec) out.path = pathSpec.slice(0, 200);
+    if (file) out.file = file.slice(0, 120);
+    if (!out.dir && !out.path) return null; // 没有落点 ⇒ 不算契约
+    const rules = {};
+    const r = input.rules || {};
+    for (const k of DELIVERABLE_RULE_KEYS) {
+      const v = Number(r[k]);
+      if (Number.isFinite(v) && v > 0) rules[k] = Math.floor(v);
+    }
+    const mi = Array.isArray(r.must_include)
+      ? r.must_include.map((x) => String(x).slice(0, 60)).filter(Boolean).slice(0, 10)
+      : [];
+    if (mi.length) rules.must_include = mi;
+    if (Object.keys(rules).length) out.rules = rules;
+    if (input.expect_file === true || input.expect_file === "true") out.expect_file = true;
+    return out;
+  }
+
+  function botsUpdate({ bot_id, name, job, description, avatar, tags, group, deliverable }) {
     const data = loadBots();
     const bot = data.bots.find(b => b.id === bot_id);
     if (!bot) {
@@ -595,6 +624,14 @@ function createProductSurface(repoRoot, opts = {}) {
     if (name !== undefined) bot.name = String(name || "").trim() || bot.name;
     if (job !== undefined) bot.job = String(job || "").trim();
     if (description !== undefined) bot.description = String(description || "").trim();
+    /* 交付契约：建团时从模板角色的【固定交付】落进来。
+     * 落进成员记录之后，接力时按成员查契约、按契约验收、按契约落盘 ——
+     * 全程只有这一份真相（成员记录里那份）。 */
+    if (deliverable !== undefined) {
+      const dv = normalizeDeliverable(deliverable);
+      if (dv) bot.deliverable = dv;
+      else delete bot.deliverable;
+    }
     bot.updated_at = nowIso();
 
     saveBots(data);
@@ -2879,6 +2916,27 @@ function createProductSurface(repoRoot, opts = {}) {
   /* 产物正文太短就不落文件：一句「好的」不配占一个 .md。
      这是「没有产物」而不是「产物失败」—— 群里的汇总卡照旧给答复。 */
   const MIN_DELIVERABLE_CHARS = 20;
+  /* 把成员交上来的正文落成交付文件。
+   * 路径来自**契约**（Host 自己算出来的），不是模型给的 ⇒ 不是任意路径写入；
+   * 仍然再挡一层：只允许落在数据根以内（不写用户主目录、不写系统目录）。 */
+  function writeStageDeliverable(targetPath, content) {
+    const p = String(targetPath || "").trim();
+    if (!p) return { ok: false, error: "契约里没写交付路径" };
+    const root = path.resolve(DATA_ROOT);
+    const abs = path.resolve(p);
+    if (!(abs === root || abs.startsWith(root + path.sep))) {
+      return { ok: false, error: "交付路径不在数据根内（" + abs + "），已拒写" };
+    }
+    try {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      const body = String(content || "");
+      fs.writeFileSync(abs, body, "utf8");
+      return { ok: true, path: abs, bytes: Buffer.byteLength(body, "utf8") };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
   function deliverableFromTurns(input) {
     const o = input || {};
     const turns = Array.isArray(o.turns) ? o.turns : [];
@@ -2969,7 +3027,11 @@ function createProductSurface(repoRoot, opts = {}) {
     const bots = (loadBots().bots) || [];
     const resolve = (idOrName) => {
       const b = bots.find(x => x.id === idOrName || x.name === idOrName);
-      return b ? { id: b.id, name: b.name, job: b.job || "", description: b.description || "" } : null;
+      /* deliverable（交付契约）必须一起带上：接力时按**成员**查契约 ——
+         契约存在成员记录里（建团时从模板角色落进来），这一路是它的唯一读入口。 */
+      return b
+        ? { id: b.id, name: b.name, job: b.job || "", description: b.description || "", deliverable: b.deliverable || null }
+        : null;
     };
     const memberIds = room.members || [];
     const toList = Array.isArray(opts.to)
@@ -3236,8 +3298,17 @@ function createProductSurface(repoRoot, opts = {}) {
           }
         }
         const boardText = roomBoard.snapshot(room.id).text;
+        /* 这一棒的交付契约（成员记录里那份 / 房间或任务给的）。
+           先解析出来：**prompt 与验收共用同一份**，不会出现「prompt 说的落点」
+           和「验收按的契约」对不上。 */
+        const stageContract = roomOrchestrator.pickStageContract({
+          contract: opts.contract,
+          roomContract: room.contract,
+          bot: current,
+          hop,
+        });
         const prompt = roomOrchestrator.buildRelayPrompt({
-          task, roster, hop, prev, boardText, confirmAnswer, maxHops,
+          task, roster, hop, prev, boardText, confirmAnswer, maxHops, contract: stageContract,
         });
         const promptTokens = roomOrchestrator.estimateTokens(prompt);
         const gate = budget.canStart({ tokens: promptTokens });
@@ -3298,23 +3369,32 @@ function createProductSurface(repoRoot, opts = {}) {
          * ⇒ 没有契约时：一字不改地放行（不误伤普通短任务），只记一个 warn。
          */
         {
-          const stageContract = roomOrchestrator.pickStageContract({
-            contract: opts.contract,
-            roomContract: room.contract,
-            bot: current,
-            hop,
-          });
           const verdict = roomOrchestrator.judgeStage({
             text: res.text,
             contract: stageContract,
             dataRoot: DATA_ROOT,
+            roomTitle: room.title,
+            botName: current.name,
           });
           res.stage = verdict;
           if (verdict.pass && verdict.artifact && verdict.artifact.ok) {
-            /* 交付内容 = 成员写下的文件正文（不是那句汇报）。 */
+            /* 通道 A：成员自己写了文件 ⇒ 交付内容 = 那个文件的正文。 */
             res.delivered_content = verdict.artifact.content;
             res.delivered_path = verdict.artifact.path;
             res.delivered_bytes = verdict.artifact.bytes;
+          } else if (verdict.pass && verdict.content) {
+            /* 通道 B：成员在回复里交正文 ⇒ **Host 代写**落成真正的交付文件。
+             * 为什么必须由 Host 写：实测成员**没有写文件的工具**（write_result 是
+             * Gmail 的 MCP 工具）⇒ 角色 prompt 里的「写入 xxx.md」成员兑现不了 ⇒
+             * 它只能交回复文本 ⇒ prompt 又让它「只汇报路径和条数」⇒ 产物成了汇报。 */
+            const written = writeStageDeliverable(verdict.target_path, verdict.content);
+            res.delivered_content = verdict.content;
+            if (written.ok) {
+              res.delivered_path = written.path;
+              res.delivered_bytes = written.bytes;
+            } else if (written.error) {
+              res.stage.warn = "交付文件没写成：" + written.error;
+            }
           }
           if (!verdict.pass) {
             res.ok = false;

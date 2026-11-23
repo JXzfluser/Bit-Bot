@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld("bitbot", {
     notify: (botId, on) => ipcRenderer.invoke("bitbot:bots:notify", { bot_id: botId, on: on !== false }),
     // G-28: 分组是展示偏好，Host 存储直写（不走 kernel 意图链）。
     setGroup: (botId, group) => ipcRenderer.invoke("bitbot:bots:setGroup", { bot_id: botId, group }),
+    setDeliverable: (botId, deliverable) =>
+      ipcRenderer.invoke("bitbot:bots:setDeliverable", { bot_id: botId, deliverable }),
   },
   settings: {
     get: () => ipcRenderer.invoke("bitbot:settings:get"),
