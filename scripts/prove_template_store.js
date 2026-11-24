@@ -59,6 +59,10 @@ const sha = (p) => {
   }
 };
 
+/* 开跑前的用户库指纹 —— TS-06 在**所有块跑完之后**拿它对账。
+   （原先只有 TS-03c 在第 3 块里对一次，第 4 块越界写就漏了。） */
+const BEFORE_STORE = { tpl: sha(STORE), bots: sha(BOTS) };
+
 /** 只扫代码，不扫注释 —— 注释里写着「原来这里有 rm -f」不算违规，
  *  但真正执行到的那行必须没有。整行注释直接丢，行尾注释保留（更严）。 */
 function dropCommentLines(src) {
@@ -275,9 +279,19 @@ function dropCommentLines(src) {
      判据就红了,而产品其实能拿到模板 —— 判据测的是文件,不是产品。
      走产品路径才是"用户点一键成队到底看得到什么"。 */
   let list = [];
+  /* 数据根必须是**隔离根**，不是真目录。
+     原来这里写的是 `dataRoot: path.join(ROOT, "data")` —— 尺子自己往**用户的
+     真库**里写东西：loadBotTemplates() 发现真库没有模板库 ⇒ 当场在
+     `data/desktop/bot-templates.json` 种一份 7 条内置模板（实测 14680 字节）。
+     TS-03c 那条「自检全程没碰真实库」的 sha256 断言在**更早的块**里跑，
+     抓不到后面这块的越界写入 ⇒ 尺子自己犯规，尺子还判绿。
+     ⇒ 这里改用隔离根；真库只**读**（团队目录那份「真实团队」本来就该读真的）。 */
+  const tmp04 = path.join(ROOT, ".tpl-probe-" + process.pid + "-04");
   try {
     const { createHostFfi } = require("../hosts/shared/host_ffi");
-    const ffi = createHostFfi(ROOT, { dataRoot: path.join(ROOT, "data") });
+    fs.rmSync(tmp04, { recursive: true, force: true });
+    fs.mkdirSync(path.join(tmp04, "desktop"), { recursive: true });
+    const ffi = createHostFfi(ROOT, { dataRoot: tmp04 });
     // executeHostEffects 是 async ⇒ 这一段必须 await(下面整块用 async main 包住)。
     const rows = await ffi.executeHostEffects([{ kind: "bot_templates_list", command: "" }]);
     const r = (rows || []).find((x) => x && x.kind === "bot_templates_list") || {};
@@ -314,6 +328,27 @@ function dropCommentLines(src) {
       if (thin.length) bad("TS-04b", "这些角色没有完整岗位 Prompt（建队后交付会变空）", thin);
       else ok("TS-04b", "每个岗位都带完整 Prompt 与协作规则（rules 非空：" + Boolean(team.rules && team.rules.trim()) + "）");
     }
+  }
+  try { fs.rmSync(tmp04, { recursive: true, force: true }); } catch { /* ignore */ }
+}
+
+/* ---------- 5) 收尾：整扇门跑完，用户库一个字节都没动 ---------- */
+
+/* 为什么放在**最后**：
+   TS-03c 的 sha256 收尾在第 3 块里跑 —— 第 4 块（TS-04）在它**之后**，
+   于是第 4 块越界写用户库时没人管（实测：尺子自己在真目录种了 7 条模板，
+   门禁还判绿）。
+   ⇒ 收尾断言必须在**所有块跑完之后**再做一次，才是真的「全程没碰」。
+   这条是 TS-03c 的加强版，不是替代 —— 局部的收尾还能第一时间定位是哪块写的。 */
+{
+  const tplSha = sha(STORE);
+  const botsSha = sha(BOTS);
+  /* 开跑前是什么样，现在就必须还是什么样。 */
+  if (BEFORE_STORE.tpl === tplSha && BEFORE_STORE.bots === botsSha) {
+    ok("TS-06", "整扇门跑完，用户库一个字节没动（bot-templates.json / bots.json 的 sha256 与开跑前一致）");
+  } else {
+    bad("TS-06", "整扇门跑完用户库被改了 —— 门禁没有写用户数据的权限",
+      { beforeTpl: BEFORE_STORE.tpl, nowTpl: tplSha, beforeBots: BEFORE_STORE.bots, nowBots: botsSha });
   }
 }
 
