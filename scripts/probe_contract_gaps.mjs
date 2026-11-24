@@ -24,7 +24,7 @@ import { createRequire } from "node:module";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..");
 const require = createRequire(path.join(REPO, "hosts/desktop/package.json"));
-const { judgeStage } = require(path.join(REPO, "hosts/desktop/room_orchestrator.js"));
+const { judgeStage, judgeCrossStage } = require(path.join(REPO, "hosts/desktop/room_orchestrator.js"));
 
 /* 现状模板契约（hosts/shared/host_ffi.js 的 BOT_TEMPLATE_SEED） */
 const NOW = {
@@ -100,30 +100,41 @@ console.log("── 专项 A · URL 计数把坏链当好链");
   /* 用**真实产物里那行**（不是构造的）—— 构造文本容易漏掉真实世界的字符形态。
      这行来自 03-drafts/2026-11-24-draft.md 的「事实依据」段。 */
   const realLine = "事实依据：o3-mini 推理更新公告（[https://openai.com/index/o3-mini-update）与开源推理框架](https://openai.com/index/o3-mini-update）与开源推理框架) v2 Release（[https://github.com/example/infer/releases/tag/v2.0.0）。](https://github.com/example/infer/releases/tag/v2.0.0）。)";
-  const n = countDeliverableUrls ? countDeliverableUrls(realLine).length : -1;
-  const toks = countDeliverableUrls ? countDeliverableUrls(realLine) : [];
-  const allBad = toks.length > 0 && toks.every((u) => /[^\x00-\x7F]/.test(u));
-  if (n > 0 && allBad) {
-    bad("countDeliverableUrls 把带全角括号的坏链数成了完整 URL",
-      "数出 " + n + " 条，distinct " + new Set(toks).size + "，**全部含非 ASCII 字符** ⇒ min_urls 反而在帮坏链计数" +
-      "（正则是 [^\\s)\\]}\"'<>，。；：、]+，**没排全角 ）**）");
+  const { countDeliverableUrls, extractUrlTokens, findBrokenUrls } =
+    require(path.join(REPO, "hosts/desktop/room_orchestrator.js"));
+  const good = countDeliverableUrls(realLine);
+  const broken = findBrokenUrls(realLine);
+  const allBad = broken.length > 0 && broken.every((t) => !t.ok);
+  if (good === 0 && allBad) {
+    ok("坏链不再被算成完整链接（旧口径会数出 4 条全是坏 token）");
+    console.log("      完整链接 " + good + " 条，坏链 " + broken.length + " 条：" +
+      (broken[0] ? broken[0].why : ""));
   } else {
-    ok("countDeliverableUrls 已能识别坏链（数出 " + n + " 条）");
+    bad("countDeliverableUrls 仍在帮坏链计数",
+      "完整 " + good + " 条、坏链 " + broken.length + " 条 ⇒ 应为完整 0 / 坏链 4");
   }
 }
 
 /* ── 专项 B：跨棒链接集合差（无源选题） ──────────────────────────────────── */
-console.log("── 专项 B · 跨棒链接集合差（无源选题）");
+console.log("── 专项 B · 跨棒一致性（链接必须来自上游）");
 {
   const intel = "1. 线索一\n   原始链接：https://openai.com/x\n2. 线索二\n   原始链接：https://github.com/y";
-  const brief = "题 1｜基于线索一\n   链接：https://openai.com/x\n题 2｜无源题\n   链接：https://example.com/audit-notes";
-  const u = (s) => [...new Set(s.match(/https?:\/\/[^\s)\]}\"'<>]+/g) || [])];
-  const orphan = u(brief).filter((x) => !u(intel).includes(x));
-  if (orphan.length) {
-    bad("brief 里存在情报卡没有的链接（无源选题能过验收）",
-      JSON.stringify(orphan) + " ⇒ 跨棒集合差可确定性检出");
+  /* 真实产物里的题 3：链接在情报卡里根本不存在 */
+  const briefWithOrphan = "题 1｜基于线索一\n   链接：https://openai.com/x\n题 2｜无源题\n   链接：https://example.com/audit-notes";
+  /* 对照：全部链接都有出处的正确 brief */
+  const briefClean = "题 1｜基于线索一\n   链接：https://openai.com/x\n题 2｜基于线索二\n   链接：https://github.com/y";
+
+  const rules = { links_must_come_from_upstream: true };
+  const bad1 = judgeCrossStage({ upstream: [intel], text: briefWithOrphan, rules });
+  const good1 = judgeCrossStage({ upstream: [intel], text: briefClean, rules });
+
+  if (!bad1.pass && good1.pass) {
+    ok("无源选题被跨棒比对判红，且不误杀链接有出处的正确 brief");
+    console.log("      判红理由：" + bad1.reason);
+    console.log("      误杀检查：正确 brief 通过 ⇒ " + good1.pass);
   } else {
-    ok("brief 的链接都能在情报卡里找到出处");
+    bad("跨棒比对没咬住无源选题，或误杀了正确产物",
+      "无源 pass=" + bad1.pass + "（" + bad1.reason + "）；正确 brief pass=" + good1.pass);
   }
 }
 
@@ -145,26 +156,46 @@ console.log("── 专项 C · min_items 的副作用（会误杀正确产物�
   }
 }
 
-/* ── 专项 D：prompt 要求的固定交付，契约一项都不查 ───────────────────────── */
-console.log("── 专项 D · prompt 要求 5 项固定交付，契约只查 1 个词");
+/* ── 专项 D：prompt 要求的固定交付，契约必须查段落 ─────────────────────── */
+console.log("── 专项 D · prompt 要求 5 项固定交付，契约要查段落而不是查词");
 {
   /* 事实编辑的岗位 prompt 原文写着：
      【固定交付】…包含：可发布候选版本、改动说明、风险标记、仍需人工确认、原始来源清单。
-     契约只有 must_include:["来源"]。 */
+     旧契约只有 must_include:["来源"] ⇒ 只命中「来源清单」那个小标题。 */
   const required = ["可发布候选版本", "改动说明", "风险标记", "仍需人工确认", "原始来源清单"];
   /* 只交了「审校意见」的真实产物形态（不含那 5 项里的任何一个） */
   const realReview = "审校意见 · 候选稿第 1 稿\n总体结论：论点站得住。\n一、事实核对\n   1. 表述过宽，建议改为「单次推理成本结构变化」。\n二、来源清单\n   来源 1：[https://openai.com/x](https://openai.com/x) —— 一手官方公告，可用。\n三、仍需确认\n   定价页是否同步更新。" + "补充说明。".repeat(30);
-  const missing = required.filter((k) => !realReview.includes(k));
-  const v = judgeStage({
-    text: realReview,
-    contract: { dir: "x", rules: { min_chars: 200, must_include: ["来源"] } },
-    what: "审校意见",
-  });
-  if (v.pass && missing.length) {
-    bad("契约不查 prompt 要求的固定交付：缺 " + missing.length + "/" + required.length + " 项仍判过",
-      "缺：" + missing.join("、") + " ⇒ 契约只命中了「来源」两个字");
+
+  const oldRules = { min_chars: 200, must_include: ["来源"] };
+  const newRules = {
+    min_chars: 200, must_include: ["来源"],
+    must_include_sections: required.map((x) => ({ label: x, min_chars: 20 })),
+  };
+  const vOld = judgeStage({ text: realReview, contract: { dir: "x", rules: oldRules }, what: "审校意见" });
+  const vNew = judgeStage({ text: realReview, contract: { dir: "x", rules: newRules }, what: "审校意见" });
+
+  /* 对照：5 项都交齐了、每项有实质内容 ⇒ 新规则必须放行（不能误杀） */
+  const goodReview = [
+    "可发布候选版本",
+    "推理成本这次真的下了一档。我们把一次完整任务的花费拆成三段：模型调用、上下文重读、失败重试。第三段几乎没人算，但重试吃掉了总成本的近四成。".repeat(2),
+    "改动说明",
+    "原句「推理成本下探」改成了「推理成本这次真的下了一档」，因为公告只说推理能力更新，没给统一下调口径，避免读者误解为全面降价。",
+    "风险标记",
+    "重试占比只有内部样本支撑，不能当行业结论写；读者可能误解为全行业数据。",
+    "仍需人工确认",
+    "定价页是否同步更新；重试样本能否扩到更多任务类型。",
+    "原始来源清单",
+    "来源 1：https://openai.com/x —— 一手官方公告，可用。",
+  ].join("\n");
+  const vGood = judgeStage({ text: goodReview, contract: { dir: "x", rules: newRules }, what: "审校意见" });
+
+  if (vOld.pass && !vNew.pass && vGood.pass) {
+    ok("新规则拦住了缺 5/5 项的审校意见，且不误杀 5 项齐全的审校");
+    console.log("      判红理由：" + vNew.reason);
+    console.log("      误杀检查：5 项齐全的审校通过 ⇒ " + vGood.pass);
   } else {
-    ok("契约拦住了缺项的审校意见");
+    bad("小节判据没咬住缺项的审校，或误杀了项齐全的审校",
+      "旧规则 pass=" + vOld.pass + "；新规则 pass=" + vNew.pass + "（" + vNew.reason + "）；齐全的 pass=" + vGood.pass);
   }
 }
 

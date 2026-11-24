@@ -586,6 +586,14 @@ function createProductSurface(repoRoot, opts = {}) {
   /* 交付契约（声明式）：{dir?, path?, file?, rules?, expect_file?}。
    * 只认白名单字段与白名单规则键 —— 契约是**机器输入**，不能带任意内容进来。 */
   const DELIVERABLE_RULE_KEYS = ["min_chars", "max_chars", "min_items", "max_items"];
+  /* 批次 7 新增的规则键（全部是**确定性判据**，不需要模型）：
+   *   min_urls            —— 完整链接条数下限
+   *   unique_urls         —— 去重后的链接条数下限（同一链接贴 4 次不算 4 条）
+   *   no_broken_urls      —— 不许有坏链（链接里混了全角括号/中文）
+   *   must_include_sections —— 必含**段落**（不只是必含的词）
+   * 这几个键必须进白名单：不在白名单 ⇒ 用户在设置页里配的契约会被静默丢掉。 */
+  const DELIVERABLE_EXTRA_RULE_KEYS = ["min_urls", "unique_urls"];
+  const DELIVERABLE_FLAG_RULE_KEYS = ["no_broken_urls", "links_must_come_from_upstream", "counts_must_match_upstream"];
   function normalizeDeliverable(input) {
     if (input === null || input === "" || input === "-") return null;
     if (!input || typeof input !== "object" || Array.isArray(input)) return null;
@@ -599,14 +607,31 @@ function createProductSurface(repoRoot, opts = {}) {
     if (!out.dir && !out.path) return null; // 没有落点 ⇒ 不算契约
     const rules = {};
     const r = input.rules || {};
-    for (const k of DELIVERABLE_RULE_KEYS) {
+    for (const k of DELIVERABLE_RULE_KEYS.concat(DELIVERABLE_EXTRA_RULE_KEYS)) {
       const v = Number(r[k]);
       if (Number.isFinite(v) && v > 0) rules[k] = Math.floor(v);
+    }
+    for (const k of DELIVERABLE_FLAG_RULE_KEYS) {
+      if (r[k] === true || r[k] === "true") rules[k] = true;
     }
     const mi = Array.isArray(r.must_include)
       ? r.must_include.map((x) => String(x).slice(0, 60)).filter(Boolean).slice(0, 10)
       : [];
     if (mi.length) rules.must_include = mi;
+    /* 必含段落：字符串或 {label, min_chars} 两种写法 */
+    if (Array.isArray(r.must_include_sections)) {
+      const ms = r.must_include_sections.map((x) => {
+        if (typeof x === "string") return String(x).slice(0, 60);
+        if (x && typeof x === "object" && !Array.isArray(x)) {
+          const label = String(x.label || "").slice(0, 60);
+          if (!label) return null;
+          const mc = Number(x.min_chars);
+          return Number.isFinite(mc) && mc > 0 ? { label, min_chars: Math.floor(mc) } : label;
+        }
+        return null;
+      }).filter(Boolean).slice(0, 8);
+      if (ms.length) rules.must_include_sections = ms;
+    }
     if (Object.keys(rules).length) out.rules = rules;
     if (input.expect_file === true || input.expect_file === "true") out.expect_file = true;
     /* 流水线顺序（批次 4）：角色在链条里的第几棒。
@@ -615,6 +640,23 @@ function createProductSurface(repoRoot, opts = {}) {
      * （成员读不了共享目录的文件 ⇒ 只能编）。 */
     const order = Number(input.order);
     if (Number.isFinite(order) && order > 0) out.order = Math.floor(order);
+    /* 成品出口（批次 7）：publish: [{dir, file, section|segments}]
+     * 不在白名单 ⇒ 用户配的成品出口会被静默丢掉。 */
+    if (Array.isArray(input.publish)) {
+      const pubs = input.publish.map((p) => {
+        if (!p || typeof p !== "object") return null;
+        const dir = String(p.dir || "").trim().slice(0, 120);
+        const file = String(p.file || "").trim().slice(0, 120);
+        if (!dir && !file) return null;
+        const out2 = { dir, file };
+        if (p.section) out2.section = String(p.section).slice(0, 60);
+        if (Array.isArray(p.sections)) {
+          out2.sections = p.sections.map((x) => String(x || "").slice(0, 60)).filter(Boolean).slice(0, 8);
+        }
+        return out2;
+      }).filter(Boolean).slice(0, 6);
+      if (pubs.length) out.publish = pubs;
+    }
     return out;
   }
 
@@ -3510,6 +3552,44 @@ function createProductSurface(repoRoot, opts = {}) {
             verdict.reason_from_error = true;
           }
           res.stage = verdict;
+          /* Host 内部逻辑（跨棒比对 / 成品出口）崩了 ⇒ 那不是「成员没交出内容」，
+           * 是 **Host 自己的 bug**。两者在用户眼里必须不一样 ——
+           * 否则一次代码错误会被伪装成「成员不行」，用户永远查不出真相。
+           * （本次就是这样发现的：引用了作用域里不存在的变量，报错被吞成
+           *   「这一棒没交出东西」，排查绕了大弯。）
+           * ⇒ 标成 host_internal_error，群里说人话，机器码留档。 */
+          try {
+          /* 跨棒一致性（批次 7）：这一棒除了自证，还要**与上游对得上**。
+           * 为什么（实测）：5 条契约全是「单棒自证」⇒ 链路传递零校验 ⇒
+           *   - 选题 brief 引用了情报卡里根本不存在的链接（无源选题）照样判过；
+           *   - 复盘声称「情报卡 8 条」，实际只有 2 条，也判过。
+           * 这两类都是**纯确定性**能抓的：Host 本来就持有全部上游产物。
+           * ⇒ 比对器放在 orchestrator 层（judgeCrossStage），
+           *    规则由契约声明（links_must_come_from_upstream / counts_must_match_upstream），
+           *    不声明就**一字不改**（契约是 opt-in）。
+           * ⚠️ 位置很要紧：必须在**落盘之前**判 —— 否则会出现「文件已写、
+           *    这一棒却被判红」的半个状态（失败不留半个状态）。 */
+          if (verdict.pass && stageContract && stageContract.rules) {
+            /* 串行接力/流水线：上游成果 = 前面几棒已经交付的内容。 */
+            const upstreamTexts = chain
+              .filter((c) => c && c.ok && c.delivered_content)
+              .map((c) => String(c.delivered_content || ""));
+            const xs = roomOrchestrator.judgeCrossStage({
+              upstream: upstreamTexts,
+              text: String(verdict.artifact && verdict.artifact.ok ? verdict.artifact.content : (verdict.content || "")),
+              rules: stageContract.rules,
+            });
+            if (!xs.pass) {
+              verdict.pass = false;
+              verdict.code = xs.code;
+              verdict.reason = xs.reason;
+              res.stage = verdict;
+              res.ok = false;
+              res.rejected = true;
+              res.reject_reason = xs.reason;
+              if (!res.error) res.error = xs.reason;
+            }
+          }
           if (verdict.pass && verdict.artifact && verdict.artifact.ok) {
             /* 通道 A：成员自己写了文件 ⇒ 交付内容 = 那个文件的正文。 */
             res.delivered_content = verdict.artifact.content;
@@ -3528,6 +3608,49 @@ function createProductSurface(repoRoot, opts = {}) {
             } else if (written.error) {
               res.stage.warn = "交付文件没写成：" + written.error;
             }
+          }
+          /* 成品出口（批次 7）：这一棒除了交过程档案，还要**独立交一份成品**。
+           * 为什么（实测）：交付目录里 05-publish/ **是空的** —— 没有任何一棒往
+           * 那儿放东西 ⇒ 用户拿到手的只有一份五棒堆叠的过程档案（正文占 3.2%），
+           * 想发出去得先自己从档案里把正文抠出来。
+           * ⇒ 契约里写 publish: {dir, file, section} ⇒ Host 把那一小节单独落成
+           *    一个**可直接复制**的成品文件。 */
+          if (verdict.pass && res.delivered_content) {
+            const pubs = roomOrchestrator.resolvePublishTargets(stageContract, {
+              /* 不传 date：resolveDeliverablePath 自己用当天日期兜底
+                 （judgeStage 那边也是这么做的 —— 保持一致，别在这儿另起一套日期口径）。 */
+              dataRoot: DATA_ROOT, roomTitle: room.title, botName: current.name,
+            });
+            for (const pub of pubs) {
+              const body = roomOrchestrator.extractPublishBody(res.delivered_content, pub);
+              if (!body) {
+                res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
+                  "成品出口没取到内容（缺小节「" + (pub.section || (pub.sections || []).join("/")) + "」）";
+                continue;
+              }
+              const wrote = writeStageDeliverable(pub.path, body);
+              if (wrote.ok) {
+                res.published = res.published || [];
+                res.published.push({ path: wrote.path, bytes: wrote.bytes });
+              } else {
+                res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
+                  "成品没写成：" + wrote.error;
+              }
+            }
+          }
+          } catch (hostErr) {
+            /* Host 自己的逻辑崩了 —— 如实说，别伪装成成员失败。
+               （本次就是这样发现的：引用了作用域里不存在的变量，报错被吞成
+               「这一棒没交出东西」，排查绕了大弯。） */
+            const detail = String((hostErr && hostErr.message) || hostErr);
+            res.ok = false;
+            res.internal_error = true;
+            res.error_code = "host_internal_error";
+            res.error = "Host 内部处理这一棒时出错（" + detail.slice(0, 160) +
+              "）—— 这是产品的问题，不是成员没交出内容";
+            res.reject_reason = res.error;
+            if (res.stage) res.stage.warn = res.error;
+            res.text = "";
           }
           if (!verdict.pass) {
             res.ok = false;
@@ -4019,6 +4142,10 @@ function createProductSurface(repoRoot, opts = {}) {
             roomTitle: room.title,
             botName: res.name,
           });
+          /* Host 内部逻辑（跨棒比对 / 成品出口）崩了 ⇒ 那不是「成员没交出内容」，
+           * 是 **Host 自己的 bug**。两者在用户眼里必须不一样 ——
+           * 否则一次代码错误会被伪装成「成员不行」，用户永远查不出真相。 */
+          try {
           /* 失败原因要说清**为什么**（批次 6）：验收的默认理由是
              「这一棒没有交出任何内容」—— 那只说明结果，不说明原因。
              真 provider 实测：这一棒是被**调用预算**停下的（反复抓同一个
@@ -4029,6 +4156,36 @@ function createProductSurface(repoRoot, opts = {}) {
             verdict.reason_from_error = true;
           }
           res.stage = verdict;
+          /* 跨棒一致性（批次 7）：这一棒除了自证，还要**与上游对得上**。
+           * 为什么（实测）：5 条契约全是「单棒自证」⇒ 链路传递零校验 ⇒
+           *   - 选题 brief 引用了情报卡里根本不存在的链接（无源选题）照样判过；
+           *   - 复盘声称「情报卡 8 条」，实际只有 2 条，也判过。
+           * 这两类都是**纯确定性**能抓的：Host 本来就持有全部上游产物。
+           * ⇒ 比对器放在 orchestrator 层（judgeCrossStage），
+           *    规则由契约声明（links_must_come_from_upstream / counts_must_match_upstream），
+           *    不声明就**一字不改**（契约是 opt-in）。
+           * ⚠️ 位置很要紧：必须在**落盘之前**判 —— 否则会出现「文件已写、
+           *    这一棒却被判红」的半个状态（失败不留半个状态）。 */
+          if (verdict.pass && stageContract && stageContract.rules) {
+            /* 并行分工：**没有上下游关系**（各写各的）⇒ 不做跨棒比对。
+               注意别在这里引用串行路径的 chain —— 这个分支里根本没有那个变量。 */
+            const upstreamTexts = [];
+            const xs = roomOrchestrator.judgeCrossStage({
+              upstream: upstreamTexts,
+              text: String(verdict.artifact && verdict.artifact.ok ? verdict.artifact.content : (verdict.content || "")),
+              rules: stageContract.rules,
+            });
+            if (!xs.pass) {
+              verdict.pass = false;
+              verdict.code = xs.code;
+              verdict.reason = xs.reason;
+              res.stage = verdict;
+              res.ok = false;
+              res.rejected = true;
+              res.reject_reason = xs.reason;
+              if (!res.error) res.error = xs.reason;
+            }
+          }
           if (verdict.pass && verdict.artifact && verdict.artifact.ok) {
             res.delivered_content = verdict.artifact.content;
             res.delivered_path = verdict.artifact.path;
@@ -4042,6 +4199,49 @@ function createProductSurface(repoRoot, opts = {}) {
             } else if (written.error) {
               res.stage.warn = "交付文件没写成：" + written.error;
             }
+          }
+          /* 成品出口（批次 7）：这一棒除了交过程档案，还要**独立交一份成品**。
+           * 为什么（实测）：交付目录里 05-publish/ **是空的** —— 没有任何一棒往
+           * 那儿放东西 ⇒ 用户拿到手的只有一份五棒堆叠的过程档案（正文占 3.2%），
+           * 想发出去得先自己从档案里把正文抠出来。
+           * ⇒ 契约里写 publish: {dir, file, section} ⇒ Host 把那一小节单独落成
+           *    一个**可直接复制**的成品文件。 */
+          if (verdict.pass && res.delivered_content) {
+            const pubs = roomOrchestrator.resolvePublishTargets(stageContract, {
+              /* 不传 date：resolveDeliverablePath 自己用当天日期兜底
+                 （judgeStage 那边也是这么做的 —— 保持一致，别在这儿另起一套日期口径）。 */
+              dataRoot: DATA_ROOT, roomTitle: room.title, botName: current.name,
+            });
+            for (const pub of pubs) {
+              const body = roomOrchestrator.extractPublishBody(res.delivered_content, pub);
+              if (!body) {
+                res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
+                  "成品出口没取到内容（缺小节「" + (pub.section || (pub.sections || []).join("/")) + "」）";
+                continue;
+              }
+              const wrote = writeStageDeliverable(pub.path, body);
+              if (wrote.ok) {
+                res.published = res.published || [];
+                res.published.push({ path: wrote.path, bytes: wrote.bytes });
+              } else {
+                res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
+                  "成品没写成：" + wrote.error;
+              }
+            }
+          }
+          } catch (hostErr) {
+            /* Host 自己的逻辑崩了 —— 如实说，别伪装成成员失败。
+               （本次就是这样发现的：引用了作用域里不存在的变量，报错被吞成
+               「这一棒没交出东西」，排查绕了大弯。） */
+            const detail = String((hostErr && hostErr.message) || hostErr);
+            res.ok = false;
+            res.internal_error = true;
+            res.error_code = "host_internal_error";
+            res.error = "Host 内部处理这一棒时出错（" + detail.slice(0, 160) +
+              "）—— 这是产品的问题，不是成员没交出内容";
+            res.reject_reason = res.error;
+            if (res.stage) res.stage.warn = res.error;
+            res.text = "";
           }
           if (!verdict.pass) {
             res.ok = false;

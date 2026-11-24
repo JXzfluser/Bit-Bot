@@ -19756,6 +19756,33 @@ function createHostFfi(repoRoot, opts = {}) {
 
   // GP-02: local Bot template catalog (spec §2.2 建议模板一键创建). Seeded on
   // first read so users can edit the JSON; unknown ids are refused upstream.
+  /* 内置团队模板的 **prompt 升级机制**（批次 7）。
+   *
+   * 为什么需要：内置模板升级原来只刷 `rules`，**不刷 prompt**。
+   * ⇒ 存量用户的库里存着**旧 prompt**，而新 rules 要求交付物按新小节结构
+   *    （例如事实编辑必须交「可发布候选版本」这一节）⇒ 老 prompt 产出不了
+   *    新结构 ⇒ **每一棒都被驳回，整条流水线全灭**。
+   *    这是最坏的组合：规则升级了，产出形态没升级。
+   *
+   * 怎么升级才不踩「用户的修改是用户的事」：
+   *   - 模板带 `builtin_version`（整数，每次改内置模板 +1）；
+   *   - 库里存着**用户改过的 prompt 指纹**（builtin_prompt_fp）：
+   *       指纹为空   ⇒ 用户没动过这个角色的 prompt ⇒ 升级 prompt + rules
+   *       指纹非空且等于当前内置指纹 ⇒ 用户动过又改回来了 ⇒ 也升级
+   *       指纹非空且不等于当前内置指纹 ⇒ 用户改过 ⇒ **只升 rules，不动 prompt**
+   *   - 升级时把**升级前的 prompt 指纹**记进库里 ⇒ 下次还能继续判。
+   *
+   * 为什么不用「旧版指纹白名单」：那份表每改一次 prompt 就要手动补一档，
+   * 漏一档升级链就断（本次就差点踩到）。版本号 + 指纹是自动的。
+   */
+  const BOT_TEMPLATE_PROMPT_FINGERPRINTS = {
+    "情报侦察员": ["15a199812e654294"],
+    "选题策划师": ["8630d35a16ecb508"],
+    "内容主笔": ["0cbed6643986f284", "4ff27858861812c1", "556968082701916a"],
+    "事实编辑": ["52c8f00aa8edece2", "16042c8278ddd3bf"],
+    "数据复盘师": ["a61a498105c822d6", "c01128528496c4a7"],
+  };
+
   const BOT_TEMPLATE_SEED = [
     {
       // ── 团队模板 ──────────────────────────────────────────────────────
@@ -19769,6 +19796,10 @@ function createHostFfi(repoRoot, opts = {}) {
       // Bot 按这份 Prompt 交付 —— 写一句话建出来的 Bot 是交付不出东西的。
       id: "media-content-team",
       kind: "team",
+      /* 内置版本号（批次 7）：每次改这个内置模板（prompt 或 rules）+1。
+         存量库里存着旧版 ⇒ 这里驱动 prompt+rules 的整体升级。
+         用户改过的 prompt 不动（用 builtin_prompt_fp 判定）。 */
+      builtin_version: 2,
       default_name: "自媒体内容团队",
       job: "内容流水线",
       description:
@@ -19808,7 +19839,19 @@ function createHostFfi(repoRoot, opts = {}) {
 交付到共享目录 01-inbox/ 下（文件名由 Host 按当天日期定），每次最多 3 条。每条包含：事实或平台线索、来源平台、原始链接、证据摘录、讨论热度或代表性观点（仅在可见时记录）、为什么值得关注、一个待核查问题、核验状态。
 【验收】
 链接可访问；事实、平台观点和作者判断分开；关键主张能回到一手来源；缺失、过期、登录受限或不可访问时记录失败原因和下一步。把上面这份情报的**正文完整写在回复里**（Host 会替你落盘到共享目录 01-inbox/），回复末尾再补一句完成情况与未完成原因；不要只回一句「已完成」。`,
-          deliverable: { order: 1, dir: "01-inbox", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"], "min_urls": 1 } },
+          deliverable: {
+            order: 1, dir: "01-inbox", file: "{date}.md",
+            rules: {
+              "min_chars": 200,
+              "must_include": ["http"],
+              "min_urls": 1,
+              /* prompt 明写「每次最多 3 条」⇒ 契约查上限。
+               * 实测那次交的是「情报卡 8 条」这种超上限的谎 —— 而棒 5 的复盘
+               * 直接把这个假数字当真的用了（「数据来源：情报卡 8 条」）。
+               * max_items 是**确定性**判据，专治这种虚报。 */
+              "max_items": 3,
+            },
+          },
         },
         {
           name: `选题策划师`,
@@ -19831,7 +19874,24 @@ function createHostFfi(repoRoot, opts = {}) {
 每次只推荐 3 个题，按“独特性、证据强度、账号契合度”排序，交付到共享目录 02-briefs/ 下（文件名由 Host 按当天日期定）。每题包含：一句话事实、读者场景、单一主角度、原始链接与证据、信息缺口、建议内容形式、给主笔的写作任务。
 【验收】
 没有原始链接的题不推荐；证据不足就标记“待补证”；题目之间不能只是同一新闻的换皮。把 3 个题的**正文完整写在回复里**（Host 会替你落盘到共享目录 02-briefs/），末尾再补一句推荐顺序；不要只回一句「已完成」。`,
-          deliverable: { order: 2, dir: "02-briefs", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"], "min_urls": 1 } },
+          deliverable: {
+            order: 2, dir: "02-briefs", file: "{date}.md",
+            rules: {
+              "min_chars": 200,
+              "must_include": ["http"],
+              "min_urls": 1,
+              /* 岗位 prompt 明写「每次只推荐 3 个题」⇒ 契约查 3 条。
+               * 注意：**计数规则先修过了**（认得「题 1｜」这种写法）才敢加 ——
+               * 旧规则只认 `-`/`1.`，对真实 brief 数出 0 条 ⇒ 加了会误杀正确产物。 */
+              "min_items": 3,
+              "max_items": 3,
+              /* 跨棒一致性（批次 7）：brief 里的链接必须来自**上游情报卡**。
+               * 实测那次题 3 引了 https://example.com/audit-notes ——
+               * 这条来源在情报卡里根本不存在，而它标着「原始链接与证据」。
+               * ⇒ 纯确定性可抓：brief 的链接集合 ⊆ 情报卡的链接集合。 */
+              "links_must_come_from_upstream": true,
+            },
+          },
         },
         {
           name: `内容主笔`,
@@ -19853,8 +19913,39 @@ function createHostFfi(repoRoot, opts = {}) {
 【禁用表达】
 “我的判断是”“真正有价值的是”“这说明”“这意味着”“毫无疑问”“重塑格局”“进入新时代”，以及空泛三段式、硬凑金句、广告腔和故作深刻的反问。
 【固定交付】
-按任务需要输出：A. 140–220 字中文短帖；B. 280–420 字展开版；C. 仅在适合时给 3–5 条串文大纲；D. 用户明确要求时写长文。每份稿末附“事实依据”和“仍需确认”。把这份稿的**正文完整写在回复里**（Host 会替你落盘到共享目录 03-drafts/，文件名按当天日期），末尾再补一句完成情况；不要只回一句「已完成」。`,
-          deliverable: { order: 3, dir: "03-drafts", file: "{date}-draft.md", rules: { "min_chars": 140, "must_include": ["事实依据"] } },
+按任务需要输出：A. 140–220 字中文短帖；B. 280–420 字展开版；C. 仅在适合时给 3–5 条串文大纲；D. 用户明确要求时写长文。**用下面 3 个小节标题分开写**（标题就用这几个字，后面跟内容）：「正文」「事实依据」「仍需确认」。
+【正文】只放读者要读的稿子正文 —— 一句一源、来源单独成行、URL 只出现一次，不许把中文或全角标点混进链接里。
+【事实依据】每条来源单独一行，写清来源名、完整链接、这段事实是从哪里来的。
+【仍需确认】哪些地方还需要核实、需要用户拍板。
+把这三个小节的**正文完整写在回复里**（Host 会替你落盘到共享目录 03-drafts/，并单独把「正文」这一节写成可直接发布的成品）；不要只回一句「已完成」。`,
+          deliverable: {
+            order: 3, dir: "03-drafts", file: "{date}-draft.md",
+            rules: {
+              "min_chars": 140,
+              "must_include": ["事实依据"],
+              /* 主笔是**唯一要发出去的稿子**，却是唯一没有 URL 门槛的棒 ⇒
+                 风险错配。而且实测：它的「事实依据」那行 markdown 是坏的
+                 （`)` 丢失、紧跟 `。](...)`），旧计数还把 4 个坏 token 全算成
+                 完整链接 ⇒ 契约在**帮坏链计数**。
+                 ⇒ 加 min_urls / unique_urls / no_broken_urls。 */
+              "min_urls": 1,
+              "unique_urls": 1,
+              "no_broken_urls": true,
+              /* 正文 / 事实依据 / 仍需确认 必须是三个**分开的段落** ——
+                 实测混在一起时用户得自己从稿子里抠正文。 */
+              "must_include_sections": [
+                { "label": "正文", "min_chars": 120 },
+                "事实依据",
+                "仍需确认",
+              ],
+            },
+            /* 成品出口：正文单独落一份到 05-publish/ ⇒ 用户直接复制就能发，
+               不用从过程档案里抠。 */
+            publish: [
+              { dir: "05-publish", file: "{date}-post.md", section: "正文" },
+              { dir: "05-publish", file: "{date}-sources.md", section: "事实依据" },
+            ],
+          },
         },
         {
           name: `事实编辑`,
@@ -19878,38 +19969,82 @@ function createHostFfi(repoRoot, opts = {}) {
 5. 不让读者误以为作者亲测、掌握内幕或获得用户反馈。
 6. 无法核对的句子必须删除、改成疑问或标记“待确认”。
 【固定交付】
-交付到共享目录 04-review/ 下（文件名由 Host 按当天日期定），包含：可发布候选版本、改动说明、风险标记、仍需人工确认、原始来源清单。
+交付到共享目录 04-review/ 下（文件名由 Host 按当天日期定），**必须包含下面 5 个小节标题**（标题写成下面这些字，后面跟内容；每个小节都要有实质内容，光写标题不算）：
+1. 可发布候选版本 —— **审校改好之后的完整稿正文**（读者直接看到的就是这份，不是意见）。
+2. 改动说明 —— 逐条写：原句是什么 → 改成了什么 → 为什么改。
+3. 风险标记 —— 哪些地方还有风险、可能误导读者。
+4. 仍需人工确认 —— 需要用户拍板或需要更多证据的地方。
+5. 原始来源清单 —— 每条来源一行，标出是不是一手来源。
 【验收】
-逐条回到 brief 原始链接；保留作者语气，只改必要之处；发现证据冲突时不替用户裁决，列出冲突与建议。把审校后的**候选版本正文完整写在回复里**（Host 会替你落盘到共享目录 04-review/），末尾再补一句是否达到“可发布候选”标准；不要只回一句「已完成」。`,
-          deliverable: { order: 4, dir: "04-review", file: "{date}-review.md", rules: { "min_chars": 200, "must_include": ["来源"] } },
+逐条回到 brief 原始链接；保留作者语气，只改必要之处；发现证据冲突时不替用户裁决，列出冲突与建议。把审校后的**候选版本正文完整写在回复里**（Host 会替你落盘到共享目录 04-review/，并单独抽出「可发布候选版本」这一节写成可直接发布的成品）；不要只回一句「已完成」，也不要只交意见不交改好的稿。`,
+          deliverable: {
+            order: 4, dir: "04-review", file: "{date}-review.md",
+            rules: {
+              "min_chars": 200,
+              "must_include": ["来源"],
+              /* 岗位 prompt 的【固定交付】写明 5 项：可发布候选版本、改动说明、
+                 风险标记、仍需人工确认、原始来源清单。
+                 实测那次只交了「审校意见」正文，**5 项一项都没有**，
+                 而契约只查「来源」两个字 ⇒ 缺 5/5 项仍判过。
+                 ⇒ 契约改成检查这 5 个**小节**真的存在且有实质内容。 */
+              "must_include_sections": [
+                "可发布候选版本",
+                { "label": "改动说明", "min_chars": 40 },
+                "风险标记",
+                "仍需人工确认",
+                "原始来源清单",
+              ],
+            },
+            /* 成品出口：审校后的**改好的稿**单独落一份到 05-publish/ ——
+               用户要发的是这份，不是四棒堆叠的过程档案。
+               （之前 05-publish/ 是空的 ⇒ 没有任何一棒往那儿放东西。） */
+            publish: [
+              { dir: "05-publish", file: "{date}-final.md", section: "可发布候选版本" },
+              { dir: "05-publish", file: "{date}-sources.md", section: "原始来源清单" },
+            ],
+          },
         },
         {
           name: `数据复盘师`,
           job: `数据复盘师`,
           prompt:
-            `你是我的 X 数据复盘师（Analyst）。唯一职责是分析用户自己的 X 内容质量、帖子表现和可执行的改进方向；只读，不代表用户进行任何互动或账号操作。
+            `你是我的内容复盘师（Analyst）。唯一职责是复盘**本团队这一轮流水线**实际交付了什么、哪里卡住了、下轮该改哪一条规则；只读，不代表用户发布或互动。
 【允许使用】
-- 用户在任务中明确指定的个人 X 主页，以及该账号公开可见的帖子。
-- 用户主动提供或授权查看的 X Analytics 页面、CSV 导出和截图。
-- 共享目录 03-drafts/、/04-review/、/05-published/ 与 /06-analysis/。
-- 如页面要求登录、密码、验证码、2FA 或 passkey，立即停下并请用户接管；不得索取或记录凭据。
+- 共享目录 01-inbox/、/02-briefs/、/03-drafts/、/04-review/ 与 /05-publish/ 里**这一轮真实产出的文件**。
+- 用户明确提供或授权查看的数据（CSV、截图、后台数据）。
 【绝对禁止】
-- 不得发帖、改帖、删帖、点赞、转发、收藏、关注、取关、评论或私信。
-- 不得修改头像、简介、账号设置、隐私设置或权限。
-- 不得读取、复制或分析私信与非本任务所需的个人数据。
-- 不得把浏览量相关性写成因果，不得补全缺失指标。
+- 不得浏览外部网站、登录平台、调用连接器或代表用户互动。
+- 不得补全缺失指标，不得把相关性写成因果，不得编造上游没有的数字。
 - 不得执行本机命令，不得访问本机文件。
-【分析框架】
-1. 数据概况：时间范围、帖子数、曝光、互动、互动率、主页访问、关注变化；只有数据源提供时才写。
-2. 内容质量：开头是否清楚、信息密度、证据充分度、个人表达、结构与读者行动。
-3. 模式对比：按主题、内容形式、长度、发布时间和开头类型分组；样本太少时明确说明。
-4. 改进方向：给 3 条优先级排序的建议，每条引用具体帖子或指标。
+【复盘框架】
+1. 本轮交付清单：这一轮**实际产出**了几份文件、每份在哪、内容是什么（从共享目录读，不要凭印象）。
+2. 链路断点：哪一棒交的东西下一棒没用上？哪一棒提了意见但没人执行？
+3. 数字对账：复盘里引用的每个数字都要能在上游文件里找到对得上的一处；找不到就写「数据缺口」。
+4. 改进方向：给 3 条优先级排序的建议，每条**绑定到一个具体产物**（哪份文件、哪句话），并说明改了之后判据上会发生什么变化。
 5. 下轮实验：设计 2 个一次只改变一个变量的小实验，并写清观察指标。
 【固定交付】
-每周交付到共享目录 06-analysis/ 下（文件名由 Host 按当周定：weekly-review-YYYY-WW.md），包含数据来源、时间范围、样本量、表现最好与最差的帖子、内容质量诊断、3 条改进建议、2 个下周实验、数据缺口。需要在共享目录 05-published/ 留存所用 CSV 或截图文件名。
+每周交付到共享目录 06-analysis/ 下（文件名由 Host 按当周定：weekly-review-YYYY-WW.md），用下面的小节标题分开写：「数据来源」「本轮交付」「链路断点」「改进建议」「数据缺口」「下轮实验」。
 【验收】
-所有数字可回到原始数据；公开指标与 Analytics 私有指标分开；样本少于 10 条或周期短于 7 天时降低结论强度；把复盘的**正文完整写在回复里**（Host 会替你落盘到共享目录 06-analysis/），末尾再补一句覆盖帖子数和缺失数据；不要只回一句「已完成」。`,
-          deliverable: { order: 5, dir: "06-analysis", file: "weekly-review-{week}.md", rules: { "min_chars": 200, "must_include": ["数据来源"] } },
+所有数字可回到上游文件；样本不足时降低结论强度；改进建议必须绑定到具体产物，不得是「加强核验」这种无法执行的空话；把复盘的**正文完整写在回复里**（Host 会替你落盘到共享目录 06-analysis/）；不要只回一句「已完成」。`,
+          deliverable: {
+            order: 5, dir: "06-analysis", file: "weekly-review-{week}.md",
+            rules: {
+              "min_chars": 200,
+              "must_include": ["数据来源"],
+              /* 数字对账（批次 7）：复盘里说的上游规模必须在上游正文里对得上。
+               * 实测那次复盘写「情报卡 8 条」，实际只有 2 条，而棒 1 的 prompt 上限
+               * 是 3 条 ⇒ 「8」既超上限又无出处。
+               * ⇒ counts_must_match_upstream 是纯确定性判据。 */
+              "counts_must_match_upstream": true,
+              "must_include_sections": [
+                "数据来源",
+                "本轮交付",
+                "链路断点",
+                "改进建议",
+                "数据缺口",
+              ],
+            },
+          },
         },
       ],
       rules:
@@ -20003,14 +20138,52 @@ function createHostFfi(repoRoot, opts = {}) {
          * 模板其余字段仍然用户的优先。 */
         const mine = merged.find((t) => t && t.id === st.id);
         if (!mine || !Array.isArray(mine.roles) || !Array.isArray(st.roles)) continue;
+        /* 版本号推进（批次 7）：库里存的版本落后 ⇒ 内置模板整体升级。
+         * 升级时**每个角色**都先记住「用户当前 prompt 的指纹」——
+         * 升级完再把新指纹写回去 ⇒ 下次还能判「用户动过没有」。 */
+        const mineVersion = Number(mine.builtin_version || 0);
+        const seedVersion = Number(st.builtin_version || 0);
+        const needUpgrade = seedVersion > mineVersion;
+        const roleFpBefore = {};
+        for (const sr of st.roles) {
+          const tr = (mine.roles || []).find((r) => r && r.name === sr.name);
+          if (!tr) continue;
+          roleFpBefore[sr.name] = crypto.createHash("sha256")
+            .update(String(tr.prompt || ""), "utf8").digest("hex").slice(0, 16);
+        }
         for (const sr of st.roles) {
           if (!sr || !sr.deliverable || !sr.deliverable.rules) continue;
           const tr = (mine.roles || []).find((r) => r && r.name === sr.name);
           if (!tr) continue;
+          /* prompt 升级：只在「用户没动过」时升级。
+             判据 = 当前 prompt 的指纹是否**等于当前内置 prompt 的指纹**
+             （用户没改）或**等于某个已知旧版内置 prompt 的指纹**
+             （用户没改，只是库旧）⇒ 升级；
+             都不等 ⇒ 用户自己改过 ⇒ 不动他的 prompt。 */
+          if (sr.prompt && tr.prompt && tr.prompt !== sr.prompt) {
+            const curFp = crypto.createHash("sha256").update(String(tr.prompt), "utf8").digest("hex").slice(0, 16);
+            const seedFp = crypto.createHash("sha256").update(String(sr.prompt), "utf8").digest("hex").slice(0, 16);
+            const known = BOT_TEMPLATE_PROMPT_FINGERPRINTS[sr.name] || [];
+            if (curFp === seedFp || known.includes(curFp)) tr.prompt = sr.prompt;
+          }
           if (!tr.deliverable) { tr.deliverable = JSON.parse(JSON.stringify(sr.deliverable)); continue; }
           if (!tr.deliverable.rules) tr.deliverable.rules = {};
           for (const [k, v] of Object.entries(sr.deliverable.rules)) {
             if (tr.deliverable.rules[k] === undefined) tr.deliverable.rules[k] = v;
+          }
+          /* 成品出口（publish）也是内置契约的一部分：老库里没有 ⇒ 补上。 */
+          if (Array.isArray(sr.deliverable.publish) && !Array.isArray(tr.deliverable.publish)) {
+            tr.deliverable.publish = JSON.parse(JSON.stringify(sr.deliverable.publish));
+          }
+        }
+        if (needUpgrade) {
+          mine.builtin_version = seedVersion;
+          /* 记住每个角色「升级后」的指纹 ⇒ 下次能判用户动过没有。 */
+          for (const sr of st.roles) {
+            const tr = (mine.roles || []).find((r) => r && r.name === sr.name);
+            if (!tr || !tr.prompt) continue;
+            tr.builtin_prompt_fp = crypto.createHash("sha256")
+              .update(String(tr.prompt), "utf8").digest("hex").slice(0, 16);
           }
         }
       }

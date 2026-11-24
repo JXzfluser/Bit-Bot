@@ -1067,25 +1067,335 @@ function isoWeekOf(dateStr) {
   return String(t.getUTCFullYear()) + "-W" + ww;
 }
 
-/** 数条目（列表项）：`- xxx` / `1. xxx` / `1、xxx`。 */
+/**
+ * 数条目（列表项）：`- xxx` / `1. xxx` / `1、xxx` / `题 1｜xxx` / `一、xxx` / `第1条 xxx`。
+ *
+ * 为什么扩了这么多写法（批次 7）：
+ *   实测真实产物里，同一支团队用了**三种**编号写法 ——
+ *   情报卡用 `1.`，选题 brief 用 `题 1｜`，审校意见用 `一、`。
+ *   旧规则只认 `-` / `*` / `1.` ⇒ 对 `题 1｜` 那种写法数出 **0 条**
+ *   ⇒ 一旦给这些棒配 `min_items`，**正确产物会被判红**（实测）。
+ *   这不是「加个 min_items」能解决的，是**计数规则跟不上产物形态**。
+ *   ⇒ 规则要认全中文/英文常见的编号形态，否则 min_items 是个陷阱。
+ */
 function countDeliverableItems(content) {
   const lines = String(content || "").split(/\r?\n/);
   let n = 0;
   for (const raw of lines) {
     const t = raw.trim();
     if (!t) continue;
-    if (/^[-*•]\s+/.test(t) || /^\d+[.、)]\s*/.test(t)) n++;
+    /* markdown 标题不算条目（那是小节，不是列表项） */
+    if (/^#{1,6}\s/.test(t)) continue;
+    if (
+      /^[-*•]\s+/.test(t) ||            /* - xxx / * xxx / • xxx */
+      /^\d+[.、)）]\s*/.test(t) ||       /* 1. xxx / 1、xxx / 1) xxx */
+      /^[（(]?\d+[）)]\s*/.test(t) ||    /* (1) xxx / （1）xxx */
+      /^题\s*\d+\s*[｜|丨:：.、]/.test(t) || /* 题 1｜xxx */
+      /^第\s*[0-9一二三四五六七八九十]+\s*[条项篇章节]/.test(t) || /* 第 1 条 xxx */
+      /^[一二三四五六七八九十]+\s*[、.．]/.test(t)  /* 一、xxx */
+    ) n++;
   }
   return n;
 }
 
-/** 数正文里**完整**的 URL（http:// 或 https:// 开头，到空白/括号为止）。
- *  为什么要单独数：`must_include: ["http"]` 是子串匹配，贴一个假链接就能过；
- *  验收要链接时数的是「像样的链接条数」。 */
-function countDeliverableUrls(content) {
+/**
+ * 从正文里抽出**链接 token**（含 markdown 的链接与裸 URL）。
+ * 返回 [{raw, url, ok, why}]。
+ *
+ * 为什么不能只用一个正则数「完整 URL」：
+ *   实测（2026-11-24 真实产物）主笔那行「事实依据」里有 4 个 token，
+ *   全部含全角 `）` 或中文，distinct 只有 2 个 ——
+ *   而旧的 `countDeliverableUrls` 把这 4 个坏 token **全部算成完整链接**，
+ *   于是 `min_urls` 反而在**帮坏链计数**：链接越写越脏，越容易达标。
+ *   根因不是「少排了一个字符」，而是**产物形态是中文散文 + 全角标点**，
+ *   逐个补字符迟早再炸（下一个产物会带 `、`，再下一个会带 `，`）。
+ * ⇒ 改成：token 必须**整体是 ASCII** 才算一个链接；
+ *   含非 ASCII（中文/全角标点/全角括号）⇒ 判为坏链。
+ */
+function extractUrlTokens(content) {
   const s = String(content || "");
-  const m = s.match(/https?:\/\/[^\s)\]}"'<>，。；：、]+/g);
-  return m ? m.length : 0;
+  const out = [];
+  /* markdown 链接 `[文字](url)` 会把两个 URL 连成一个 token ——
+   * 实测那行坏链接抽出来是：
+   *   "https://openai.com/...）与开源推理框架](https://openai.com/...）与开源推理框架)"
+   * ⇒ 先在 `](` 处切开，再逐段抽 URL。
+   * 切完仍会带上 markdown 的收尾 `)` / `]` ⇒ 后面逐条剥掉。 */
+  const segs = String(s).split(/\]\(/);
+  const raws = [];
+  for (const seg of segs) {
+    const m = seg.match(/https?:\/\/[^\s]+/g);
+    if (m) for (const x of m) raws.push(x);
+  }
+  for (const tok of raws) {
+    /* markdown 的收尾 `)` / `]` 是句法，不是 URL 的一部分 */
+    let t = tok;
+    while (t.endsWith(")") || t.endsWith("]")) t = t.slice(0, -1);
+    if (!t) continue;
+    const nonAscii = t.match(/[^\x00-\x7F]/g);
+    out.push({
+      raw: tok,
+      url: t,
+      ok: !nonAscii,
+      why: nonAscii
+        ? "链接里混进了非 ASCII 字符（" + Array.from(new Set(nonAscii)).slice(0, 4).join("、") +
+          "）—— 这是坏链，不是完整链接"
+        : "",
+    });
+  }
+  return out;
+}
+
+/**
+ * 数正文里**真正完整**的 URL（整体 ASCII 的 http:// 或 https:// 链接）。
+ * `must_include: ["http"]` 是子串匹配，贴一个假链接就能过 ⇒ 验收要链接时
+ * 数的是「像样的链接条数」。
+ *
+ * 新增能力：
+ *   unique=true ⇒ 去重后计数（否则同一个链接写 4 次就满足 min_urls:4）
+ */
+function countDeliverableUrls(content, opts) {
+  const o = opts || {};
+  const tokens = extractUrlTokens(content).filter((t) => t.ok);
+  if (o.unique) {
+    const set = new Set(tokens.map((t) => t.url));
+    return set.size;
+  }
+  return tokens.length;
+}
+
+/** 正文里有没有坏链（含全角标点/中文的链接 token）。 */
+function findBrokenUrls(content) {
+  return extractUrlTokens(content).filter((t) => !t.ok);
+}
+
+/**
+ * 取出一个「小节」的正文。
+ * 小节 = 以 label 开头的那一行 + 它后面连续的正文行，直到遇到下一个
+ * 小节标题（markdown 标题 / 中文序号小节 / 同批配置里的另一个 label）。
+ *
+ * 为什么需要它（批次 7）：契约现在的 `must_include` 是**子串匹配** ——
+ * 正文里出现「来源」两个字就算过 ⇒ 成员只写「来源」+ 200 字废话也能过。
+ * 而岗位 prompt 里写的是「包含：可发布候选版本、改动说明、风险标记……」，
+ * 这些是**要交付的段落**，不是要出现的词 ⇒ 必须检查段落里真有东西。
+ */
+function extractSectionBody(text, label, otherLabels) {
+  const s = String(text || "");
+  const lab = String(label || "");
+  if (!lab) return "";
+  const lines = s.split(/\r?\n/);
+  const others = (otherLabels || []).map((x) => String(x || "")).filter((x) => x && x !== lab);
+  const startsWithLabel = (line) => {
+    const bare = String(line || "").trim()
+      .replace(/^#{1,6}\s*/, "").replace(/^[【\[]/, "").replace(/[】\]]$/, "");
+    return bare === lab || bare.startsWith(lab + "：") || bare.startsWith(lab + ":") ||
+      bare.startsWith(lab + " ") || bare.startsWith(lab + "｜") || bare.startsWith(lab + "|");
+  };
+  /* 边界判定要能认出**任意一个**已知小节标题，不只是当前这个 label。 */
+  const startsWithAnyLabel = (line, labels) => {
+    const bare = String(line || "").trim()
+      .replace(/^#{1,6}\s*/, "").replace(/^[【\[]/, "").replace(/[】\]]$/, "");
+    return labels.some((L) => {
+      const l = String(L || "");
+      if (!l) return false;
+      return bare === l || bare.startsWith(l + "：") || bare.startsWith(l + ":") ||
+        bare.startsWith(l + " ") || bare.startsWith(l + "｜") || bare.startsWith(l + "|");
+    });
+  };
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    if (startsWithLabel(lines[i])) { start = i; break; }
+  }
+  if (start < 0) return "";
+  const out = [];
+  for (let i = start; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (i > start) {
+      /* 小节边界：下一个小节标题 */
+      if (/^#{1,6}\s/.test(t)) break;
+      if (/^[一二三四五六七八九十]+\s*[、.．]/.test(t)) break;
+      if (startsWithAnyLabel(t, others)) break;
+    }
+    out.push(lines[i]);
+  }
+  return out.join("\n").trim();
+}
+
+/**
+ * 解析契约里的「成品出口」publish 声明。
+ *
+ * 为什么需要（批次 7）：实测真实产物里，交付目录有 01-inbox…06-analysis，
+ * 但 **05-publish 是空的** —— 没有任何一棒往那儿放东西。
+ * 用户拿到手的「成品」是**五棒堆叠的一个过程档案**（6259 字节，正文只占 3.2%），
+ * 想发出去得先从档案里把正文抠出来。
+ * ⇒ 成品必须**独立成文件**，而且是**可直接复制的那一份**。
+ *
+ * 写法：
+ *   publish: [
+ *     { dir: "05-publish", file: "{date}-final.md",   section: "可发布候选版本" },
+ *     { dir: "05-publish", file: "{date}-sources.md", section: "原始来源清单" },
+ *   ]
+ *   section  —— 只把这一个小节的正文写成成品（不带标题行）
+ *   sections —— 多个小节合成一个文件（用于「待人工签字」那几项）
+ */
+function resolvePublishTargets(contract, opts) {
+  const o = opts || {};
+  const c = typeof contract === "string" ? {} : (contract || {});
+  const list = Array.isArray(c.publish) ? c.publish : (c.publish ? [c.publish] : []);
+  const out = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const spec = {
+      dir: String(raw.dir || "").trim(),
+      file: String(raw.file || "").trim(),
+      section: raw.section ? String(raw.section).slice(0, 60) : "",
+      sections: Array.isArray(raw.sections)
+        ? raw.sections.map((x) => String(x || "").slice(0, 60)).filter(Boolean).slice(0, 8)
+        : [],
+    };
+    if (!spec.dir && !spec.file) continue;
+    const p = resolveDeliverablePath({ dir: spec.dir, file: spec.file || "{date}.md" }, o);
+    if (!p) continue;
+    out.push(Object.assign({}, spec, { path: p }));
+  }
+  return out;
+}
+
+/** 从交付正文里取出成品正文（按 section / sections）。 */
+function extractPublishBody(content, target) {
+  const text = String(content || "");
+  const secs = target.sections && target.sections.length
+    ? target.sections
+    : (target.section ? [target.section] : []);
+  if (!secs.length) return text;
+  /* ⚠️ 边界判定要知道**全文里所有的小节标题**，否则「正文」那一节会把
+     后面「事实依据」「仍需确认」一起吞进来 ⇒ 成品文件变成整份过程档案。
+     ⇒ 从正文里把所有形如「小节标题 + 空行/内容」的标题行都认出来，
+     一并当作边界。（实测踩过：成品文件里三个小节全在。） */
+  const allLabels = collectSectionLabels(text);
+  const parts = [];
+  for (const s of secs) {
+    const body = extractSectionBody(text, s, allLabels);
+    if (body) parts.push(body);
+  }
+  return parts.join("\n\n").trim();
+}
+
+/**
+ * 找出正文里所有「小节标题」行。
+ * 判据：单独一行、长度不太长、后面不是紧跟正文（也就是后面要么空行、
+ * 要么整行就是它自己）—— 这是 markdown 里小节标题最稳的形状。
+ */
+function collectSectionLabels(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t || t.length > 40) continue;
+    const bare = t.replace(/^#{1,6}\s*/, "").replace(/^[【\[]/, "").replace(/[】\]]$/, "")
+      .replace(/[：:]$/, "").trim();
+    if (!bare || bare.length > 30) continue;
+    /* 排除「内容行」：原行带冒号（如「来源 1：https://…」）⇒ 那是内容，不是标题。
+       （标题也可能是「事实依据：」，但那种行只有一个冒号且冒号在末尾 ⇒ 已剥掉。） */
+    if (/[：:]/.test(t.replace(/[：:]$/, ""))) continue;
+    /* 排除正文句子：以句末标点结尾的（。！？；，、）几乎都是句子，不是小节标题。
+       中文小节标题（正文 / 事实依据 / 仍需确认）不带这些标点。 */
+    if (/[。！？；，、,.!?;]$/.test(bare)) continue;
+    /* 标题行后面要么空行、要么整行结束 ⇒ 不像正文句子 */
+    const next = (lines[i + 1] || "").trim();
+    if (next) continue;
+    out.push(bare);
+  }
+  return out;
+}
+
+/**
+ * 跨棒一致性比对（批次 7）。
+ *
+ * 为什么要有这一层（实测）：5 条契约全是「单棒自证」——每棒只查自己，
+ * **链路传递零校验**。于是：
+ *   - 选题 brief 里出现了情报卡**根本没有**的链接（无源选题）照样判过；
+ *   - 主笔的稿子引了 brief 里没有的来源也判过；
+ *   - 复盘声称「情报卡 8 条」，实际只有 2 条，也判过。
+ * 这三类都是**纯确定性**能抓的：Host 本来就持有全部上游产物，
+ * 不需要模型、不需要改任何一棒的工作方式。
+ *
+ * @param {object} input
+ *   upstream  上游各棒的交付正文数组（字符串）
+ *   text      当前棒的交付正文
+ *   rules     当前棒的契约规则
+ * @returns {{pass:boolean, code:string, reason:string, extra_links:string[], counts:object}}
+ */
+function judgeCrossStage(input) {
+  const o = input || {};
+  const rules = o.rules || {};
+  const upstream = Array.isArray(o.upstream) ? o.upstream : [];
+  const text = String(o.text || "");
+  const out = { pass: true, code: "ok", reason: "", extra_links: [], counts: {} };
+
+  /* 规则一：当前棒的链接必须来自上游（不得凭空造来源）。
+   * 只有「上游确实有链接」时才查 —— 上游没链接的情况由各棒自己的
+   * min_urls 管，不在这里越权。 */
+  if (rules.links_must_come_from_upstream && upstream.length) {
+    const up = new Set();
+    for (const u of upstream) {
+      for (const t of extractUrlTokens(u)) if (t.ok) up.add(t.url);
+    }
+    if (up.size) {
+      const mine = [];
+      for (const t of extractUrlTokens(text)) {
+        if (t.ok && !up.has(t.url)) mine.push(t.url);
+      }
+      if (mine.length) {
+        out.pass = false;
+        out.code = "link_not_from_upstream";
+        out.extra_links = Array.from(new Set(mine));
+        out.reason = "交付里有 " + out.extra_links.length +
+          " 条链接在上游产物里不存在（" + out.extra_links.slice(0, 3).join("、") +
+          "）—— 引用来源必须来自上游已核验的材料";
+        return out;
+      }
+    }
+  }
+
+  /* 规则二：数字对账 —— 当前棒声称的「上游条目数」必须等于上游真实条目数。
+   * 抓的是「复盘声称情报卡 8 条，实际只有 2 条」这类虚报。
+   * 只查「N 条/N 个/N 份」这种**计数量词**前的数字，且必须能在上游正文里
+   * 找到对应说法 —— 避免把无关数字（如「四成」「3 项建议」）误判。 */
+  if (rules.counts_must_match_upstream && upstream.length) {
+    const upText = upstream.join("\n");
+    /* 上游每个棒的真实条目数（用修好的计数规则） */
+    const upCounts = upstream.map((u) => countDeliverableItems(u));
+    const total = upCounts.reduce((a, b) => a + b, 0);
+    out.counts = { upstream_per_hop: upCounts, upstream_total: total };
+    /* 当前棒里出现的「N 条」「N 个」 */
+    const claimed = [];
+    const re = /(\d+)\s*(条|个|份|则|张)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) claimed.push({ n: Number(m[1]), unit: m[2], at: m.index });
+    /* 只查那些**看起来在说上游**的计数：
+     * 上下文里出现「情报卡/情报/简报/brief/选题/来源/卡片/条情报」等上游物。 */
+    const UPSTREAM_WORDS = /(情报卡|情报|简报|brief|选题|素材|卡片|来源清单)/;
+    const bad = [];
+    for (const c of claimed) {
+      const around = text.slice(Math.max(0, c.at - 24), c.at + 24);
+      if (!UPSTREAM_WORDS.test(around)) continue;
+      /* 上游正文里出现过这个数字吗？ */
+      if (!new RegExp("\\b" + c.n + "\\b").test(upText)) {
+        bad.push(c);
+      }
+    }
+    if (bad.length) {
+      out.pass = false;
+      out.code = "count_mismatch";
+      out.reason = "交付里声称「" + bad[0].n + " " + bad[0].unit +
+        "」，但上游产物里没有这个数字（上游实际：" + upCounts.join(" / ") +
+        " 条）—— 复盘不许虚报上游规模";
+      return out;
+    }
+  }
+
+  return out;
 }
 
 /** 按契约把交付文件读出来（读不到就说读不到，不猜）。 */
@@ -1202,6 +1512,39 @@ function checkContentRules(content, rules, what) {
       return { pass: false, code: "missing_content", items, reason: what + "里缺少「" + String(need) + "」" };
     }
   }
+  /* must_include_sections：**必含的段落**（不只是必含的词）。
+   * 为什么要有它：`must_include: ["来源"]` 只要正文出现「来源」两个字就过 ——
+   * 实测「只写『来源』二字 + 200 字废话」能过验收。
+   * 而岗位 prompt 写的是「【固定交付】…包含：可发布候选版本、改动说明、
+   * 风险标记、仍需人工确认、原始来源清单」—— 这些是**要交付的段落**，
+   * 成员只交了「审校意见」正文，5 项一项都没有，契约却判过。
+   * ⇒ 规则要能表达「这一节必须有实质内容」。
+   * 写法：["可发布候选版本", {"label":"改动说明","min_chars":30}, ...]
+   *   - 字符串 ⇒ 该小节必须有实质内容（默认至少 20 字）
+   *   - 对象   ⇒ 可指定 label 与 min_chars
+   */
+  const sections = Array.isArray(r.must_include_sections) ? r.must_include_sections : [];
+  if (sections.length) {
+    const labels = sections.map((x) => (typeof x === "string" ? x : String((x || {}).label || "")));
+    for (const spec of sections) {
+      const label = typeof spec === "string" ? spec : String((spec || {}).label || "");
+      if (!label) continue;
+      const need = typeof spec === "string" ? 20 : Math.max(0, Number((spec || {}).min_chars || 20));
+      const body = extractSectionBody(text, label, labels);
+      if (!body) {
+        return { pass: false, code: "missing_section", items,
+          reason: what + "里没有「" + label + "」这一节 —— 岗位要求的固定交付缺了" };
+      }
+      /* 只算标题外的实质内容：把标题行本身去掉再数 */
+      const bodyLines = body.split(/\r?\n/);
+      const contentChars = bodyLines.slice(1).join("").replace(/\s+/g, "").length;
+      if (contentChars < need) {
+        return { pass: false, code: "empty_section", items,
+          reason: what + "里「" + label + "」这一节只有标题没有内容（正文 " + contentChars +
+            " 字，要求 ≥ " + need + " 字）—— 交了标题不算交付" };
+      }
+    }
+  }
   /* URL 计数（批次 6）：`must_include: ["http"]` 是**子串**匹配 ——
    * 正文里出现「http」就算过 ⇒ 模型只要贴一个**编造的**链接就能过验收。
    * 真实场景里这等于「产品在奖励编造来源」：情报侦察员搜不到、或者干脆
@@ -1216,6 +1559,32 @@ function checkContentRules(content, rules, what) {
         pass: false, code: "too_few_urls", items, urls,
         reason: what + "里只有 " + urls + " 条完整链接（要求 ≥ " + Number(r.min_urls) +
           " 条）—— 贴一个编的链接不算数，要真的来源",
+      };
+    }
+  }
+  /* unique_urls：去重后计数 —— 否则同一个链接写 4 次就满足 min_urls:4。
+   * 「来源清单」里重复贴同一条链接是最常见的凑数手法。 */
+  if (r.unique_urls) {
+    const uniq = countDeliverableUrls(text, { unique: true });
+    if (uniq < Number(r.unique_urls)) {
+      return {
+        pass: false, code: "too_few_unique_urls", items, urls: uniq,
+        reason: what + "里只有 " + uniq + " 条**不重复**的链接（要求 ≥ " + Number(r.unique_urls) +
+          " 条）—— 同一个链接重复贴不算数",
+      };
+    }
+  }
+  /* no_broken_urls：正文里有坏链（全角括号/中文混进 URL）⇒ 判红。
+   * 为什么要有这条：`min_urls` 只数「像样的链接」，而**中文散文里的链接
+   * 往往全是坏的**（实测真实产物：4 个 token 全部含全角 `）` 或中文）。
+   * 不查坏链的话，验收就是在**奖励脏链接**。 */
+  if (r.no_broken_urls) {
+    const broken = findBrokenUrls(text);
+    if (broken.length) {
+      return {
+        pass: false, code: "broken_urls", items, urls: broken.length,
+        reason: what + "里有 " + broken.length + " 条坏链接（" +
+          (broken[0].why || "链接格式坏了") + "）—— 来源要写成一行一个、URL 只出现一次",
       };
     }
   }
@@ -1286,6 +1655,14 @@ module.exports = {
   readDeliverableArtifact,
   resolveDeliverablePath,
   countDeliverableItems,
+  countDeliverableUrls,
+  extractUrlTokens,
+  findBrokenUrls,
+  extractSectionBody,
+  resolvePublishTargets,
+  extractPublishBody,
+  collectSectionLabels,
+  judgeCrossStage,
   looksLikeNarration,
   createTeamBudget,
   createCancelScope,

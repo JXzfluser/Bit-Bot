@@ -515,6 +515,190 @@ async function sectionG() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * G2. 批次 7 的新判据：成品出口 / 坏链 / 跨棒一致性 / 数字对账
+ *
+ * 每条都**双向验证**：
+ *   - 正例：加了规则后仍判过（别误杀正确产物）
+ *   - 负例：加了规则后判红（规则确实有牙）
+ * 只测「能判红」是不够的 —— 那会把「规则太宽」误当成「规则到位」。
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** 一段正文，带「正文 / 事实依据 / 仍需确认」三个小节（批次 7 的形状）。 */
+const G2_SECTIONS_BODY = [
+  "正文",
+  "",
+  "推理成本这次真的下了一档。我们把一次完整任务的花费拆成三段：模型调用、上下文重读、失败重试。",
+  "第三段几乎没人算，但重试吃掉了总成本的近四成——工具调用失败一次，后面整段推理要重来。",
+  "对预算有限的中小团队，这意味着把重试率当成核心指标盯，而不是只看单次调用单价。",
+  "",
+  "事实依据",
+  "",
+  "来源 1：https://openai.com/index/o3-mini-update —— 一手官方公告。",
+  "",
+  "仍需确认",
+  "",
+  "定价页是否已同步更新；重试占比的样本量还偏小。",
+].join("\n");
+
+/** 审校交 5 个小节（批次 7 的形状）。 */
+const G2_REVIEW_BODY = [
+  "可发布候选版本",
+  "",
+  "推理成本这次真的下了一档。我们把一次完整任务的花费拆成三段：模型调用、上下文重读、失败重试。",
+  "第三段几乎没人算，但重试吃掉了总成本的近四成——工具调用失败一次，后面整段推理要重来。",
+  "对预算有限的中小团队，这意味着把重试率当成核心指标盯，而不是只看单次调用单价。",
+  "",
+  "改动说明",
+  "",
+  "原句「推理成本下探」改成了「推理成本这次真的下了一档」，因为公告只说推理能力更新，未给出统一下调口径。",
+  "",
+  "风险标记",
+  "",
+  "「近四成」只有内部样本支撑，不能当行业结论写。",
+  "",
+  "仍需人工确认",
+  "",
+  "定价页是否同步更新；重试样本能否扩到更多任务类型。",
+  "",
+  "原始来源清单",
+  "",
+  "来源 1：https://openai.com/index/o3-mini-update —— 一手官方公告，可用。",
+].join("\n");
+
+const G2_CONTRACT = {
+  stages: [
+    {
+      match: { name: "脚本撰写" },
+      dir: "03-drafts",
+      file: "{date}-draft.md",
+      rules: {
+        min_chars: 120,
+        must_include: ["事实依据"],
+        min_urls: 1,
+        unique_urls: 1,
+        no_broken_urls: true,
+        must_include_sections: [
+          { label: "正文", min_chars: 60 },
+          "事实依据",
+          "仍需确认",
+        ],
+      },
+      /* 成品出口：正文单独落一份到 05-publish/ */
+      publish: [{ dir: "05-publish", file: "{date}-post.md", section: "正文" }],
+    },
+  ],
+};
+
+async function sectionG2() {
+  console.log("── G2. 批次 7 新判据：成品出口 / 坏链 / 跨棒 / 数字对账 ──");
+
+  /* G2-01：成员交对格式的正文 ⇒ 验收通过，且**成品单独落在 05-publish/**。
+     这是用户视角评审的第一诉求：「03-drafts 是过程档案，05-publish 才是能直接发的」。
+     之前 05-publish/ 是空的 ⇒ 没有任何一棒往那儿放东西。 */
+  const c1 = await runRelay({ writeFiles: false, contract: G2_CONTRACT, replyBody: G2_SECTIONS_BODY });
+  const sr1 = (c1.fr && c1.fr.stage_results) || [];
+  const last1 = sr1[sr1.length - 1] || {};
+  check("G2-01", last1.pass === true,
+    "G2-01 交对小节结构的正文 ⇒ 验收通过（别误杀正确产物）",
+    JSON.stringify({ pass: last1.pass, reason: last1.reason }));
+  const pubPath = path.join(c1.root, "data", "workspace", "自媒体内容团队", "05-publish", "2026-11-24-post.md");
+  check("G2-02", fs.existsSync(pubPath),
+    "G2-02 成品**单独落在 05-publish/**（用户拿到手就能直接复制，不用从过程档案里抠）",
+    pubPath);
+  if (fs.existsSync(pubPath)) {
+    const pub = fs.readFileSync(pubPath, "utf8");
+    check("G2-03", pub.indexOf("正文") >= 0 && pub.indexOf("推理成本这次真的下了一档") >= 0 &&
+      pub.indexOf("事实依据") < 0,
+      "G2-03 成品文件里只有「正文」那一节（不是整份过程档案）",
+      JSON.stringify(pub.slice(0, 120)));
+  } else {
+    check("G2-03", false, "G2-03 成品文件里只有「正文」那一节（不是整份过程档案）", "文件不存在");
+  }
+
+  /* G2-04：坏链判红。真实产物里那行 markdown 就是坏的（`)` 丢失、紧跟 `。](...)`），
+     而旧计数把它算成 4 条「完整链接」⇒ 契约在帮坏链计数。 */
+  const BROKEN_LINE = "事实依据：o3-mini 推理更新公告（[https://openai.com/index/o3-mini-update）与开源推理框架](https://openai.com/index/o3-mini-update）与开源推理框架) v2 Release（[https://github.com/example/infer/releases/tag/v2.0.0）。](https://github.com/example/infer/releases/tag/v2.0.0）。)";
+  const c2 = await runRelay({
+    writeFiles: false, contract: G2_CONTRACT,
+    replyBody: "正文\n\n" + "推理成本这次真的下了一档。".repeat(8) + "\n\n事实依据\n\n" + BROKEN_LINE +
+      /* 再给一条**干净**的链接：让 min_urls 先过（1 条），
+         这样拦下它的一定是 no_broken_urls（坏链），不是「链接不够」。 */
+      "\n来源 2：https://example.com/clean-note —— 干净的一条。\n" +
+      "\n\n仍需确认\n\n定价页是否已同步更新，重试占比的样本量还偏小，不能当行业结论用。",
+  });
+  const sr2 = (c2.fr && c2.fr.stage_results) || [];
+  const last2 = sr2[sr2.length - 1] || {};
+  check("G2-04", last2.pass === false && String(last2.reason || "").indexOf("坏链接") >= 0,
+    "G2-04 链接里混了全角括号/中文 ⇒ 判红（旧口径会把它算成 4 条完整链接）",
+    JSON.stringify({ pass: last2.pass, code: last2.code, reason: last2.reason }));
+
+  /* G2-05：缺小节判红 —— prompt 要求的 5 项固定交付，契约只查一个词时全缺也放过。 */
+  const c3 = await runRelay({
+    writeFiles: false,
+    contract: Object.assign({}, G2_CONTRACT, {
+      stages: [Object.assign({}, G2_CONTRACT.stages[0], {
+        rules: Object.assign({}, G2_CONTRACT.stages[0].rules, {
+          must_include_sections: ["可发布候选版本", "改动说明", "风险标记", "仍需人工确认", "原始来源清单"],
+        }),
+      })],
+    }),
+    /* 这次只让它缺「可发布候选版本」那一节（其它小节都在）⇒
+       判红理由必须指向「缺小节」，而不是别的规则先拦下来。 */
+    replyBody: "改动说明\n\n原句「推理成本下探」改成了「推理成本这次真的下了一档」，因为公告只说推理能力更新。\n\n" +
+      "风险标记\n\n「近四成」只有内部样本支撑，不能当行业结论写。\n\n" +
+      "仍需人工确认\n\n定价页是否已同步更新。\n\n" +
+      "原始来源清单\n\n来源 1：https://openai.com/x —— 一手官方公告，可用。\n\n" +
+      "事实依据\n\n来源 1：https://openai.com/x —— 一手官方公告。\n\n" +
+      "补充说明。".repeat(40),
+  });
+  const sr3 = (c3.fr && c3.fr.stage_results) || [];
+  const last3 = sr3[sr3.length - 1] || {};
+  check("G2-05", last3.pass === false && String(last3.reason || "").indexOf("这一节") >= 0,
+    "G2-05 缺 prompt 要求的固定交付小节 ⇒ 判红（只交审校意见不算交付）",
+    JSON.stringify({ pass: last3.pass, code: last3.code, reason: last3.reason }));
+
+  /* G2-06：跨棒链接集合差 —— 无源选题判红，且不误杀有源的。 */
+  const {
+    judgeCrossStage, countDeliverableUrls, findBrokenUrls, countDeliverableItems,
+  } = require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+  const intel = "1. 线索一\n   原始链接：https://openai.com/x\n2. 线索二\n   原始链接：https://github.com/y";
+  const withOrphan = "题 1｜基于线索一\n   链接：https://openai.com/x\n题 2｜无源题\n   链接：https://example.com/audit-notes";
+  const clean = "题 1｜基于线索一\n   链接：https://openai.com/x\n题 2｜基于线索二\n   链接：https://github.com/y";
+  const xsBad = judgeCrossStage({ upstream: [intel], text: withOrphan, rules: { links_must_come_from_upstream: true } });
+  const xsGood = judgeCrossStage({ upstream: [intel], text: clean, rules: { links_must_come_from_upstream: true } });
+  check("G2-06", xsBad.pass === false && xsGood.pass === true,
+    "G2-06 无源选题判红、链接有出处的正确 brief 放行（双向）",
+    JSON.stringify({ bad: xsBad.pass, bad_reason: xsBad.reason, good: xsGood.pass }));
+
+  /* G2-07：数字对账 —— 复盘声称「情报卡 8 条」，实际只有 2 条 ⇒ 判红。 */
+  const reviewLies = "数据来源\n\n本周流水线（情报卡 8 条、brief 3 题），样本量偏小。\n\n本轮交付\n\n完成一轮链路。";
+  const reviewHonest = "数据来源\n\n本周流水线（情报卡 2 条、brief 3 题），样本量偏小。\n\n本轮交付\n\n完成一轮链路。";
+  const xsLies = judgeCrossStage({ upstream: [intel], text: reviewLies, rules: { counts_must_match_upstream: true } });
+  const xsHonest = judgeCrossStage({ upstream: [intel], text: reviewHonest, rules: { counts_must_match_upstream: true } });
+  check("G2-07", xsLies.pass === false && xsHonest.pass === true,
+    "G2-07 复盘虚报上游规模判红、数字对得上的放行（双向）",
+    JSON.stringify({ lies: xsLies.pass, lies_reason: xsLies.reason, honest: xsHonest.pass }));
+
+  /* G2-08：条目计数认得「题 N｜」（批次 7 之前它数出 0 条 ⇒ min_items 会误杀正确产物）。 */
+  const briefBody = "题 1｜第一个题\n   链接：https://a.com/1\n题 2｜第二个题\n   链接：https://a.com/2\n题 3｜第三个题\n   链接：https://a.com/3";
+  const nItems = countDeliverableItems(briefBody);
+  check("G2-08", nItems === 3,
+    "G2-08 条目计数认得「题 N｜」（旧规则数出 0 条 ⇒ min_items 会误杀正确 brief）",
+    String(nItems));
+
+  /* G2-09：唯一 URL 计数 —— 同一链接贴 4 次不算 4 条。 */
+  const dupUrl = "来源：https://a.com/1 https://a.com/1 https://a.com/1 https://a.com/1";
+  check("G2-09", countDeliverableUrls(dupUrl) === 4 && countDeliverableUrls(dupUrl, { unique: true }) === 1,
+    "G2-09 unique_urls 会去重（同一链接贴 4 次不能当 4 条来源）",
+    JSON.stringify({ total: countDeliverableUrls(dupUrl), unique: countDeliverableUrls(dupUrl, { unique: true }) }));
+
+  /* G2-10：坏链识别。 */
+  check("G2-10", findBrokenUrls(BROKEN_LINE).length === 4 && countDeliverableUrls(BROKEN_LINE) === 0,
+    "G2-10 坏链 4 条、完整链接 0 条（旧口径会数成 4 条完整链接）",
+    JSON.stringify({ broken: findBrokenUrls(BROKEN_LINE).length, good: countDeliverableUrls(BROKEN_LINE) }));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * X. URL 计数（批次 6）：贴一个编的链接不算过
  * ══════════════════════════════════════════════════════════════════════════ */
 const CONTRACT_URL = {
@@ -732,6 +916,7 @@ function userDataFingerprint() {
     await sectionENegative();
   }
   if (MODE === "all" || MODE === "positive") await sectionG();
+  if (MODE === "all" || MODE === "g2") await sectionG2();
   if (MODE === "all") sectionC();
   if (MODE === "all") sectionCX();
   if (MODE === "all" || MODE === "urls") await sectionX();
