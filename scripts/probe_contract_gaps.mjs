@@ -145,6 +145,29 @@ console.log("── 专项 C · min_items 的副作用（会误杀正确产物�
   }
 }
 
+/* ── 专项 D：prompt 要求的固定交付，契约一项都不查 ───────────────────────── */
+console.log("── 专项 D · prompt 要求 5 项固定交付，契约只查 1 个词");
+{
+  /* 事实编辑的岗位 prompt 原文写着：
+     【固定交付】…包含：可发布候选版本、改动说明、风险标记、仍需人工确认、原始来源清单。
+     契约只有 must_include:["来源"]。 */
+  const required = ["可发布候选版本", "改动说明", "风险标记", "仍需人工确认", "原始来源清单"];
+  /* 只交了「审校意见」的真实产物形态（不含那 5 项里的任何一个） */
+  const realReview = "审校意见 · 候选稿第 1 稿\n总体结论：论点站得住。\n一、事实核对\n   1. 表述过宽，建议改为「单次推理成本结构变化」。\n二、来源清单\n   来源 1：[https://openai.com/x](https://openai.com/x) —— 一手官方公告，可用。\n三、仍需确认\n   定价页是否同步更新。" + "补充说明。".repeat(30);
+  const missing = required.filter((k) => !realReview.includes(k));
+  const v = judgeStage({
+    text: realReview,
+    contract: { dir: "x", rules: { min_chars: 200, must_include: ["来源"] } },
+    what: "审校意见",
+  });
+  if (v.pass && missing.length) {
+    bad("契约不查 prompt 要求的固定交付：缺 " + missing.length + "/" + required.length + " 项仍判过",
+      "缺：" + missing.join("、") + " ⇒ 契约只命中了「来源」两个字");
+  } else {
+    ok("契约拦住了缺项的审校意见");
+  }
+}
+
 console.log("");
 
 for (const c of cases) {
