@@ -3448,10 +3448,12 @@ function createProductSurface(repoRoot, opts = {}) {
         budget.spend({ turns: 1, tokens: promptTokens });
         let res;
         const stageStart = Date.now();
-        /* 每棒重置抓取额度（批次 6）：额度是**这一棒**的，不是整轮的。 */
+        /* 每棒重置抓取额度（批次 6）：额度是**这一棒**的，不是整轮的。
+           依赖来自 surface 上的 roomRuntimeDeps（setRoomRuntimeDeps 登记）——
+           opts.deps 只在显式传参时才有，别指望它。 */
         try {
-          if (deps && typeof deps.resetStageFetchBudget === "function") {
-            deps.resetStageFetchBudget();
+          if (roomRuntimeDeps && typeof roomRuntimeDeps.resetStageFetchBudget === "function") {
+            roomRuntimeDeps.resetStageFetchBudget();
           }
         } catch (_) { /* 清额度失败不影响这一棒 */ }
         try {
