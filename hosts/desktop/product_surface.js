@@ -593,7 +593,7 @@ function createProductSurface(repoRoot, opts = {}) {
    *   must_include_sections —— 必含**段落**（不只是必含的词）
    * 这几个键必须进白名单：不在白名单 ⇒ 用户在设置页里配的契约会被静默丢掉。 */
   const DELIVERABLE_EXTRA_RULE_KEYS = ["min_urls", "unique_urls"];
-  const DELIVERABLE_FLAG_RULE_KEYS = ["no_broken_urls", "links_must_come_from_upstream", "counts_must_match_upstream"];
+  const DELIVERABLE_FLAG_RULE_KEYS = ["no_broken_urls", "links_must_come_from_upstream", "counts_must_match_upstream", "percentages_must_come_from_upstream"];
   function normalizeDeliverable(input) {
     if (input === null || input === "" || input === "-") return null;
     if (!input || typeof input !== "object" || Array.isArray(input)) return null;

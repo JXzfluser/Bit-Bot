@@ -19931,6 +19931,13 @@ function createHostFfi(repoRoot, opts = {}) {
               "min_urls": 1,
               "unique_urls": 1,
               "no_broken_urls": true,
+              /* 凭空数字（批次 7）：百分比必须能从上游材料算出来。
+                 实测那次主笔写「重试吃掉了总成本的近四成」—— 而上游情报卡里
+                 **没有任何成本遥测数据**，brief 还明写「定价页未同步更新」⇒
+                 这个数字不是它乱编，是上游把能算账的东西全过滤了，
+                 然后契约还要求它算账。
+                 ⇒ 只查百分比（伪造风险最高、又最好确定性检出的一类）。 */
+              "percentages_must_come_from_upstream": true,
               /* 正文 / 事实依据 / 仍需确认 必须是三个**分开的段落** ——
                  实测混在一起时用户得自己从稿子里抠正文。 */
               "must_include_sections": [

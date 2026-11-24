@@ -692,6 +692,23 @@ async function sectionG2() {
     "G2-09 unique_urls 会去重（同一链接贴 4 次不能当 4 条来源）",
     JSON.stringify({ total: countDeliverableUrls(dupUrl), unique: countDeliverableUrls(dupUrl, { unique: true }) }));
 
+  /* G2-11：凭空数字 —— 百分比必须能从上游算出来。
+     真实产物里主笔写「重试吃掉了总成本的近四成」，而上游没有任何成本遥测数据。
+     双向验证：有出处的同一句必须放行。 */
+  const { extractPercentages } = require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+  const intelNoPct = "1. 线索一\n   原始链接：https://openai.com/x\n   证据摘录：公告写明推理能力更新。";
+  const intelWithPct = intelNoPct + "\n   遥测：重试占 40%。";
+  const pctText = "正文\n\n重试吃掉了总成本的近四成，因为工具调用失败一次，后面整段推理要重来。";
+  const pctRules = { percentages_must_come_from_upstream: true };
+  const xsPctBad = judgeCrossStage({ upstream: [intelNoPct], text: pctText, rules: pctRules });
+  const xsPctGood = judgeCrossStage({ upstream: [intelWithPct], text: pctText, rules: pctRules });
+  check("G2-11", xsPctBad.pass === false && xsPctGood.pass === true,
+    "G2-11 凭空百分比判红、上游有出处的放行（双向）",
+    JSON.stringify({ bad: xsPctBad.pass, bad_reason: xsPctBad.reason, good: xsPctGood.pass }));
+  check("G2-12", extractPercentages("近四成").join() === "40" && extractPercentages("40%").join() === "40",
+    "G2-12 中文「四成」与阿拉伯「40%」归一成同一个数（上下游口径能对上）",
+    JSON.stringify({ cn: extractPercentages("近四成"), ar: extractPercentages("40%") }));
+
   /* G2-10：坏链识别。 */
   check("G2-10", findBrokenUrls(BROKEN_LINE).length === 4 && countDeliverableUrls(BROKEN_LINE) === 0,
     "G2-10 坏链 4 条、完整链接 0 条（旧口径会数成 4 条完整链接）",

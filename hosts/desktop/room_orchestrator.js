@@ -1395,10 +1395,54 @@ function judgeCrossStage(input) {
     }
   }
 
+  /* 规则三：凭空数字 —— 正文里的**百分比**必须在上游出现过。
+   *
+   * 为什么只查百分比（不查所有数字）：
+   *   实测最严重的一条是主笔写「重试吃掉了总成本的**近四成**」——
+   *   而上游情报卡里**没有任何成本遥测数据**，brief 还明写「定价页未同步更新」。
+   *   ⇒ 这个数字不是模型乱编，是**上游把能算账的东西全过滤了，然后契约还要求它算账**。
+   *   百分比是**伪造风险最高**、也最容易确定性检出的一类：
+   *   「N%」「近四成」这种，上游正文里没有 ⇒ 判红。
+   *   而「3 条」「2 题」这类计数已由 counts_must_match_upstream 管，
+   *   日期/版本号/链接里的数字另有一堆例外 ⇒ 一概不查，避免误杀。
+   */
+  if (rules.percentages_must_come_from_upstream && upstream.length) {
+    const upText = upstream.join("\n");
+    const upPcts = extractPercentages(upText);
+    const minePcts = extractPercentages(text);
+    const orphan = minePcts.filter((p) => !upPcts.includes(p));
+    if (orphan.length) {
+      out.pass = false;
+      out.code = "fabricated_percentage";
+      out.reason = "交付里有上游没有的百分比（" + orphan.join("、") +
+        "）—— 数字必须能从上游材料算出来，不能自己编";
+      return out;
+    }
+  }
+
   return out;
 }
 
-/** 按契约把交付文件读出来（读不到就说读不到，不猜）。 */
+/**
+ * 抽出正文里的百分比，统一成数字形态。
+ * 认得两种写法：阿拉伯数字（40% / 40 %）与中文（约四成 / 近四成）。
+ * 中文数字只认到「十」，够用了（更复杂的写法宁可放过，别误杀）。
+ */
+function extractPercentages(text) {
+  const s = String(text || "");
+  const out = [];
+  /* 阿拉伯数字：40% / 40.5% */
+  const re1 = /(\d+(?:\.\d+)?)\s*[%％]/g;
+  let m;
+  while ((m = re1.exec(s)) !== null) out.push(String(Number(m[1])));
+  /* 中文：近四成 / 约八成 / 三成 */
+  const CN = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const re2 = /([一二三四五六七八九十])\s*成/g;
+  while ((m = re2.exec(s)) !== null) {
+    out.push(String(CN[m[1]] * 10));
+  }
+  return Array.from(new Set(out));
+}
 function readDeliverableArtifact(contract, opts) {
   const o = opts || {};
   const file = resolveDeliverablePath(contract, o);
@@ -1663,6 +1707,7 @@ module.exports = {
   extractPublishBody,
   collectSectionLabels,
   judgeCrossStage,
+  extractPercentages,
   looksLikeNarration,
   createTeamBudget,
   createCancelScope,

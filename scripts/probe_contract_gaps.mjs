@@ -199,6 +199,28 @@ console.log("── 专项 D · prompt 要求 5 项固定交付，契约要查�
   }
 }
 
+/* ── 专项 E：凭空数字（正文有、上游没有的百分比） ───────────────────────── */
+console.log("── 专项 E · 凭空数字（百分比必须能从上游算出来）");
+{
+  const { judgeCrossStage } = require(path.join(REPO, "hosts/desktop/room_orchestrator.js"));
+  const intel = "1. 线索一\n   原始链接：https://openai.com/x\n   证据摘录：公告写明推理能力更新。";
+  /* 真实产物里主笔那句「近四成」—— 上游没有任何成本遥测数据 */
+  const withFabricated = "正文\n\n重试吃掉了总成本的近四成，因为工具调用失败一次，后面整段推理要重来。";
+  /* 对照：上游写了 40%，正文说「近四成」⇒ 归一后能对上 ⇒ 必须放行 */
+  const intelWithPct = intel + "\n   遥测：重试占 40%。";
+  const withBacked = "正文\n\n重试吃掉了总成本的近四成，因为工具调用失败一次，后面整段推理要重来。";
+  const rules = { percentages_must_come_from_upstream: true };
+  const bad1 = judgeCrossStage({ upstream: [intel], text: withFabricated, rules });
+  const good1 = judgeCrossStage({ upstream: [intelWithPct], text: withBacked, rules });
+  if (!bad1.pass && good1.pass) {
+    ok("凭空百分比判红，上游有出处的同一句放行（双向）");
+    console.log("      判红理由：" + bad1.reason);
+  } else {
+    bad("凭空百分比判据没咬住，或误杀了有出处的表述",
+      "凭空 pass=" + bad1.pass + "（" + bad1.reason + "）；有出处 pass=" + good1.pass);
+  }
+}
+
 console.log("");
 
 for (const c of cases) {
