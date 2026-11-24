@@ -5163,6 +5163,17 @@ function stopRelayConfigWatch() {
 }
 
 async function ensureCnInbound() {
+  /* 【P1 批 4 · §3.2.3】入站服务必须拿到**桌面这一份 surface**。
+     为什么必须注入:_taskScopes / _activeRoomScopes 是 createProductSurface()
+     **工厂内**的内存状态(在跑的任务表)—— 入站服务另建一个实例的话,
+     手机点「刹停」命中的是另一张**空表** ⇒ 永远回 no_running_task,
+     而桌面主进程那一轮还在跑(界面会说谎)。
+     注入同一份实例 ⇒ HTTP 与 IPC 共用一张表 ⇒ 刹停真能停掉。
+     没注入时入站服务仍回落 createProductSurfaceRef(box_main.js 那条路)。
+
+     放在函数外而不是对象字面量里：门禁 TC-03 要在
+     `createCnInboundServer({` 之后 400 字符内看到 `surface,`
+     （判据是「surface 真被注进去了」，不是「注释写了多少字」）。 */
   if (process.env.BITBOT_CN_INBOUND === "0") {
     // 入站关了就没有可登记的端口 —— 顺手收掉心跳，别让中转上留一台永远拨不通的盒子。
     // A3-11：观察器也要停，否则入站关着它还在按旧 started 反复登记。
@@ -5183,13 +5194,7 @@ async function ensureCnInbound() {
       repoRoot: REPO_ROOT,
       /* 设备登记表跟 DATA_ROOT 走（隔离门禁里别写回用户的真目录）。 */
       devicesPath: path.join(DATA_ROOT, "host", "devices.json"),
-      /* 【P1 批 4 · §3.2.3】把**桌面这一份 surface** 注入进去。
-         为什么必须注入:_taskScopes / _activeRoomScopes 是 createProductSurface()
-         **工厂内**的内存状态(在跑的任务表)—— 入站服务另建一个实例的话,
-         手机点「刹停」命中的是另一张**空表** ⇒ 永远回 no_running_task,
-         而桌面主进程那一轮还在跑(界面会说谎)。
-         注入同一份实例 ⇒ HTTP 与 IPC 共用一张表 ⇒ 刹停真能停掉。
-         没注入时入站服务仍回落 createProductSurfaceRef(box_main.js 那条路)。 */
+      /* 桌面这一份 surface（为什么必须注入：见上面 createCnInboundServer 那段注释）。 */
       surface,
       pairingManager: pairingCodeManager,
       onTurn: async (prompt, meta) => {
