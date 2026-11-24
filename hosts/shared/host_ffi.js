@@ -201,6 +201,35 @@ function publicFeedList() {
  *
  * 口径：BITBOT_WEBFETCH_HOST_FAIL_LIMIT（默认 3）。
  * ───────────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────
+ * 抓取速率上限（批次 6）
+ *
+ * 缘起（真 MiniMax 实测）：一棒里 web_fetch 调了 **150 次**，97 次失败
+ * （44 次登录墙、31 次被封锁）⇒ 模型在很多不同 host 上轮着试 ⇒
+ * 「站点级失败记忆」拦不住（它换 host）⇒ 而调用预算只数**模型调用**
+ * （一次请求带 8 个工具调用 ⇒ 20 次模型调用 = 160 次抓取）⇒ 也拦不住。
+ *
+ * ⇒ 加一道**抓取速率**兜底：滑动窗口内抓取次数超了 ⇒ 直接拒，并说清
+ *   「这一轮已经抓了很多次了（多半是在试抓不到的站点）—— 用 web_search
+ *   拿到的候选，或者换个方向」。
+ *
+ * 口径：BITBOT_WEBFETCH_RATE_MAX（默认 40 次）/
+ *       BITBOT_WEBFETCH_RATE_WINDOW_MS（默认 60000）。
+ * ───────────────────────────────────────────────────────────────────── */
+const WEBFETCH_RATE_MAX = Number(process.env.BITBOT_WEBFETCH_RATE_MAX || 40);
+const WEBFETCH_RATE_WINDOW_MS = Number(process.env.BITBOT_WEBFETCH_RATE_WINDOW_MS || 60000);
+const webFetchRate = [];
+
+function webFetchRateExceeded() {
+  const now = Date.now();
+  while (webFetchRate.length && now - webFetchRate[0] > WEBFETCH_RATE_WINDOW_MS) {
+    webFetchRate.shift();
+  }
+  if (webFetchRate.length >= WEBFETCH_RATE_MAX) return webFetchRate.length;
+  webFetchRate.push(now);
+  return 0;
+}
+
 const WEBFETCH_HOST_FAIL_LIMIT = Number(process.env.BITBOT_WEBFETCH_HOST_FAIL_LIMIT || 3);
 const webFetchHostFails = new Map();
 
@@ -1878,6 +1907,22 @@ function createHostFfi(repoRoot, opts = {}) {
           url, ok: false, error: msg,
           host: hostKey, host_fail_count: priorFails,
           pretend_fetched: false, at,
+        }, null, 2),
+      };
+    }
+    /* 抓取速率兜底（批次 6）：滑动窗口内超了 ⇒ 直接拒并说清为什么。 */
+    const rateCount = webFetchRateExceeded();
+    if (rateCount >= WEBFETCH_RATE_MAX) {
+      const msg = "这一轮已经抓了 " + rateCount + " 次（多半是在试抓不到的站点）—— " +
+        "用 web_search 拿到的候选，或者换个方向；别再一篇一篇换着试了";
+      return {
+        kind: "webfetch",
+        ok: false,
+        command: url,
+        error: msg,
+        stdout: JSON.stringify({
+          url, ok: false, error: msg,
+          fetch_count: rateCount, pretend_fetched: false, at,
         }, null, 2),
       };
     }
@@ -19709,7 +19754,7 @@ function createHostFfi(repoRoot, opts = {}) {
 【工作方法】
 先从官方来源和社交平台公开页面发现线索，再回到官方公告、产品页、论文、作者原文或当事人公开内容核验。关键事实记录主体、动作、时间和结果。只有平台讨论、没有一手证据的内容写“未确认”；找不到原始出处的二手信息放入“待核查”，不得进入候选选题。
 【固定交付】
-交付到共享目录 01-inbox/ 下（文件名由 Host 按当天日期定），每次最多 8 条。每条包含：事实或平台线索、来源平台、原始链接、证据摘录、讨论热度或代表性观点（仅在可见时记录）、为什么值得关注、一个待核查问题、核验状态。
+交付到共享目录 01-inbox/ 下（文件名由 Host 按当天日期定），每次最多 3 条。每条包含：事实或平台线索、来源平台、原始链接、证据摘录、讨论热度或代表性观点（仅在可见时记录）、为什么值得关注、一个待核查问题、核验状态。
 【验收】
 链接可访问；事实、平台观点和作者判断分开；关键主张能回到一手来源；缺失、过期、登录受限或不可访问时记录失败原因和下一步。把上面这份情报的**正文完整写在回复里**（Host 会替你落盘到共享目录 01-inbox/），回复末尾再补一句完成情况与未完成原因；不要只回一句「已完成」。`,
           deliverable: { order: 1, dir: "01-inbox", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"], "min_urls": 1 } },
