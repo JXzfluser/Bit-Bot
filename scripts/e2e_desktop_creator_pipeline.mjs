@@ -70,7 +70,20 @@ for (const name of fs.existsSync(path.join(REPO, "data")) ? fs.readdirSync(path.
   if (name === "tmp" || name.startsWith("import-backup-")) continue;
   fs.cpSync(path.join(REPO, "data", name), path.join(DATA, name), { recursive: true });
 }
-process.on("exit", () => { try { fs.rmSync(GATE_ROOT, { recursive: true, force: true }); } catch { /* 收尾失败不改判据 */ } });
+/* 保留隔离根 + 导出「内部对话 → 产出结果」过程文档。
+   为什么需要：门禁跑完就把证据全删了 ⇒ 想看「团队内部那段对话到底长什么样」
+   只能重跑一遍。这个开关让跑完的那一轮**留下来**，并用
+   scripts/export_team_run.mjs 渲染成一份可读文档（成员发言、验收结论、
+   产物全文）。设 BITBOT_KEEP_GATE_ROOT=1 生效。 */
+const KEEP_GATE_ROOT = String(process.env.BITBOT_KEEP_GATE_ROOT || "") === "1";
+const EXPORT_DIR = String(process.env.BITBOT_EXPORT_DIR || "").trim();
+process.on("exit", () => {
+  if (KEEP_GATE_ROOT) {
+    console.log("  · 保留隔离根：" + GATE_ROOT);
+    return;
+  }
+  try { fs.rmSync(GATE_ROOT, { recursive: true, force: true }); } catch { /* 收尾失败不改判据 */ }
+});
 const D = (...p) => path.join(DATA, ...p);
 const ROOMS = D("desktop/rooms.json");
 const SESSIONS = D("desktop/sessions.json");
@@ -1172,6 +1185,48 @@ function startStub() {
       fs.writeFileSync(pendPath, kept.join("\n"));
     }
   } catch { /* 保留现场，不因此判失败 */ }
+
+  /* 导出「团队内部对话 → 产出结果」过程文档。
+     导的是**这一轮真跑出来的**转录与交付物（同一个真源：rooms.json 的
+     room.transcript + room-deliverables/），不是复述。
+     ⚠️ 必须发生在 restore() **之前** —— restore() 会把 rooms.json 还原成
+     开局快照，这轮的群连同它的转录就一起没了（导出来会是「找不到群」）。
+     设 BITBOT_EXPORT_DIR=<目录> 生效；不设就只保留隔离根。 */
+  if (EXPORT_DIR) {
+    try {
+      fs.mkdirSync(EXPORT_DIR, { recursive: true });
+      const { execFileSync } = await import("node:child_process");
+      const roomsNow = JSON.parse(fs.readFileSync(ROOMS, "utf8"));
+      const list = Array.isArray(roomsNow.rooms) ? roomsNow.rooms : [];
+      /* 导**每一个**这轮真跑出来、有转录的群 —— 不挑。
+       * 这一轮跑了两条路径：「@三人分工」（GP155 日更流水线）和
+       * 「一键成队五棒流水线」（自媒体内容团队）。两条都是真过程，
+       * 只导一条就等于藏起另一半。
+       * 排序：五棒流水线在前（它是完整成功的那条）。 */
+      const withTx = list.filter((r) => r && Array.isArray(r.transcript) && r.transcript.length);
+      withTx.sort((a, b) => {
+        const pa = String(a.title || "").includes("自媒体内容团队") ? 0 : 1;
+        const pb = String(b.title || "").includes("自媒体内容团队") ? 0 : 1;
+        return pa - pb;
+      });
+      if (!withTx.length) {
+        bad("导出团队运行过程文档", "这轮没有带转录的群");
+      } else {
+        for (const r of withTx) {
+          const safe = String(r.title || r.id || "room").replace(/[^\w一-龥.-]+/g, "_").slice(0, 60);
+          const outFile = path.join(EXPORT_DIR, "team-run-" + safe + ".md");
+          execFileSync(process.execPath, [
+            path.join(REPO, "scripts", "export_team_run.mjs"),
+            "--data", DATA, "--room", String(r.id || r.title || ""), "--out", outFile,
+          ], { stdio: "inherit" });
+          ok("导出团队运行过程文档 → " + outFile);
+        }
+      }
+    } catch (e) {
+      bad("导出团队运行过程文档", (e && e.message) || String(e));
+    }
+  }
+
   restore();
   process.exit(FAIL ? 1 : 0);
 })();
