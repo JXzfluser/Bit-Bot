@@ -5048,6 +5048,7 @@ for g140_id in SA-01 SA-02 SA-03 SA-04 SA-05 SA-06 SA-07 SA-08 SA-09 SA-10 \
                 SE-01 SE-02 SE-03 SE-04 SE-05 SE-06 SE-07 SE-08 SE-09 \
                 SF-01 SF-02 SF-03 SF-04 SF-05 SF-06 SF-07 SF-08 \
                 SG-01 SG-02 SG-03 SG-04 SG-05 SG-06 \
+                X-01 X-02 X-03 X-04 X-05 X-06 XC-01 XC-02 XC-03 \
                 SC-01 SC-02 SC-03 SD-01; do
   if grep -q "\[$g140_id\]" /tmp/g140-stage-contract.log 2>/dev/null; then
     ok "G-140 锚点：$g140_id"
@@ -5056,9 +5057,9 @@ for g140_id in SA-01 SA-02 SA-03 SA-04 SA-05 SA-06 SA-07 SA-08 SA-09 SA-10 \
   fi
 done
 # 计数钉：绿行条数 + FAIL=0 一起钉（删一条断言 ⇒ 立刻红）。
-if [ "$(grep -c '^  ✓' /tmp/g140-stage-contract.log)" -ge 44 ] \
+if [ "$(grep -c '^  ✓' /tmp/g140-stage-contract.log)" -ge 53 ] \
    && grep -q "FAIL=0" /tmp/g140-stage-contract.log; then
-  ok "G-140 计数钉：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log) ≥ 44 且 FAIL=0"
+  ok "G-140 计数钉：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log) ≥ 53 且 FAIL=0"
 else
   bad "G-140 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g140-stage-contract.log)、$(tail -1 /tmp/g140-stage-contract.log)"
 fi
@@ -5071,6 +5072,10 @@ echo "  · G-140 口径（诚实）：本门测的是**契约生效时**的行�
 echo "    取自成员写下的那个文件）；**没有契约时行为一字未变**（普通短任务不会被误伤），"
 echo "    只把「这棒像转述」记成 warn。契约的数据源（把角色 prompt 里的【固定交付】结构化、"
 echo "    建团时写进成员记录）属于批次 2 —— 未接之前，这条门守的是**机制**，不是已启用的产品路径。"
+echo "  · G-140 补（批次 6）：URL 计数（min_urls）。`must_include: ["http"]` 是**子串**"
+echo "    匹配 ⇒ 正文里出现 http 就算过 ⇒ 模型贴一个**编造的**链接就能过验收 ⇒ 产品在"
+echo "    奖励编造来源。要链接就用 min_urls 数**完整 URL**。注意：min_urls 只保证「有像样"
+echo "    的链接」，**不保证链接是真的** —— 「链接是真的」靠成员自己 web_fetch 核验 + 用户抽检。"
 echo "  · 判定怎么落到产品上的：role prompt 写【固定交付】(人读) ⇒ 模板结构化出 path/rules"
 echo "    (机器读) ⇒ 建团时写进 bot.deliverable ⇒ 接力时按契约查文件、验收、决定这棒算不算交付。"
 

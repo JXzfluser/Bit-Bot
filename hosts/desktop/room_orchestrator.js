@@ -1079,6 +1079,15 @@ function countDeliverableItems(content) {
   return n;
 }
 
+/** 数正文里**完整**的 URL（http:// 或 https:// 开头，到空白/括号为止）。
+ *  为什么要单独数：`must_include: ["http"]` 是子串匹配，贴一个假链接就能过；
+ *  验收要链接时数的是「像样的链接条数」。 */
+function countDeliverableUrls(content) {
+  const s = String(content || "");
+  const m = s.match(/https?:\/\/[^\s)\]}"'<>，。；：、]+/g);
+  return m ? m.length : 0;
+}
+
 /** 按契约把交付文件读出来（读不到就说读不到，不猜）。 */
 function readDeliverableArtifact(contract, opts) {
   const o = opts || {};
@@ -1191,6 +1200,23 @@ function checkContentRules(content, rules, what) {
   for (const need of (r.must_include || [])) {
     if (!text.includes(String(need))) {
       return { pass: false, code: "missing_content", items, reason: what + "里缺少「" + String(need) + "」" };
+    }
+  }
+  /* URL 计数（批次 6）：`must_include: ["http"]` 是**子串**匹配 ——
+   * 正文里出现「http」就算过 ⇒ 模型只要贴一个**编造的**链接就能过验收。
+   * 真实场景里这等于「产品在奖励编造来源」：情报侦察员搜不到、或者干脆
+   * 不想搜的时候，编一条 URL 反而比如实说「没搜到」更容易过关。
+   * ⇒ 要链接就用 min_urls 数**完整 URL**（http(s)://…），不含裸词。
+   * 注意：min_urls 只保证「有像样的链接」，**不保证链接是真的** ——
+   *   「链接是真的」要靠成员自己 web_fetch 核验 + 用户抽检，不在验收里假装。 */
+  if (r.min_urls) {
+    const urls = countDeliverableUrls(text);
+    if (urls < Number(r.min_urls)) {
+      return {
+        pass: false, code: "too_few_urls", items, urls,
+        reason: what + "里只有 " + urls + " 条完整链接（要求 ≥ " + Number(r.min_urls) +
+          " 条）—— 贴一个编的链接不算数，要真的来源",
+      };
     }
   }
   return { pass: true, code: "ok", items };

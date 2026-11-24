@@ -19324,7 +19324,7 @@ function createHostFfi(repoRoot, opts = {}) {
 交付到共享目录 01-inbox/ 下（文件名由 Host 按当天日期定），每次最多 8 条。每条包含：事实或平台线索、来源平台、原始链接、证据摘录、讨论热度或代表性观点（仅在可见时记录）、为什么值得关注、一个待核查问题、核验状态。
 【验收】
 链接可访问；事实、平台观点和作者判断分开；关键主张能回到一手来源；缺失、过期、登录受限或不可访问时记录失败原因和下一步。把上面这份情报的**正文完整写在回复里**（Host 会替你落盘到共享目录 01-inbox/），回复末尾再补一句完成情况与未完成原因；不要只回一句「已完成」。`,
-          deliverable: { order: 1, dir: "01-inbox", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"] } },
+          deliverable: { order: 1, dir: "01-inbox", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"], "min_urls": 1 } },
         },
         {
           name: `选题策划师`,
@@ -19347,7 +19347,7 @@ function createHostFfi(repoRoot, opts = {}) {
 每次只推荐 3 个题，按“独特性、证据强度、账号契合度”排序，交付到共享目录 02-briefs/ 下（文件名由 Host 按当天日期定）。每题包含：一句话事实、读者场景、单一主角度、原始链接与证据、信息缺口、建议内容形式、给主笔的写作任务。
 【验收】
 没有原始链接的题不推荐；证据不足就标记“待补证”；题目之间不能只是同一新闻的换皮。把 3 个题的**正文完整写在回复里**（Host 会替你落盘到共享目录 02-briefs/），末尾再补一句推荐顺序；不要只回一句「已完成」。`,
-          deliverable: { order: 2, dir: "02-briefs", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"] } },
+          deliverable: { order: 2, dir: "02-briefs", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"], "min_urls": 1 } },
         },
         {
           name: `内容主笔`,
@@ -19507,7 +19507,28 @@ function createHostFfi(repoRoot, opts = {}) {
       const merged = kept.length ? kept.slice() : BOT_TEMPLATE_SEED.slice();
       for (const st of BOT_TEMPLATE_SEED) {
         if (!st || st.kind !== "team") continue;
-        if (!merged.some((t) => t && t.id === st.id)) merged.push(st);
+        if (!merged.some((t) => t && t.id === st.id)) {
+          merged.push(st);
+          continue;
+        }
+        /* 存量用户的库里已经有这个内置团队模板 ⇒ 它**不会**被上面的
+         * 「缺失才补」刷新 ⇒ 内置契约升级（例如批次 6 加的 min_urls：
+         * 贴一个编造的链接也算过验收）对这些用户**不生效**。
+         * ⇒ 同 id 的内置团队模板：**合并**角色契约的 rules，内置补上用户
+         * 缺的键、**不覆盖**用户自己改过的键（用户的修改是用户的事）。
+         * 模板其余字段仍然用户的优先。 */
+        const mine = merged.find((t) => t && t.id === st.id);
+        if (!mine || !Array.isArray(mine.roles) || !Array.isArray(st.roles)) continue;
+        for (const sr of st.roles) {
+          if (!sr || !sr.deliverable || !sr.deliverable.rules) continue;
+          const tr = (mine.roles || []).find((r) => r && r.name === sr.name);
+          if (!tr) continue;
+          if (!tr.deliverable) { tr.deliverable = JSON.parse(JSON.stringify(sr.deliverable)); continue; }
+          if (!tr.deliverable.rules) tr.deliverable.rules = {};
+          for (const [k, v] of Object.entries(sr.deliverable.rules)) {
+            if (tr.deliverable.rules[k] === undefined) tr.deliverable.rules[k] = v;
+          }
+        }
       }
       return merged;
     } catch (_) {
@@ -26799,6 +26820,9 @@ function createHostFfi(repoRoot, opts = {}) {
     setTurnRunner,
     resolveLlmConfig,
     listLlmCatalog,
+    /* 内置团队模板目录（含「存量用户的模板也拿到契约升级」的合并逻辑）——
+     * 导出给门禁直接钉住这条合并行为。 */
+    loadBotTemplates,
     webSearch,
     // C-5:建群。rooms.json 是 Host 的文件,所以建群是 Host 侧的动作。
     // 内核只给模型下发 schema,真正的建群在这里同步发生 ——

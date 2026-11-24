@@ -49,6 +49,7 @@ const { resolveDeliverablePath } = require("../hosts/desktop/room_orchestrator")
 process.env.BITBOT_ROOM_TEAM_MODE = "0";
 
 const MODE = String(process.env.BITBOT_STAGE_CONTRACT_MODE || "all");
+/* "urls" 模式：只跑 X 段（URL 计数的变异对照用）。 */
 
 let pass = 0, fail = 0;
 const ok = (id, m) => { pass++; console.log("  ✓ [" + id + "] " + m); };
@@ -514,6 +515,134 @@ async function sectionG() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * X. URL 计数（批次 6）：贴一个编的链接不算过
+ * ══════════════════════════════════════════════════════════════════════════ */
+const CONTRACT_URL = {
+  stages: [
+    {
+      match: { name: "脚本撰写" },
+      dir: "03-draft",
+      file: "{date}-draft.md",
+      rules: { min_chars: 20, min_urls: 1 },
+    },
+  ],
+};
+async function sectionX() {
+  console.log("── X. URL 计数：贴一个编的链接不算过（验收不奖励编造来源）──");
+  /* X-01：正文只有裸词 http（没有完整链接）⇒ 必须驳回 */
+  const c1 = await runRelay({
+    writeFiles: false,
+    bots: BOTS_WITH_CONTRACT,
+    replyBody: "这是我的稿子，里面提到了 http 协议的一些细节，但没有给出任何来源链接。",
+    roomContract: CONTRACT_URL,
+  });
+  const sr1 = (c1.fr && c1.fr.stage_results) || [];
+  const last1 = sr1[sr1.length - 1] || {};
+  check("X-01", last1.pass === false && String(last1.reason || last1.reject_reason || "").indexOf("链接") >= 0,
+    "X-01 正文只有裸词 http、没有完整链接 ⇒ 驳回（贴一个编的链接不算数）",
+    JSON.stringify({ pass: last1.pass, code: last1.code, reason: last1.reason }));
+  check("X-02", !last1.artifact_path || !fs.existsSync(last1.artifact_path),
+    "X-02 驳回的那一棒**不落盘**（没有半个产物）",
+    String(last1.artifact_path || ""));
+  check("X-03", !(c1.fr && c1.fr.deliverable) && c1.files.length === 0,
+    "X-03 整条链因为这一棒被驳回 ⇒ 不产出成品（失败不留半个状态）",
+    JSON.stringify({ deliverable: c1.fr && c1.fr.deliverable, files: c1.files }));
+  /* X-04：有完整 URL ⇒ 放行 */
+  const c2 = await runRelay({
+    writeFiles: false,
+    bots: BOTS_WITH_CONTRACT,
+    replyBody: "这是我的稿子。来源：https://example.com/post/1 与 https://example.org/doc/2 。",
+    roomContract: CONTRACT_URL,
+  });
+  const sr2 = (c2.fr && c2.fr.stage_results) || [];
+  const last2 = sr2[sr2.length - 1] || {};
+  check("X-04", last2.pass === true && !!last2.artifact_path && fs.existsSync(last2.artifact_path),
+    "X-04 有完整 URL ⇒ 验收通过并落盘",
+    JSON.stringify({ pass: last2.pass, path: last2.artifact_path }));
+  /* X-05/X-06：老用户的模板库 ⇒ 内置契约升级合并进来，且不覆盖用户改过的值 */
+  const { createHostFfi } = require(path.resolve(__dirname, "..", "hosts", "shared", "host_ffi.js"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bitbot-tpl-"));
+  try {
+    fs.mkdirSync(path.join(tmp, "desktop"), { recursive: true });
+    const legacy = {
+      templates: [
+        {
+          id: "media-content-team",
+          kind: "team",
+          default_name: "自媒体内容团队",
+          roles: [
+            {
+              name: "情报侦察员",
+              job: "情报侦察员",
+              prompt: "旧版 prompt",
+              deliverable: { order: 1, dir: "01-inbox", file: "{date}.md", rules: { min_chars: 200, must_include: ["http"] } },
+            },
+          ],
+        },
+      ],
+    };
+    fs.writeFileSync(path.join(tmp, "desktop", "bot-templates.json"), JSON.stringify(legacy, null, 2));
+    const ffi = createHostFfi(path.resolve(__dirname, ".."), { dataRoot: tmp });
+    const tpls = ffi.loadBotTemplates();
+    const mine = (tpls || []).find((t) => t.id === "media-content-team");
+    const scout = mine && (mine.roles || []).find((r) => r.name === "情报侦察员");
+    check("X-05", !!(scout && scout.deliverable && scout.deliverable.rules && scout.deliverable.rules.min_urls === 1),
+      "X-05 老用户库里已有的内置模板 ⇒ 内置契约升级（min_urls）合并进来了",
+      JSON.stringify(scout && scout.deliverable && scout.deliverable.rules));
+    check("X-06", !!(scout && scout.deliverable && scout.deliverable.rules && scout.deliverable.rules.min_chars === 200),
+      "X-06 合并是**补缺失的键**，不覆盖用户自己改过的值（min_chars 保持 200）",
+      JSON.stringify(scout && scout.deliverable && scout.deliverable.rules));
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) { /* ignore */ }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * CX. X 段的变异对照：关掉 min_urls ⇒ X-01 必须翻红（否则这条判据没牙）
+ * ══════════════════════════════════════════════════════════════════════════ */
+function sectionCX() {
+  console.log("── CX. 变异对照（关掉 URL 计数 ⇒ X-01 必须翻红）──");
+  const REPO = path.resolve(__dirname, "..");
+  const judgePath = path.join(REPO, "hosts", "desktop", "room_orchestrator.js");
+  const before = crypto.createHash("sha256").update(fs.readFileSync(judgePath)).digest("hex");
+
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "stage-url-mut-")));
+  fs.mkdirSync(path.join(tmp, "hosts"), { recursive: true });
+  fs.mkdirSync(path.join(tmp, "scripts"), { recursive: true });
+  fs.cpSync(path.join(REPO, "hosts", "desktop"), path.join(tmp, "hosts", "desktop"), { recursive: true });
+  fs.cpSync(path.join(REPO, "hosts", "shared"), path.join(tmp, "hosts", "shared"), { recursive: true });
+  fs.copyFileSync(__filename, path.join(tmp, "scripts", path.basename(__filename)));
+
+  const mutPath = path.join(tmp, "hosts", "desktop", "room_orchestrator.js");
+  const src = fs.readFileSync(mutPath, "utf8");
+  const anchor = "  if (r.min_urls) {";
+  const mutant = src.replace(anchor, "  if (false && r.min_urls) {");
+  if (mutant === src) {
+    fail++; console.log("  ✗ [XC-01] 变异没打上（min_urls 的锚点变了）⇒ 下面的对照没意义");
+    return;
+  }
+  fs.writeFileSync(mutPath, mutant, "utf8");
+  pass++; console.log("  ✓ [XC-01] 变异已打进副本（关掉 URL 计数）");
+
+  const r = spawnSync(process.execPath, [path.join(tmp, "scripts", path.basename(__filename))], {
+    encoding: "utf8",
+    env: Object.assign({}, process.env, { BITBOT_STAGE_CONTRACT_MODE: "urls" }),
+    timeout: 180000,
+  });
+  const out = String(r.stdout || "") + String(r.stderr || "");
+  const x01Red = /✗ \[X-01\]/.test(out);
+  check("XC-02", x01Red,
+    "XC-02 关掉 URL 计数后，X-01（只有裸词 http 也要驳回）翻红 ⇒ 这条判据确实咬在 min_urls 上",
+    "status=" + r.status + " / " + out.split("\n").filter((l) => l.indexOf("X-01") >= 0).join(" | ").slice(0, 240));
+
+  const after = crypto.createHash("sha256").update(fs.readFileSync(judgePath)).digest("hex");
+  check("XC-03", before === after,
+    "XC-03 源文件（hosts/desktop/room_orchestrator.js）一个字节没动",
+    before.slice(0, 16) + " vs " + after.slice(0, 16));
+  try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) { /* ignore */ }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * C. 变异对照：把验收关掉 ⇒ 负例必须翻绿（否则负例没牙）
  *    —— 只改**副本**，源文件一个字节不动。
  * ══════════════════════════════════════════════════════════════════════════ */
@@ -604,6 +733,8 @@ function userDataFingerprint() {
   }
   if (MODE === "all" || MODE === "positive") await sectionG();
   if (MODE === "all") sectionC();
+  if (MODE === "all") sectionCX();
+  if (MODE === "all" || MODE === "urls") await sectionX();
 
   if (MODE === "all") {
     const userAfter = userDataFingerprint();
