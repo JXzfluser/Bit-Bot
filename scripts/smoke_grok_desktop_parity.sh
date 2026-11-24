@@ -5074,6 +5074,34 @@ echo "    建团时写进成员记录）属于批次 2 —— 未接之前，这
 echo "  · 判定怎么落到产品上的：role prompt 写【固定交付】(人读) ⇒ 模板结构化出 path/rules"
 echo "    (机器读) ⇒ 建团时写进 bot.deliverable ⇒ 接力时按契约查文件、验收、决定这棒算不算交付。"
 
+echo "== G-141 模型供应商目录：MiniMax 要能选上，换 provider 不能串台到别的厂商 =="
+# 批次 6（2026-11-24）：加 MiniMax provider 时挖出两件事。
+#   1) providers.json 是**用户数据**（第一次启动落盘，之后用户改过）⇒ 只在「文件不存在」
+#      时才写种子的老写法 ⇒ 新加的 provider **老用户永远看不到** ⇒ 用户以为「不支持」。
+#   2) active.json 里存着「上次选中的 provider 的 base_url/model」⇒ 老写法不看
+#      provider_id 就直接用 ⇒ 这次用 minimax、请求却发到 **deepseek 的端点**。
+# ⇒ 本门钉住：内置目录保证在场（用户同名条目优先）、active 不跨 provider 串台、
+#   switch model 是自由字符串（目录里有即可切）、负向对照（短路合并 / 放回串台 ⇒ 必须翻红）。
+if timeout 180 node scripts/prove_llm_provider_catalog.js > /tmp/g141-provider-catalog.log 2>&1; then
+  ok "G-141 prove_llm_provider_catalog（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g141-provider-catalog.log | tail -1)）"
+else
+  bad "G-141 prove_llm_provider_catalog（见 /tmp/g141-provider-catalog.log；$(grep '✗' /tmp/g141-provider-catalog.log | head -3 | tr '\n' ' ')）"
+fi
+for g141_id in PC-01 PC-01b PC-01c PC-01d PC-02 PC-02b PC-03 PC-04 PC-05 \
+                PC-07 PC-07b PC-08 PC-09 PC-10 PC-11; do
+  if grep -q "\[$g141_id\]" /tmp/g141-provider-catalog.log 2>/dev/null; then
+    ok "G-141 锚点：$g141_id"
+  else
+    bad "G-141 锚点没跑绿：$g141_id（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
+  fi
+done
+if [ "$(grep -c '^  ✓' /tmp/g141-provider-catalog.log)" -ge 15 ] \
+   && grep -q "FAIL=0" /tmp/g141-provider-catalog.log; then
+  ok "G-141 计数钉：绿行 $(grep -c '^  ✓' /tmp/g141-provider-catalog.log) ≥ 15 且 FAIL=0"
+else
+  bad "G-141 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g141-provider-catalog.log)、$(tail -1 /tmp/g141-provider-catalog.log)"
+fi
+
 fi
 if want L1; then
 echo "== G-111 群成员上下文超预算要能自愈（不再每轮都 token budget exhausted） =="

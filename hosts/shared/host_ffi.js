@@ -75,6 +75,83 @@ function llmFailureCode(ok, errText) {
   return "llm_chat_failed";
 }
 
+/* 各家模型的「去哪充值 / 去哪看」—— 余额不足这类错误只有指路才有用。 */
+const LLM_VENDOR_HINT = {
+  minimax: { name: "MiniMax", where: "MiniMax 开放平台控制台" },
+  deepseek: { name: "DeepSeek", where: "DeepSeek 开放平台控制台" },
+  qwen: { name: "通义千问", where: "阿里云百炼控制台" },
+  moonshot: { name: "Kimi / Moonshot", where: "Moonshot 开放平台控制台" },
+};
+
+/**
+ * provider 报错了 ⇒ 把机器码翻成**人话 + 指路**。
+ *
+ * 缘起（真实体验，实测）：MiniMax 账户余额不足时，群里那一行显示的是
+ * 「这一棒没答上来（llm_http_402）」—— 用户看不懂 402 是什么，更不知道
+ * 该去哪儿充值 ⇒ 只能干瞪眼。
+ * ⇒ 402 说「余额不足，去控制台充值」；401 说「密钥被拒」；404+2069 说
+ *   「模型名已下线，换一个」；429 说「太频繁」；5xx 说「服务暂时不可用」；
+ *   网络错误说「连不上」。
+ *
+ * 机器码（code）留给程序判，人话（message）给用户看 —— 两者都要，原文仍
+ * 留在 artifact 里可审计。
+ */
+function llmProviderHint(status, errText, providerId) {
+  const raw = String(errText || "");
+  const s = p0.scrubSecrets(raw);
+  const low = s.toLowerCase();
+  const vendor = LLM_VENDOR_HINT[String(providerId || "").toLowerCase()] || {
+    name: String(providerId || "模型服务"),
+    where: "对应模型服务的控制台",
+  };
+  const st = Number(status || 0);
+  if (st === 402 || /insufficient[_ ]balance/.test(low)) {
+    return {
+      code: "provider_out_of_balance",
+      message: "「" + vendor.name + "」账户余额不足 —— 去 " + vendor.where +
+        "充值后再试（本轮没有用本地兜底假装回答）",
+    };
+  }
+  if (st === 404 && /no longer available|\b2069\b/.test(low)) {
+    return {
+      code: "provider_model_gone",
+      message: "「" + vendor.name + "」的这个模型名已下线 —— 在「设置 → 模型」里换一个可用模型",
+    };
+  }
+  if (st === 401 || st === 403 || /invalid api key|login fail|\b2049\b|\b1004\b/.test(low)) {
+    return {
+      code: "provider_key_rejected",
+      message: "「" + vendor.name + "」拒绝了这把密钥 —— 检查是否复制完整、是否已吊销（设置 → 凭证）",
+    };
+  }
+  if (st === 429) {
+    return {
+      code: "provider_rate_limited",
+      message: "「" + vendor.name + "」限流了 —— 稍等一会儿再试",
+    };
+  }
+  if (st >= 500) {
+    return {
+      code: "provider_unavailable",
+      message: "「" + vendor.name + "」服务暂时不可用（HTTP " + st + "）—— 稍后重试",
+    };
+  }
+  if (st === 0 && /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|getaddrinfo|ECONNRESET|socket/i.test(s)) {
+    return {
+      code: "provider_unreachable",
+      message: "连不上「" + vendor.name + "」（" + String(s).split("\n")[0].slice(0, 60) +
+        "）—— 检查网络或代理",
+    };
+  }
+  if (st) {
+    return {
+      code: "provider_http_" + st,
+      message: "「" + vendor.name + "」返回 HTTP " + st + "：" + String(s).slice(0, 120),
+    };
+  }
+  return { code: "", message: "" };
+}
+
 /** 模式级 + 环境值级双重脱敏。 */
 function scrubTokenShapes(text) {
   let out = String(text == null ? "" : text);
@@ -5474,6 +5551,16 @@ function createHostFfi(repoRoot, opts = {}) {
       env_base: "BITBOT_LLM_MOONSHOT_BASE_URL",
       env_model: "BITBOT_LLM_MOONSHOT_MODEL",
     },
+    {
+      id: "minimax",
+      label: "MiniMax",
+      /* 国内端（api.minimaxi.chat 是国际端，密钥不通用）。 */
+      base_url: "https://api.minimax.chat/v1",
+      model: "MiniMax-M3.1-Flash",
+      env_key: "BITBOT_LLM_MINIMAX_API_KEY",
+      env_base: "BITBOT_LLM_MINIMAX_BASE_URL",
+      env_model: "BITBOT_LLM_MINIMAX_MODEL",
+    },
   ];
 
   function llmDir() {
@@ -5509,7 +5596,17 @@ function createHostFfi(repoRoot, opts = {}) {
           providers: DEFAULT_LLM_PROVIDERS,
         };
       }
-      return raw;
+      /* 内置 provider 目录保证在场（用户自己的同名条目优先）。
+       * 为什么必须：providers.json 是**用户数据**（第一次启动时落盘，之后
+       * 用户可能自己改过）⇒ 只在文件不存在时才写种子 ⇒ 新加的 provider
+       * （比如 MiniMax）老用户永远看不到 ⇒ 用户以为「不支持」。
+       * 与「内置团队模板保证在场」同一套做法（见 loadBotTemplates）。 */
+      const kept = raw.providers.filter((x) => x && x.id);
+      const merged = kept.length ? kept.slice() : DEFAULT_LLM_PROVIDERS.slice();
+      for (const def of DEFAULT_LLM_PROVIDERS) {
+        if (!merged.some((x) => x && x.id === def.id)) merged.push(def);
+      }
+      return Object.assign({}, raw, { providers: merged });
     } catch {
       return {
         version: 1,
@@ -5588,14 +5685,23 @@ function createHostFfi(repoRoot, opts = {}) {
     const envKey = scopedEnv("env_key", "BITBOT_LLM_API_KEY");
     const envModel = scopedEnv("env_model", "BITBOT_LLM_MODEL");
 
+    /* active.json 里存的是「用户上次**选中的**那个 provider 的 base_url/model」。
+     * ⇒ 只有当它和**当前** provider 是同一个时才能用，否则会串台：
+     *   用户上次选 deepseek（active.base_url = api.deepseek.com），
+     *   这次用环境变量 BITBOT_LLM_PROVIDER=minimax 启动
+     *   ⇒ 旧写法会把请求发到 deepseek 的端点（而拿着 minimax 的 key）。
+     *   现象：模型返回 401 / 404，或者更糟 —— 请求发给了**别的厂商**。
+     * ⇒ 改成：provider 对不上时，active 的 base_url/model 一律不算数。 */
+    const activeMatches =
+      String(active.provider_id || "").trim().toLowerCase() === wantId;
     const base_url = (
       envBase ||
-      active.base_url ||
+      (activeMatches ? active.base_url : "") ||
       provider.base_url ||
       "https://api.deepseek.com/v1"
     ).replace(/\/$/, "");
     const model =
-      envModel || active.model || provider.model || "deepseek-chat";
+      envModel || (activeMatches ? active.model : "") || provider.model || "deepseek-chat";
     // ADR 0008 / SK-D7: the mobile host process does not hold or spend the
     // Desktop model key, even if env or active.json still has a copy.
     const mobileHost = String(process.env.BITBOT_MOBILE_HOST || "") === "1";
@@ -6517,6 +6623,10 @@ function createHostFfi(repoRoot, opts = {}) {
       tool_call_count: toolCalls.length,
       tool_names: toolCalls.map((c) => c && c.name).filter(Boolean),
       error: ok ? null : error,
+      /* 人话 + 指路（批次 6）：机器码给程序判，这句给用户看。
+       * 真实体验实测：余额不足时群里显示的是「llm_http_402」——
+       * 用户看不懂 402，也不知道该去哪儿充值。 */
+      error_hint: ok ? null : llmProviderHint(httpStatus, error, cfg.provider_id),
       pretend_completion: false,
       localbrain: false,
       moderation,
@@ -6585,6 +6695,10 @@ function createHostFfi(repoRoot, opts = {}) {
       // KP-03：失败线的码在这里产，不在界面上猜原文。原文照旧留着（可审计），
       // 但屏上那一行读的是这个码。
       error_code: llmFailureCode(ok, safeError),
+      /* 批次 6：provider 报错了 ⇒ 附一句**人话 + 指路**（余额不足去充值、
+       * 密钥被拒去改、模型下线去换）。error_code 保持原样（既有契约不动），
+       * 人话单独走 error_hint。 */
+      error_hint: ok ? null : llmProviderHint(httpStatus, safeError, cfg.provider_id),
       artifact_path: artifactPath,
       provider_id: cfg.provider_id,
       model: cfg.model,
@@ -26673,6 +26787,9 @@ function createHostFfi(repoRoot, opts = {}) {
     botMemorySlot,
     executeHostEffects,
     executeLlmChat,
+    /* 批次 6：provider 错误 → 人话 + 指路。导出来是为了让门禁能直接钉住
+       「余额不足要说的是人话，不是 llm_http_402」这条判据。 */
+    llmProviderHint,
     listRoomRoutines,
     routineLifecycle,
     routineApprovalOwners,

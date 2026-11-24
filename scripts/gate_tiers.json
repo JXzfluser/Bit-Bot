@@ -1785,6 +1785,15 @@
       "wired_in": "G-140"
     },
     {
+      "file": "prove_llm_provider_catalog.js",
+      "layer": "L2",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_llm_provider_catalog.js — 模型供应商目录门（批次 6）：加 MiniMax provider 时挖出两件真事 —— ①providers.json 是**用户数据**（首次启动落盘、之后用户改过）⇒ 只在「文件不存在」时写种子的老写法让新 provider **老用户永远看不到**（用户以为「不支持」）；②active.json 里存着「上次选中的 provider 的 base_url/model」⇒ 老写法不看 provider_id 就直接用 ⇒ 这次用 minimax、请求却发到 deepseek 的端点。本门钉住：内置目录保证在场（用户同名条目优先）、active 不跨 provider 串台、switch model 是自由字符串、负向对照（短路合并 / 放回串台 ⇒ 对应断言必须翻红 ⇒ 判据有牙）、隔离（用户真数据 0 字节被改）",
+      "special": "wired_in: G-141"
+    },
+    {
       "file": "prove_room_relay.js",
       "layer": "L2",
       "blocking": true,

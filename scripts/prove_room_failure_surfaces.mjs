@@ -191,10 +191,83 @@ function rf4() {
   }
 }
 
+/* ---------- RF5: provider 报错要说人话 + 指路 ---------- */
+/**
+ * 缘起（真实体验，实测）：MiniMax 账户余额不足时，群里那一行显示的是
+ *   「这一棒没答上来（llm_http_402）」
+ * —— 用户看不懂 402 是什么，更不知道该去哪儿充值，只能干瞪眼。
+ * ⇒ provider 报错了必须翻成**人话 + 指路**：余额不足去充值、密钥被拒去改、
+ *   模型下线去换、限流去等。机器码留在别处可审计，屏上给用户看的是这句。
+ */
+function rf5() {
+  const { createHostFfi } = require(path.join(ROOT, "hosts/shared/host_ffi.js"));
+  const ffi = createHostFfi(ROOT);
+  const hint = ffi.llmProviderHint;
+
+  const cases = [
+    { id: "RF5a", status: 402, err: "insufficient balance (1008)", pid: "minimax", code: "provider_out_of_balance", must: ["余额不足", "充值"] },
+    { id: "RF5b", status: 401, err: "login fail: Please carry the API secret key in the 'Authorization' field (1004)", pid: "minimax", code: "provider_key_rejected", must: ["密钥"] },
+    { id: "RF5c", status: 404, err: 'The model "MiniMax-M2.7" is no longer available. (2069)', pid: "minimax", code: "provider_model_gone", must: ["模型", "换"] },
+    { id: "RF5d", status: 429, err: "rate limited", pid: "minimax", code: "provider_rate_limited", must: ["限流"] },
+    { id: "RF5e", status: 503, err: "upstream unavailable", pid: "minimax", code: "provider_unavailable", must: ["暂时不可用"] },
+    { id: "RF5f", status: 0, err: "getaddrinfo ENOTFOUND api.minimax.chat", pid: "minimax", code: "provider_unreachable", must: ["连不上"] },
+  ];
+  for (const c of cases) {
+    const h = hint(c.status, c.err, c.pid);
+    if (!h || h.code !== c.code) {
+      bad(c.id, "「" + c.err.slice(0, 40) + "」没有翻成 " + c.code + "（拿到 " + (h && h.code) + "）");
+      continue;
+    }
+    const missing = (c.must || []).filter((w) => String(h.message || "").indexOf(w) < 0);
+    if (missing.length) {
+      bad(c.id, "人话里少了「" + missing.join("」「") + "」：" + h.message);
+      continue;
+    }
+    ok(c.id, c.code + " → " + h.message);
+  }
+
+  /* 不编：认不出来的失败不许编一句「去充值」 */
+  const unknown = hint(0, "", "minimax");
+  if (!unknown || (!unknown.code && !unknown.message)) {
+    ok("RF5g", "认不出来的失败不编话（没有消息，也没有伪造的指路）");
+  } else {
+    bad("RF5g", "认不出来的失败被编成了：" + JSON.stringify(unknown));
+  }
+
+  /* 不泄密：provider 错误串里混进密钥时，人话里不能有密钥原文 */
+  const leaked = hint(402, "insufficient balance (1008) sk-api-SECRETVALUE123", "minimax");
+  if (String(leaked && leaked.message).indexOf("SECRETVALUE123") < 0) {
+    ok("RF5h", "人话里没有把密钥原文带出去");
+  } else {
+    bad("RF5h", "人话里泄漏了密钥原文");
+  }
+
+  /* 群里那一行读的是**人话**，不是机器码 */
+  const surface = read("hosts/desktop/product_surface.js");
+  if (/error_hint\s*\|\|\s*res\.error/.test(surface)) {
+    ok("RF5i", "接力那行的失败原因优先用 hint（余额不足就去充值，不是 llm_http_402）");
+  } else {
+    bad("RF5i", "接力那行不读 hint ⇒ 用户看到的是机器码");
+  }
+  if (/error_hint\s*\|\|\s*s\.error/.test(surface)) {
+    ok("RF5j", "并行分工那行的失败原因也优先用 hint");
+  } else {
+    bad("RF5j", "并行分工那行不读 hint");
+  }
+  /* Host 把 hint 一路传下来 */
+  const runtime = read("hosts/shared/room_runtime.js");
+  if (/error_hint/.test(runtime)) {
+    ok("RF5k", "Host 把 provider 的人话一路传下来（room_runtime 带 error_hint）");
+  } else {
+    bad("RF5k", "Host 侧没有把 provider 的人话传下来");
+  }
+}
+
 await rf1();
 rf2();
 rf3();
 rf4();
+rf5();
 
 if (failures > 0) {
   console.log("");

@@ -3447,7 +3447,10 @@ function createProductSurface(repoRoot, opts = {}) {
           budget.spend({ turns: 0, tokens: roomOrchestrator.estimateTokens(text) });
           res = {
             bot_id: current.id, name: current.name, ok: !!(out && out.ok !== false),
-            text, artifacts: (out && out.artifacts) || [], error: (out && out.error) || null, hop,
+            text, artifacts: (out && out.artifacts) || [], error: (out && out.error) || null,
+            /* 批次 6：provider 报错了 ⇒ 人话 + 指路（余额不足去充值…）。 */
+            error_hint: (out && out.error_hint) || "",
+            hop,
             /* 这一棒用时（毫秒）—— 复盘要看得见「谁慢」，
                不然「一队人把事做完」只有结果、没有过程。 */
             duration_ms: Math.max(0, Date.now() - stageStart),
@@ -3518,8 +3521,11 @@ function createProductSurface(repoRoot, opts = {}) {
         if (taskSig) row.task_sig = taskSig;
         if (body.truncated) row.text_truncated = true;
         if (!res.ok) {
-          const why = clipRoomText(res.error || "no_reply", ROOM_REASON_MAX);
+          /* 给用户看的是**人话**（provider 报错了就说清去哪儿改），
+             机器码仍留在 res.error 里可审计。 */
+          const why = clipRoomText(res.error_hint || res.error || "no_reply", ROOM_REASON_MAX);
           row.error = why.text;
+          row.error_code = res.error ? String(res.error).slice(0, 120) : undefined;
           if (why.truncated) row.error_truncated = true;
         }
         appendRoomTranscript(room.id, row);
@@ -3937,6 +3943,8 @@ function createProductSurface(repoRoot, opts = {}) {
           const res = {
             bot_id: r.id, name: r.name, ok: !!(out && out.ok !== false),
             text, artifacts: (out && out.artifacts) || [], error: (out && out.error) || null,
+            /* 批次 6：provider 报错了 ⇒ 人话 + 指路。 */
+            error_hint: (out && out.error_hint) || "",
             duration_ms: Math.max(0, Date.now() - stageStart),
           };
           /* 验收（批次 1/1.5）：并行分工这条路原本**完全没有验收**——
@@ -4012,6 +4020,7 @@ function createProductSurface(repoRoot, opts = {}) {
       const sections = settled.map((res) => ({
         bot_id: res.bot_id, name: res.name, ok: res.ok, text: res.text,
         artifacts: res.artifacts || [], error: res.error || null, skipped: res.skipped || false,
+        error_hint: res.error_hint || "",
         /* 验收与交付（批次 4）：并行分工也要有「交的是成果还是转述」的结论，
            也要有落盘路径 —— 否则复盘看不见、产物拿不到。 */
         delivered_content: res.delivered_content,
@@ -4034,8 +4043,10 @@ function createProductSurface(repoRoot, opts = {}) {
         if (taskSig) entry.task_sig = taskSig;
         if (body.truncated) entry.text_truncated = true;
         if (!s.ok) {
-          const why = clipRoomText(s.error || "no_reply", ROOM_REASON_MAX);
+          /* 人话优先（批次 6）：余额不足就说「去控制台充值」，不甩 llm_http_402。 */
+          const why = clipRoomText(s.error_hint || s.error || "no_reply", ROOM_REASON_MAX);
           entry.error = why.text;
+          entry.error_code = s.error ? String(s.error).slice(0, 120) : undefined;
           if (why.truncated) entry.error_truncated = true;
         }
         appendRoomTranscript(room.id, entry);

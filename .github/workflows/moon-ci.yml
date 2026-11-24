@@ -110,6 +110,22 @@ jobs:
       - name: Room failure surfaces
         run: node scripts/prove_room_failure_surfaces.mjs
 
+      # RF5 (批次 6): a provider that fails must say so in plain language with a
+      # way to act on it. The real symptom: an empty MiniMax account made the room
+      # show "llm_http_402" — a number the user cannot act on.
+      - name: Room failure surfaces — provider errors speak plain language
+        run: |
+          node scripts/prove_room_failure_surfaces.mjs | tee /tmp/rf.log
+          for id in RF5a RF5b RF5c RF5d RF5e RF5f RF5g RF5h RF5i RF5j RF5k; do
+            grep -q "^ok $id " /tmp/rf.log || { echo "FAIL anchor $id missing"; exit 1; }
+          done
+
+      # The model provider catalog must guarantee the built-in providers are
+      # present (MiniMax included) and must not carry an active provider's
+      # base_url across to a different provider.
+      - name: Model provider catalog
+        run: node scripts/prove_llm_provider_catalog.js
+
       # Best-effort only: Live Host / Chrome / display may be absent on ubuntu-latest.
       - name: Optional host_h4_smoke batch1
         continue-on-error: true

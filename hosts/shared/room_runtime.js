@@ -175,13 +175,26 @@ function createRoomRuntime(o) {
         return {
           ok: false,
           error: safe((result && result.error) || (failed[0] && failed[0].error) || "turn_failed"),
+          /* 批次 6：provider 报错了 ⇒ 带上**人话 + 指路**（余额不足去充值…）。
+           * 群里那一行给用户看的是这句，不是 llm_http_402 这种机器码。 */
+          error_hint: safe(
+            (failed[0] && failed[0].error_hint && failed[0].error_hint.message) ||
+              (result && result.error_hint && result.error_hint.message) ||
+              "",
+          ) || undefined,
           text: assistants.join("\n"),
           artifacts,
         };
       }
       if (failed.length) {
         const f = failed.find((h) => h.kind === "llm_chat") || failed[0];
-        return { ok: false, error: safe(f.error || "host_effect_failed"), text: assistants.join("\n"), artifacts };
+        return {
+          ok: false,
+          error: safe(f.error || "host_effect_failed"),
+          error_hint: safe((f && f.error_hint && f.error_hint.message) || "") || undefined,
+          text: assistants.join("\n"),
+          artifacts,
+        };
       }
       if (!assistants.length) return { ok: false, error: "no_reply", text: "", artifacts };
       try {
