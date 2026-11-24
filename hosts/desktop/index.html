@@ -11077,7 +11077,8 @@
       const arg = (s) => String(s || "").replace(/ +/g, "+");
       const title = brief.title;
       const made = [];
-      for (const rawRole of brief.roles) {
+      for (let roleIdx = 0; roleIdx < brief.roles.length; roleIdx++) {
+        const rawRole = brief.roles[roleIdx];
         const role = (rawRole && typeof rawRole === "object") ? rawRole : { name: String(rawRole) };
         const roleName = (role.name || "").trim();
         if (!roleName) continue;
@@ -11095,9 +11096,19 @@
         await window.bitbot.bots.setGroup(b.id, title).catch(() => {});
         /* 交付契约落进成员记录（批次 1.5）：角色 prompt 里的【固定交付】/【验收】
            结构化之后写在这儿 ⇒ 接力时 Host 按这份契约验收、按它落盘。
-           没有契约的角色（比如用户自己写的团队）⇒ 行为一字不变。 */
+           没有契约的角色（比如用户自己写的团队）⇒ 行为一字不变。
+           ---- 批次 4：契约里再带一个 `order`（流水线顺序）----
+           模板角色是一条**有先后**的链（情报→选题→主笔→审校→复盘），
+           角色之间靠上游交付物衔接 ⇒ 必须按顺序串行跑，否则后四棒拿不到
+           上游成果（成员读不了共享目录的文件 ⇒ 只能编）。
+           `order` 优先用模板自己写的；模板没写就按**角色在模板里的次序**补 ——
+           那是模板作者声明的顺序，不是猜的。
+           没有契约的角色不补 ⇒ 用户自己组的团队行为一字不变。 */
         if (role && role.deliverable) {
-          await window.bitbot.bots.setDeliverable(b.id, role.deliverable).catch(() => {});
+          const dv = Object.assign({}, role.deliverable);
+          const declared = Number(dv.order);
+          if (!(Number.isFinite(declared) && declared > 0)) dv.order = roleIdx + 1;
+          await window.bitbot.bots.setDeliverable(b.id, dv).catch(() => {});
         }
       }
       if (!made.length) {

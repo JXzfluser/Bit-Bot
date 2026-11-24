@@ -434,7 +434,10 @@ function buildRelayPrompt(input) {
     }
   }
   if (prev) {
-    lines.push("【上一棒】" + String(prev.name || prev.bot_id || "") + " 交给你：" + clip(prev.text, 400));
+    /* 流水线（批次 4）里上一棒交的是**成果正文**：可能是整张情报卡、也可能是一份
+       brief ⇒ 400 字的截断会把关键内容切掉，下一棒就等于没拿到上游 ⇒ 按需放宽。 */
+    const prevMax = Math.max(400, Number(opts.prevMaxChars || 0));
+    lines.push("【上一棒】" + String(prev.name || prev.bot_id || "") + " 交给你：" + clip(prev.text, prevMax));
   }
   if (confirmAnswer) {
     lines.push("【你的上一问的答复】" + confirmAnswer);
@@ -483,8 +486,14 @@ function composeDeliverable(input) {
   // mode:
   //   relay（默认）—— 串行接力，**最后一棒**是权威交付内容，前面几棒作过程留痕；
   //   parallel      —— 用户显式 @ 了多个人（各写各的），没有「最后一棒」这回事，
-  //                    所有成功成果并列成交付内容，谁写了什么都留着。
-  const parallel = String(opts.mode || "relay") === "parallel";
+  //                    所有成功成果并列成交付内容，谁写了什么都留着；
+  //   pipeline      —— 批次 4：成员契约带 order 的**流水线**。每一棒是独立交付物
+  //                    （情报卡 / 选题 brief / 候选稿 / 审校 / 复盘 各有各的目录）
+  //                    ⇒ 同样并列成交付内容，但标出先后顺序。
+  const mode = String(opts.mode || "relay");
+  const parallel = mode === "parallel";
+  const pipeline = mode === "pipeline";
+  const multi = parallel || pipeline;
   const title = clip(task || "群任务产物", 80);
   /* 交付内容优先取**成员写下的那个文件**（delivered_content，契约验收通过时由 Host 写入），
      没有契约时退回成员交上来的文本。两者都不是「对成果的转述」以外的东西。 */
@@ -497,7 +506,8 @@ function composeDeliverable(input) {
   if (opts.roomTitle) meta.push("群：" + String(opts.roomTitle));
   if (opts.at) meta.push("时间：" + String(opts.at));
   if (relay.length) {
-    meta.push((parallel ? "成员：" : "接力：") + relay.map((r) => String(r.name || r.bot_id || "")).join(parallel ? "、" : " → "));
+    meta.push((pipeline ? "流水线：" : parallel ? "成员：" : "接力：") +
+      relay.map((r) => String(r.name || r.bot_id || "")).join(multi ? "、" : " → "));
   }
   if (meta.length) {
     lines.push("> " + meta.join("｜"));
@@ -506,7 +516,7 @@ function composeDeliverable(input) {
   if (done.length) {
     lines.push("## 交付内容");
     lines.push("");
-    if (parallel) {
+    if (multi) {
       for (const r of done) {
         lines.push("### " + String(r.name || r.bot_id || ""));
         lines.push("");
@@ -549,6 +559,8 @@ function buildResponderPrompt(input) {
   const task = String(opts.task || "").trim();
   const subtask = opts.subtask && opts.subtask.title ? String(opts.subtask.title).trim() : "";
   const boardText = String(opts.boardText || "").trim();
+  const contract = opts.contract || null;
+  const hasContract = !!(contract && (contract.dir || contract.path));
   const lines = [];
   lines.push("【群任务】" + (task || "（空）"));
   if (subtask && subtask !== task) {
@@ -556,10 +568,55 @@ function buildResponderPrompt(input) {
   }
   if (boardText) lines.push(boardText);
   lines.push(
-    "先看共享任务板：别人已经做过的部分不要重写，只补自己分工里缺的东西；" +
-      "做完说明你这一件的结果。",
+    "先看共享任务板：别人已经做过的部分不要重写，只补自己分工里缺的东西。",
   );
+  if (hasContract) {
+    /* 交付契约（批次 1/1.5）：团队模式（并行分工）原本只有一句「做完说明你这一件的
+       结果」⇒ 成员交的是**转述** ⇒ Host 落盘的也是汇报，不是成果。
+       ⇒ 有契约时，口径必须和串行接力一致：交**正文**，Host 代写落盘。 */
+    const where = String(contract.dir || contract.path).trim();
+    lines.push(
+      "这一棒有交付约定：成果会被 Host 落到「" + where + "」下。" +
+      "你**不用自己写文件**，把成果正文完整写在这条回复里就行；" +
+      "只交一句「已完成」或一个路径，Host 会判这一棒没交出成果（产物也不落盘）。",
+    );
+    lines.push(
+      "做完把**成果正文**交上来（成稿的正文、脚本、清单、结论都行），不要只写「已完成」「如上」。",
+    );
+  } else {
+    lines.push("做完说明你这一件的结果。");
+  }
   return lines.join("\n");
+}
+
+/**
+ * 流水线顺序：成员契约里带 `order` 的，按 order 排成一条链。
+ *
+ * 为什么需要这条（批次 4）：内置团队模板是一条**五棒流水线**——情报 → 选题 →
+ * 主笔 → 审校 → 复盘，角色之间靠上游交付物衔接（角色 prompt 里写死了
+ * 「读 02-briefs/ 里已批准的 brief」之类）。
+ * 若按「并行分工」跑，后四棒**拿不到上游成果**：成员的角色 prompt 明写
+ * 「不得访问本机文件」⇒ 它们读不到共享目录里刚落盘的文件 ⇒ 只能编。
+ * ⇒ 有 order ⇒ 串行跑，每棒把上一棒交上来的正文递下去（prev）。
+ *
+ * 判据要**窄**：只有显式带 order 的成员才进流水线；order 缺失或重复 ⇒ 不算
+ * 流水线（说不清谁接谁就不猜，退回原有行为）。
+ */
+function pickPipelineOrder(candidates) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const picked = [];
+  for (const c of list) {
+    const d = c && c.deliverable;
+    const order = Number(d && d.order);
+    if (!Number.isFinite(order) || order <= 0) continue;
+    picked.push({ bot: c, order: Math.floor(order) });
+  }
+  if (picked.length < 2) return [];
+  picked.sort((a, b) => a.order - b.order);
+  for (let i = 1; i < picked.length; i++) {
+    if (picked[i].order === picked[i - 1].order) return []; // 重复 order ⇒ 谁接谁说不清
+  }
+  return picked.map((p) => p.bot);
 }
 
 /**
@@ -1179,6 +1236,7 @@ module.exports = {
   createRoomBoard,
   buildBoardText,
   buildResponderPrompt,
+  pickPipelineOrder,
   buildSynthesisPrompt,
   buildRelayPrompt,
   composeDeliverable,

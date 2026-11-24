@@ -594,6 +594,12 @@ function createProductSurface(repoRoot, opts = {}) {
     if (mi.length) rules.must_include = mi;
     if (Object.keys(rules).length) out.rules = rules;
     if (input.expect_file === true || input.expect_file === "true") out.expect_file = true;
+    /* 流水线顺序（批次 4）：角色在链条里的第几棒。
+     * 内置团队模板是「情报→选题→主笔→审校→复盘」的五棒流水线，角色之间
+     * 靠上游交付物衔接 ⇒ 必须按 order 串行跑，否则后四棒拿不到上游成果
+     * （成员读不了共享目录的文件 ⇒ 只能编）。 */
+    const order = Number(input.order);
+    if (Number.isFinite(order) && order > 0) out.order = Math.floor(order);
     return out;
   }
 
@@ -3221,6 +3227,15 @@ function createProductSurface(repoRoot, opts = {}) {
       (r) => String((r && r.job) || "").trim() ||
         String((r && r.description) || "").trim(),
     ).length;
+    /* ===== 流水线（批次 4）=====
+     * 成员契约里带 `order` 的 ⇒ 这支队伍是一条**流水线**（角色之间靠上游交付物
+     * 衔接），不是「各干各的并行分工」。
+     * 内置团队模板正是这种：情报→选题→主笔→审校→复盘。
+     * ⇒ 若按并行分工跑，后四棒**拿不到上游成果**（成员的角色 prompt 明写
+     *   「不得访问本机文件」⇒ 读不到共享目录里刚落盘的文件）⇒ 只能编。
+     * ⇒ 流水线优先于团队模式：按 order 串行跑，每棒把上一棒交的正文递下去。 */
+    const pipelineBots = roomOrchestrator.pickPipelineOrder(candidates);
+    const isPipeline = pipelineBots.length >= 2;
     const teamMode =
       opts.teamMode === true
         ? true
@@ -3231,7 +3246,9 @@ function createProductSurface(repoRoot, opts = {}) {
             // 无人值守(定时任务到点)**不开团队模式**:
             // 常开机器上没人在旁边 ⇒ 一队人并行 = 成本 ×N 且没人看着。
             // ⇒ 这种场景走「按名册交给第一位」的兜底(如实记下是兜底,不是判断)。
-            !opts.unattended;
+            !opts.unattended &&
+            // 流水线不是「并行分工」——它有明确的先后 ⇒ 不受团队模式影响。
+            !isPipeline;
     let isRelay = responderPolicy === "auto_route" && !teamMode;
     const pendingConfirm = isRelay ? pendingConfirmOf(room, opts.message_id) : null;
 
@@ -3280,7 +3297,9 @@ function createProductSurface(repoRoot, opts = {}) {
       // 团队模式**不问**：成员自己能认领(自决回合就是"谁能干")。
       // ⇒ 问用户是**单助手**语义下的兜底(那个群没有一支成形的队伍);
       // ⇒ 一支有职责的团队,应该让它自己接活,而不是每次都回来问人。
-      if ((route.mode === "unclear" || !route.owner) && !teamMode) {
+      // 流水线**不问**：顺序在建团时定死了（契约里的 order）⇒ 没有「该谁做」
+      // 的不确定性，不该拿这个去烦用户。
+      if ((route.mode === "unclear" || !route.owner) && !teamMode && !isPipeline) {
         const names = roster.map((r) => r.name).join("、");
         const question = route.reason === "two_equally_likely"
           ? "这句话我看两个人都像：{a}、{b}。要谁来做？回一句名字就行。"
@@ -3304,15 +3323,21 @@ function createProductSurface(repoRoot, opts = {}) {
       // ---- 串行接力：一次只跑一个成员，上一棒的产出交给下一棒 ----
       const chain = [];
       const seen = new Set();
-      let current = route.owner;
+      /* 流水线（批次 4）：第一棒按契约 order 走，不是靠模型判「谁该做」——
+         流水线的顺序是**建团时就定死的**，不需要模型再猜一次。 */
+      let current = isPipeline ? pipelineBots[0] : route.owner;
       let prev = null;
       let confirmAnswer = answer && pendingConfirm && pendingConfirm.bot_id ? answer : "";
       let paused = null;
-      const maxHops = Math.max(1, Math.min(
-        Number(deps.maxHops || process.env.BITBOT_ROOM_RELAY_MAX_HOPS || roomOrchestrator.RELAY_MAX_HOPS),
-        roster.length,
-        roomOrchestrator.RELAY_MAX_HOPS,
-      ));
+      /* 流水线：每个角色跑**恰好一次**（上限 = 链条长度），
+         不受 RELAY_MAX_HOPS（=4，五棒流水线会被砍掉最后一棒）限制。 */
+      const maxHops = isPipeline
+        ? pipelineBots.length
+        : Math.max(1, Math.min(
+          Number(deps.maxHops || process.env.BITBOT_ROOM_RELAY_MAX_HOPS || roomOrchestrator.RELAY_MAX_HOPS),
+          roster.length,
+          roomOrchestrator.RELAY_MAX_HOPS,
+        ));
       for (let hop = 0; hop < maxHops && current; hop++) {
         if (seen.has(current.id)) break; // 踢皮球：同一个人不跑第二棒
         seen.add(current.id);
@@ -3341,6 +3366,9 @@ function createProductSurface(repoRoot, opts = {}) {
         });
         const prompt = roomOrchestrator.buildRelayPrompt({
           task, roster, hop, prev, boardText, confirmAnswer, maxHops, contract: stageContract,
+          /* 流水线：上一棒交的是**成果正文**（整张情报卡 / 一份 brief）⇒ 放宽，
+             否则下一棒拿到的是被截断的半截，等于没拿到上游。 */
+          prevMaxChars: isPipeline ? 2500 : 0,
         });
         const promptTokens = roomOrchestrator.estimateTokens(prompt);
         const gate = budget.canStart({ tokens: promptTokens });
@@ -3362,7 +3390,11 @@ function createProductSurface(repoRoot, opts = {}) {
           subtask: null, subtasks: [],
           shared_board: boardText, board_group_id: room.id,
           previous_turn: prev
-            ? { bot_id: prev.bot_id, name: prev.name, text: clipRoomText(prev.text, 800).text }
+            ? {
+              bot_id: prev.bot_id, name: prev.name,
+              /* 流水线：上一棒的成果正文要完整递下去（下一棒靠它开工）。 */
+              text: clipRoomText(prev.text, isPipeline ? 2500 : 800).text,
+            }
             : null,
           confirm_answer: confirmAnswer || "",
           cancelPromise: scope.promise,
@@ -3476,14 +3508,27 @@ function createProductSurface(repoRoot, opts = {}) {
           break;
         }
         const handoffRaw = parsed.handoff ? String(parsed.handoff) : "";
-        const nextMember = handoffRaw
+        let nextMember = handoffRaw
           ? candidates.find((m) => m.id === handoffRaw || m.name === handoffRaw)
             || candidates.find((m) => m.name && handoffRaw.includes(m.name))
             || null
           : null;
+        /* 流水线（批次 4）：按契约 order **自动接棒**。
+         * 为什么不靠模型的交接标记：流水线的顺序在**建团时**就定死了（角色
+         * 契约里的 order），角色 prompt 里也没写交接标记 ⇒ 等模型写标记 = 链路
+         * 断在第一棒（实测：模板团队按并行跑，后四棒拿不到上游成果 ⇒ 只能编）。
+         * 模型**显式点名**时仍以它为准（人永远比契约优先）。 */
+        if (!nextMember && isPipeline) {
+          const at = pipelineBots.findIndex((m) => m.id === current.id);
+          nextMember = at >= 0 && at + 1 < pipelineBots.length ? pipelineBots[at + 1] : null;
+        }
         res.handoff_to = nextMember ? nextMember.id : "";
         if (nextMember && !seen.has(nextMember.id)) {
-          prev = res;
+          /* 递给下一棒的是**成果正文**（通道 A 落盘的文件正文 / 通道 B 成员交的
+             正文），不是它的汇报 —— 汇报对下一棒没有信息量。 */
+          prev = isPipeline && res.delivered_content
+            ? Object.assign({}, res, { text: res.delivered_content })
+            : res;
           current = nextMember;
           confirmAnswer = "";
           continue;
@@ -3521,7 +3566,9 @@ function createProductSurface(repoRoot, opts = {}) {
       // ---- 产物：把接力链合成一份真文件落盘 ----
       const deliverable = deliverableFromTurns({
         room, task, taskSig, at, roomTitle: room.title,
-        turns: chain, mode: "relay",
+        /* 流水线：每一棒是**独立交付物**（各有各的目录）⇒ 并列成交付内容，
+           不适用接力「最后一棒权威」那套。 */
+        turns: chain, mode: isPipeline ? "pipeline" : "relay",
       });
 
       const duplication = roomOrchestrator.duplicateWorkRate(
@@ -3800,7 +3847,17 @@ function createProductSurface(repoRoot, opts = {}) {
         // 回读路径：板子在**每次调用前**现读一次 —— 先跑完的成员，进度会出现在
         // 后面才被派到的成员的 prompt 里（同轮协作，不是各说各话）。
         const boardText = roomBoard.snapshot(room.id).text;
-        const prompt = roomOrchestrator.buildResponderPrompt({ task, subtask, boardText });
+        /* 这一棒的交付契约（成员记录里那份 / 房间或任务给的）——
+           与串行接力**同一份**契约，同一套口径（prompt 说的落点 = 验收按的落点）。 */
+        const stageContract = roomOrchestrator.pickStageContract({
+          contract: opts.contract,
+          roomContract: room.contract,
+          bot: r,
+          hop: 0,
+        });
+        const prompt = roomOrchestrator.buildResponderPrompt({
+          task, subtask, boardText, contract: stageContract,
+        });
         const ctx = {
           room: room.id,
           bot_id: r.id,
@@ -3835,6 +3892,7 @@ function createProductSurface(repoRoot, opts = {}) {
           };
         }
         budget.spend({ turns: 1, tokens: promptTokens });
+        const stageStart = Date.now();
         try {
           const out = await withTimeout(
             runResponderTurn(r.id, prompt, ctx).finally(() => forgetRoomScope(scope)),
@@ -3843,10 +3901,44 @@ function createProductSurface(repoRoot, opts = {}) {
           );
           const text = String((out && out.text) || "");
           budget.spend({ turns: 0, tokens: roomOrchestrator.estimateTokens(text) });
-          return {
+          const res = {
             bot_id: r.id, name: r.name, ok: !!(out && out.ok !== false),
             text, artifacts: (out && out.artifacts) || [], error: (out && out.error) || null,
+            duration_ms: Math.max(0, Date.now() - stageStart),
           };
+          /* 验收（批次 1/1.5）：并行分工这条路原本**完全没有验收**——
+             成员交一句「已完成」也会被当成成功，Host 把汇报当成果落盘。
+             ⇒ 与串行接力同一套：不合格的棒不算交付、汇报不进产物。 */
+          const verdict = roomOrchestrator.judgeStage({
+            text: res.text,
+            contract: stageContract,
+            dataRoot: DATA_ROOT,
+            roomTitle: room.title,
+            botName: res.name,
+          });
+          res.stage = verdict;
+          if (verdict.pass && verdict.artifact && verdict.artifact.ok) {
+            res.delivered_content = verdict.artifact.content;
+            res.delivered_path = verdict.artifact.path;
+            res.delivered_bytes = verdict.artifact.bytes;
+          } else if (verdict.pass && verdict.content) {
+            const written = writeStageDeliverable(verdict.target_path, verdict.content);
+            res.delivered_content = verdict.content;
+            if (written.ok) {
+              res.delivered_path = written.path;
+              res.delivered_bytes = written.bytes;
+            } else if (written.error) {
+              res.stage.warn = "交付文件没写成：" + written.error;
+            }
+          }
+          if (!verdict.pass) {
+            res.ok = false;
+            res.rejected = true;
+            res.reject_reason = verdict.reason;
+            res.error = verdict.reason;
+            res.text = ""; // 汇报不算交付
+          }
+          return res;
         } catch (e) {
           // 超时/取消：取消信号已经传给执行层，内核回合会真的停下来。
           scope.cancel("timeout_or_error");
@@ -3887,6 +3979,15 @@ function createProductSurface(repoRoot, opts = {}) {
       const sections = settled.map((res) => ({
         bot_id: res.bot_id, name: res.name, ok: res.ok, text: res.text,
         artifacts: res.artifacts || [], error: res.error || null, skipped: res.skipped || false,
+        /* 验收与交付（批次 4）：并行分工也要有「交的是成果还是转述」的结论，
+           也要有落盘路径 —— 否则复盘看不见、产物拿不到。 */
+        delivered_content: res.delivered_content,
+        delivered_path: res.delivered_path,
+        delivered_bytes: res.delivered_bytes,
+        rejected: !!res.rejected,
+        reject_reason: res.reject_reason || "",
+        stage: res.stage,
+        duration_ms: Number(res.duration_ms || 0),
       }));
       for (const s of sections) {
         // 共享转录的每一行都有界：正文由 bot_reply 行承载，汇报里只留摘要；
@@ -4011,7 +4112,12 @@ function createProductSurface(repoRoot, opts = {}) {
          并行路径没有「最后一棒」，所以按名字并列所有成功成果（mode: parallel）。 */
       const deliverable = deliverableFromTurns({
         room, task, taskSig, at, roomTitle: room.title,
-        turns: sections.map(s => ({ bot_id: s.bot_id, name: s.name, ok: s.ok, text: s.text })),
+        /* 带上验收结论：任一棒被驳回 ⇒ 整个产物不落盘（不留半个状态）。 */
+        turns: sections.map(s => ({
+          bot_id: s.bot_id, name: s.name, ok: s.ok, text: s.text,
+          delivered_content: s.delivered_content,
+          rejected: s.rejected, reject_reason: s.reject_reason,
+        })),
         mode: "parallel",
       });
       const final_report = {
@@ -4022,13 +4128,31 @@ function createProductSurface(repoRoot, opts = {}) {
         responders: selected.map(r => r.id), total, returned,
         partial: returned < total,
         sections: sections.map(s => {
-          const sum = clipRoomText(s.ok ? s.text : `(${s.error || "no reply"})`, ROOM_SUMMARY_MAX);
+          const sum = clipRoomText(s.ok ? (s.delivered_content || s.text) : `(${s.error || "no reply"})`, ROOM_SUMMARY_MAX);
           return {
             bot_id: s.bot_id, name: s.name, ok: s.ok,
             summary: sum.text, summary_truncated: sum.truncated || undefined,
             artifacts: s.artifacts,
+            /* 验收结论（批次 4）：这一棒交的是成果本身还是转述？过没过、为什么。 */
+            stage: s.stage ? {
+              pass: !!s.stage.pass, code: s.stage.code || "", reason: s.stage.reason || "",
+              warn: s.stage.warn || "", chars: s.stage.chars || 0,
+              artifact_path: s.delivered_path || (s.stage.artifact && s.stage.artifact.path) || "",
+            } : undefined,
+            rejected: !!s.rejected,
+            reject_reason: s.reject_reason || "",
           };
         }),
+        /* 验收小结（与串行接力同一套字段）：哪棒过了、哪棒被驳回、为什么。 */
+        stage_results: sections.map(s => ({
+          bot_id: s.bot_id, name: s.name, hop: 0, ok: !!s.ok,
+          pass: !!(s.stage && s.stage.pass),
+          duration_ms: Number(s.duration_ms || 0),
+          rejected: !!s.rejected, reason: s.reject_reason || (s.stage && s.stage.reason) || "",
+          code: (s.stage && s.stage.code) || "",
+          chars: (s.stage && s.stage.chars) || 0,
+          artifact_path: s.delivered_path || "",
+        })),
         artifacts: sections.flatMap(s => s.artifacts || []),
         deliverable: deliverable && deliverable.ok
           ? { name: deliverable.name, path: deliverable.path, bytes: deliverable.bytes }

@@ -19195,7 +19195,7 @@ function createHostFfi(repoRoot, opts = {}) {
 交付到共享目录 01-inbox/ 下（文件名由 Host 按当天日期定），每次最多 8 条。每条包含：事实或平台线索、来源平台、原始链接、证据摘录、讨论热度或代表性观点（仅在可见时记录）、为什么值得关注、一个待核查问题、核验状态。
 【验收】
 链接可访问；事实、平台观点和作者判断分开；关键主张能回到一手来源；缺失、过期、登录受限或不可访问时记录失败原因和下一步。把上面这份情报的**正文完整写在回复里**（Host 会替你落盘到共享目录 01-inbox/），回复末尾再补一句完成情况与未完成原因；不要只回一句「已完成」。`,
-          deliverable: { dir: "01-inbox", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"] } },
+          deliverable: { order: 1, dir: "01-inbox", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"] } },
         },
         {
           name: `选题策划师`,
@@ -19218,7 +19218,7 @@ function createHostFfi(repoRoot, opts = {}) {
 每次只推荐 3 个题，按“独特性、证据强度、账号契合度”排序，交付到共享目录 02-briefs/ 下（文件名由 Host 按当天日期定）。每题包含：一句话事实、读者场景、单一主角度、原始链接与证据、信息缺口、建议内容形式、给主笔的写作任务。
 【验收】
 没有原始链接的题不推荐；证据不足就标记“待补证”；题目之间不能只是同一新闻的换皮。把 3 个题的**正文完整写在回复里**（Host 会替你落盘到共享目录 02-briefs/），末尾再补一句推荐顺序；不要只回一句「已完成」。`,
-          deliverable: { dir: "02-briefs", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"] } },
+          deliverable: { order: 2, dir: "02-briefs", file: "{date}.md", rules: { "min_chars": 200, "must_include": ["http"] } },
         },
         {
           name: `内容主笔`,
@@ -19241,7 +19241,7 @@ function createHostFfi(repoRoot, opts = {}) {
 “我的判断是”“真正有价值的是”“这说明”“这意味着”“毫无疑问”“重塑格局”“进入新时代”，以及空泛三段式、硬凑金句、广告腔和故作深刻的反问。
 【固定交付】
 按任务需要输出：A. 140–220 字中文短帖；B. 280–420 字展开版；C. 仅在适合时给 3–5 条串文大纲；D. 用户明确要求时写长文。每份稿末附“事实依据”和“仍需确认”。把这份稿的**正文完整写在回复里**（Host 会替你落盘到共享目录 03-drafts/，文件名按当天日期），末尾再补一句完成情况；不要只回一句「已完成」。`,
-          deliverable: { dir: "03-drafts", file: "{date}-draft.md", rules: { "min_chars": 140, "must_include": ["事实依据"] } },
+          deliverable: { order: 3, dir: "03-drafts", file: "{date}-draft.md", rules: { "min_chars": 140, "must_include": ["事实依据"] } },
         },
         {
           name: `事实编辑`,
@@ -19268,7 +19268,7 @@ function createHostFfi(repoRoot, opts = {}) {
 交付到共享目录 04-review/ 下（文件名由 Host 按当天日期定），包含：可发布候选版本、改动说明、风险标记、仍需人工确认、原始来源清单。
 【验收】
 逐条回到 brief 原始链接；保留作者语气，只改必要之处；发现证据冲突时不替用户裁决，列出冲突与建议。把审校后的**候选版本正文完整写在回复里**（Host 会替你落盘到共享目录 04-review/），末尾再补一句是否达到“可发布候选”标准；不要只回一句「已完成」。`,
-          deliverable: { dir: "04-review", file: "{date}-review.md", rules: { "min_chars": 200, "must_include": ["来源"] } },
+          deliverable: { order: 4, dir: "04-review", file: "{date}-review.md", rules: { "min_chars": 200, "must_include": ["来源"] } },
         },
         {
           name: `数据复盘师`,
@@ -19296,7 +19296,7 @@ function createHostFfi(repoRoot, opts = {}) {
 每周交付到共享目录 06-analysis/ 下（文件名由 Host 按当周定：weekly-review-YYYY-WW.md），包含数据来源、时间范围、样本量、表现最好与最差的帖子、内容质量诊断、3 条改进建议、2 个下周实验、数据缺口。需要在共享目录 05-published/ 留存所用 CSV 或截图文件名。
 【验收】
 所有数字可回到原始数据；公开指标与 Analytics 私有指标分开；样本少于 10 条或周期短于 7 天时降低结论强度；把复盘的**正文完整写在回复里**（Host 会替你落盘到共享目录 06-analysis/），末尾再补一句覆盖帖子数和缺失数据；不要只回一句「已完成」。`,
-          deliverable: { dir: "06-analysis", file: "weekly-review-{week}.md", rules: { "min_chars": 200, "must_include": ["数据来源"] } },
+          deliverable: { order: 5, dir: "06-analysis", file: "weekly-review-{week}.md", rules: { "min_chars": 200, "must_include": ["数据来源"] } },
         },
       ],
       rules:

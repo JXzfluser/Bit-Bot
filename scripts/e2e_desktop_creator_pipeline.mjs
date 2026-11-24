@@ -80,7 +80,116 @@ const ROUTINE_DIR = D("routines");
 const DRAFT_DIR = D("routines/drafts");
 const SEND_DIR = D("mail/sends");
 const TZ = process.env.GP155_TZ || "Asia/Shanghai";
+const STUB_RECORD = path.join(GATE_ROOT, "stub-requests.jsonl");
 const MAIL_TO = "news@example.com";
+
+/* 定向回执（批次 4）：模板团队是一条**五棒流水线**，每一棒有**自己的交付契约**
+ * （01-inbox / 02-briefs / 03-drafts / 04-review / 06-analysis，各带验收规则）。
+ * stub 默认把请求原样回显 ⇒ 回显里没有「http」「事实依据」… ⇒ 每一棒都被
+ * 验收**正确驳回** ⇒ 链路在第一棒就断了（这不是产品坏了，是夹具不满足契约）。
+ * ⇒ 这里按「这一棒的契约落点」给一份**像样的交付正文**（各满足各的规则），
+ * 让五棒真跑完、真落盘 —— 门禁才能验到「产物是成果本身」。
+ *
+ * 匹配键刻意用「落到「01-inbox」」这种**只在当前棒 prompt 里出现**的片段：
+ * ECHO_ALL 模式下五个角色的岗位 prompt 全在同一个请求里，只按目录名匹配会
+ * 命中每一棒。 */
+const STUB_REPLY_MATCH = {
+  "落到「01-inbox」": [
+    "情报卡 · 今日核验结果（1/8 条示例）",
+    "",
+    "1. OpenAI 更新 o3-mini 的推理能力",
+    "   来源平台：官方公告页",
+    "   原始链接：https://openai.com/index/o3-mini-update",
+    "   证据摘录：公告写明在数学与代码基准上较上一代提升，发布日期为公告页标注日期。",
+    "   讨论热度：开发者社区讨论集中在推理成本与首字延迟的取舍。",
+    "   为什么值得关注：直接影响 AI 使用者单位任务的成本结构。",
+    "   待核查问题：定价页是否已同步更新。",
+    "   核验状态：已核验（一手官方来源）。",
+    "",
+    "2. 某开源推理框架发布 v2 版本",
+    "   来源平台：GitHub Release",
+    "   原始链接：https://github.com/example/infer/releases/tag/v2.0.0",
+    "   证据摘录：Release 说明列出破坏性变更与迁移步骤。",
+    "   讨论热度：issue 里集中讨论批处理吞吐下降的问题。",
+    "   为什么值得关注：影响本地部署用户的升级成本。",
+    "   待核查问题：性能回退是否已在后续补丁修复。",
+    "   核验状态：已核验（仓库一手来源）。",
+  ].join("\n"),
+  "落到「02-briefs」": [
+    "选题推荐 · 3 个题（按独特性 / 证据强度 / 账号契合度排序）",
+    "",
+    "题 1｜推理成本下探之后，中小团队的 Agent 该怎么重新算账",
+    "   一句话事实：o3-mini 推理更新后，单位任务成本结构变化。",
+    "   读者场景：制造业与 AI 落地负责人要决定自建还是调用。",
+    "   主角度：不比模型强弱，只比「一次任务多少钱」。",
+    "   原始链接与证据：https://openai.com/index/o3-mini-update",
+    "   信息缺口：定价页未同步更新，暂以公告为准。",
+    "   建议内容形式：成本对照短帖 + 展开版。",
+    "   给主笔的写作任务：算一笔单任务成本账，附来源。",
+    "",
+    "题 2｜开源推理框架 v2 升级，迁移该做还是等",
+    "   一句话事实：v2 有破坏性变更，吞吐有回退。",
+    "   读者场景：已在本地部署推理栈的工程团队。",
+    "   主角度：给一个「等不等」的判断标准。",
+    "   原始链接与证据：https://github.com/example/infer/releases/tag/v2.0.0",
+    "   信息缺口：回退是否已被后续补丁修复。",
+    "   建议内容形式：决策清单。",
+    "   给主笔的写作任务：写成三条判断标准。",
+    "",
+    "题 3｜Agent 落地最常被忽略的合规成本",
+    "   一句话事实：多数团队没把审计与留痕算进预算。",
+    "   读者场景：准备把 Agent 接进生产流程的负责人。",
+    "   主角度：合规是成本项，不是上线后的补丁。",
+    "   原始链接与证据：https://example.com/audit-notes",
+    "   信息缺口：缺真实预算样本，标为待补证。",
+    "   建议内容形式：展开版。",
+    "   给主笔的写作任务：把合规成本拆成三项。",
+  ].join("\n"),
+  "落到「03-drafts」": [
+    "候选稿 · 短帖版（正文）",
+    "",
+    "推理成本这次真的下了一档。我们把一次完整任务的花费拆成三段：模型调用、上下文重读、失败重试。",
+    "前两段大家都算得到，第三段几乎没人算。但在我们自己跑的一批真实任务里，重试吃掉了总成本的近四成——因为工具调用失败一次，后面整段推理要重来。",
+    "对预算有限的中小团队，这意味着两件事：把重试率当成核心指标盯，而不是只看单次调用单价；以及在选型时优先看失败后的续跑成本，而不是榜单分数。",
+    "",
+    "事实依据：o3-mini 推理更新公告（https://openai.com/index/o3-mini-update）与开源推理框架 v2 Release（https://github.com/example/infer/releases/tag/v2.0.0）。",
+    "仍需确认：定价页是否已同步更新，重试占比的样本量还偏小。",
+  ].join("\n"),
+  "落到「04-review」": [
+    "审校意见 · 候选稿第 1 稿",
+    "",
+    "总体结论：论点站得住，事实链条有两处需要收紧。",
+    "",
+    "一、事实核对",
+    "   1. 「推理成本下探」表述过宽：公告只说推理能力更新，未给出统一下调口径。建议改为「单次推理成本结构变化」，避免读者误解为全面降价。",
+    "   2. 重试占比「近四成」目前只有我们自己的一批样本支撑，不能当行业结论写。建议明确标注样本范围。",
+    "   3. 榜单与选型部分没有落到可核验的对比上，建议删去或补一条具体来源。",
+    "",
+    "二、来源清单",
+    "   来源 1：https://openai.com/index/o3-mini-update —— 一手官方公告，可用。",
+    "   来源 2：https://github.com/example/infer/releases/tag/v2.0.0 —— 一手仓库 Release，可用。",
+    "   来源 3：重试占比 —— 内部样本，需标注样本量，不能与前两条同级。",
+    "",
+    "三、仍需确认",
+    "   定价页是否同步更新；重试样本能否扩到更多任务类型。",
+  ].join("\n"),
+  "落到「06-analysis」": [
+    "本周复盘 · 内容流水线",
+    "",
+    "一、这周跑了什么",
+    "   完成一轮完整链路：情报核验 → 选题 brief → 候选稿 → 事实审校。复盘产物按周归档。",
+    "",
+    "二、哪里卡住了",
+    "   1. 第一棒的核验密度不够，8 条里只有 2 条能直接进选题，浪费了一个选题位。",
+    "   2. 审校环节提出的「样本量」问题，在选题阶段就该拦住——闸门放得太晚。",
+    "   3. 发布环节仍需人工点头，这周没有自动化，符合预期。",
+    "",
+    "三、下周怎么改",
+    "   把「是否有可核验来源」这一条提前到选题闸门，不合格的线索不占 brief 位。",
+    "",
+    "数据来源：本周流水线五棒的交付记录与审校意见（情报卡 8 条、brief 3 题、候选稿 1 篇、审校 1 份），样本量偏小，结论只对本周成立。",
+  ].join("\n"),
+};
 
 let PASS = 0, FAIL = 0, SKIP = 0;
 const ok = (m) => { PASS++; console.log("  ✓ " + m); };
@@ -155,6 +264,11 @@ function startStub() {
         BITBOT_STUB_PORT: String(STUB_PORT),
         BITBOT_STUB_ECHO_ALL: "1",
         BITBOT_STUB_ECHO_WIDTH: "1600",
+        /* 记录请求载荷（打码后）：用来断言「交作业」的指令与契约目录
+           **真的上了线** —— 光断言界面行为不够，得看发出去的那一串字。 */
+        BITBOT_STUB_RECORD: STUB_RECORD,
+        /* 定向回执：让每一棒交出**满足自己契约**的正文（见 STUB_REPLY_MATCH）。 */
+        BITBOT_STUB_REPLY_MATCH: JSON.stringify(STUB_REPLY_MATCH),
       },
     },
   );
@@ -774,17 +888,24 @@ function startStub() {
         /* 点的是**按钮**，不是卡片：处理函数挂在按钮上（btn.addEventListener），
            点卡片等于没点 —— 这个坑我自己踩过一次。 */
         await win.click('#mk-grid .ca-card[data-template-id="media-content-team"] button').catch(() => {});
-        /* 等群建出来 + 第一件事真的跑起来（成员回合或最终汇报行都算「跑起来了」）。 */
+        /* 等群建出来 + 第一件事真跑起来。
+           模板团队是**五棒流水线** ⇒ 要等 final_report（五棒都跑完）才能验
+           「产物是成果本身」；只等第一棒的 bot_reply 会太早。 */
         let room13 = null;
         let tx13 = [];
-        for (let i = 0; i < 160; i += 1) {
+        let report13 = null;
+        for (let i = 0; i < 400; i += 1) {
           const rooms = readJson(ROOMS, { rooms: [] });
           const list = Array.isArray(rooms.rooms) ? rooms.rooms : [];
           room13 = list.find((r) => r && String(r.title || "").indexOf("自媒体内容团队") >= 0) || null;
           if (room13) {
             tx13 = Array.isArray(room13.transcript) ? room13.transcript : [];
             const acted = tx13.some((e) => e && (e.kind === "bot_reply" || e.kind === "bot_reply_error" || e.kind === "final_report"));
-            if (acted) break;
+            if (acted) {
+              report13 = tx13.filter((e) => e && e.kind === "final_report").pop() || null;
+              /* 汇报行落盘即流水线跑完；等它出现。 */
+              if (report13) break;
+            }
           }
           await new Promise((r) => setTimeout(r, 250));
         }
@@ -792,10 +913,77 @@ function startStub() {
           ? ok("P13 「一键成队」把团队建起来了（群名=" + String(room13.title || "") + "，成员 " +
               (Array.isArray(room13.members) ? room13.members.length : 0) + " 个）")
           : bad("P13 「一键成队」之后连群都没建起来", JSON.stringify(readJson(ROOMS, {}).rooms || []).slice(0, 200));
-        const acted13 = tx13.some((e) => e && (e.kind === "bot_reply" || e.kind === "bot_reply_error" || e.kind === "final_report"));
-        acted13
-          ? ok("P13 第一件事**真的发起了**：建团完群里立刻有成员回合（不是「队伍建好了，然后什么也没发生」）")
+        /* 「跑起来了」= 成员**真的答了**（bot_reply），不是 bot_reply_error。
+           上一版把 error 行也算「跑起来了」—— 那是我自己写松了：
+           回合失败（模型没配上/超时/被拒）也会留下 error 行 ⇒ 断言会假绿。
+           ⇒ 现在分两句：派出去了（任何回合行）vs 真答了（成功行）。 */
+        const dispatched13 = tx13.some((e) => e && (e.kind === "bot_reply" || e.kind === "bot_reply_error" || e.kind === "final_report"));
+        const answered13 = tx13.some((e) => e && e.kind === "bot_reply");
+        const errText13 = tx13.filter((e) => e && e.kind === "bot_reply_error")
+          .map((e) => String(e.error || e.text || "")).join(" | ");
+        dispatched13
+          ? ok("P13 第一件事**真的派出去了**：建团完群里立刻有成员回合（不是「队伍建好了，然后什么也没发生」）")
           : bad("P13 建团之后第一件事没跑起来（群里空着）", JSON.stringify(tx13.map((e) => e && e.kind)).slice(0, 200));
+        answered13
+          ? ok("P13 成员**真的答了**（bot_reply，不是错误行）")
+          : bad("P13 那一棒没答上来（只有错误行）", errText13.slice(0, 300));
+
+        /* ---- 流水线（批次 4）：五棒按顺序真跑完，每棒都过验收 ---- */
+        const stages13 = (report13 && report13.stage_results) || [];
+        const passed13 = stages13.filter((s) => s && s.pass);
+        const order13 = stages13.map((s) => String((s && s.name) || "?")).join("→");
+        stages13.length >= 5 && passed13.length === stages13.length
+          ? ok("P13 流水线**五棒按顺序跑完且都过了验收**（" + passed13.length + "/" + stages13.length +
+              "：" + order13 + "）")
+          : bad("P13 流水线没跑完或有人没过验收（" + passed13.length + "/" + stages13.length + "）",
+                JSON.stringify(stages13.map((s) => [s && s.name, s && s.pass, s && s.reason])).slice(0, 300));
+        /* 五棒都过了 ⇒ 五个交付文件都得真落盘（各自目录） */
+        const files13 = stages13.map((s) => s && s.artifact_path).filter(Boolean);
+        const allExist13 = files13.length >= 5 && files13.every((f) => fs.existsSync(f));
+        allExist13
+          ? ok("P13 五个角色的交付文件**真落盘**了（各落各的目录：" +
+              files13.map((f) => String(f).split("/").slice(-2).join("/")).join(", ") + "）")
+          : bad("P13 交付文件没落全（" + files13.length + " 个路径，" +
+                files13.filter((f) => fs.existsSync(f)).length + " 个真的存在）",
+                JSON.stringify(files13).slice(0, 300));
+        /* 产物正文 = 成果本身，不是转述 */
+        const dv13 = report13 && report13.deliverable;
+        let artifact13 = "";
+        if (dv13 && dv13.path && fs.existsSync(dv13.path)) artifact13 = fs.readFileSync(dv13.path, "utf8");
+        artifact13.indexOf("推理成本") >= 0 && artifact13.indexOf("事实依据") >= 0
+          ? ok("P13 产物正文 = **成果本身**（候选稿的正文在文件里，不是「已完成」那种汇报）")
+          : bad("P13 产物正文不是成果本身", (artifact13 || "(产物没落盘)").slice(0, 200));
+        /* 载荷级：发出去的那一串字里，**必须**带着「交作业」的指令与契约落点。
+           界面行为对了但指令没上线 ⇒ 模型照样会只回一句「已完成」⇒ 这条才是
+           真正的防线（批次 1.5 的核心：成员交正文，Host 代写落盘）。 */
+        let recs = [];
+        try {
+          recs = fs.readFileSync(STUB_RECORD, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+        } catch { /* 没记录到就如实判红 */ }
+        const bodies = recs.map((r) => (r.messages || []).map((m) => String(m.content || "")).join("\n"));
+        /* 诊断用：录下来的每条请求是**哪个 Bot** 的（门禁失败时能一眼看出漏了谁）。 */
+        const who = recs.map((r) => {
+          const all = (r.messages || []).map((m) => String(m.content || "")).join("\n");
+          const nm = all.match(/名字：([^；\n]+)/);
+          const relay = all.indexOf("这一轮只有你在做这件事") >= 0;
+          return (nm ? nm[1] : "?") + (relay ? "(接力)" : "(DM)");
+        });
+        const hasDeliveryRule = bodies.some((b) => b.indexOf("把成果正文完整写在这条回复里") >= 0);
+        hasDeliveryRule
+          ? ok("P13 载荷级：发给模型的 prompt 里带着「把成果正文完整写在这条回复里」" +
+              "（模型知道要交正文，不是交路径）")
+          : bad("P13 载荷级：发出去的 prompt 里没有「交作业」指令 ⇒ 模型会只回一句「已完成」",
+                "录到的请求：" + JSON.stringify(who));
+        const hasContractDir = bodies.some((b) => /0[1-6]-[a-z-]+/.test(b) && b.indexOf("成果会被 Host 落到") >= 0);
+        hasContractDir
+          ? ok("P13 载荷级：prompt 里带着契约落点（「成果会被 Host 落到 共享目录 X/ 下」）")
+          : bad("P13 载荷级：prompt 里没有契约落点 ⇒ 成员不知道交到哪，只会汇报路径",
+                "录到的请求：" + JSON.stringify(who));
+        const leakedShape = recs.some((r) => JSON.stringify(r).match(/sk-[A-Za-z0-9_-]{8,}/));
+        leakedShape
+          ? bad("P13 载荷级：录下来的请求里出现了 key 形状的明文")
+          : ok("P13 载荷级：录下来的请求里没有 key 明文形状");
+
         /* 成员的交付契约落进成员记录了 ⇒ 接力才可能按契约验收、按契约落盘。 */
         const bots13 = readJson(BOTS, { bots: [] });
         const withContract = (bots13.bots || []).filter((b) => b && b.deliverable && b.deliverable.dir);
@@ -803,6 +991,13 @@ function startStub() {
           ? ok("P13 角色把交付契约带进了成员记录（" + withContract.length + " 个成员带契约）")
           : bad("P13 成员记录里没有交付契约（接力会退回老行为：拿汇报当交付）",
                 JSON.stringify((bots13.bots || []).map((b) => [b && b.name, !!(b && b.deliverable)])).slice(0, 240));
+        /* 契约里还要有**流水线顺序**（order）—— 否则五棒只能并行跑，
+           后四棒拿不到上游成果（成员读不了共享目录的文件 ⇒ 只能编）。 */
+        const ordered = withContract.filter((b) => Number(b.deliverable.order) > 0);
+        ordered.length >= 5
+          ? ok("P13 契约里带着**流水线顺序**（" + ordered.length + " 个成员有 order ⇒ 按顺序串行跑）")
+          : bad("P13 契约里没有 order ⇒ 五棒会被当并行分工跑，后四棒拿不到上游成果",
+                JSON.stringify(withContract.map((b) => [b && b.name, b && b.deliverable && b.deliverable.order])).slice(0, 240));
       }
     }
   } catch (e) {
