@@ -6421,6 +6421,7 @@ function createHostFfi(repoRoot, opts = {}) {
       const topN2 = Math.min(10, Math.max(1, Number(opts.topN) || 8));
       const sources = [];
       const notes = [];
+      let fetchedBodies = 0;
       for (const feed of feeds) {
         if (sources.length >= topN2) break;
         try {
@@ -6432,9 +6433,23 @@ function createHostFfi(repoRoot, opts = {}) {
           const items = parseFeedItems(xml, topN2 - sources.length);
           for (const it of items) {
             if (sources.length >= topN2) break;
+            let snippet = String(it.snippet || "").slice(0, 400);
+            /* 摘要太短 ⇒ 模型会自己去抓正文 ⇒ 实测一棒抓 150 次（登录墙/封锁
+             * 一半以上）⇒ 2.6 分钟用完 20 次模型调用还是写不完。
+             * ⇒ 降级搜索时**顺带抓前两篇的正文**塞进 snippet ⇒ 模型拿到就
+             * 能写，不用自己撒网。抓不到就用 feed 的摘要（不编）。 */
+            if (snippet.length < 200 && fetchedBodies < 2) {
+              try {
+                const fres = await httpTextFollow(it.url, { timeoutMs: 12000 });
+                if (fres && fres.ok) {
+                  const body = htmlToReadableText(fres.body, 1200);
+                  if (body.length > 200) { snippet = body.slice(0, 900); fetchedBodies += 1; }
+                }
+              } catch (_) { /* 抓不到就用摘要，不编 */ }
+            }
             sources.push({
               title: it.title, url: it.url,
-              snippet: String(it.snippet || "").slice(0, 400),
+              snippet,
               source_feed: feed,
             });
           }
