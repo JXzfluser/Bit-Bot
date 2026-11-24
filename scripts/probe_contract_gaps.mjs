@@ -78,8 +78,74 @@ let pass = 0, fail = 0;
 const ok = (m) => { pass++; console.log("  ✓ " + m); };
 const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String(d).slice(0, 300) : "")); };
 
+/* 抽出产品里真实的 URL 计数正则（不重写一套 —— 抄它的行为会抄错） */
+const { countDeliverableUrls } = (() => {
+  const src = require("node:fs").readFileSync(
+    path.join(REPO, "hosts/desktop/room_orchestrator.js"), "utf8");
+  const body = src.match(/function countDeliverableUrls\(content\)\s*\{([\s\S]*?)\n\}/);
+  if (!body) return { countDeliverableUrls: null };
+  /* 直接用产品的正则字面量：抠出 s.match(/…/g) 那一段 */
+  const re = body[1].match(/s\.match\((\/.*?\/g)\)/);
+  if (!re) return { countDeliverableUrls: null };
+  const rx = eval(re[1]);
+  return { countDeliverableUrls: (content) => (String(content || "").match(rx) || []) };
+})();
+
 console.log("probe_contract_gaps — 契约盲区探针");
 console.log("  用产品真实的 judgeStage 实测：现状规则到底拦不拦得住垃圾产物\n");
+
+/* ── 专项 A：countDeliverableUrls 把坏链当成好链在数 ────────────────────── */
+console.log("── 专项 A · URL 计数把坏链当好链");
+{
+  /* 用**真实产物里那行**（不是构造的）—— 构造文本容易漏掉真实世界的字符形态。
+     这行来自 03-drafts/2026-11-24-draft.md 的「事实依据」段。 */
+  const realLine = "事实依据：o3-mini 推理更新公告（[https://openai.com/index/o3-mini-update）与开源推理框架](https://openai.com/index/o3-mini-update）与开源推理框架) v2 Release（[https://github.com/example/infer/releases/tag/v2.0.0）。](https://github.com/example/infer/releases/tag/v2.0.0）。)";
+  const n = countDeliverableUrls ? countDeliverableUrls(realLine).length : -1;
+  const toks = countDeliverableUrls ? countDeliverableUrls(realLine) : [];
+  const allBad = toks.length > 0 && toks.every((u) => /[^\x00-\x7F]/.test(u));
+  if (n > 0 && allBad) {
+    bad("countDeliverableUrls 把带全角括号的坏链数成了完整 URL",
+      "数出 " + n + " 条，distinct " + new Set(toks).size + "，**全部含非 ASCII 字符** ⇒ min_urls 反而在帮坏链计数" +
+      "（正则是 [^\\s)\\]}\"'<>，。；：、]+，**没排全角 ）**）");
+  } else {
+    ok("countDeliverableUrls 已能识别坏链（数出 " + n + " 条）");
+  }
+}
+
+/* ── 专项 B：跨棒链接集合差（无源选题） ──────────────────────────────────── */
+console.log("── 专项 B · 跨棒链接集合差（无源选题）");
+{
+  const intel = "1. 线索一\n   原始链接：https://openai.com/x\n2. 线索二\n   原始链接：https://github.com/y";
+  const brief = "题 1｜基于线索一\n   链接：https://openai.com/x\n题 2｜无源题\n   链接：https://example.com/audit-notes";
+  const u = (s) => [...new Set(s.match(/https?:\/\/[^\s)\]}\"'<>]+/g) || [])];
+  const orphan = u(brief).filter((x) => !u(intel).includes(x));
+  if (orphan.length) {
+    bad("brief 里存在情报卡没有的链接（无源选题能过验收）",
+      JSON.stringify(orphan) + " ⇒ 跨棒集合差可确定性检出");
+  } else {
+    ok("brief 的链接都能在情报卡里找到出处");
+  }
+}
+
+/* ── 专项 C：min_items 会误杀写法不同的正确产物 ────────────────────────── */
+console.log("── 专项 C · min_items 的副作用（会误杀正确产物）");
+{
+  const brief = "题 1｜第一个题\n   链接：https://a.com/1\n题 2｜第二个题\n   链接：https://a.com/2\n题 3｜第三个题\n   链接：https://a.com/3";
+  const { countDeliverableItems } = require(path.join(REPO, "hosts/desktop/room_orchestrator.js"));
+  const items = countDeliverableItems(brief);
+  const v = judgeStage({
+    text: brief, contract: { dir: "x", rules: { min_chars: 200, must_include: ["http"], min_urls: 1, min_items: 3 } },
+    what: "选题brief",
+  });
+  if (!v.pass && items === 0) {
+    bad("min_items 会误杀「题 N｜」这种写法（正确产物被判红）",
+      "countDeliverableItems 数出 " + items + " 条（写法不匹配 ^\\d+[.、)] ）⇒ " + v.reason);
+  } else {
+    ok("min_items 对「题 N｜」写法可用");
+  }
+}
+
+console.log("");
 
 for (const c of cases) {
   const nowRules = NOW[c.role];
