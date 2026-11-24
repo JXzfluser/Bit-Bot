@@ -116,6 +116,166 @@ function llmCallGuardCheck(key) {
   return { allowed: true, count: hits.length };
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ * HTML → 可读正文（批次 6）
+ *
+ * 缘起（真 MiniMax 实测）：web_fetch 以前只返回**前 800 字符的原始 HTML**
+ * ⇒ 模型拿到的是 <head>/<meta> 和一堆 <script> ⇒ 对任何页面都几乎不含
+ * 实质内容 ⇒ 模型判定「没抓到东西」⇒ 换一个 URL 再抓 ⇒ 实测一棒里
+ * web_fetch 调了 **111 次**，最后整轮撞闸、零产物。
+ *
+ * ⇒ 抓网页这件事，**有没有给正文**才是关键：给正文模型就能用；
+ *   给源码它只会一次次重试。
+ * ───────────────────────────────────────────────────────────────────── */
+function htmlToReadableText(html, maxChars) {
+  let t = String(html || "");
+  const cap = Math.max(200, Number(maxChars || 6000));
+  if (!t) return "";
+  t = t
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|noscript|svg|head|nav|footer|form)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+  const entities = {
+    "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"',
+    "&#39;": "'", "&apos;": "'", "&mdash;": "—", "&ndash;": "–",
+    "&hellip;": "…", "&ldquo;": "“", "&rdquo;": "”", "&lsquo;": "‘",
+    "&rsquo;": "’",
+  };
+  for (const [k, v] of Object.entries(entities)) t = t.split(k).join(v);
+  t = t
+    .replace(/&#(\d+);/g, (_m, d) => String.fromCharCode(Number(d)))
+    .replace(/\s*\n\s*\n\s*/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/^[ \t]+|[ \t]+$/gm, "")
+    .trim();
+  if (t.length > cap) t = t.slice(0, cap) + "\n（正文已截断）";
+  return t;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * 公开源兜底（批次 6）：没有搜索凭据时，**不要失败** —— 去抓公开 RSS，
+ * 把真标题+链接交给成员。
+ *
+ * 缘起（真 MiniMax 实测）：web_search 以前被错误地映射到 webfetch
+ * （把 query 当 URL 去抓）⇒ 模型调用必败 ⇒ 于是改用 web_fetch 到处乱试
+ * ⇒ 一棒里抓了 111 次 ⇒ 整轮撞闸、零产物。
+ * 修好映射之后，**没有搜索 key** 仍然是绝大多数用户的现状 ⇒ 搜索这条路
+ * 依然走不通。
+ *
+ * ⇒ 兜底：抓几个公开 RSS（实测真能抓到：hnrss / techcrunch / theverge），
+ *   抽出标题+链接给成员 ⇒ 成员**有真材料**可以干活，而不是空手或编造。
+ *   这是「不搜索也能干活」的路子，也是路线 A（给非开发者的本地团队）
+ *   需要的默认能力。
+ *
+ * 口径：BITBOT_PUBLIC_FEEDS（逗号分隔，默认下面这组）。
+ * ───────────────────────────────────────────────────────────────────── */
+const DEFAULT_PUBLIC_FEEDS = [
+  "https://hnrss.org/frontpage",
+  "https://techcrunch.com/feed/",
+  "https://www.theverge.com/rss/index.xml",
+];
+
+function publicFeedList() {
+  const raw = String(process.env.BITBOT_PUBLIC_FEEDS || "").trim();
+  if (!raw) return DEFAULT_PUBLIC_FEEDS.slice();
+  return raw.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+/** 从 RSS/XML 里抽 {title, url}（轻量解析，够用就好，不引第三方库）。 */
+/* 纯文本 GET（跟随重定向，最多 3 跳）。
+ * 为什么要单独一个：httpJson 不跟随重定向 ⇒ 抓 RSS 时
+ * hnrss.org / theverge 之类会 301 ⇒ 只拿到一张重定向页（实测 162 字符）
+ * ⇒ 解析出 0 条。 */
+function httpTextFollow(url, { timeoutMs = 15000, maxHops = 3, headers = {} } = {}) {
+  return new Promise((resolve) => {
+    const one = (target, hop) => {
+      let u;
+      try {
+        u = new URL(target);
+      } catch (e) {
+        resolve({ ok: false, status: 0, body: "", error: "bad_url" });
+        return;
+      }
+      const lib = u.protocol === "https:" ? https : http;
+      const req = lib.request(
+        {
+          protocol: u.protocol,
+          hostname: u.hostname,
+          port: u.port || (u.protocol === "https:" ? 443 : 80),
+          path: u.pathname + u.search,
+          method: "GET",
+          headers: { "User-Agent": "BitBot/1.0 (+public-feed)", Accept: "*/*", ...headers },
+          timeout: Math.max(1000, Number(timeoutMs) || 15000),
+        },
+        (res) => {
+          const status = res.statusCode || 0;
+          if (status >= 300 && status < 400 && res.headers && res.headers.location) {
+            res.resume();
+            if (hop >= maxHops) {
+              resolve({ ok: false, status, body: "", error: "too_many_redirects" });
+              return;
+            }
+            const next = new URL(res.headers.location, u).toString();
+            one(next, hop + 1);
+            return;
+          }
+          let data = "";
+          res.on("data", (c) => {
+            data += c;
+            if (data.length > 512 * 1024) data = data.slice(0, 512 * 1024);
+          });
+          res.on("end", () => {
+            resolve({
+              ok: status >= 200 && status < 300,
+              status,
+              body: data.slice(0, 200000),
+              url: target,
+            });
+          });
+        },
+      );
+      req.on("error", (err) => resolve({ ok: false, status: 0, body: "", error: err.message }));
+      req.on("timeout", () => {
+        req.destroy();
+        resolve({ ok: false, status: 0, body: "", error: "timeout" });
+      });
+      req.end();
+    };
+    one(String(url || ""), 0);
+  });
+}
+
+function parseFeedItems(xml, limit) {
+  const out = [];
+  const re = /<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m;
+  while ((m = re.exec(String(xml || ""))) && out.length < (limit || 10)) {
+    const block = m[2] || "";
+    const pick = (tag) => {
+      const t = new RegExp("<" + tag + "\\b[^>]*>([\\s\\S]*?)</" + tag + ">", "i").exec(block);
+      if (!t) return "";
+      /* CDATA 包装（RSS 里常见）：<![CDATA[ … ]]>
+         —— 不先剥掉，去标签那一步会把整段当成标签吃掉。 */
+      const inner = String(t[1] || "")
+        .replace(/<!\[CDATA\[/gi, "")
+        .replace(/\]\]>/g, "");
+      return htmlToReadableText(inner, 400).replace(/\s+/g, " ").trim();
+    };
+    let link = pick("link");
+    if (!link) {
+      const href = /<link[^>]*href=["']([^"']+)["']/i.exec(block);
+      if (href) link = href[1];
+    }
+    const title = pick("title");
+    /* description / summary / content：模型要的是**内容**，只有标题它写不出
+     * 情报卡（岗位 prompt 要求「证据摘录」「为什么值得关注」）。 */
+    const desc = pick("description") || pick("summary") || pick("content") || "";
+    if (title && link) out.push({ title, url: link, snippet: desc.slice(0, 400) });
+  }
+  return out;
+}
+
 /* 各家模型的「去哪充值 / 去哪看」—— 余额不足这类错误只有指路才有用。 */
 const LLM_VENDOR_HINT = {
   minimax: { name: "MiniMax", where: "MiniMax 开放平台控制台" },
@@ -1725,13 +1885,19 @@ function createHostFfi(repoRoot, opts = {}) {
       }
     }
 
+    /* 给模型的是**正文**，不是源码（批次 6）：以前只给前 800 字符 HTML
+       ⇒ 模型看不到实质内容 ⇒ 反复换 URL 重抓（实测 111 次）。
+       原始源码仍留在 artifact 里（body_html_prefix）以便审计。 */
+    const readable = ok ? htmlToReadableText(body, 6000) : "";
     const artifact = {
       url,
       http_status: httpStatus,
       ok,
       error,
-      body_prefix: body.slice(0, 800),
+      body_prefix: readable.slice(0, 1200),
+      body_text: readable,
       body_bytes: Buffer.byteLength(body, "utf8"),
+      body_html_prefix: body.slice(0, 800),
       mode,
       used_fallback: usedFallback,
       fallback,
@@ -6135,7 +6301,47 @@ function createHostFfi(repoRoot, opts = {}) {
     if (!q) return { ok: false, error: "empty_query", sources: [] };
     const cfg = resolveSearchConfig();
     if (!cfg.key) {
-      return { ok: false, provider: cfg.provider, error: "search_key_not_configured", sources: [] };
+      /* 没有搜索凭据 ⇒ **不失败**：去抓公开 RSS，把真标题+链接给成员。
+       * 缘起（真 MiniMax 实测）：搜索走不通时，模型改用 web_fetch 到处乱试
+       * ⇒ 一棒抓了 111 次 ⇒ 整轮撞闸、零产物。给它真材料比让它空手硬扛好。 */
+      const feeds = publicFeedList();
+      const topN2 = Math.min(10, Math.max(1, Number(opts.topN) || 8));
+      const sources = [];
+      const notes = [];
+      for (const feed of feeds) {
+        if (sources.length >= topN2) break;
+        try {
+          /* 直接拿全文（RSS 要完整 XML 才切得出条目；走 executeHostEffects
+             只会拿到被截断的 artifact）。 */
+          const res = await httpTextFollow(feed, { timeoutMs: 15000 });
+          if (!res || !res.ok) { notes.push(feed + "：抓不到"); continue; }
+          const xml = String(res.body || "");
+          const items = parseFeedItems(xml, topN2 - sources.length);
+          for (const it of items) {
+            if (sources.length >= topN2) break;
+            sources.push({
+              title: it.title, url: it.url,
+              snippet: String(it.snippet || "").slice(0, 400),
+              source_feed: feed,
+            });
+          }
+        } catch (e) {
+          notes.push(feed + "：" + String((e && e.message) || e).slice(0, 40));
+        }
+      }
+      if (sources.length) {
+        return {
+          ok: true,
+          provider: "public_feed",
+          degraded: true,
+          note: "没有配搜索凭据，下面是公开源的最新条目（要更准的搜索请在设置里配搜索 key）",
+          sources,
+        };
+      }
+      return {
+        ok: false, provider: cfg.provider, error: "search_key_not_configured",
+        degraded: true, note: "没有配搜索凭据，公开源也抓不到", sources: [],
+      };
     }
     const topN = Math.min(5, Math.max(1, Number(opts.topN) || 5));
     try {
@@ -10065,8 +10271,12 @@ function createHostFfi(repoRoot, opts = {}) {
         browser_open: "host_webfetch",
         open_url: "host_webfetch",
         open_browser: "host_webfetch",
-        search_web: "host_webfetch",
-        web_search: "host_webfetch",
+        /* 批次 6：web_search 以前被映射到 host_webfetch ⇒ Host 拿 query
+           当 URL 去抓 ⇒ 必败 ⇒ 模型改用 web_fetch 到处乱试 ⇒ 一棒抓了
+           111 次（真 MiniMax 实测）。⇒ 搜索走**真的搜索**（有 key 用
+           tavily/brave；没 key 降级到公开 RSS 源）。 */
+        search_web: "host_websearch",
+        web_search: "host_websearch",
         screenshot: "host_screenshot",
         take_screenshot: "host_screenshot",
         capture_screen: "host_screenshot",
@@ -12701,6 +12911,47 @@ function createHostFfi(repoRoot, opts = {}) {
             pretend_ok: false,
             ok: Boolean(endHit && endHit.ok),
             voice_end: endPayload,
+          });
+        }
+        if (mapped === "host_websearch") {
+          /* 真的搜索（批次 6）：web_search 以前被映射到 host_webfetch
+             ⇒ 拿 query 当 URL 抓 ⇒ 必败。
+             ⇒ 现在：有搜索 key ⇒ tavily/brave；没 key ⇒ 降级到公开 RSS 源
+             （实测真能拿到今天的头条标题+链接）⇒ 成员**有真材料**可干。 */
+          const q = String(args.query || args.q || args.text || args.command || "").trim();
+          const topN = Math.max(1, Math.min(10, Number(args.topN || args.topn || args.n) || 6));
+          const res = await webSearch(q, { topN });
+          const payload = {
+            query: q,
+            provider: res.provider || "",
+            degraded: Boolean(res.degraded),
+            note: String(res.note || ""),
+            sources: res.sources || [],
+            error: res.error || null,
+            pretend_searched: false,
+          };
+          const { snapPath, artifact: callArtifact } = writeMcpCallSnap(
+            command,
+            {
+              tool: toolName,
+              mapped,
+              host_kind: "host_websearch",
+              websearch: payload,
+              product_tool_residual: false,
+              pretend_ok: false,
+              ok: Boolean(res.ok),
+              at: shortAt,
+            },
+          );
+          return okJson(kind, command, {
+            ...callArtifact,
+            tool: toolName,
+            mapped,
+            product_tool_residual: false,
+            path: snapPath,
+            pretend_ok: false,
+            ok: Boolean(res.ok),
+            websearch: payload,
           });
         }
         if (mapped === "host_webfetch") {
@@ -26893,6 +27144,11 @@ function createHostFfi(repoRoot, opts = {}) {
      * 导出给门禁直接钉住这条合并行为。 */
     loadBotTemplates,
     webSearch,
+    /* 批次 6：正文提取与 RSS 解析（导出给门禁直接钉住） */
+    htmlToReadableText,
+    parseFeedItems,
+    httpTextFollow,
+    publicFeedList,
     // C-5:建群。rooms.json 是 Host 的文件,所以建群是 Host 侧的动作。
     // 内核只给模型下发 schema,真正的建群在这里同步发生 ——
     // 模型拿到的观测必须是「真建出来了」或「如实没建成」。
