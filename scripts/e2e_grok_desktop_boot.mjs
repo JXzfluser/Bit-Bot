@@ -109,10 +109,21 @@ async function openSessionsPopup(win) {
    这里在跑之前补足探针 Bot，进程退出时按快照还原；已经是多 Bot 的环境不动。 */
 function ensureProbeBots() {
   let raw;
+  let existed = true;
   try {
     raw = fs.readFileSync(BOTS_PATH, "utf8");
   } catch (_) {
-    return () => {};
+    /* 干净 clone（CI）里 data/desktop/bots.json 不在版本库（.gitignore）⇒
+       这个文件**本来就不存在**。
+       以前这里是 `return () => {}` —— 静默放弃补探针 ⇒ 后面多 Bot 用例
+       （GP-119 群聊入口）直接报「bots.json needs at least 2 bots」，
+       红在**数据前置**上，不是红在代码上 ⇒ CI 上永远红一条，而本地
+       （工作区有那份 bots.json）永远是绿的 ⇒ 典型的「本地绿、CI 红」。
+       ⇒ 这里改成：文件不存在就**造一个最小 store**（跟产品首启动时
+       种 agent-bit 的形状一致），补足探针，退出时删掉自己造的那份。
+       红的是产品还是数据，这里分得清。 */
+    existed = false;
+    raw = JSON.stringify({ version: 1, primary_id: "agent-bit", bots: [] }, null, 2);
   }
   const parsed = JSON.parse(raw);
   const bots = Array.isArray(parsed.bots) ? parsed.bots : [];
@@ -136,21 +147,29 @@ function ensureProbeBots() {
   let added = 0;
   while (visible().length < 2) bots.push(probe(++added));
   if (!visible().some((b) => !b.pinned)) bots.push(probe(++added));
-  if (!added) return () => {};
+  if (!added && existed) return () => {};
   parsed.bots = bots;
-  fs.writeFileSync(BOTS_PATH, JSON.stringify(parsed, null, 2));
+  try {
+    fs.mkdirSync(path.dirname(BOTS_PATH), { recursive: true });
+    fs.writeFileSync(BOTS_PATH, JSON.stringify(parsed, null, 2));
+  } catch (_) {
+    return () => {};
+  }
   let restored = false;
   const restore = () => {
     if (restored) return;
     restored = true;
     try {
+      /* 本来就不存在的那份 ⇒ 退出时**删掉**自己造的，别给干净 clone 留残渣。 */
+      if (!existed) { fs.rmSync(BOTS_PATH, { force: true }); return; }
       fs.writeFileSync(BOTS_PATH, raw);
     } catch (_) {
       /* ignore */
     }
   };
   process.on("exit", restore);
-  console.log("  · 已补 " + added + " 个探针 Bot（退出时还原 bots.json）");
+  console.log("  · 已补 " + added + " 个探针 Bot（退出时还原 bots.json）" +
+    (existed ? "" : "；bots.json 本不存在，已造最小 store 并将在退出时删除"));
   return restore;
 }
 
