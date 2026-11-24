@@ -123,6 +123,15 @@
       "wired_in": "G-130"
     },
     {
+      "file": "e2e_desktop_live_team.mjs",
+      "layer": "L2",
+      "blocking": false,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：e2e_desktop_live_team.mjs — 真 provider 下的五棒流水线（批次 6）：stub 秒回 ⇒ 门禁里**永远不会**暴露真世界的成本与时延 ⇒ 2026-11-24 第一次用真 MiniMax 跑，就撞出「一棒里 web_fetch 调了 111 次、单棒跑满 900 秒、整轮撞闸、0 产物」。本门在真实 Electron 里点「一键成队」，真 provider 跑完五棒，验：建团成功、第一件事真派出去了、每棒过了验收、五个文件真落盘、产物正文是成果本身、**产物里的链接是不是真的能打开**（抽前 8 条真去抓）、key 不落盘。没有 key ⇒ 诚实 SKIP（exit 0，不伪造 PASS）⇒ 可按需手动跑，不进常规 CI",
+      "special": "needs_live"
+    },
+    {
       "file": "e2e_desktop_event_dualwrite_live.mjs",
       "layer": "L3",
       "blocking": true,

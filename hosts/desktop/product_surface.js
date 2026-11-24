@@ -3492,6 +3492,15 @@ function createProductSurface(repoRoot, opts = {}) {
             roomTitle: room.title,
             botName: current.name,
           });
+          /* 失败原因要说清**为什么**（批次 6）：验收的默认理由是
+             「这一棒没有交出任何内容」—— 那只说明结果，不说明原因。
+             真 provider 实测：这一棒是被**调用预算**停下的（反复抓同一个
+             页面），原因写在 res.error 里 ⇒ 群里必须说这一句，
+             否则用户只看到「没交出内容」，完全不知道该改什么。 */
+          if (!verdict.pass && res.error && String(verdict.reason || "").indexOf("没有交出任何内容") >= 0) {
+            verdict.reason = String(res.error).slice(0, 240);
+            verdict.reason_from_error = true;
+          }
           res.stage = verdict;
           if (verdict.pass && verdict.artifact && verdict.artifact.ok) {
             /* 通道 A：成员自己写了文件 ⇒ 交付内容 = 那个文件的正文。 */
@@ -3516,7 +3525,19 @@ function createProductSurface(repoRoot, opts = {}) {
             res.ok = false;
             res.rejected = true;
             res.reject_reason = verdict.reason;
+            /* 验收不通过时，失败原因默认被换成验收的那句话
+               （「这一棒没有交出任何内容」）—— 那只说结果、不说原因。
+               真 provider 实测：这一棒是被**调用预算**停下的（反复抓同一个
+               页面），真实原因在 res.error 里 ⇒ 群里必须说这一句，
+               否则用户只看到「没交出内容」，完全不知道该改什么。
+               ⇒ 真实原因优先；机器码另存 error_code，可审计。 */
+            const causeError = res.error;
             res.error = verdict.reason;
+            if (causeError && String(verdict.reason || "").indexOf("没有交出任何内容") >= 0) {
+              res.error = String(causeError).slice(0, 240);
+              verdict.reason = res.error;
+              verdict.reason_from_error = true;
+            }
             res.text = ""; // 汇报不算交付：别让它进产物
           }
         }
@@ -3990,6 +4011,15 @@ function createProductSurface(repoRoot, opts = {}) {
             roomTitle: room.title,
             botName: res.name,
           });
+          /* 失败原因要说清**为什么**（批次 6）：验收的默认理由是
+             「这一棒没有交出任何内容」—— 那只说明结果，不说明原因。
+             真 provider 实测：这一棒是被**调用预算**停下的（反复抓同一个
+             页面），原因写在 res.error 里 ⇒ 群里必须说这一句，
+             否则用户只看到「没交出内容」，完全不知道该改什么。 */
+          if (!verdict.pass && res.error && String(verdict.reason || "").indexOf("没有交出任何内容") >= 0) {
+            verdict.reason = String(res.error).slice(0, 240);
+            verdict.reason_from_error = true;
+          }
           res.stage = verdict;
           if (verdict.pass && verdict.artifact && verdict.artifact.ok) {
             res.delivered_content = verdict.artifact.content;
@@ -4008,8 +4038,16 @@ function createProductSurface(repoRoot, opts = {}) {
           if (!verdict.pass) {
             res.ok = false;
             res.rejected = true;
+            /* 真实原因优先（批次 6）：验收的话只说结果，真实原因（provider
+               报错了 / 被调用预算停下）在 res.error 里 ⇒ 别把它盖掉。 */
+            const causeError2 = res.error;
             res.reject_reason = verdict.reason;
             res.error = verdict.reason;
+            if (causeError2 && String(verdict.reason || "").indexOf("没有交出任何内容") >= 0) {
+              res.error = String(causeError2).slice(0, 240);
+              res.reject_reason = res.error;
+              verdict.reason = res.error;
+            }
             res.text = ""; // 汇报不算交付
           }
           return res;

@@ -75,6 +75,47 @@ function llmFailureCode(ok, errText) {
   return "llm_chat_failed";
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ * 成员回合的 provider 调用预算（批次 6）
+ *
+ * 缘起（真 MiniMax 实测，2026-11-24）：一个「去网上找热点」的成员，
+ * 在真网上反复抓网页 —— **一棒里 web_fetch 调了 111 次** ⇒ agent loop 的
+ * 64 步上限被用满 ⇒ 单棒跑满 900 秒还没完 ⇒ 整轮撞闸 ⇒
+ * 用户建完团干等 15 分钟，群里一个字都没有。
+ *
+ * 内核其实有止损（连续 4 次**硬**失败才停），但「网页抓回来了、
+ * 只是没抓到我想要的东西」这种**软**失败不算失败 ⇒ 没人管它。
+ *
+ * ⇒ Host 侧加一道**调用预算**：同一成员在滑动窗口内调用模型超过 N 次
+ *   ⇒ 停下这一棒，如实告诉用户「它在反复抓同一个东西」，而不是
+ *   默默烧钱烧到时限。
+ *
+ * 口径：BITBOT_LLM_CALL_GUARD_WINDOW_MS（默认 120000）/
+ *       BITBOT_LLM_CALL_GUARD_MAX（默认 8）。不设就是默认值。
+ * 只限**群回合**（DM 不限）—— 实测案例出在群里的成员回合。
+ * ───────────────────────────────────────────────────────────────────── */
+/* 阈值口径：正常一棒 3~5 次调用（真 provider 一分钟 2~4 次）；
+ * 死循环那棒实测 15 分钟 72 次（持续高频）⇒ 滑动窗口能区分「一直在调」
+ * 与「总共调了几次」。180 秒 / 12 次 ≈ 4 次每分钟 —— 正常一棒碰不到，
+ * 死循环会在两三分钟内停下。 */
+const LLM_CALL_GUARD_MAX = Number(process.env.BITBOT_LLM_CALL_GUARD_MAX || 12);
+const LLM_CALL_GUARD_WINDOW_MS = Number(process.env.BITBOT_LLM_CALL_GUARD_WINDOW_MS || 180000);
+const llmCallGuard = new Map();
+
+function llmCallGuardCheck(key) {
+  const k = String(key || "");
+  if (!k) return { allowed: true, count: 0 };
+  const now = Date.now();
+  const hits = (llmCallGuard.get(k) || []).filter((t) => now - t < LLM_CALL_GUARD_WINDOW_MS);
+  if (hits.length >= LLM_CALL_GUARD_MAX) {
+    llmCallGuard.set(k, hits);
+    return { allowed: false, count: hits.length };
+  }
+  hits.push(now);
+  llmCallGuard.set(k, hits);
+  return { allowed: true, count: hits.length };
+}
+
 /* 各家模型的「去哪充值 / 去哪看」—— 余额不足这类错误只有指路才有用。 */
 const LLM_VENDOR_HINT = {
   minimax: { name: "MiniMax", where: "MiniMax 开放平台控制台" },
@@ -6247,6 +6288,34 @@ function createHostFfi(repoRoot, opts = {}) {
     const replyQuote = String((llmOpts && llmOpts.replyQuote) || "").trim();
     const replyRole = String((llmOpts && llmOpts.replyRole) || "assistant").trim();
     const cfg = resolveLlmConfig();
+    /* 成员回合的 provider 调用预算（批次 6）：同一成员在滑动窗口里
+       调用模型太多次 ⇒ 停下这一棒。实测案例：真网上一个成员一棒里
+       web_fetch 调了 111 次 ⇒ 单棒跑满 900 秒 ⇒ 整轮撞闸、零产物。
+       只限群回合（roomContext 带 room_id 时）。 */
+    const guardRoom = (llmOpts && llmOpts.roomContext && llmOpts.roomContext.room_id) || "";
+    if (guardRoom) {
+      const gk = guardRoom + "|" + String((llmOpts && llmOpts.botId) || "");
+      const verdict = llmCallGuardCheck(gk);
+      if (!verdict.allowed) {
+        const msg = "这一棒在 " + Math.round(LLM_CALL_GUARD_WINDOW_MS / 1000) + " 秒内调用了模型 " +
+          verdict.count + " 次（多半在反复抓同一个页面），已停下 —— 请把任务拆小，或给它能用的搜索凭据";
+        return {
+          kind: "llm_chat",
+          ok: false,
+          command: String(command || ""),
+          stdout: "",
+          stderr: msg,
+          reply_to: replyToId || "",
+          error: msg,
+          error_code: "llm_call_budget_exceeded",
+          error_hint: { code: "llm_call_budget_exceeded", message: msg },
+          provider_id: cfg.provider_id,
+          model: cfg.model,
+          pretend_completion: false,
+          localbrain: false,
+        };
+      }
+    }
     const dir = path.join(llmDir(), "turns");
     fs.mkdirSync(dir, { recursive: true });
     const artifactPath = path.join(

@@ -5079,6 +5079,28 @@ echo "    的链接」，**不保证链接是真的** —— 「链接是真的�
 echo "  · 判定怎么落到产品上的：role prompt 写【固定交付】(人读) ⇒ 模板结构化出 path/rules"
 echo "    (机器读) ⇒ 建团时写进 bot.deliverable ⇒ 接力时按契约查文件、验收、决定这棒算不算交付。"
 
+echo "== G-142 真 provider 五棒：stub 秒回，永远暴露不了真世界的成本与时延 =="
+# 批次 6（2026-11-24）：第一次用真 MiniMax 跑五棒，就撞出真 stub 跑不出来的问题 ——
+#   一棒里 web_fetch 调了 111 次（agent loop 的 64 步用满）、单棒跑满 900 秒、
+#   整轮撞闸、0 产物。stub 秒回 ⇒ 这类问题只能靠用户踩到才会发现。
+# ⇒ 本门在真实 Electron 里点「一键成队」，真 provider 跑五棒，验：建团成功、
+#   第一件事真派出去了、每棒过验收、五个文件真落盘、产物正文是成果本身、
+#   产物里的链接是不是真的能打开（抽前 8 条真去抓）、key 不落盘。
+# 没有 key ⇒ 诚实 SKIP（exit 0 + SKIP 计数），不伪造 PASS。
+if [ -n "${BITBOT_LLM_PROVIDER:-}" ] && [ -n "${BITBOT_LLM_API_KEY:-}${BITBOT_LLM_MINIMAX_API_KEY:-}" ]; then
+  if timeout 1500 xvfb-run -a node scripts/e2e_desktop_live_team.mjs > /tmp/g142-live-team.log 2>&1; then
+    ok "G-142 e2e_desktop_live_team（真 provider 五棒；$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g142-live-team.log | tail -1)）"
+  else
+    bad "G-142 e2e_desktop_live_team（见 /tmp/g142-live-team.log；$(grep '✗' /tmp/g142-live-team.log | head -3 | tr '\n' ' ')）"
+  fi
+else
+  SKIP_G142=1
+  ok "G-142 e2e_desktop_live_team（真 provider 五棒）—— 无 key ⇒ 诚实 SKIP（SKIP ≠ PASS）"
+fi
+echo "  · G-142 口径：这条门**要真 provider 的 key**才跑得动（没有就 SKIP）；"
+echo "    它存在的理由是「stub 跑出来的东西不代表真实成本与时延」—— 2026-11-24 第一次"
+echo "    真跑就撞出「一棒 111 次 web_fetch、整轮 0 产物」，而 stub 全绿。"
+
 echo "== G-141 模型供应商目录：MiniMax 要能选上，换 provider 不能串台到别的厂商 =="
 # 批次 6（2026-11-24）：加 MiniMax provider 时挖出两件事。
 #   1) providers.json 是**用户数据**（第一次启动落盘，之后用户改过）⇒ 只在「文件不存在」

@@ -161,7 +161,8 @@ function providerReady() {
     /* ---- 等五棒跑完（final_report 落盘即流水线结束） ---- */
     let room = null, tx = [], report = null;
     const t0 = Date.now();
-    for (let i = 0; i < 2400; i += 1) {
+    /* 等 25 分钟：房间回合的总闸现在默认 15 分钟（真 provider 五棒要这么久）。 */
+    for (let i = 0; i < 6000; i += 1) {
       const rooms = readJson(ROOMS, { rooms: [] });
       const list = Array.isArray(rooms.rooms) ? rooms.rooms : [];
       room = list.find((r) => r && String(r.title || "").indexOf("自媒体内容团队") >= 0) || null;
