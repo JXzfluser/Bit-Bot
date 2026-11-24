@@ -98,7 +98,11 @@ function llmFailureCode(ok, errText) {
  * 死循环那棒实测 15 分钟 72 次（持续高频）⇒ 滑动窗口能区分「一直在调」
  * 与「总共调了几次」。180 秒 / 12 次 ≈ 4 次每分钟 —— 正常一棒碰不到，
  * 死循环会在两三分钟内停下。 */
-const LLM_CALL_GUARD_MAX = Number(process.env.BITBOT_LLM_CALL_GUARD_MAX || 12);
+/* 阈值口径：正常一棒 10~20 次调用（search + 几次抓正文 + 写）⇒ 12 太紧，
+ * 实测正常一棒就在 12 次被误停。死循环那棒是**持续高频**（15 分钟 72 次）
+ * ⇒ 真正的区分靠「连续工具失败就停」（内核已有）+ 这里的次数上限兜底。
+ * ⇒ 20 次 / 180 秒：正常一棒够用，死循环仍会被兜住。 */
+const LLM_CALL_GUARD_MAX = Number(process.env.BITBOT_LLM_CALL_GUARD_MAX || 20);
 const LLM_CALL_GUARD_WINDOW_MS = Number(process.env.BITBOT_LLM_CALL_GUARD_WINDOW_MS || 180000);
 const llmCallGuard = new Map();
 
@@ -1889,6 +1893,20 @@ function createHostFfi(repoRoot, opts = {}) {
        ⇒ 模型看不到实质内容 ⇒ 反复换 URL 重抓（实测 111 次）。
        原始源码仍留在 artifact 里（body_html_prefix）以便审计。 */
     const readable = ok ? htmlToReadableText(body, 6000) : "";
+    /* 「HTTP 200 但没有可读正文」= **失败**（批次 6）。
+     * 为什么：SPA 站点（内容在 JS 里）、需要 JS 渲染的页面、登录墙 ——
+     * 抓回来 200，模型却什么也没拿到 ⇒ 它会判定「这个不行」⇒ 换一个再抓
+     * ⇒ 实测一棒 22 次 web_fetch，死在死循环里。
+     * ⇒ 如实报失败 + 说清原因 ⇒ 内核的「连续 4 次失败就停」就能生效，
+     *   模型也会换**源头**而不是换**文章**。
+     *   这不是把失败说成成功，是把「空」说成「空」。 */
+    let emptyBody = false;
+    if (ok && readable.length < 80) {
+      emptyBody = true;
+      ok = false;
+      error = error || "页面抓到了，但没有可读正文（多半是 SPA / 需要 JS 渲染 / 登录墙）";
+      mode = "host_webfetch_empty_body";
+    }
     const artifact = {
       url,
       http_status: httpStatus,
@@ -1896,6 +1914,7 @@ function createHostFfi(repoRoot, opts = {}) {
       error,
       body_prefix: readable.slice(0, 1200),
       body_text: readable,
+      empty_body: emptyBody,
       body_bytes: Buffer.byteLength(body, "utf8"),
       body_html_prefix: body.slice(0, 800),
       mode,
