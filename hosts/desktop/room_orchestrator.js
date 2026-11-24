@@ -423,6 +423,12 @@ function buildRelayPrompt(input) {
   const maxHops = Math.max(1, Number(opts.maxHops || RELAY_MAX_HOPS));
   const lines = [];
   lines.push("【群任务】" + (task || "（空）"));
+  /* 岗位 prompt（批次 5）**刻意不拼在这里**：
+   * 编排 prompt 会整段进内核，而内核用它做意图识别（中文建房句式是全文子串
+   * 匹配）⇒ 岗位 prompt 里「不得扩展选题**或加入**新观点」这种句子会被判成
+   * 「把 X 拉进 Y 群」⇒ 这一棒直接去建房了（实测 names_not_found）。
+   * ⇒ 岗位 prompt 走 roomContext（只进模型请求，不参与内核意图解析）。
+   * 见 hosts/shared/room_context.js 的 self_prompt。 */
   lines.push(
     "这一轮只有你在做这件事（第 " + (hop + 1) + " 棒，最多 " + maxHops + " 棒）。群里其他成员不会同时开工，所以不用抢、也不用替他们做。",
   );
@@ -563,6 +569,7 @@ function buildResponderPrompt(input) {
   const hasContract = !!(contract && (contract.dir || contract.path));
   const lines = [];
   lines.push("【群任务】" + (task || "（空）"));
+  /* 岗位 prompt（批次 5）同样走 roomContext，不拼进编排 prompt（理由同上）。 */
   if (subtask && subtask !== task) {
     lines.push("【你的分工】" + subtask + "（只做这一件；别人做别的，别重做）");
   }

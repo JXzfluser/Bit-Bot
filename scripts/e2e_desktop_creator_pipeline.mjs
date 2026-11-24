@@ -966,8 +966,21 @@ function startStub() {
           const all = (r.messages || []).map((m) => String(m.content || "")).join("\n");
           const nm = all.match(/名字：([^；\n]+)/);
           const relay = all.indexOf("这一轮只有你在做这件事") >= 0;
-          return (nm ? nm[1] : "?") + (relay ? "(接力)" : "(DM)");
+          /* 岗位说明在 **system 通道**（只进模型请求、不参与内核意图解析）。 */
+          const role = (r.messages || []).some((m) =>
+            m && m.role === "system" && String(m.content || "").indexOf("你的岗位说明") >= 0);
+          return (nm ? nm[1] : "?") + (relay ? "(接力)" : "(DM)") + (role ? "(岗位✓)" : "(岗位✗)");
         });
+        /* 诊断只在**有红**时打（门禁绿的时候刷一屏 JSON 只会让人眼瞎）。
+           红了才看得出：哪一棒没跑、哪一棒没过、预算花在哪。 */
+        if (FAIL > 0) {
+          console.log("  · 录到的 provider 请求（诊断）：" + JSON.stringify(who));
+          if (report13) {
+            console.log("  · 接力链：" + JSON.stringify((report13.relay || []).map((r) => [r && r.name, r && r.ok, r && r.summary])));
+            console.log("  · 验收：" + JSON.stringify(report13.stage_results || []));
+            console.log("  · 预算：" + JSON.stringify(report13.budget || {}));
+          }
+        }
         const hasDeliveryRule = bodies.some((b) => b.indexOf("把成果正文完整写在这条回复里") >= 0);
         hasDeliveryRule
           ? ok("P13 载荷级：发给模型的 prompt 里带着「把成果正文完整写在这条回复里」" +
@@ -984,8 +997,36 @@ function startStub() {
           ? bad("P13 载荷级：录下来的请求里出现了 key 形状的明文")
           : ok("P13 载荷级：录下来的请求里没有 key 明文形状");
 
+        /* 载荷级（批次 5）：**每个角色的岗位 prompt 都得真的进了模型**。
+         * 以前它只躺在共享目录 00-profile/<角色>.md 里 —— 模型只看得见
+         * name + job（60 字）⇒「每条情报要包含哪些字段」「不得凭记忆补数字」
+         * 这些硬要求，模型一次都没收到过。 */
+        /* 特征串取岗位 prompt 里的**英文角色名**（如「（Scout）」）——
+           比「你是我的 XX」更稳：模板措辞会变（「你是我的 X 数据复盘师」），
+           而括号里的英文角色名是这条 prompt 独有的。 */
+        const bots13b = readJson(BOTS, { bots: [] });
+        const roleFeats13 = (bots13b.bots || [])
+          .filter((b) => b && b.prompt)
+          .map((b) => {
+            const m = String(b.prompt).match(/（([A-Za-z]+)）/);
+            return { name: b.name, feat: m ? "（" + m[1] + "）" : "" };
+          })
+          .filter((x) => x.feat);
+        const missingRole13 = roleFeats13.filter((x) =>
+          !bodies.some((b) => b.indexOf(x.feat) >= 0));
+        roleFeats13.length >= 5 && missingRole13.length === 0
+          ? ok("P13 载荷级：五个角色的**岗位 prompt 都进了发给模型的 payload**" +
+              "（system 通道：模型知道每棒要交什么、哪些事不能做）")
+          : bad("P13 载荷级：这些角色的岗位 prompt 没进 payload ⇒ 模型没收到硬要求",
+                "缺：" + missingRole13.map((x) => x.name).join("、"));
+
         /* 成员的交付契约落进成员记录了 ⇒ 接力才可能按契约验收、按契约落盘。 */
         const bots13 = readJson(BOTS, { bots: [] });
+        const withPrompt13 = (bots13.bots || []).filter((b) => b && b.prompt && String(b.prompt).length > 50);
+        withPrompt13.length >= 5
+          ? ok("P13 岗位 prompt 落进了成员记录（" + withPrompt13.length + " 个成员带 prompt）")
+          : bad("P13 成员记录里没有岗位 prompt",
+                JSON.stringify((bots13.bots || []).map((b) => [b && b.name, b && String(b.prompt || "").length])).slice(0, 240));
         const withContract = (bots13.bots || []).filter((b) => b && b.deliverable && b.deliverable.dir);
         withContract.length >= 3
           ? ok("P13 角色把交付契约带进了成员记录（" + withContract.length + " 个成员带契约）")

@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld("bitbot", {
     setGroup: (botId, group) => ipcRenderer.invoke("bitbot:bots:setGroup", { bot_id: botId, group }),
     setDeliverable: (botId, deliverable) =>
       ipcRenderer.invoke("bitbot:bots:setDeliverable", { bot_id: botId, deliverable }),
+    /* 岗位 prompt（批次 5）：模板角色的完整职责写进成员记录，
+       成员回合时它会进发给模型的 prompt。 */
+    setPrompt: (botId, prompt) =>
+      ipcRenderer.invoke("bitbot:bots:setPrompt", { bot_id: botId, prompt }),
   },
   settings: {
     get: () => ipcRenderer.invoke("bitbot:settings:get"),

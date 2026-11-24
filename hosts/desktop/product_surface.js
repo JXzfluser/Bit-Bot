@@ -542,7 +542,7 @@ function createProductSurface(repoRoot, opts = {}) {
     }
   }
 
-  function botsCreate({ name, job, description, group }) {
+  function botsCreate({ name, job, description, group, prompt }) {
     const data = loadBots();
     const bot = {
       id: generateBotId(),
@@ -550,6 +550,11 @@ function createProductSurface(repoRoot, opts = {}) {
       name: String(name || "").trim() || "New Bot",
       job: String(job || "").trim(),
       description: String(description || "").trim(),
+      /* 岗位 prompt（批次 5）：成员**完整**的岗位职责。
+       * 以前它只躺在共享目录 00-profile/<角色>.md 里 —— 模型看不到 ⇒
+       * 「每条情报要包含哪些字段」「不得凭记忆补数字」这些硬要求，模型
+       * 一次都没收到过 ⇒ 产物质量无从谈起。 */
+      prompt: normalizeBotPrompt(prompt),
       group: normalizeGroup(group),
       avatar: "",
       tags: [],
@@ -566,6 +571,16 @@ function createProductSurface(repoRoot, opts = {}) {
       pretend_saved: false,
       bot
     };
+  }
+
+  /* 岗位 prompt 的白名单与长度上限：它是**给模型看的岗位说明书**，
+     不是任意内容容器 ⇒ 只保留文本、限长、去首尾空白。 */
+  const BOT_PROMPT_MAX_CHARS = 4000;
+  function normalizeBotPrompt(input) {
+    if (input === null || input === undefined || input === "") return "";
+    const s = String(input).replace(/\r\n/g, "\n").trim();
+    if (!s) return "";
+    return s.slice(0, BOT_PROMPT_MAX_CHARS);
   }
 
   /* 交付契约（声明式）：{dir?, path?, file?, rules?, expect_file?}。
@@ -603,7 +618,7 @@ function createProductSurface(repoRoot, opts = {}) {
     return out;
   }
 
-  function botsUpdate({ bot_id, name, job, description, avatar, tags, group, deliverable }) {
+  function botsUpdate({ bot_id, name, job, description, avatar, tags, group, deliverable, prompt }) {
     const data = loadBots();
     const bot = data.bots.find(b => b.id === bot_id);
     if (!bot) {
@@ -637,6 +652,13 @@ function createProductSurface(repoRoot, opts = {}) {
       const dv = normalizeDeliverable(deliverable);
       if (dv) bot.deliverable = dv;
       else delete bot.deliverable;
+    }
+    /* 岗位 prompt（批次 5）：模板角色的完整职责写进成员记录 ⇒
+       成员回合时它会进发给模型的 prompt（见 room_orchestrator 的 rolePrompt）。
+       "-" = 清空；未提供 = 不变。 */
+    if (prompt !== undefined) {
+      if (prompt === "-") delete bot.prompt;
+      else bot.prompt = normalizeBotPrompt(prompt);
     }
     bot.updated_at = nowIso();
 
@@ -978,7 +1000,12 @@ function createProductSurface(repoRoot, opts = {}) {
   }
 
   function decorateBot(bot) {
-    return Object.assign({}, bot, {
+    /* prompt（完整岗位说明书，批次 5）**不随列表下发**：列表是 UI 用的，
+       带上它等于每次侧栏刷新都传几百字 × N 个 Bot ⇒ 纯浪费。
+       需要它的地方（成员回合的 prompt）走盘上读，不走这里。 */
+    const slim = Object.assign({}, bot);
+    delete slim.prompt;
+    return Object.assign(slim, {
       tags: Array.isArray(bot.tags) ? bot.tags : [],
       group: typeof bot.group === "string" ? bot.group : "",
       avatar_data_url: avatarDataUrl(bot),
@@ -2458,13 +2485,15 @@ function createProductSurface(repoRoot, opts = {}) {
       const bot = botsData.bots.find(b => b.id === id);
       // 带 job/description:「这个群是不是一支团队」的判据靠它
       // (成员**被赋予了职责** ⇒ 是团队,不是随手拉人聊天)。
+      // 带 prompt（批次 5）：完整岗位职责 ⇒ 成员回合时它会进发给模型的 prompt。
       return bot
         ? {
             id: bot.id, name: bot.name,
             job: String(bot.job || ""),
             description: String(bot.description || ""),
+            prompt: String(bot.prompt || ""),
           }
-        : { id, name: id, job: "", description: "" };
+        : { id, name: id, job: "", description: "", prompt: "" };
     });
 
     // Parse mentions — GP-51 semantics kept (@Name directed / @everyone all /
@@ -3065,9 +3094,13 @@ function createProductSurface(repoRoot, opts = {}) {
     const resolve = (idOrName) => {
       const b = bots.find(x => x.id === idOrName || x.name === idOrName);
       /* deliverable（交付契约）必须一起带上：接力时按**成员**查契约 ——
-         契约存在成员记录里（建团时从模板角色落进来），这一路是它的唯一读入口。 */
+         契约存在成员记录里（建团时从模板角色落进来），这一路是它的唯一读入口。
+         prompt（完整岗位说明书）同理：它也得进成员回合的 prompt（批次 5）。 */
       return b
-        ? { id: b.id, name: b.name, job: b.job || "", description: b.description || "", deliverable: b.deliverable || null }
+        ? {
+            id: b.id, name: b.name, job: b.job || "", description: b.description || "",
+            deliverable: b.deliverable || null, prompt: b.prompt || "",
+          }
         : null;
     };
     const memberIds = room.members || [];

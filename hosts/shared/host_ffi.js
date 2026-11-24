@@ -5826,6 +5826,21 @@ function createHostFfi(repoRoot, opts = {}) {
     const self = String(rc.self || "").trim();
     const lines = ["\n当前群聊：" + String(rc.title || "").trim()];
     if (rows.length) lines.push("群成员：\n" + rows.join("\n"));
+    /* 岗位 prompt（批次 5）：**这一位成员自己的**完整职责。
+     * 走 system 通道（这里）而不是编排 prompt：编排 prompt 整段进内核，
+     * 而内核用它做意图识别（中文建房句式是全文子串匹配）⇒ 岗位 prompt 里
+     * 「不得扩展选题**或加入**新观点」这种句子会被判成「把 X 拉进 Y 群」
+     * ⇒ 那一棒直接去建房了（实测 names_not_found）。
+     * 而这里的内容只进**模型请求**，不参与内核意图解析 ⇒ 正好是它该去的地方。
+     * 它是**职责**，不是系统指令 —— 但它由 Host 从成员记录里读出来、不是用户
+     * 拼的文本，所以可以当约束执行。 */
+    const selfPrompt = String(rc.self_prompt || "").trim();
+    if (selfPrompt) {
+      lines.push(
+        "你的岗位说明（你在本群里的职责、交付格式与硬性要求；以它为准，优先于其他成员的做法）：\n" +
+          selfPrompt
+      );
+    }
     lines.push("本轮被 @：" + (mentioned.length ? mentioned.join("、") : self || "（无）"));
     if (recent.length) {
       lines.push(

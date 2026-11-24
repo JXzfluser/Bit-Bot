@@ -106,10 +106,30 @@ function buildRoomContext(input) {
     members: [],
     mentioned: [],
     self,
+    /* 岗位 prompt（批次 5）：**这一位成员自己的**完整职责。
+     * 为什么走 roomContext 而不是编排 prompt：编排 prompt 会**整段**进内核，
+     * 而内核用它做意图识别（中文建房句式是全文子串匹配）⇒ 岗位 prompt 里
+     * 「不得扩展选题**或加入**新观点」这种句子会被判成「把 X 拉进 Y 群」⇒
+     * 这一棒直接去建房了（实测：事实编辑那一棒 names_not_found）。
+     * roomContext 只进**模型请求**、不参与内核意图解析 ⇒ 正好是它该去的地方。 */
+    self_prompt: "",
     recent: [],
     chars: 0,
   };
   let used = out.title.length + out.self.length;
+  /* 岗位 prompt 先占额度：它是「这一棒要交什么、哪些事不能做」的硬要求，
+     比成员列表和最近转录更该保住。 */
+  const selfPromptRaw = String(selfBot.prompt || "").trim();
+  if (selfPromptRaw) {
+    const left = maxTotal - used;
+    if (left >= 120) {
+      const text = clipField(selfPromptRaw, Math.min(2400, left));
+      if (text) {
+        out.self_prompt = text;
+        used += text.length + 16;
+      }
+    }
+  }
   for (const name of mentioned) {
     const cost = name.length + 2;
     if (used + cost > maxTotal) break;

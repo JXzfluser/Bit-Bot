@@ -1905,6 +1905,20 @@ ipcMain.handle("bitbot:bots:setDeliverable", async (_e, payload) => {
   }
 });
 
+ipcMain.handle("bitbot:bots:setPrompt", async (_e, payload) => {
+  const p = payload || {};
+  try {
+    const r = surface.updateBot({
+      bot_id: p.bot_id,
+      prompt: p.prompt === undefined ? undefined : p.prompt,
+    });
+    if (r && r.ok) broadcastSurface("bots", surface.listViews());
+    return r;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message ? err.message : err), mode: "host_bot_update" };
+  }
+});
+
 ipcMain.handle("bitbot:bots:pickAvatar", async () => {
   try {
     const win = BrowserWindow.getFocusedWindow() || mainWindow;

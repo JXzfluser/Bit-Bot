@@ -11110,6 +11110,14 @@
           if (!(Number.isFinite(declared) && declared > 0)) dv.order = roleIdx + 1;
           await window.bitbot.bots.setDeliverable(b.id, dv).catch(() => {});
         }
+        /* 岗位 prompt（批次 5）：模板角色的**完整**职责写进成员记录。
+           以前它只躺在共享目录 00-profile/<角色>.md 里 —— 模型看不到 ⇒
+           「每条情报要包含哪些字段」「不得凭记忆补数字」这些硬要求，
+           模型一次都没收到过 ⇒ 产物只能泛泛而谈。
+           没有角色 prompt 的（用户自己写的团队）⇒ 不写，行为一字不变。 */
+        if (role && role.prompt) {
+          await window.bitbot.bots.setPrompt(b.id, role.prompt).catch(() => {});
+        }
       }
       if (!made.length) {
         cmdToast(wavegT("teamFailed"), "warn");
