@@ -3448,6 +3448,12 @@ function createProductSurface(repoRoot, opts = {}) {
         budget.spend({ turns: 1, tokens: promptTokens });
         let res;
         const stageStart = Date.now();
+        /* 每棒重置抓取额度（批次 6）：额度是**这一棒**的，不是整轮的。 */
+        try {
+          if (deps && typeof deps.resetStageFetchBudget === "function") {
+            deps.resetStageFetchBudget();
+          }
+        } catch (_) { /* 清额度失败不影响这一棒 */ }
         try {
           const out = await withTimeout(
             runResponderTurn(current.id, prompt, ctx).finally(() => forgetRoomScope(scope)),

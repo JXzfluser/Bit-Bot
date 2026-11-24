@@ -3146,6 +3146,12 @@ const selectRoomResponders = roomRuntime.selectResponders;
    synthesis 是 synthesizer_not_configured(不影响「真的重跑了」这条判据)。 */
 surface.setRoomRuntimeDeps({
   runResponderTurn: runRoomResponderTurn,
+  /* 每棒重置抓取额度（批次 6）：额度是「这一棒」的 —— 下一棒重新算。 */
+  resetStageFetchBudget: () => {
+    try {
+      if (ffi && typeof ffi.resetStageFetchBudget === "function") ffi.resetStageFetchBudget();
+    } catch (_) { /* 清额度失败不影响这一棒 */ }
+  },
   selectResponders: selectRoomResponders,
 });
 

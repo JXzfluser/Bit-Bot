@@ -221,9 +221,7 @@ const WEBFETCH_RATE_WINDOW_MS = Number(process.env.BITBOT_WEBFETCH_RATE_WINDOW_M
 const webFetchRate = [];
 /* 按「棒」计的抓取总次数（每棒上限，默认 24 次）。 */
 const WEBFETCH_STAGE_MAX = Number(process.env.BITBOT_WEBFETCH_STAGE_MAX || 24);
-const webFetchStageCounts = new Map();
-/* 每成员本轮 provider 调用计数（用来认「这一棒的第一步」）。 */
-const llmStageFirstCall = new Map();
+let webFetchStageCount = 0;
 
 function webFetchRateExceeded() {
   const now = Date.now();
@@ -239,9 +237,8 @@ const WEBFETCH_HOST_FAIL_LIMIT = Number(process.env.BITBOT_WEBFETCH_HOST_FAIL_LI
 const webFetchHostFails = new Map();
 
 /** 每棒开始时清掉该成员的抓取额度（下一棒重新算）。 */
-function resetStageFetchBudget(roomId, botId) {
-  const k = String(roomId || "") + "|" + String(botId || "");
-  if (k && k !== "|") webFetchStageCounts.delete(k);
+function resetStageFetchBudget() {
+  webFetchStageCount = 0;
 }
 
 function webFetchHostKey(url) {
@@ -1898,12 +1895,8 @@ function createHostFfi(repoRoot, opts = {}) {
      * 实测一棒抓了 224 次（模型持续以窗口上限的速度换着试）。
      * ⇒ 同一成员（room+bot）在一棒里抓够 N 次 ⇒ 直接拒并说清
      *   「这棒已经抓够了，用手里���材料交出来」。 */
-    const o = opts || {};
-    const roomId = String((o.roomContext && o.roomContext.room_id) || "").trim();
-    const botId = String(o.botId || "").trim();
-    const stageKey = roomId ? roomId + "|" + botId : "";
-    if (stageKey) {
-      const used = Number(webFetchStageCounts.get(stageKey) || 0);
+    const used = Number(webFetchStageCount || 0);
+    {
       if (used >= WEBFETCH_STAGE_MAX) {
         const msg = "这一棒已经抓了 " + used + " 次，够了 —— 用手里的材料交出来" +
           "（标题、链接、摘要已经够写情报卡；抓不到的来源标『无法访问』）";
@@ -1918,7 +1911,7 @@ function createHostFfi(repoRoot, opts = {}) {
           }, null, 2),
         };
       }
-      webFetchStageCounts.set(stageKey, used + 1);
+      webFetchStageCount = used + 1;
     }
     if (!/^https?:\/\//i.test(url)) {
       return {
@@ -6664,15 +6657,6 @@ function createHostFfi(repoRoot, opts = {}) {
        web_fetch 调了 111 次 ⇒ 单棒跑满 900 秒 ⇒ 整轮撞闸、零产物。
        只限群回合（roomContext 带 room_id 时）。 */
     const guardRoom = (llmOpts && llmOpts.roomContext && llmOpts.roomContext.room_id) || "";
-    /* 每棒的抓取额度重置（批次 6）：该成员**本轮第一次** provider 调用 =
-       这一棒的第一步 ⇒ 此时清空它的抓取额度 ⇒ 额度是「这一棒」的，
-       不是「这一轮」的（否则第二棒开始就没额度了）。 */
-    if (guardRoom) {
-      const stageKey0 = guardRoom + "|" + String((llmOpts && llmOpts.botId) || "");
-      const seen = Number(llmStageFirstCall.get(stageKey0) || 0);
-      llmStageFirstCall.set(stageKey0, seen + 1);
-      if (seen === 0) webFetchStageCounts.delete(stageKey0);
-    }
     if (guardRoom) {
       const gk = guardRoom + "|" + String((llmOpts && llmOpts.botId) || "");
       const verdict = llmCallGuardCheck(gk);
