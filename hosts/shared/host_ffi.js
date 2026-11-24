@@ -187,6 +187,32 @@ function publicFeedList() {
 }
 
 /** 从 RSS/XML 里抽 {title, url}（轻量解析，够用就好，不引第三方库）。 */
+/* ─────────────────────────────────────────────────────────────────────
+ * 站点级抓取失败记忆（批次 6）
+ *
+ * 缘起（真 MiniMax 实测）：一棒里 web_fetch 调了 **165 次** —— 模型在一个
+ * 抓不到正文的站点上死磕。为什么内核的止损没兜住：
+ * `runtime/agent_loop.mbt` 里 `consecutive_failures` 在**任一工具成功**时
+ * 就清零 ⇒ 模型每轮请求带 8 个工具调用，只要有一个 Read 成功 ⇒
+ * 连续失败计数被清零 ⇒ 「连续 4 次失败就停」永远不触发。
+ *
+ * ⇒ Host 侧自己记一份**按站点**的连续失败：同一个 host 连着抓不到 N 次
+ *   ⇒ 后面直接拒（并说清「换个来源」）⇒ 模型会去换源头，而不是换文章。
+ *
+ * 口径：BITBOT_WEBFETCH_HOST_FAIL_LIMIT（默认 3）。
+ * ───────────────────────────────────────────────────────────────────── */
+const WEBFETCH_HOST_FAIL_LIMIT = Number(process.env.BITBOT_WEBFETCH_HOST_FAIL_LIMIT || 3);
+const webFetchHostFails = new Map();
+
+function webFetchHostKey(url) {
+  try {
+    const u = new URL(String(url || ""));
+    return (u.hostname || "").toLowerCase();
+  } catch (_) {
+    return "";
+  }
+}
+
 /* 纯文本 GET（跟随重定向，最多 3 跳）。
  * 为什么要单独一个：httpJson 不跟随重定向 ⇒ 抓 RSS 时
  * hnrss.org / theverge 之类会 301 ⇒ 只拿到一张重定向页（实测 162 字符）
@@ -1836,6 +1862,25 @@ function createHostFfi(repoRoot, opts = {}) {
         error: "only http(s) URLs allowed",
       };
     }
+    /* 站点级失败记忆（批次 6）：这个 host 已经连着抓不到 N 次 ⇒ 直接拒，
+     * 让模型换**来源**而不是在同一批文章里换下一篇死磕。 */
+    const hostKey = webFetchHostKey(url);
+    const priorFails = hostKey ? Number(webFetchHostFails.get(hostKey) || 0) : 0;
+    if (hostKey && priorFails >= WEBFETCH_HOST_FAIL_LIMIT) {
+      const msg = "这个站点（" + hostKey + "）已经连着抓不到 " + priorFails +
+        " 次了，换个来源吧（web_search 还能拿到候选）";
+      return {
+        kind: "webfetch",
+        ok: false,
+        command: url,
+        error: msg,
+        stdout: JSON.stringify({
+          url, ok: false, error: msg,
+          host: hostKey, host_fail_count: priorFails,
+          pretend_fetched: false, at,
+        }, null, 2),
+      };
+    }
     const res = await httpJson(url, { method: "GET" });
     const dir = path.join(DATA_ROOT, "host-tools", "webfetch");
     fs.mkdirSync(dir, { recursive: true });
@@ -1892,6 +1937,10 @@ function createHostFfi(repoRoot, opts = {}) {
     /* 给模型的是**正文**，不是源码（批次 6）：以前只给前 800 字符 HTML
        ⇒ 模型看不到实质内容 ⇒ 反复换 URL 重抓（实测 111 次）。
        原始源码仍留在 artifact 里（body_html_prefix）以便审计。 */
+    if (hostKey) {
+      if (ok) webFetchHostFails.delete(hostKey);
+      else webFetchHostFails.set(hostKey, priorFails + 1);
+    }
     const readable = ok ? htmlToReadableText(body, 6000) : "";
     /* 「HTTP 200 但没有可读正文」= **失败**（批次 6）。
      * 为什么：SPA 站点（内容在 JS 里）、需要 JS 渲染的页面、登录墙 ——
