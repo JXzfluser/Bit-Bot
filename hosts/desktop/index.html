@@ -3030,6 +3030,7 @@
                 <option data-i18n="stProviderDeepSeek" value="deepseek">DeepSeek（官方）</option>
                 <option data-i18n="stProviderQwen" value="qwen">通义千问（DashScope 兼容模式）</option>
                 <option value="moonshot">Moonshot / Kimi</option>
+                <option data-i18n="stProviderMiniMax" value="minimax">MiniMax（官方）</option>
                 <option data-i18n="stProviderOpenRouter" value="openrouter">OpenRouter（聚合网关）</option>
                 <option data-i18n="stProviderCustom" value="custom">自定义 · OpenAI 兼容端点</option>
                 <option data-i18n="stProviderGateway" value="gateway">企业网关 / 代理转发</option>
@@ -3105,6 +3106,18 @@
                 <span id="sec-moon-mask" class="st-field-hint"></span>
                 <span id="sec-moon-key-err" class="st-field-error" hidden></span>
                 <div id="sec-moon-key-note" class="st-note" hidden></div>
+              </div>
+
+              <!-- MiniMax 有自己那把密钥（env_key=BITBOT_LLM_MINIMAX_API_KEY）。
+                   没有这一栏的话：用户在上面那把「API Key」里粘了 MiniMax 的密钥，
+                   保存也成功，但 MiniMax 那一路的 env_key 仍是空的 ⇒ 界面说
+                   「还没配置密钥」，请求过去也拿不到授权 ⇒ 用户只看到「我明明填了」。 -->
+              <label class="st-form-label" for="sec-minimax-key">MiniMax</label>
+              <div class="st-form-ctl">
+                <input id="sec-minimax-key" type="password" autocomplete="off" placeholder="可选" class="bb-field"  data-i18n-ph="settingsFieldOptional"/>
+                <span id="sec-minimax-mask" class="st-field-hint"></span>
+                <span id="sec-minimax-key-err" class="st-field-error" hidden></span>
+                <div id="sec-minimax-key-note" class="st-note" hidden></div>
               </div>
             </div>
           </details>
@@ -9884,6 +9897,7 @@
       { input: "sec-llm-key", key: "BITBOT_LLM_API_KEY", mask: "sec-llm-mask" },
       { input: "sec-qwen-key", key: "BITBOT_LLM_QWEN_API_KEY", mask: "sec-qwen-mask" },
       { input: "sec-moon-key", key: "BITBOT_LLM_MOONSHOT_API_KEY", mask: "sec-moon-mask" },
+      { input: "sec-minimax-key", key: "BITBOT_LLM_MINIMAX_API_KEY", mask: "sec-minimax-mask" },
       { input: "sec-search-key", key: "BITBOT_SEARCH_API_KEY", mask: "sec-search-mask" },
     ];
 
@@ -10286,6 +10300,9 @@
       const moonEl = document.getElementById("sec-moon-key");
       const moonVal = moonEl && moonEl.value ? moonEl.value.trim() : "";
       if (moonVal) patch.BITBOT_LLM_MOONSHOT_API_KEY = moonVal;
+      const mmEl = document.getElementById("sec-minimax-key");
+      const mmVal = mmEl && mmEl.value ? mmEl.value.trim() : "";
+      if (mmVal) patch.BITBOT_LLM_MINIMAX_API_KEY = mmVal;
       // Replica C6：搜索配置。provider/base 每次都提交（这样切回默认也能生效），
       // key 只在用户真的输入时提交，避免把已有的 key 覆盖成空。
       const searchProvEl = document.getElementById("sec-search-provider");
@@ -14309,6 +14326,14 @@
         models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
         hintKey: "providerMoonshotHint",
       },
+      minimax: {
+        provider: "minimax",
+        labelKey: "providerMiniMaxLabel",
+        base: "https://api.minimax.chat/v1",
+        model: "MiniMax-M3.1-Flash",
+        models: ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+        hintKey: "providerMiniMaxHint",
+      },
       openrouter: {
         provider: "openrouter",
         labelKey: "providerOpenRouterLabel",
@@ -14422,6 +14447,7 @@
       if (b.includes("deepseek")) return "deepseek";
       if (b.includes("dashscope") || b.includes("aliyuncs")) return "qwen";
       if (b.includes("moonshot")) return "moonshot";
+      if (b.includes("minimax")) return "minimax";
       if (b.includes("openrouter")) return "openrouter";
       return "custom";
     }
@@ -19945,6 +19971,7 @@
         stProviderGateway: "企业网关 / 代理转发",
         stProviderIdHint: "写进配置里的 provider_id；留空就跟着上面选的服务商。",
         stProviderLabelField: "provider 标签",
+        stProviderMiniMax: "MiniMax（官方）",
         stProviderOpenRouter: "OpenRouter（聚合网关）",
         stProviderQwen: "通义千问（DashScope 兼容模式）",
         stProviderTavily: "Tavily（有免费额度）",
@@ -20115,6 +20142,7 @@
         providerDeepSeekHint: "DeepSeek 官方端点。",
         providerGatewayHint: "企业网关 / 代理：Base 指向网关，模型名与 Key 由网关下发；协议不同就在网关侧转换。",
         providerGatewayLabel: "企业网关",
+        providerMiniMaxHint: "MiniMax 官方端点（api.minimax.chat）；余额不足时按提示去控制台充值。",
         providerMoonshotHint: "Moonshot 官方端点。",
         providerOpenRouterHint: "聚合网关：模型名带厂商前缀。",
         providerQwenHint: "DashScope 的 OpenAI 兼容模式。",
@@ -20132,6 +20160,7 @@
         secretHide: "隐藏",
         secretShow: "显示",
         providerDeepSeekLabel: "DeepSeek",
+        providerMiniMaxLabel: "MiniMax",
         providerMoonshotLabel: "Moonshot",
         providerOpenRouterLabel: "OpenRouter",
       },
@@ -21465,6 +21494,7 @@
         stProviderGateway: "企業閘道 / 代理轉發",
         stProviderIdHint: "寫進設定檔的 provider_id；留空就跟著上面選的服務商。",
         stProviderLabelField: "provider 標籤",
+        stProviderMiniMax: "MiniMax（官方）",
         stProviderOpenRouter: "OpenRouter（聚合閘道）",
         stProviderQwen: "通義千問（DashScope 相容模式）",
         stProviderTavily: "Tavily（有免費額度）",
@@ -21635,6 +21665,7 @@
         providerDeepSeekHint: "DeepSeek 官方端點。",
         providerGatewayHint: "企業閘道 / 代理：Base 指向閘道，模型名與 Key 由閘道下發；協議不同就在閘道側轉換。",
         providerGatewayLabel: "企業閘道",
+        providerMiniMaxHint: "MiniMax 官方端點（api.minimax.chat）；餘額不足時按提示去控制台儲值。",
         providerMoonshotHint: "Moonshot 官方端點。",
         providerOpenRouterHint: "聚合閘道：模型名帶廠商前綴。",
         providerQwenHint: "DashScope 的 OpenAI 相容模式。",
@@ -21652,6 +21683,7 @@
         secretHide: "隱藏",
         secretShow: "顯示",
         providerDeepSeekLabel: "DeepSeek",
+        providerMiniMaxLabel: "MiniMax",
         providerMoonshotLabel: "Moonshot",
         providerOpenRouterLabel: "OpenRouter",
       },
@@ -22985,6 +23017,7 @@
         stProviderGateway: "Enterprise gateway / proxy forwarding",
         stProviderIdHint: "The provider_id written into the config; leave it blank to follow the provider picked above.",
         stProviderLabelField: "provider label",
+        stProviderMiniMax: "MiniMax (official)",
         stProviderOpenRouter: "OpenRouter (aggregator gateway)",
         stProviderQwen: "Qwen (DashScope-compatible mode)",
         stProviderTavily: "Tavily (free tier)",
@@ -23155,6 +23188,7 @@
         providerDeepSeekHint: "DeepSeek's official endpoint.",
         providerGatewayHint: "Enterprise gateway / proxy: the Base points at the gateway; model name and Key are handed down by it. If the protocol differs, convert it on the gateway side.",
         providerGatewayLabel: "Enterprise gateway",
+        providerMiniMaxHint: "MiniMax official endpoint (api.minimax.chat); top up when the balance runs out.",
         providerMoonshotHint: "Moonshot's official endpoint.",
         providerOpenRouterHint: "Aggregator gateway: model names carry a vendor prefix.",
         providerQwenHint: "DashScope's OpenAI-compatible mode.",
@@ -23172,6 +23206,7 @@
         secretHide: "Hide",
         secretShow: "Show",
         providerDeepSeekLabel: "DeepSeek",
+        providerMiniMaxLabel: "MiniMax",
         providerMoonshotLabel: "Moonshot",
         providerOpenRouterLabel: "OpenRouter",
       },

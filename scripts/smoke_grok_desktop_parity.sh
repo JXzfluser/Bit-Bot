@@ -5093,16 +5093,16 @@ else
   bad "G-141 prove_llm_provider_catalog（见 /tmp/g141-provider-catalog.log；$(grep '✗' /tmp/g141-provider-catalog.log | head -3 | tr '\n' ' ')）"
 fi
 for g141_id in PC-01 PC-01b PC-01c PC-01d PC-02 PC-02b PC-03 PC-04 PC-05 \
-                PC-07 PC-07b PC-08 PC-09 PC-10 PC-11; do
+                PC-07 PC-07b PC-08 PC-09 PC-12 PC-13 PC-14 PC-15 PC-16 PC-10 PC-11; do
   if grep -q "\[$g141_id\]" /tmp/g141-provider-catalog.log 2>/dev/null; then
     ok "G-141 锚点：$g141_id"
   else
     bad "G-141 锚点没跑绿：$g141_id（断言被删 / 被改成 SKIP / 编号从措辞里丢了）"
   fi
 done
-if [ "$(grep -c '^  ✓' /tmp/g141-provider-catalog.log)" -ge 15 ] \
+if [ "$(grep -c '^  ✓' /tmp/g141-provider-catalog.log)" -ge 20 ] \
    && grep -q "FAIL=0" /tmp/g141-provider-catalog.log; then
-  ok "G-141 计数钉：绿行 $(grep -c '^  ✓' /tmp/g141-provider-catalog.log) ≥ 15 且 FAIL=0"
+  ok "G-141 计数钉：绿行 $(grep -c '^  ✓' /tmp/g141-provider-catalog.log) ≥ 20 且 FAIL=0"
 else
   bad "G-141 计数钉红：绿行 $(grep -c '^  ✓' /tmp/g141-provider-catalog.log)、$(tail -1 /tmp/g141-provider-catalog.log)"
 fi

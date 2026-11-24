@@ -285,6 +285,48 @@ function writeActive(dir, obj) {
   }
 }
 
+/* ---------- D2. UI 侧也要在（provider 支持最常见的半拉子） ---------- */
+{
+  const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+  /* 后端目录里有 minimax，但界面下拉框里没有 ⇒ 用户根本选不到 ⇒
+     「支持 MiniMax」只做了一半。这条门钉住「两处都在」。 */
+  if (/<option[^>]*value="minimax"/.test(html)) {
+    ok("PC-12", "设置页「服务商」下拉框里有 MiniMax（用户选得到）");
+  } else {
+    bad("PC-12", "设置页下拉框里没有 MiniMax ⇒ 后端支持了但用户选不到");
+  }
+  if (/minimax:\s*\{[\s\S]{0,400}?base:\s*"https:\/\/api\.minimax\.chat\/v1"/.test(html)) {
+    ok("PC-13", "界面预置里 MiniMax 的端点/模型对得上后端目录");
+  } else {
+    bad("PC-13", "界面预置里没有 MiniMax（或端点对不上）");
+  }
+  /* provider 各自一把密钥 ⇒ 必须有**专用**密钥栏。
+     没有它：用户在上面那把通用 Key 里粘了 MiniMax 的密钥、保存也成功，
+     但 minimax 那一路的 env_key 仍是空的 ⇒ 界面说「还没配置密钥」。 */
+  if (/sec-minimax-key/.test(html) && /BITBOT_LLM_MINIMAX_API_KEY/.test(html)) {
+    ok("PC-14", "MiniMax 有专用密钥栏，写进 BITBOT_LLM_MINIMAX_API_KEY（不会粘在通用那把上）");
+  } else {
+    bad("PC-14", "MiniMax 缺专用密钥栏 ⇒ 用户粘了 key 也用不上");
+  }
+  if (/sec-minimax-mask/.test(html)) {
+    ok("PC-15", "MiniMax 密钥栏有掩码状态（已配置/未配置的回显）");
+  } else {
+    bad("PC-15", "MiniMax 密钥栏没有掩码状态");
+  }
+  /* 三语文案齐全（Copy contract v1） */
+  const langs = ["zh_cn", "zh_tw", "en"];
+  const counts = langs.map(() => 0);
+  for (const key of ["stProviderMiniMax", "providerMiniMaxLabel", "providerMiniMaxHint"]) {
+    const re = new RegExp(key + ":", "g");
+    const n = (html.match(re) || []).length;
+    if (n < 3) {
+      bad("PC-16", "文案「" + key + "」只在 " + n + " 处出现（zh_cn/zh_tw/en 三语必须齐全）");
+      return;
+    }
+  }
+  ok("PC-16", "MiniMax 的三语文案齐全（stProviderMiniMax / providerMiniMaxLabel / providerMiniMaxHint）");
+}
+
 /* ---------- E. 隔离 ---------- */
 {
   const FP_AFTER = fingerprint(USER_DATA);
