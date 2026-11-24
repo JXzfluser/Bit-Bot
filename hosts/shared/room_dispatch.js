@@ -93,8 +93,15 @@ async function dispatchRoomTurn(o) {
 
   // 总时限。Host 侧的总闸比渲染层的兜底略短：先由 Host 如实收口,
   // 渲染层那份只是「Host 自己也卡住」时的最后一道防线。
+  /* 整轮总时限（批次 6）：默认从 300s 放大到 **900s**。
+   * 实测（真 MiniMax，五棒流水线）：第一棒（要联网的成员）自己就吃掉 217 秒
+   * ⇒ 整轮 300 秒**必然**撞闸 ⇒ 用户看到的是 `room_turn_timeout`，
+   * 群里一个字也没有 —— 看起来像「我的团队坏了」，其实只是慢。
+   * stub 秒回 ⇒ 300 秒绰绰有余 ⇒ 这个坑在门禁里从来没暴露过。
+   * ⇒ 宁可多等（用户随时可指挥，可以去看别的），也不要默认失败。
+   *   要调回去：BITBOT_ROOM_TURN_DEADLINE_MS。 */
   const deadlineMs = Number(
-    (opts && opts.deadlineMs) || process.env.BITBOT_ROOM_TURN_DEADLINE_MS || 300000,
+    (opts && opts.deadlineMs) || process.env.BITBOT_ROOM_TURN_DEADLINE_MS || 900000,
   );
 
   // 1) 路由:谁该回、怎么回,由 roomTurn 决定(@点名 / 全员 / 成员自决)。

@@ -385,7 +385,7 @@ function createKernelServer(options = {}) {
     if (stopping) throw new Error("kernel_server is stopping");
     const slot = await acquire();
     const id = "k" + ++seq;
-    const timeoutMs = hooks.timeoutMs || 180000;
+    const timeoutMs = hooks.timeoutMs || Number(process.env.BITBOT_KERNEL_TIMEOUT_MS || 180000);
     const req = {
       id,
       argv,

@@ -216,7 +216,7 @@ function createTurnRunner(repoRoot, opts = {}) {
    * Read one kernel FFI request, write one JSON response. Line splitting only.
    */
   function pumpMoonFfi(args, onFfi, opts = {}) {
-    const timeoutMs = opts.timeoutMs || 180000;
+    const timeoutMs = opts.timeoutMs || Number(process.env.BITBOT_KERNEL_TIMEOUT_MS || 180000);
     const onLoop = typeof opts.onLoop === "function" ? opts.onLoop : null;
     return new Promise((resolve, reject) => {
       localSpawns += 1;
@@ -439,7 +439,7 @@ function createTurnRunner(repoRoot, opts = {}) {
       onProgress: typeof ctx.onProgress === "function" ? ctx.onProgress : undefined,
     });
     const session = await runKernel(kernelArgs, {
-      timeoutMs: ctx.timeoutMs || 180000,
+      timeoutMs: ctx.timeoutMs || Number(process.env.BITBOT_KERNEL_TIMEOUT_MS || 180000),
       onLoop: ctx.onLoop,
       turnId: String(ctx.turnId || ""),
       onFfi: async (req) => {

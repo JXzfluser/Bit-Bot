@@ -8314,6 +8314,36 @@
       log.scrollTop = log.scrollHeight;
       return el;
     }
+    /* 进度行（批次 6）：每一棒跑完留一行「谁 · 多久 · 过没过」。
+       缘起：五棒串行、真 provider 每棒一两分钟 ⇒ 群里一个字不动 ⇒ 像卡死。
+       这行用的是**已经算好的**复盘数据（duration_ms / 验收结论），
+       不是新的一套统计。 */
+    function renderRoomStageDone(e) {
+      const el = document.createElement("div");
+      el.className = "room-system";
+      el.style.cssText =
+        "display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;color:var(--muted);font-size:var(--text-sm);text-align:center";
+      const passed = e && e.pass !== false;
+      const ms = Number((e && e.duration_ms) || 0);
+      const dur = ms > 0 ? (ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : ms + "ms") : "";
+      const who = String((e && (e.name || e.bot_id)) || "");
+      const reason = String((e && e.reason) || "").slice(0, 120);
+      el.appendChild(
+        roomSpeakerRow({
+          name: wavegT("roomStageSpeaker"),
+          time: roomTime(e.at),
+        }),
+      );
+      const txt = document.createElement("div");
+      txt.className = "rs-sec-text room-system-text";
+      txt.style.textAlign = "left";
+      txt.textContent =
+        (passed ? "✓ " : "✗ ") + who + (dur ? " · " + dur : "") +
+        (passed ? wavegT("roomStagePass") : (reason ? " · " + reason : wavegT("roomStageFail")));
+      el.appendChild(txt);
+      return el;
+    }
+
     function renderRoomSystem(e) {
       // GP-148 §1-J2：建房回执是事实行，不是某个 Bot 说的话——所以不走气泡、
       // 不带头像，只标「系统 + 时间 + 原文」。文案由 Host 写死，这里不改写。
@@ -8736,6 +8766,7 @@
         else if (kind === "confirm_request") renderRoomConfirm(e);
         else if (kind === "bot_reply") renderRoomBotReply(e, false);
         else if (kind === "bot_reply_error") renderRoomBotReply(e, true);
+        else if (kind === "stage_done") renderRoomStageDone(e);
         else if (kind === "system") renderRoomSystem(e); // GP-148：建房回执
         else renderRoomUser(e); // kind:"user" 与旧式无 kind rows 同为「用户行」
       }
@@ -18892,6 +18923,9 @@
         roomTranscriptEmpty: "这是群聊的开始——还没有任何消息。",
         roomTranscriptHead: "群聊记录（最近 {n} 条）：",
         roomSystemSpeaker: "系统",
+        roomStageSpeaker: "进度",
+        roomStagePass: "验收通过",
+        roomStageFail: "没通过",
         roomMe: "我",
         roomWorking: "工作中…",
         roomReplyFailed: "回复失败",
@@ -20419,6 +20453,9 @@
         roomTranscriptEmpty: "這是群聊的開始——還沒有任何消息。",
         roomTranscriptHead: "群聊記錄（最近 {n} 條）：",
         roomSystemSpeaker: "系統",
+        roomStageSpeaker: "進度",
+        roomStagePass: "驗收通過",
+        roomStageFail: "沒通過",
         roomMe: "我",
         roomWorking: "工作中…",
         roomReplyFailed: "回覆失敗",
@@ -21942,6 +21979,9 @@
         roomTranscriptEmpty: "This is the start of the group — no messages yet.",
         roomTranscriptHead: "Group transcript (last {n}):",
         roomSystemSpeaker: "System",
+        roomStageSpeaker: "Progress",
+        roomStagePass: "accepted",
+        roomStageFail: "not accepted",
         roomMe: "Me",
         roomWorking: "working…",
         roomReplyFailed: "reply failed",

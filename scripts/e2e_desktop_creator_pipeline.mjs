@@ -81,6 +81,14 @@ const DRAFT_DIR = D("routines/drafts");
 const SEND_DIR = D("mail/sends");
 const TZ = process.env.GP155_TZ || "Asia/Shanghai";
 const STUB_RECORD = path.join(GATE_ROOT, "stub-requests.jsonl");
+/* LIVE 模式（批次 6）：不���本地 stub，直接打**真 provider**。
+ * 默认关闭 ⇒ CI 的常规跑法一字不变（stub 稳定、免费、可重入）。
+ * 打开：BITBOT_CREATOR_LIVE_PROVIDER=1 + 环境里给真 provider 的 key。
+ *  ⇒ 这才是「真人用 Bit-Bot 跑一件真实事务」的真实链路证据：
+ *   契约是模型**真读**、验收是模型**真过**、产物是模型**真写**出来的。
+ * 载荷级取证（stub 录制）在这条路上不存在 ⇒ 那几条断言跳过，
+ * 换成真实体验断言（每棒耗时 / 验收结论 / 产物里的链接是不是真的）。 */
+const LIVE = process.env.BITBOT_CREATOR_LIVE_PROVIDER === "1";
 const MAIL_TO = "news@example.com";
 
 /* 定向回执（批次 4）：模板团队是一条**五棒流水线**，每一棒有**自己的交付契约**
@@ -339,11 +347,15 @@ function startStub() {
         try { process.kill(Number(pid), "SIGKILL"); } catch { /* ignore */ }
       }
     } catch { /* 没有 lsof 就跳过 */ }
-    stub = await startStub();
-    /* 起完立刻验活 —— 别等几十秒后症状才炸,那时极难归因。 */
-    await new Promise((r) => setTimeout(r, 300));
-    if (stub.exitCode !== null || stub.signalCode !== null) {
-      throw new Error("stub " + STUB_PORT + " 刚启动就死了(exit=" + stub.exitCode + ")");
+    if (!LIVE) {
+      stub = await startStub();
+      /* 起完立刻验活 —— 别等几十秒后症状才炸,那时极难归因。 */
+      await new Promise((r) => setTimeout(r, 300));
+      if (stub.exitCode !== null || stub.signalCode !== null) {
+        throw new Error("stub " + STUB_PORT + " 刚启动就死了(exit=" + stub.exitCode + ")");
+      }
+    } else {
+      console.log("  · LIVE 模式：不起本地 stub，直接打真 provider");
     }
     app = await _electron.launch({
       executablePath: ELECTRON,
@@ -360,9 +372,15 @@ function startStub() {
         BITBOT_DESKTOP_AUTOSTART: "0",
         // 排程必须按可验证的时区算，不能跟着沙箱的 UTC 漂走。
         TZ,
-        BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + STUB_PORT + "/v1",
-        BITBOT_LLM_API_KEY: "e2e-stub-key",
-        BITBOT_LLM_MODEL: "e2e-stub",
+        /* LIVE：不覆盖 provider 三件套 ⇒ 走环境里给的真 provider。
+           stub 模式才把端点钉到本地 stub 上。 */
+        ...(LIVE
+          ? {}
+          : {
+              BITBOT_LLM_BASE_URL: "http://127.0.0.1:" + STUB_PORT + "/v1",
+              BITBOT_LLM_API_KEY: "e2e-stub-key",
+              BITBOT_LLM_MODEL: "e2e-stub",
+            }),
         BITBOT_LLM_STREAM: "0",
         BITBOT_ROOM_RESPONDER_TIMEOUT_MS: process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS || "150000",
       }),
@@ -958,7 +976,7 @@ function startStub() {
            真正的防线（批次 1.5 的核心：成员交正文，Host 代写落盘）。 */
         let recs = [];
         try {
-          recs = fs.readFileSync(STUB_RECORD, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+          recs = LIVE ? [] : fs.readFileSync(STUB_RECORD, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
         } catch { /* 没记录到就如实判红 */ }
         const bodies = recs.map((r) => (r.messages || []).map((m) => String(m.content || "")).join("\n"));
         /* 诊断用：录下来的每条请求是**哪个 Bot** 的（门禁失败时能一眼看出漏了谁）。 */
@@ -981,18 +999,23 @@ function startStub() {
             console.log("  · 预算：" + JSON.stringify(report13.budget || {}));
           }
         }
-        const hasDeliveryRule = bodies.some((b) => b.indexOf("把成果正文完整写在这条回复里") >= 0);
+        if (LIVE) {
+          console.log("  · LIVE 模式：载荷级取证三条跳过（真 provider 没有 stub 录制可查；" +
+            "对应的「岗位 prompt 进了 payload」由 data/llm/turns 的 artifact 另行核对）");
+        }
+        const hasDeliveryRule = !LIVE && bodies.some((b) => b.indexOf("把成果正文完整写在这条回复里") >= 0);
         hasDeliveryRule
           ? ok("P13 载荷级：发给模型的 prompt 里带着「把成果正文完整写在这条回复里」" +
               "（模型知道要交正文，不是交路径）")
           : bad("P13 载荷级：发出去的 prompt 里没有「交作业」指令 ⇒ 模型会只回一句「已完成」",
                 "录到的请求：" + JSON.stringify(who));
-        const hasContractDir = bodies.some((b) => /0[1-6]-[a-z-]+/.test(b) && b.indexOf("成果会被 Host 落到") >= 0);
+        const hasContractDir = !LIVE && bodies.some((b) => /0[1-6]-[a-z-]+/.test(b) && b.indexOf("成果会被 Host 落到") >= 0);
         hasContractDir
           ? ok("P13 载荷级：prompt 里带着契约落点（「成果会被 Host 落到 共享目录 X/ 下」）")
           : bad("P13 载荷级：prompt 里没有契约落点 ⇒ 成员不知道交到哪，只会汇报路径",
                 "录到的请求：" + JSON.stringify(who));
         const leakedShape = recs.some((r) => JSON.stringify(r).match(/sk-[A-Za-z0-9_-]{8,}/));
+        /* key 形状检查在 LIVE 模式下改查真 turn artifact —— 那里也有 Authorization。 */
         leakedShape
           ? bad("P13 载荷级：录下来的请求里出现了 key 形状的明文")
           : ok("P13 载荷级：录下来的请求里没有 key 明文形状");
@@ -1014,6 +1037,17 @@ function startStub() {
           .filter((x) => x.feat);
         const missingRole13 = roleFeats13.filter((x) =>
           !bodies.some((b) => b.indexOf(x.feat) >= 0));
+        if (LIVE) {
+          /* LIVE：真 turn artifact 里核「岗位 prompt 真进了模型」。 */
+          const turnFiles = listFiles(D("llm/turns"), ".json");
+          const turnBlobs = turnFiles.map((f) => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } }).join("\n");
+          const missLive = roleFeats13.filter((x) => turnBlobs.indexOf(x.feat) < 0);
+          missLive.length === 0 && turnFiles.length > 0
+            ? ok("P13 载荷级（真 provider）：五个角色的岗位 prompt 都进了发给模型的请求（" +
+                turnFiles.length + " 份 turn artifact）")
+            : bad("P13 载荷级（真 provider）：岗位 prompt 没进请求（turn artifact " +
+                turnFiles.length + " 份）", "缺：" + missLive.map((x) => x.name).join("、"));
+        }
         roleFeats13.length >= 5 && missingRole13.length === 0
           ? ok("P13 载荷级：五个角色的**岗位 prompt 都进了发给模型的 payload**" +
               "（system 通道：模型知道每棒要交什么、哪些事不能做）")
@@ -1039,6 +1073,78 @@ function startStub() {
           ? ok("P13 契约里带着**流水线顺序**（" + ordered.length + " 个成员有 order ⇒ 按顺序串行跑）")
           : bad("P13 契约里没有 order ⇒ 五棒会被当并行分工跑，后四棒拿不到上游成果",
                 JSON.stringify(withContract.map((b) => [b && b.name, b && b.deliverable && b.deliverable.order])).slice(0, 240));
+
+        /* ══════════════════════════════════════════════════════════════════
+         * LIVE 断言：真 provider 下「真人用一次」到底是什么样
+         * ══════════════════════════════════════════════════════════════════ */
+        if (LIVE) {
+          const st = report13 && (report13.stage_results || []);
+          const allPass = st.length >= 5 && st.every((x) => x && x.pass === true);
+          allPass
+            ? ok("LIVE-01 真 provider：五棒**每一棒都过了验收**（" + st.length + " 棒）")
+            : bad("LIVE-01 真 provider：五棒没全过验收",
+                  JSON.stringify(st.map((x) => [x && x.name, x && x.pass, x && (x.reason || x.code)])).slice(0, 400));
+          const timed = st.filter((x) => x && Number(x.duration_ms) > 0);
+          timed.length >= 5
+            ? ok("LIVE-02 真 provider：每一棒的耗时都记下来了（共 " +
+                st.reduce((a, x) => a + Number((x && x.duration_ms) || 0), 0) + "ms）")
+            : bad("LIVE-02 真 provider：缺每棒耗时（" + timed.length + "/5）");
+          /* LIVE-03：**产物里的链接是不是真的**。
+             这是真 provider 才验得了的东西 —— stub 交的是固定夹具，链接永远是
+             那两条示例 URL；真模型交出来的链接可能是**编的**。
+             ⇒ 抽前若干条真的去抓一遍：能打开 / 404 / 连不上，分别计数。
+             这不是门禁的 PASS 条件（外网会抖），是给「最真实使用体验」看的
+             **实测数据**：模型在这一棒到底交了什么。 */
+          const urls = [];
+          const seen = new Set();
+          for (const f of (files13 || [])) {
+            let body = "";
+            try { body = fs.readFileSync(f, "utf8"); } catch { /* ignore */ }
+            for (const m of String(body).match(/https?:\/\/[^\s)\]}"'<>，。；：、]+/g) || []) {
+              if (!seen.has(m)) { seen.add(m); urls.push(m); }
+            }
+          }
+          const sample = urls.slice(0, 6);
+          const probe = [];
+          for (const u of sample) {
+            try {
+              const ctl = new AbortController();
+              const t = setTimeout(() => ctl.abort(), 8000);
+              const resp = await fetch(u, { method: "GET", redirect: "follow", signal: ctl.signal,
+                headers: { "User-Agent": "BitBot-gate-probe/1.0" } });
+              clearTimeout(t);
+              probe.push({ url: u, status: resp.status, ok: resp.ok });
+            } catch (e) {
+              probe.push({ url: u, status: 0, ok: false, err: String((e && e.message) || e).slice(0, 60) });
+            }
+          }
+          const alive = probe.filter((x) => x.ok).length;
+          const dead = probe.filter((x) => !x.ok && x.status >= 400).length;
+          const unreach = probe.filter((x) => !x.ok && x.status === 0).length;
+          console.log("  · LIVE-03 产物里的链接实测（抽 " + sample.length + " 条）：" +
+            "可访问 " + alive + " · 4xx/5xx " + dead + " · 连不上 " + unreach);
+          for (const pr of probe) {
+            console.log("      " + (pr.ok ? "✓ " : "✗ ") + pr.status + " " + pr.url.slice(0, 110) +
+              (pr.err ? "  (" + pr.err + ")" : ""));
+          }
+          console.log("  · LIVE-04 真 provider 的实测数据（供「最真实使用体验」用）：" +
+            JSON.stringify({ 棒数: st.length, 全过: allPass,
+              每棒ms: st.map((x) => Number((x && x.duration_ms) || 0)),
+              链接总数: urls.length, 抽查: probe.length, 可访问: alive }));
+          /* key 不许出现在任何落盘文件里（真 provider 这一轮） */
+          let leakHit = "";
+          for (const dir of [D("llm/turns"), D("llm"), D("desktop")]) {
+            for (const f of listFiles(dir, "")) {
+              let t = "";
+              try { t = fs.readFileSync(f, "utf8"); } catch { continue; }
+              if (t.match(/sk-(cp|api)-[A-Za-z0-9_-]{20,}/)) { leakHit = f; break; }
+            }
+            if (leakHit) break;
+          }
+          leakHit
+            ? bad("LIVE-05 真 provider：落盘文件里出现了 key 明文：" + leakHit)
+            : ok("LIVE-05 真 provider：落盘文件里没有 key 明文");
+        }
       }
     }
   } catch (e) {

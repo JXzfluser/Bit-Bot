@@ -3186,7 +3186,18 @@ function createProductSurface(repoRoot, opts = {}) {
     // ⇒ 少一个能力(认领),不该让整个编排失败 —— 失败才会让"团队"变回"广播"都没了。
     const canAskMembers = typeof selectResponders === "function";
 
-    const timeoutMs = Number(deps.timeoutMs || 120000);
+    /* 房间回合的时限（批次 6）：真 provider 下**默认 120 秒不够**。
+     * 实测（真 MiniMax）：第一棒（要联网搜索的成员）**正好 180 秒**被内核
+     * 的请求闸砍掉 ⇒ 用户看到的是「这一棒没有交出任何内容」——
+     * 看起来像模型不会干活，其实只是慢。
+     * stub 秒回 ⇒ 这个坑在门禁里从来没暴露过。
+     * ⇒ 时限可配：BITBOT_ROOM_RESPONDER_TIMEOUT_MS（毫秒）。
+     *   不设就还是 120000 ⇒ 既有行为一字不变。 */
+    const timeoutMs = Number(
+      deps.timeoutMs ||
+        process.env.BITBOT_ROOM_RESPONDER_TIMEOUT_MS ||
+        120000,
+    );
     const decisionTimeoutMs = Number(deps.discretionTimeoutMs || Math.min(timeoutMs, 30000));
     const at = nowIso();
     const roundStart = Date.now(); /* 整轮用时（复盘：这一批总共花了多久） */
@@ -3529,6 +3540,28 @@ function createProductSurface(repoRoot, opts = {}) {
           if (why.truncated) row.error_truncated = true;
         }
         appendRoomTranscript(room.id, row);
+        /* 进度可见（批次 6）：每一棒跑完**立刻**在群里留一行。
+         * 缘起（真 provider 实测）：五棒串行、每棒一两分钟 ⇒ 用户发完就
+         * 干等，群里一个字都不动 ⇒ 看起来像卡死了。复盘数据（每棒耗时、
+         * 验收结论）本来就有，只是**发得太晚** —— 整轮结束才给。
+         * ⇒ 这里把同一份数据提前一行一行发出去：谁、多久、过没过。
+         * 数据不新增一套来源，就是这一棒自己的 res/stage。 */
+        try {
+          const st = res.stage || {};
+          appendRoomTranscript(room.id, {
+            kind: "stage_done",
+            room_id: room.id,
+            speaker: res.bot_id,
+            bot_id: res.bot_id,
+            name: res.name,
+            hop,
+            at,
+            duration_ms: res.duration_ms,
+            pass: res.ok && st.pass !== false,
+            reason: st.reason || res.error || "",
+            error_code: res.error ? String(res.error).slice(0, 120) : undefined,
+          });
+        } catch (_) { /* 进度行写不下去不能影响主流程 */ }
         roomBoard.post(
           room.id, "relay", res.bot_id,
           res.ok ? (res.text || "") : "（这一棒没成功）",
