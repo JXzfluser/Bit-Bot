@@ -85,6 +85,23 @@ function dropCommentLines(src) {
 {
   const src = read(SMOKE);
   const code = dropCommentLines(src);
+
+  /* turn_json 认哪个变量名 —— 这是**尺子与真源对账**的关键。
+   * 以前 G-11 块里写的是 BITBOT_DATA_ROOT=...，而 turn_json 函数体内又硬写了
+   * `BITBOT_DATA_ROOT="$GATE_SHADOW/data"` ⇒ 调用方的值被**覆盖** ⇒
+   * 隔离根 data-gp02 从没被创建 ⇒ GP-02 三条断言在 CI 上全红、
+   * 「门禁不碰用户库」那条也红（真目录的库被别处写过）。
+   * 本地不红是因为工作区里恰好有那份库，把「根用错」掩盖了。
+   *
+   * ⇒ 尺子现在判两件事，缺一不可：
+   *   ① turn_json 用的数据根变量**可被调用方覆盖**（${TURN_DATA_ROOT:-…}）
+   *   ② G-11 块用的那个变量名**正是** turn_json 认的那个
+   * 拼错变量名 ⇒ 隔离根不生效 ⇒ 用户库被写 ⇒ 判红。 */
+  const turnRootVar = (() => {
+    const m = /BITBOT_DATA_ROOT="\$\{(\w+):-/.exec(code);
+    return m ? m[1] : null;
+  })();
+
   const judgeGate = (text) => {
     const i = text.indexOf('== G-11 Bot 模板目录');
     if (i < 0) return { ok: false, why: "找不到 G-11 块" };
@@ -93,8 +110,18 @@ function dropCommentLines(src) {
     if (/rm\s+-f\s+[^\n]*data\/desktop\/bot-templates\.json/.test(block)) {
       return { ok: false, why: "G-11 仍在 rm 真实模板库" };
     }
-    if (!/BITBOT_DATA_ROOT/.test(block)) {
-      return { ok: false, why: "G-11 没有把数据根指到临时目录（用户库照样被写）" };
+    /* ① turn_json 必须允许调用方覆盖数据根。 */
+    const ov = /BITBOT_DATA_ROOT="\$\{(\w+):-/.exec(text);
+    if (!ov) {
+      return { ok: false, why: "turn_json 的数据根不可被调用方覆盖 —— 调用方传的根会被函数体覆盖 ⇒ 隔离根不生效" };
+    }
+    /* ② G-11 块用的变量名必须与 turn_json 认的一致。 */
+    const used = /\b(\w+_DATA_ROOT)=/.exec(block);
+    if (!used) {
+      return { ok: false, why: "G-11 块没有把数据根指到临时目录（用户库照样被写）" };
+    }
+    if (used[1] !== ov[1]) {
+      return { ok: false, why: "G-11 用的是 " + used[1] + "，而 turn_json 认的是 " + ov[1] + " ⇒ 隔离根不生效（这个变量会被覆盖）" };
     }
     if (!/sha256|shasum/.test(block)) {
       return { ok: false, why: "G-11 收尾没有证明真实库未被改动" };
@@ -102,26 +129,39 @@ function dropCommentLines(src) {
     if (/d\.bots\s*=\s*d\.bots\.filter\(\s*x\s*=>\s*!\s*\[\s*'Chiefy'/.test(block)) {
       return { ok: false, why: "G-11 仍在按名字从真实 bots.json 删 Bot" };
     }
-    return { ok: true, why: "临时数据根 + sha256 收尾，用户库只读" };
+    return { ok: true, why: "临时数据根（" + ov[1] + "，turn_json 认它）+ sha256 收尾，用户库只读" };
   };
 
   const r = judgeGate(code);
   if (r.ok) ok("TS-01", "G-11 不碰用户库：" + r.why);
   else bad("TS-01", "G-11 会改动用户库：" + r.why);
+  if (!turnRootVar) bad("TS-01z", "turn_json 的数据根不可被调用方覆盖（找不到 ${VAR:-…} 形态）");
+  else ok("TS-01z", "turn_json 的数据根可被调用方覆盖（" + turnRootVar + "）");
 
-  // 注入对照：把修复前那两种写法喂回去，都必须判红。
+  // 注入对照：把修复前那几种写法喂回去，都必须判红。
   //  （A）直接 rm 真实库；（B）数据根指到临时目录、却仍按名字从真实 bots.json 删 Bot。
+  //  （C）**本轮真实事故**：turn_json 硬写数据根（调用方传的被覆盖）
+  //      ＋ G-11 块用 BITBOT_DATA_ROOT ⇒ 变量名对不上 ⇒ 隔离根不生效。
   const injectedA = '== G-11 Bot 模板目录\nrm -f data/desktop/bot-templates.json\nj=$(turn_json "list bot templates")\n';
   const injectedB =
     "== G-11 Bot 模板目录\nj=$(BITBOT_DATA_ROOT=/tmp/x turn_json \"list bot templates\")\n" +
     "shasum -a 256 data/desktop/bot-templates.json\n" +
     "node -e \"d.bots=d.bots.filter(x=>!['Chiefy','Scouty','Sage','Ghost'].includes(x.name))\"\n";
+  // turn_json 不可覆盖（旧写法：函数体硬写 BITBOT_DATA_ROOT）
+  const injectedC =
+    "turn_json() {\n" +
+    "  BITBOT_DATA_ROOT=\"$GATE_SHADOW/data\" node hosts/cli_host/run_turn.js \"$1\"\n" +
+    "}\n" +
+    "== G-11 Bot 模板目录\n" +
+    "gp02_turn() { BITBOT_DATA_ROOT=\"$GP02_DATA\" turn_json \"$1\"; }\n" +
+    "shasum -a 256 data/desktop/bot-templates.json\n";
   const a = judgeGate(injectedA);
   const b = judgeGate(injectedB);
-  if (a.ok || b.ok) {
-    bad("TS-01b", "注入对照失效：旧实现仍判绿", { rm: a.ok, delByName: b.ok });
+  const c = judgeGate(injectedC);
+  if (a.ok || b.ok || c.ok) {
+    bad("TS-01b", "注入对照失效：旧实现仍判绿", { rm: a.ok, delByName: b.ok, rootNotOverridable: c.ok });
   } else {
-    ok("TS-01b", "注入对照：rm 真库 / 按名字删 Bot 两种旧写法都判红");
+    ok("TS-01b", "注入对照：rm 真库 / 按名字删 Bot / 数据根被覆盖 三种旧写法都判红");
   }
 }
 

@@ -98,7 +98,21 @@ GATE_CUR_TIER=""
 date +%s > /tmp/gate-run-start.txt 2>/dev/null || true
 
 ok()  { PASS=$((PASS+1)); echo "  ✓ $1"; }
-bad() { FAIL=$((FAIL+1)); echo "  ✗ $1"; printf '%s\t%s\n' "${GATE_CUR_TIER:-?}" "$1" >> "$GATE_RED_LOG"; }
+# bad() 的第二个参数是**详情**。以前它被丢掉 ⇒ CI 上每条红只有一个标题，
+# 想知道「为什么红」必须下 190KB 的 artifact 日志 —— 而公开仓库的 artifact
+# 下载需要认证，于是每次都得等 token。这是「红行要能自证」的第一道坎。
+# ⇒ 详情进红日志（CI 的 Show red lines 会把它写成注解 everybody 可见）。
+bad() {
+  FAIL=$((FAIL+1))
+  local title="$1" detail="${2:-}"
+  if [ -n "$detail" ]; then
+    echo "  ✗ $title — $detail"
+    printf '%s\t%s — %s\n' "${GATE_CUR_TIER:-?}" "$title" "$detail" >> "$GATE_RED_LOG"
+  else
+    echo "  ✗ $title"
+    printf '%s\t%s\n' "${GATE_CUR_TIER:-?}" "$title" >> "$GATE_RED_LOG"
+  fi
+}
 
 # ---- A0-4：门禁不许改写已跟踪文件 -------------------------------------------
 # 本轮实测事故：跑完整矩阵后 `report.md` 从 3738 行被写成 182 行、
@@ -168,7 +182,16 @@ turn_json() { # $1 = user phrase, optional env BITBOT_APPROVED=1
   # 下展开空数组会报 "extra[@]: unbound variable"，整条命令根本不执行。
   # 后果不是难看：这条函数是全部 kind 断言的入口，它一失败，门禁在 macOS 上
   # 永远是「✗ create bot chain」这样的连锁红（实测 296 项红），红的却不是产品。
-  BITBOT_DATA_ROOT="$GATE_SHADOW/data" \
+  #
+  # 数据根**允许调用方覆盖**（${TURN_DATA_ROOT:-$GATE_SHADOW/data}）：
+  # 以前这里硬写 "$GATE_SHADOW/data"，于是 G-11 那一段的
+  # `gp02_turn() { BITBOT_DATA_ROOT="$GP02_DATA" turn_json "$1"; }`
+  # **完全无效** —— 函数体内的赋值覆盖了调用方的环境变量 ⇒ GP-02 实际
+  # 跑在 .gate-matrix/data，隔离根 data-gp02 从没被创建 ⇒
+  # 「seed catalog / create from template / persisted」三条全红，
+  # 而红的原因是「数据根用错了」，不是「模板逻辑坏了」。
+  # 本地绿、CI 红同源：本地那份真库里恰好有模板库，掩盖了根用错。
+  BITBOT_DATA_ROOT="${TURN_DATA_ROOT:-$GATE_SHADOW/data}" \
     node hosts/cli_host/run_turn.js ${extra[@]+"${extra[@]}"} "$1" 2>/dev/null | tail -1
 }
 
@@ -737,7 +760,9 @@ TPL_SHA_BEFORE=$(shasum -a 256 "$TPL_STORE" 2>/dev/null | awk '{print $1}')
 BOTS_SHA_BEFORE=$(shasum -a 256 "$BOTS_STORE" 2>/dev/null | awk '{print $1}')
 GP02_DATA="$PWD/data-gp02"
 rm -rf "$GP02_DATA"
-gp02_turn() { BITBOT_DATA_ROOT="$GP02_DATA" turn_json "$1"; }
+# 用 TURN_DATA_ROOT（turn_json 认它）而不是 BITBOT_DATA_ROOT
+# —— 后者在 turn_json 函数体内被覆盖（见上面那段注释）。
+gp02_turn() { TURN_DATA_ROOT="$GP02_DATA" turn_json "$1"; }
 j=$(gp02_turn "list bot templates")
 echo "$j" | field intent | grep -q list_bot_templates && echo "$j" | field hostKinds | grep -q bot_templates_list:ok && node -e "
 const fs=require('fs');
