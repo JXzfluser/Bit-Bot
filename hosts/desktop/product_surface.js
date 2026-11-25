@@ -3571,8 +3571,13 @@ function createProductSurface(repoRoot, opts = {}) {
         });
         const prompt = roomOrchestrator.buildRelayPrompt({
           task, roster, hop, prev, boardText, confirmAnswer, maxHops, contract: stageContract,
-          /* Host 找料（批次 10）：只有第一棒带材料。 */
-          materials: hop === 0 ? stageMaterials : null,
+          /* Host 找料（批次 10 续）：材料**不进编排 prompt**。
+             编排 prompt 整段进内核，内核用它做意图识别（建房句式全文子串匹配）
+             ⇒ 材料是 RSS 标题/正文这种外部中文文本 ⇒ 会被误判成建房
+             ⇒ 实测：第一棒交上来的是内核调试串，第二棒 names_not_found。
+             ⇒ 材料改走 **ctx.materials → roomContext → system 通道**
+                （只进模型请求、不参与内核意图解析）。 */
+          materials: null,
           /* 流水线：上一棒交的是**成果正文**（整张情报卡 / 一份 brief）⇒ 放宽，
              否则下一棒拿到的是被截断的半截，等于没拿到上游。 */
           prevMaxChars: isPipeline ? 2500 : 0,
@@ -3595,6 +3600,8 @@ function createProductSurface(repoRoot, opts = {}) {
           mentioned_names: [], role: "member", relay: true, hop,
           userText: String(task || ""),
           subtask: null, subtasks: [],
+          /* Host 取回的材料（批次 10 续）：走 roomContext/system 通道。 */
+          materials: hop === 0 && stageMaterials ? String(stageMaterials.text || "") : "",
           shared_board: boardText, board_group_id: room.id,
           previous_turn: prev
             ? {
@@ -4478,8 +4485,8 @@ function createProductSurface(repoRoot, opts = {}) {
         });
         const prompt = roomOrchestrator.buildResponderPrompt({
           task, subtask, boardText, contract: stageContract,
-          /* Host 找料（批次 10 续）：并行分工也带材料。 */
-          materials: fanoutMaterials,
+          /* 材料**不进编排 prompt**（会被内核的建房句式误判）⇒ 走 ctx.materials。 */
+          materials: null,
         });
         const ctx = {
           room: room.id,
@@ -4495,6 +4502,8 @@ function createProductSurface(repoRoot, opts = {}) {
           // 用户原话。排程落盘要用它，不能用上面这段编排 prompt（见 host_ffi
           // executeRoutineEffect 的注释：prompt 污染会让定时任务每天重做一次编排）。
           userText: String(task || ""),
+          /* Host 取回的材料（批次 10 续）：走 roomContext/system 通道。 */
+          materials: fanoutMaterials ? String(fanoutMaterials.text || "") : "",
           subtask: subtask ? { id: subtask.id, title: subtask.title } : null,
           subtasks: subs.map(s => ({ id: s.id, title: s.title })),
           shared_board: boardText,

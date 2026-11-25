@@ -1064,6 +1064,38 @@ async function sectionG6() {
     "G6-09 真的交 12 条**仍然判红**（计数改精确了，判据没被放松）",
     JSON.stringify({ pass: vTooMany.pass, reason: vTooMany.reason }));
 
+  /* G6-11：材料**必须走 system 通道**，不进编排 prompt。
+   *
+   * 缘起（**真 provider 第四轮**）：材料是 RSS 标题/正文这种**外部中文文本**，
+   * 编排 prompt 整段进内核、内核用它做意图识别（建房句式**全文子串匹配**）
+   * ⇒ 材料里一句「跟 Googler 与零售、制造、游戏…同台」就把这一棒带去建房了
+   * ⇒ 第一棒交上来的是**内核调试串**（5630 字），第二棒 names_not_found。
+   * ⇒ 与岗位 prompt（批次 5）同一个道理：材料走 roomContext → system 通道。 */
+  {
+    const { createHostFfi } = require(path.resolve(__dirname, "..", "hosts", "shared", "host_ffi.js"));
+    const ffi = createHostFfi(path.resolve(__dirname, ".."), { dataRoot: "/tmp" });
+    const MAT = "候选 1：文心 5.5 Flash Preview 正式开源\n链接：https://www.qbitai.com/2026/11/512370.html\n摘录：正文…";
+    /* G6-11a：材料进 system 通道 */
+    const sys = String(ffi.llmSystemPrompt("bot-1", { materials: MAT }, []) || "");
+    check("G6-11a", sys.indexOf("Host 已经取回的材料") >= 0 && sys.indexOf("qbitai.com/2026/11/512370.html") >= 0,
+      "G6-11a 材料进了 **system 通道**（模型看得见，且不参与内核意图解析）",
+      sys.slice(0, 160));
+
+    /* G6-11b：**没有成员也没有最近转录**时，材料也不能被早退吞掉（实测差点踩到） */
+    const sysAlone = String(ffi.llmRoomContextBlock({ materials: MAT }) || "");
+    check("G6-11b", sysAlone.indexOf("qbitai.com/2026/11/512370.html") >= 0,
+      "G6-11b 只有材料、没成员没转录时，材料**不被早退吞掉**",
+      "长度 " + sysAlone.length);
+
+    /* G6-11c：材料**不在**编排 prompt 里（否则会被内核误判成建房） */
+    const relayNoMat = buildRelayPrompt({
+      task: "找 3 条情报", roster: [{ id: "b1", name: "情报侦察员" }], hop: 0,
+      contract, materials: null,
+    });
+    check("G6-11c", relayNoMat.indexOf("Host 已经取回的材料") < 0,
+      "G6-11c 材料**不在编排 prompt 里**（编排 prompt 会整段进内核做意图识别）");
+  }
+
   /* G6-10：既有形态**行为不变**（编号夹具 / 纯列表 / 题 N｜ / brief 夹具 都还是原来的数） */
   const briefShape = [
     "# 选题 brief：园区光伏", "",

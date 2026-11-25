@@ -116,6 +116,8 @@ function createRoomRuntime(o) {
       mentionedNames: (ctx && ctx.mentioned_names) || [],
       selfName: (ctx && ctx.name) || "",
       currentTask: task,
+      /* Host 取回的材料（批次 10 续）：走 roomContext/system 通道。 */
+      materials: (ctx && ctx.materials) || "",
       sanitize: safe,
       maxField: 80,
       maxTotal: Number(process.env.BITBOT_ROOM_CONTEXT_MAX || 4000),

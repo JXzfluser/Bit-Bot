@@ -113,6 +113,17 @@ function buildRoomContext(input) {
      * 这一棒直接去建房了（实测：事实编辑那一棒 names_not_found）。
      * roomContext 只进**模型请求**、不参与内核意图解析 ⇒ 正好是它该去的地方。 */
     self_prompt: "",
+    /* Host 取回的材料（批次 10 续）。
+     *
+     * 为什么也走 roomContext 而不是编排 prompt：
+     *   编排 prompt 会**整段**进内核，而内核用它做意图识别
+     *   （中文建房句式是**全文子串匹配**）⇒ 材料是 RSS 标题/正文这种
+     *   **外部中文文本**，里面随便哪句都可能被误判成「把 X 拉进 Y 群」
+     *   ⇒ 实测：材料里一句「跟 Googler 与零售、制造、游戏…同台」就把这一棒
+     *   带去建房了（names_not_found），第一棒交上来的竟是内核调试串。
+     *   ⇒ 与岗位 prompt（批次 5）同一个道理：走 system 通道，
+     *   只进**模型请求**、不参与内核意图解析。 */
+    materials: "",
     recent: [],
     chars: 0,
   };
@@ -126,6 +137,19 @@ function buildRoomContext(input) {
       const text = clipField(selfPromptRaw, Math.min(2400, left));
       if (text) {
         out.self_prompt = text;
+        used += text.length + 16;
+      }
+    }
+  }
+  /* 材料（批次 10 续）：紧跟岗位 prompt —— 它也是「这一棒要交什么」的硬材料，
+     比成员列表和最近转录更该保住。 */
+  const materialsRaw = String(opts.materials || "").trim();
+  if (materialsRaw) {
+    const left = maxTotal - used;
+    if (left >= 200) {
+      const text = clipField(materialsRaw, Math.min(4000, left));
+      if (text) {
+        out.materials = text;
         used += text.length + 16;
       }
     }

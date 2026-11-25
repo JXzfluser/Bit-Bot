@@ -6504,6 +6504,11 @@ function createHostFfi(repoRoot, opts = {}) {
   function llmRoomContextBlock(rc) {
     if (!rc || typeof rc !== "object") return "";
     const members = Array.isArray(rc.members) ? rc.members : [];
+    /* 材料（批次 10 续）：**先取出来**，因为下面的早退条件要算上它。
+       ⚠ 早退 bug（实测差点踩到）：原来的早退是
+       「没有成员也没有最近转录 ⇒ 返回空串」⇒ **材料会被一起吞掉**
+       ⇒ 成员列表空的那一次，模型根本看不到材料。 */
+    const materials = String(rc.materials || "").trim();
     const rows = [];
     for (const m of members) {
       const name = String((m && m.name) || "").trim();
@@ -6522,7 +6527,7 @@ function createHostFfi(repoRoot, opts = {}) {
         return "· " + speaker + "：" + text;
       })
       .filter(Boolean);
-    if (!rows.length && !recent.length) return "";
+    if (!rows.length && !recent.length && !materials) return "";
     const mentioned = (Array.isArray(rc.mentioned) ? rc.mentioned : [])
       .map((s) => String(s || "").trim())
       .filter(Boolean);
@@ -6537,6 +6542,20 @@ function createHostFfi(repoRoot, opts = {}) {
      * 而这里的内容只进**模型请求**，不参与内核意图解析 ⇒ 正好是它该去的地方。
      * 它是**职责**，不是系统指令 —— 但它由 Host 从成员记录里读出来、不是用户
      * 拼的文本，所以可以当约束执行。 */
+    /* Host 取回的材料（批次 10 续）：走 system 通道，不进编排 prompt。
+       理由见 room_context.js 的注释（材料是外部中文文本，进编排 prompt 会被
+       内核的建房句式全文匹配误判）。 */
+    if (materials) {
+      lines.push(
+        "",
+        "【Host 已经取回的材料（不用你再上网找）】",
+        materials,
+        "这些材料里每一条链接都**由 Host 实测过能打开**，死链已经剔掉了。",
+        "直接用下面的材料做判断和写作；**不要自己去 web_search / web_fetch 找料**" +
+          "（你一去抓就会陷在登录墙和打不开的站点里，任务会超时）。",
+        "材料抓不到正文的地方只写标题和链接、并标「待核查」，**不要编造细节**。",
+      );
+    }
     const selfPrompt = String(rc.self_prompt || "").trim();
     if (selfPrompt) {
       lines.push(
@@ -28010,6 +28029,11 @@ brief 里通常有 3 个题，但这一轮只有 1 个发布位。这一节必�
     probeLinkReachability,
     resetStageFetchBudget,
     setStageFetchMax,
+    /* 导出这两个纯函数（批次 10 续）：门禁要能验证
+       「材料真的进了 system 通道」且「没进编排 prompt」。
+       它们不碰 IO，导出无害。 */
+    llmRoomContextBlock,
+    llmSystemPrompt,
     setStageMaterialProvided,
     stageSearchBlocked,
     stageSearchBlockReason,
