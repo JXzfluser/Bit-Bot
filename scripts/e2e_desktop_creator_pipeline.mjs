@@ -424,6 +424,20 @@ function startStub() {
         try { fs.rmSync(path.join(ROUTINE_DIR, f), { force: true }); } catch { /* keep */ }
       }
     }
+    /* ⚠️ 收尾**另存一份运行时快照**（批次 10 续）。
+     * 缘起：真 provider 第十三轮，链停在第 2 棒 ⇒ 要查「成员记录里几个带契约」，
+     *   而 restore() 把 bots.json / rooms.json 还原成**开局快照** ⇒
+     *   **运行时真相被自己擦掉了** ⇒ 查无可查，只能靠猜。
+     * ⇒ 还原之前先把**运行时那一份**存到 <file>.last-run.json ⇒ 下一轮就能看真相。
+     * （只写进隔离根，不碰用户数据。） */
+    const keepRuntime = (p) => {
+      try {
+        if (!fs.existsSync(p)) return;
+        fs.copyFileSync(p, p + ".last-run.json");
+      } catch { /* 取不到就取不到，不判红 */ }
+    };
+    keepRuntime(ROOMS); keepRuntime(BOTS);
+    keepRuntime(D("desktop", "pending-approvals.jsonl"));
     const put = (p, buf) => { buf === null ? fs.rmSync(p, { force: true }) : fs.writeFileSync(p, buf); };
     put(ROOMS, snap.rooms); put(SESSIONS, snap.sessions); put(BOTS, snap.bots); put(ROUTINES, snap.routines);
   };
