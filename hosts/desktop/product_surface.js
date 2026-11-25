@@ -3509,6 +3509,16 @@ function createProductSurface(repoRoot, opts = {}) {
                   "直接用材料写情报卡；材料里抓不到正文的条目标『待核查』即可。",
                 );
               }
+              /* 搜索**也**禁掉（批次 10 续）：
+                 真 provider 实测第三轮：只禁抓取，模型「搜 → 抓（被拒）→ 再搜」
+                 地循环 ⇒ 600 秒超时、一条没交。 */
+              if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageMaterialProvided === "function") {
+                roomRuntimeDeps.setStageMaterialProvided(
+                  true,
+                  "Host 已经把取回并实测可达的材料给你了，**这一棒不用再上网搜**。" +
+                  "直接用材料写；材料里抓不到正文的条目标『待核查』即可。",
+                );
+              }
             } catch (_) { /* 禁抓失败不影响这一棒（只是模型可能多抓几次） */ }
             stageMaterials = {
               text: prep.candidates
@@ -3614,6 +3624,9 @@ function createProductSurface(repoRoot, opts = {}) {
              （第一棒的禁抓由下一棒前的这一次复位还原。） */
           if (hop > 0 && roomRuntimeDeps && typeof roomRuntimeDeps.setStageFetchMax === "function") {
             try { roomRuntimeDeps.setStageFetchMax(-1); } catch (_) { /* 恢复失败不判红 */ }
+          }
+          if (hop > 0 && roomRuntimeDeps && typeof roomRuntimeDeps.setStageMaterialProvided === "function") {
+            try { roomRuntimeDeps.setStageMaterialProvided(false); } catch (_) { /* 恢复失败不判红 */ }
           }
         } catch (_) { /* 清额度失败不影响这一棒 */ }
         try {
@@ -4115,6 +4128,9 @@ function createProductSurface(repoRoot, opts = {}) {
         if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageFetchMax === "function") {
           roomRuntimeDeps.setStageFetchMax(-1);
         }
+        if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageMaterialProvided === "function") {
+          roomRuntimeDeps.setStageMaterialProvided(false);
+        }
       } catch (_) { /* 复位失败不判红 */ }
 
       const final_report = {
@@ -4413,6 +4429,14 @@ function createProductSurface(repoRoot, opts = {}) {
             roomRuntimeDeps.setStageFetchMax(
               0,
               "Host 已经把取回并实测可达的材料给你了，**这一棒不需要再抓网页**。" +
+              "直接用材料交成果；材料里抓不到正文的条目标『待核查』即可。",
+            );
+          }
+          /* 搜索**也**禁掉（批次 10 续）：只禁抓取，模型会「搜 → 抓（被拒）→ 再搜」。 */
+          if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageMaterialProvided === "function") {
+            roomRuntimeDeps.setStageMaterialProvided(
+              true,
+              "Host 已经把取回并实测可达的材料给你了，**这一棒不用再上网搜**。" +
               "直接用材料交成果；材料里抓不到正文的条目标『待核查』即可。",
             );
           }
@@ -4742,6 +4766,9 @@ function createProductSurface(repoRoot, opts = {}) {
       try {
         if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageFetchMax === "function") {
           roomRuntimeDeps.setStageFetchMax(-1);
+        }
+        if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageMaterialProvided === "function") {
+          roomRuntimeDeps.setStageMaterialProvided(false);
         }
       } catch (_) { /* 复位失败不判红 */ }
       const settled = results.map((res, i) => res || {

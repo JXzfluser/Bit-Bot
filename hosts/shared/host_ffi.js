@@ -327,6 +327,15 @@ let webFetchStageCount = 0;
  * ⇒ 找料模式下把它设成 **0**：web_fetch 直接被拒，并说清为什么。
  *   —— 这是**确定性**约束，不靠模型「自觉」。 */
 let webFetchStageMax = WEBFETCH_STAGE_MAX;
+/* 「Host 已经把料给全了」标记（批次 10 续）。
+ *
+ * 缘起（**真 provider 实测第三轮**）：禁掉 web_fetch 之后，第一棒**超时**了
+ * （600 秒没交）⇒ 模型在 **web_search ↔ web_fetch 反复循环**：
+ *   搜 → 抓（被拒）→ 再搜 → 再抓（被拒）…
+ * ⇒ 抓被禁了，**搜索还在** ⇒ 模型照样撒网。
+ * ⇒ 「材料已给全」时，**搜索和抓取一起禁**：模型只剩「写」这一件事可做。 */
+let stageMaterialProvided = false;
+let stageMaterialReason = "";
 
 function webFetchRateExceeded() {
   const now = Date.now();
@@ -352,6 +361,27 @@ function resetStageFetchBudget() {
  * @param {string} why 禁止时告诉成员的原因（会出现在错误信息里）。
  */
 let webFetchStageMaxReason = "";
+/**
+ * 设「Host 已把料给全」标记。
+ * @param {boolean} v  true = 这一棒的料已经由 Host 给好（禁搜索 + 禁抓取）
+ * @param {string} why 告诉成员为什么（会出现在错误信息里）
+ */
+function setStageMaterialProvided(v, why) {
+  stageMaterialProvided = Boolean(v);
+  stageMaterialReason = v ? String(why || "") : "";
+  return stageMaterialProvided;
+}
+
+/** 当前这一棒是否禁止搜索（材料已给全）。 */
+function stageSearchBlocked() {
+  return stageMaterialProvided;
+}
+
+/** 当前这一棒禁止搜索时，给成员的说法。 */
+function stageSearchBlockReason() {
+  return stageMaterialReason || "Host 已经把材料给你了，这一棒不需要再上网找。";
+}
+
 function setStageFetchMax(n, why) {
   const v = Number(n);
   if (!Number.isFinite(v) || v < 0) {
@@ -6778,6 +6808,16 @@ function createHostFfi(repoRoot, opts = {}) {
   async function webSearch(query, opts = {}) {
     const q = String(query || "").trim();
     if (!q) return { ok: false, error: "empty_query", sources: [] };
+    /* 「Host 已把料给全」⇒ 这一棒**禁止搜索**（批次 10 续）。
+       为什么：只禁抓取不够 —— 模型会「搜 → 抓（被拒）→ 再搜」地循环，
+       真 provider 实测第三轮就是这样 600 秒超时、一条没交。 */
+    if (stageMaterialProvided) {
+      return {
+        ok: false, error: "search_disabled_material_provided",
+        sources: [],
+        note: stageSearchBlockReason(),
+      };
+    }
     const cfg = resolveSearchConfig();
     if (!cfg.key) {
       /* 没有搜索凭据 ⇒ **不失败**：去找真材料给成员。
@@ -27970,6 +28010,9 @@ brief 里通常有 3 个题，但这一轮只有 1 个发布位。这一节必�
     probeLinkReachability,
     resetStageFetchBudget,
     setStageFetchMax,
+    setStageMaterialProvided,
+    stageSearchBlocked,
+    stageSearchBlockReason,
     publicFeedList,
     prepareResearchMaterials,
     // C-5:建群。rooms.json 是 Host 的文件,所以建群是 Host 侧的动作。

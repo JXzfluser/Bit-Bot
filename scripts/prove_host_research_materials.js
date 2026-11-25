@@ -164,6 +164,24 @@ function skipCase(id, desc, why) {
     "HM-23 每棒抓取额度生效（抓够 " + stageMax + " 次后被拒）",
     "实际在第 " + refusedAt + " 次被拒");
 
+  /* ---- 2c. 「Host 已把料给全」⇒ **搜索也禁**（批次 10 续）----
+   * 真 provider 实测第三轮：只禁 web_fetch，模型「搜 → 抓（被拒）→ 再搜」
+   * 地循环 ⇒ 600 秒超时、一条没交。 */
+  f2.setStageMaterialProvided(true, "材料已给全");
+  const rSearch = await f2.webSearch("AI 热点", { topN: 3 });
+  check("HM-24", rSearch && rSearch.ok === false &&
+    String(rSearch.error || "") === "search_disabled_material_provided" &&
+    /材料已给全/.test(String(rSearch.note || "")),
+    "HM-24 「Host 已把料给全」⇒ web_search 也被拒（模型只剩「写」一件事可做）",
+    JSON.stringify(rSearch).slice(0, 140));
+
+  /* 解除后能搜（不是永久焊死） */
+  f2.setStageMaterialProvided(false);
+  const rSearch2 = await f2.webSearch("AI 热点", { topN: 2 });
+  check("HM-25", rSearch2 && (rSearch2.ok === true || String(rSearch2.error || "") !== "search_disabled_material_provided"),
+    "HM-25 解除后又能搜（标记不是永久的，下一轮任务不受影响）",
+    JSON.stringify(rSearch2).slice(0, 100));
+
   /* ---- 3. 降级路径不许给不相关内容 ---- */
   const cjk = await ffi.webSearch("大模型 推理成本 降价", { topN: 5 });
   if (!cjk || !cjk.ok) {

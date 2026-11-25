@@ -3154,6 +3154,15 @@ surface.setRoomRuntimeDeps({
   },
   /* 当前这一棒的抓取上限（批次 10）：Host 找料后禁掉 web_fetch。
    * 0 = 完全禁（材料已给全）；-1 = 恢复默认。 */
+  /* 「Host 已把料给全」标记（批次 10 续）：材料给全时**搜索也禁**。
+     真 provider 实测第三轮：只禁抓取，模型「搜 → 抓（被拒）→ 再搜」地循环
+     ⇒ 600 秒超时、一条没交。 */
+  setStageMaterialProvided: (v, why) => {
+    try {
+      if (ffi && typeof ffi.setStageMaterialProvided === "function") return ffi.setStageMaterialProvided(v, why);
+    } catch (_) { /* 设置失败不影响这一棒 */ }
+    return false;
+  },
   setStageFetchMax: (n, why) => {
     try {
       if (ffi && typeof ffi.setStageFetchMax === "function") return ffi.setStageFetchMax(n, why);
