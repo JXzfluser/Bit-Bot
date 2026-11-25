@@ -119,6 +119,16 @@ const MAIL_TO = "news@example.com";
    为什么需要：门禁夹具是「新契约的活文档」，但真实场景演练要喂**真内容**
    （真材料 + 真写作），不该每次都改门禁源码。 */
 const STUB_REPLY_MATCH_FILE = String(process.env.BITBOT_STUB_REPLY_MATCH_FILE || "").trim();
+/* 夹具可以附带「断言声明」（批次 10）：外置夹具时，断言要按**这份夹具**的
+   特征串来判，否则会拿默认夹具的串去比对新内容 ⇒ 假红。
+   声明字段：{revised: "改后串", original: "改前串", picked: "选题裁决标志"} */
+let FIXTURE_ASSERTIONS = {};
+if (STUB_REPLY_MATCH_FILE) {
+  try {
+    const rawObj = JSON.parse(fs.readFileSync(STUB_REPLY_MATCH_FILE, "utf8"));
+    FIXTURE_ASSERTIONS = (rawObj && rawObj._assertions) || {};
+  } catch (_) { /* 读不到就用默认值 */ }
+}
 const STUB_REPLY_MATCH = STUB_REPLY_MATCH_FILE
   ? JSON.parse(fs.readFileSync(STUB_REPLY_MATCH_FILE, "utf8"))
   : {
@@ -1062,11 +1072,17 @@ function startStub() {
         {
           const draftP = files13.filter((f) => String(f).indexOf("/03-drafts/") >= 0)[0] || "";
           const draftTxt = draftP && fs.existsSync(draftP) ? fs.readFileSync(draftP, "utf8") : "";
-          draftTxt.indexOf("单次推理成本的结构变化") >= 0 && draftTxt.indexOf("推理成本这次真的下了一档") < 0
+          /* 「改前串 / 改后串」来自夹具（批次 10）：外置夹具时必须一起提供，
+             否则断言会拿默认夹具的特征串去比对新内容 ⇒ 假红。
+             换内容不用改门禁源码 —— 断言跟着夹具走。 */
+          const REV_NEW = String((FIXTURE_ASSERTIONS.revised || "单次推理成本的结构变化"));
+          const REV_OLD = String((FIXTURE_ASSERTIONS.original || "推理成本这次真的下了一档"));
+          draftTxt.indexOf(REV_NEW) >= 0 && draftTxt.indexOf(REV_OLD) < 0
             ? ok("P13 主笔那一棒的稿**被审校改写了**（回路生效：改后稿覆盖原稿）")
             : bad("P13 主笔的稿还是审校改之前的（「提了意见没人执行」照旧）",
-                  JSON.stringify({ has_revised: draftTxt.indexOf("单次推理成本的结构变化") >= 0,
-                                  has_old: draftTxt.indexOf("推理成本这次真的下了一档") >= 0 }));
+                  JSON.stringify({ has_revised: draftTxt.indexOf(REV_NEW) >= 0,
+                                  has_old: draftTxt.indexOf(REV_OLD) >= 0,
+                                  revised_needle: REV_NEW, original_needle: REV_OLD }));
         }
         /* 选题裁决（批次 9）：brief 有 3 个题但只有 1 个发布位 ——
            以前另外 2 个**无声消失**了。现在主笔必须交「本轮选题」这一节，

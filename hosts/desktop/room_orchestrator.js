@@ -1632,11 +1632,60 @@ function judgeCrossStage(input) {
     const minePcts = extractPercentages(text);
     const orphan = minePcts.filter((p) => !upPcts.includes(p));
     if (orphan.length) {
-      out.pass = false;
-      out.code = "fabricated_percentage";
-      out.reason = "交付里有上游没有的百分比（" + orphan.join("、") +
-        "）—— 数字必须能从上游材料算出来，不能自己编";
-      return out;
+      /* 批次 10：**区分「编数字」和「诚实声明的换算」**。
+       *
+       * 缘起（真实链路跑出来的）：主笔正文里写了「七成设备在空转」，
+       * 而上游只有 270% ⇒ 判红。但主笔在「仍需确认」里**明写了**
+       * 「『七成设备空转』是我的换算，不是原文结论」——
+       * ⇒ 这不是编数字，是**声明过的推算**，和「凭空写个 40%」完全不是一回事。
+       *
+       * ⇒ 新口径：上游没有的百分比，只要在产物里**显式声明为换算**就放行；
+       *   没声明 ⇒ 仍然是编数字 ⇒ 判红。
+       * ⇒ 「声明」要可确定性检出：产物里出现「换算」二字，且提到那个数字。
+       *
+       * 为什么值得单独做：上一轮复盘棒自己提的建议（"加一条换算声明规则"）
+       * —— 靠 prompt 求成员自觉标注不稳，必须变成确定性判据。 */
+      /* 「声明」的可确定性检出（必须**句级**判定，不能全文模糊匹配）：
+       *   ✗ 正文里写「把 270% 换算成读者的语言」—— 这只是**用词**，不是声明。
+       *   ✓ 「「七成设备空转」是我的换算，不是原文结论。」—— 这才是声明。
+       * ⇒ 同一句里必须同时出现：该数字 + 「换算/推算/折算」+ **归属标记**。
+       *   归属标记 = 我的 / 这是 / 属于 / 系 / 并非 / 不是原文 / 推算得出 … */
+      const OWNERSHIP = /我的|这是|属于|系我|并非|不是原文|不等于原文|按[^。；\n]{0,10}折算|推算得出|换算得出/;
+      const DECLARE = /换算|推算|折算/;
+      /* 声明里的数字形态必须和 extractPercentages **同一口径**：
+       * 它把「七成」归一成 70 ⇒ 声明检测也得认「七成」，
+       * 只认「70」会漏掉最常见的写法（实测踩过）。 */
+      const CN_TENS = { 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "七", 8: "八", 9: "九", 10: "十" };
+      const formsOf = (p) => {
+        const num = String(p).replace(/%$/, "");
+        const out = [num];
+        const n = Number(num);
+        if (Number.isFinite(n) && n % 10 === 0 && CN_TENS[n / 10]) out.push(CN_TENS[n / 10] + "成");
+        return out.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      };
+      const declared = orphan.every((p) => {
+        const forms = formsOf(p);
+        const numRe = new RegExp("(" + forms.join("|") + ")\s*[%％]?");
+        const sentences = String(text).split(/[。；\n]/);
+        return sentences.some((sent) => {
+          if (!numRe.test(sent)) return false;
+          if (!DECLARE.test(sent)) return false;
+          return OWNERSHIP.test(sent);
+        });
+      });
+      if (!declared) {
+        out.pass = false;
+        out.code = "fabricated_percentage";
+        out.reason = "交付里有上游没有的百分比（" + orphan.join("、") +
+          "）—— 数字必须能从上游材料算出来，不能自己编" +
+          "（确实需要换算的话，在产物里显式写明「这是换算」并带上这个数字）";
+        return out;
+      }
+      /* 声明过 ⇒ 放行，但在结论里留痕（复盘棒和用户都能看到这是推算）。
+         用既有的 out.warn 字段（单数、字符串）—— 门禁与下游都读它。 */
+      out.warn = (out.warn ? out.warn + "；" : "") +
+        "有 " + orphan.length + " 个百分比（" + orphan.join("、") +
+        "）不是上游原值，是产物里**声明过的换算**";
     }
   }
   /* 规则五：修订条数对账 —— 复盘说的「执行了 N 条修订」必须等于上游实际发生的 N。

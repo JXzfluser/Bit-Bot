@@ -1055,6 +1055,26 @@ async function sectionG2() {
   check("G2-11", xsPctBad.pass === false && xsPctGood.pass === true,
     "G2-11 凭空百分比判红、上游有出处的放行（双向）",
     JSON.stringify({ bad: xsPctBad.pass, bad_reason: xsPctBad.reason, good: xsPctGood.pass }));
+  /* G2-11b：批次 10 —— **区分「编数字」和「诚实声明的换算」**。
+   *
+   * 真实链路跑出来的：主笔正文写「七成设备在空转」，上游只有 270% ⇒ 判红。
+   * 但主笔在「仍需确认」里**明写了**「这是我的换算，不是原文结论」
+   * ⇒ 那不是编数字，是**声明过的推算**，和「凭空写个 40%」不是一回事。
+   * ⇒ 双向验证：声明过 ⇒ 放行（且留痕）；没声明 ⇒ 仍然判红。 */
+  /* 上游含 270%（真实场景：厂商实测的有效吞吐量提升 270%）。
+     正文把它换算成「七成设备空转」—— 上游没有 70% ⇒ 需要声明。 */
+  const intel270 = "1. 线索一\n   原始链接：https://qbitai.com/x\n   证据摘录：该公司实测有效吞吐量提升 270%。";
+  const pctDerived = "正文\n\n把 270% 换算成读者的语言：原来七成的设备在空转。\n\n仍需确认\n\n「七成设备空转」是我的换算，不是原文结论。";
+  const pctSilent = "正文\n\n把 270% 换算成读者的语言：原来七成的设备在空转。";
+  const xsDerived = judgeCrossStage({ upstream: [intel270], text: pctDerived, rules: pctRules });
+  const xsSilent = judgeCrossStage({ upstream: [intel270], text: pctSilent, rules: pctRules });
+  check("G2-11b", xsDerived.pass === true && xsSilent.pass === false,
+    "G2-11b 声明过的换算放行、没声明的仍判红（区分「编数字」与「诚实推算」）",
+    JSON.stringify({ declared_pass: xsDerived.pass, silent_pass: xsSilent.pass, warn: xsDerived.warn || "" }));
+  check("G2-11c", /换算/.test(String(xsDerived.warn || "")),
+    "G2-11c 声明过的换算会**留痕**（复盘棒和用户都能看到这是推算）",
+    "warn=" + String(xsDerived.warn || ""));
+
   check("G2-12", extractPercentages("近四成").join() === "40" && extractPercentages("40%").join() === "40",
     "G2-12 中文「四成」与阿拉伯「40%」归一成同一个数（上下游口径能对上）",
     JSON.stringify({ cn: extractPercentages("近四成"), ar: extractPercentages("40%") }));
