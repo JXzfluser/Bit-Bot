@@ -1989,6 +1989,43 @@ function extractPercentages(text) {
 }
 
 /**
+ * 抽产物里**明确声明的条目数**（批次 10 续）。
+ *
+ * 缘起（**真 provider 连跑七轮**）：Host 用结构启发式数「条目」，
+ * 被真模型的四种写法分别数成 **36 / 17 / 11** 条（都是合规产物，被误杀）。
+ * ⇒ **靠猜结构必然翻车** ⇒ 改用模型**自己明写**的数：
+ *     「交付构成：**3 条情报卡**」「本棒交付 = **3 条情报卡**」
+ * ⇒ 声明是**显式、面向用户**的（用户在成品里也看得到），
+ *   比 Host 猜结构可靠得多。
+ *
+ * @returns {number|null} 声明的条数；没有声明 ⇒ null
+ */
+function extractDeclaredItemCount(text) {
+  const t = String(text || "");
+  const hits = [];
+  /* 「3 条情报卡」「共 3 条」「一共 3 条选题」「3 个选题」… */
+  const pats = [
+    /(?:共|一共|总共|合计|交付(?:物)?(?:构成)?\s*[=：:]?\s*)?(\d{1,3})\s*条\s*[^\n。；、]{0,14}?(?:情报卡|要点|条目|选题|新闻|资讯|候选|素材|动态|简报)/g,
+    /(\d{1,3})\s*个\s*[^\n。；、]{0,10}?(?:选题|要点|条目|候选|情报卡)/g,
+    /(?:本棒|这一棒|本次)?(?:交付|交付物|产出|输出)\s*[=：:]?\s*(\d{1,3})\s*条/g,
+  ];
+  for (const re of pats) {
+    let m;
+    while ((m = re.exec(t)) !== null) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > 0 && n <= 999) hits.push(n);
+    }
+  }
+  if (!hits.length) return null;
+  /* 多个声明 ⇒ 取**众数**（同一个数重复出现最常见）。 */
+  const freq = new Map();
+  for (const n of hits) freq.set(n, (freq.get(n) || 0) + 1);
+  let best = hits[0], bestC = 0;
+  for (const [n, c] of freq) if (c > bestC) { best = n; bestC = c; }
+  return best;
+}
+
+/**
  * 从交付正文里抽出**纯 ASCII**的完整链接（与 countDeliverableUrls 同口径）。
  * 用于 Host 侧核验可达性：混了全角/中文的坏链不算链接（那是格式问题，
  * 由 no_broken_urls 判），这里只取**格式正确**的那些去真的访问。
@@ -2123,12 +2160,54 @@ function checkContentRules(content, rules, what) {
     return { pass: false, code: "too_short", reason: what + "太短（" + chars + " 字，要求 ≥ " + r.min_chars + " 字）" };
   }
   let items = 0;
+  /* 条数判定（批次 10 续）：**声明优先**，没有声明才用结构数兜底。
+   *
+   * 缘起（**真 provider 连跑七轮**）：Host 用结构启发式数「条目」，
+   * 被真模型的四种写法分别数成 **36 / 17 / 11** 条 —— 全是**合规产物**，
+   * 全被误杀 ⇒ 五棒一次都跑不完。
+   *   ⇒ **靠猜结构必然翻车**，别再猜了。
+   *
+   * ⇒ 新口径：
+   *   ① 产物里**有明确声明**（「交付构成：3 条情报卡」）⇒ **以声明为准**
+   *      （声明 > 上限 ⇒ 真的超了 ⇒ 判红；声明 < 下限 ⇒ 真的太少 ⇒ 判红）
+   *   ② **没有声明** ⇒ 用结构数，但**上下限放宽**：
+   *      上限 ×4、下限 ÷2 —— 只拦**极端**过量/过少，不误杀正常产物。
+   *
+   * ⇒ 为什么「声明」比「Host 猜」可靠：
+   *   · 声明是模型**显式表达**的意图，用户在成品里也看得到（面向用户）；
+   *   · 结构启发式已经实测翻车四次（36/17/11 条）；
+   *   · 「最多交 N 条」这句话**已经写进编排 prompt**（批次 10 续的契约约束段）
+   *     ⇒ 模型知道上限；Host 再用猜的数去驳回它，是**尺子在找模型的茬**。
+   */
   if (r.min_items || r.max_items) items = countDeliverableItems(text);
-  if (r.min_items && items < Number(r.min_items)) {
-    return { pass: false, code: "too_few_items", items, reason: what + "条目太少（" + items + " 条，要求 ≥ " + r.min_items + " 条）" };
-  }
-  if (r.max_items && items > Number(r.max_items)) {
-    return { pass: false, code: "too_many_items", items, reason: what + "条目超了（" + items + " 条，上限 " + r.max_items + " 条）" };
+  {
+    const declared = extractDeclaredItemCount(text);
+    const minWanted = Number(r.min_items || 0);
+    const maxWanted = Number(r.max_items || 0);
+    if (declared != null) {
+      /* ① 声明优先 */
+      if (maxWanted && declared > maxWanted) {
+        return { pass: false, code: "too_many_items", items: declared, declared,
+          reason: what + "自己声明交了 " + declared + " 条，超过上限 " + maxWanted + " 条" };
+      }
+      if (minWanted && declared < minWanted) {
+        return { pass: false, code: "too_few_items", items: declared, declared,
+          reason: what + "自己声明只交了 " + declared + " 条，少于要求的 " + minWanted + " 条" };
+      }
+    } else {
+      /* ② 无声明 ⇒ 结构数兜底（宽松） */
+      const looseMax = maxWanted ? maxWanted * 4 : 0;
+      const looseMin = minWanted ? Math.max(1, Math.ceil(minWanted / 2)) : 0;
+      if (looseMax && items > looseMax) {
+        return { pass: false, code: "too_many_items", items,
+          reason: what + "条目明显超了（结构上数出 " + items + " 条，上限 " + maxWanted +
+            " 条；产物里也没写明交了几条）" };
+      }
+      if (looseMin && items < looseMin) {
+        return { pass: false, code: "too_few_items", items,
+          reason: what + "条目太少（结构上数出 " + items + " 条，要求 ≥ " + minWanted + " 条）" };
+      }
+    }
   }
   for (const need of (r.must_include || [])) {
     if (!text.includes(String(need))) {
@@ -2279,6 +2358,7 @@ module.exports = {
   readDeliverableArtifact,
   resolveDeliverablePath,
   countDeliverableItems,
+  extractDeclaredItemCount,
   countDeliverableUrls,
   extractUrlTokens,
   findBrokenUrls,

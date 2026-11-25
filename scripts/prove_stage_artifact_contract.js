@@ -1052,16 +1052,20 @@ async function sectionG6() {
     "G6-08 真形态的 3 条情报能过契约（max_items=3 / min_items=3）",
     JSON.stringify({ pass: vReal.pass, reason: vReal.reason }));
 
-  /* G6-09：反向对照 —— 真的交 36 条**仍然**要判红（判据没被放松） */
-  const tooManyReal = Array.from({ length: 12 }, (_, i) =>
+  /* G6-09：反向对照 —— **真的过量**仍然要判红（判据没被放松）。
+   * ⚠ 条数上限的口径在批次 10 续改成了「**声明优先**」：
+   *   无声明时用结构数，但**上限放宽到 ×4**（只拦极端过量）——
+   *   因为结构启发式实测把合规产物数成 36/17/11 条（连翻车三次）。
+   * ⇒ 这里用 **24 条**（3×4=12 的两倍 ⇒ 明显过量）来验「没被放松」。 */
+  const tooManyReal = Array.from({ length: 24 }, (_, i) =>
     "## 情报卡 " + (i + 1) + "\n- **事实**：x\n- **原始链接**：https://example.com/" + i).join("\n\n");
   const vTooMany = judgeStage({
     text: tooManyReal,
     contract: { dir: "01-inbox", file: "{date}.md", rules: { max_items: 3 } },
     dataRoot: "/tmp",
   });
-  check("G6-09", vTooMany.pass === false && /条目超了/.test(String(vTooMany.reason || "")),
-    "G6-09 真的交 12 条**仍然判红**（计数改精确了，判据没被放松）",
+  check("G6-09", vTooMany.pass === false && /条目/.test(String(vTooMany.reason || "")),
+    "G6-09 真的交 24 条**仍然判红**（判据没被放松；口径见 G6-17）",
     JSON.stringify({ pass: vTooMany.pass, reason: vTooMany.reason }));
 
   /* G6-11：材料**必须走 system 通道**，不进编排 prompt。
@@ -1206,6 +1210,40 @@ async function sectionG6() {
       JSON.stringify(badShapes));
   }
 
+  /* G6-17：条数判据**声明优先**（批次 10 续，真 provider 连跑七轮后的结论）。
+   *
+   * 缘起：Host 用结构启发式数「条目」，被真模型的四种写法分别数成
+   * **36 / 17 / 11** 条 —— 全是**合规产物**，全被误杀 ⇒ 五棒一次都跑不完。
+   * ⇒ **靠猜结构必然翻车** ⇒ 改用模型**自己明写**的数。
+   *
+   * ⇒ 双向验证：
+   *   声明 3 条 + 3 张卡   ⇒ 过（这是真模型的形态）
+   *   没声明 + 3 张卡     ⇒ 过（结构兜底宽松）
+   *   声明 5 条           ⇒ 判红（真的超了）
+   *   声明 1 条           ⇒ 判红（真的太少） */
+  {
+    const { judgeStage: js3, extractDeclaredItemCount: edc } =
+      require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+    const pad = "这段话是为了把字数凑够契约要求的最小字数的填充内容，用来验证条数判据本身是否按声明工作。".repeat(2);
+    const card = (i) => "## 情报卡 " + i + "：标题\n- **事实**：事实内容" + pad +
+      "\n- **原始链接**：https://qbitai.com/" + i + "\n- **证据摘录**：摘录" + pad;
+    const contract3 = { dir: "01-inbox", file: "{date}.md", rules: { min_chars: 200, max_items: 3, min_items: 3 } };
+    const three = card(1) + "\n\n" + card(2) + "\n\n" + card(3);
+    check("G6-17a", js3({ text: "交付构成：3 条情报卡。\n\n" + three, contract: contract3, dataRoot: "/tmp" }).pass === true,
+      "G6-17a 声明「3 条」+ 3 张卡 ⇒ **过**（真模型的形态，不再被误杀）");
+    check("G6-17b", js3({ text: three, contract: contract3, dataRoot: "/tmp" }).pass === true,
+      "G6-17b 没有声明 + 3 张卡 ⇒ **过**（结构兜底宽松，不误杀）");
+    const vOver = js3({ text: "交付构成：5 条情报卡。\n\n" + three + "\n\n" + card(4) + "\n\n" + card(5), contract: contract3, dataRoot: "/tmp" });
+    check("G6-17c", vOver.pass === false && /声明交了 5 条/.test(String(vOver.reason || "")),
+      "G6-17c 声明「5 条」⇒ **判红**（真的超了上限）", String(vOver.reason || ""));
+    const vFew = js3({ text: "交付构成：1 条情报卡。\n\n" + card(1), contract: contract3, dataRoot: "/tmp" });
+    check("G6-17d", vFew.pass === false && /声明只交了 1 条/.test(String(vFew.reason || "")),
+      "G6-17d 声明「1 条」⇒ **判红**（真的少于下限）", String(vFew.reason || ""));
+    check("G6-17e", edc("交付构成：3 条情报卡（含来源）+ 1 篇候选稿") === 3 &&
+      edc("没有声明") === null,
+      "G6-17e 声明解析认得真模型的说法（「N 条情报卡」），没有声明时不瞎猜");
+  }
+
   /* G6-10：既有形态**行为不变**（编号夹具 / 纯列表 / 题 N｜ / brief 夹具 都还是原来的数） */
   const briefShape = [
     "# 选题 brief：园区光伏", "",
@@ -1234,8 +1272,8 @@ async function sectionG6() {
   /* G6-06：**上限必须真的能挡住** —— 24 条要判红（真 provider 交的就是 24 条） */
   const many = Array.from({ length: 24 }, (_, i) => `${i + 1}. 第 ${i + 1} 条情报`).join("\n");
   const v = judgeStage({ text: many + "\nhttp://example.com/x", contract, dataRoot: "/tmp" });
-  check("G6-06", v.pass === false && /条目超了/.test(String(v.reason || "")),
-    "G6-06 上限真的能挡住（24 条判红 —— 真 provider 交的就是这个数）",
+  check("G6-06", v.pass === false && /条目/.test(String(v.reason || "")),
+    "G6-06 上限真的能挡住（24 条判红 —— 真 provider 第一轮交的就是这个数）",
     JSON.stringify({ pass: v.pass, reason: v.reason }));
 }
 
