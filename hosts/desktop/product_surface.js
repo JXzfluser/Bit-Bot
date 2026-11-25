@@ -593,7 +593,7 @@ function createProductSurface(repoRoot, opts = {}) {
    *   must_include_sections —— 必含**段落**（不只是必含的词）
    * 这几个键必须进白名单：不在白名单 ⇒ 用户在设置页里配的契约会被静默丢掉。 */
   const DELIVERABLE_EXTRA_RULE_KEYS = ["min_urls", "unique_urls", "link_check_min"];
-  const DELIVERABLE_FLAG_RULE_KEYS = ["no_broken_urls", "links_must_come_from_upstream", "counts_must_match_upstream", "percentages_must_come_from_upstream", "require_reachable_links"];
+  const DELIVERABLE_FLAG_RULE_KEYS = ["no_broken_urls", "links_must_come_from_upstream", "counts_must_match_upstream", "percentages_must_come_from_upstream", "require_reachable_links", "revisions_must_match_upstream"];
   function normalizeDeliverable(input) {
     if (input === null || input === "" || input === "-") return null;
     if (!input || typeof input !== "object" || Array.isArray(input)) return null;
@@ -3662,6 +3662,8 @@ function createProductSurface(repoRoot, opts = {}) {
               upstream: upstreamTexts,
               text: String(verdict.artifact && verdict.artifact.ok ? verdict.artifact.content : (verdict.content || "")),
               rules: stageContract.rules,
+              /* 上游实际发生的修订数（批次 9）—— 复盘不许另起数字。 */
+              revisionCount: chain.filter((c) => c && c.revision).length,
             });
             if (!xs.pass) {
               verdict.pass = false;
@@ -3887,6 +3889,22 @@ function createProductSurface(repoRoot, opts = {}) {
           prev = isPipeline && res.delivered_content
             ? Object.assign({}, res, { text: res.delivered_content })
             : res;
+          /* 把**本轮已发生的修订**也递下去（批次 9）：
+             复盘棒要能确定性核对「提了 N 条、执行了几条」——
+             它得先知道上游发生过几次修订。
+             ⇒ 附一段人话说明（成员能读），不是机器字段。 */
+          if (isPipeline && chain.length) {
+            const revs = chain
+              .filter((c) => c && c.revision)
+              .map((c) => ({ by: c.name, section: c.revision.section, to: c.revision.from }));
+            if (revs.length) {
+              const note = "【本轮已执行的修订】\n" +
+                revs.map((r, i) => (i + 1) + ". " + r.by + " 已把「" + r.to +
+                  "」的「" + r.section + "」改成审校后的版本。").join("\n") +
+                "\n（复盘时请按这个条数核对，不要另起数字。）";
+              prev = Object.assign({}, prev, { text: String(prev.text || "") + "\n\n" + note });
+            }
+          }
           current = nextMember;
           confirmAnswer = "";
           continue;
@@ -4367,6 +4385,8 @@ function createProductSurface(repoRoot, opts = {}) {
               upstream: upstreamTexts,
               text: String(verdict.artifact && verdict.artifact.ok ? verdict.artifact.content : (verdict.content || "")),
               rules: stageContract.rules,
+              /* 上游实际发生的修订数（批次 9）—— 复盘不许另起数字。 */
+              revisionCount: chain.filter((c) => c && c.revision).length,
             });
             if (!xs.pass) {
               verdict.pass = false;

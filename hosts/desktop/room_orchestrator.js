@@ -1500,6 +1500,29 @@ function judgeCrossStage(input) {
       return out;
     }
   }
+  /* 规则五：修订条数对账 —— 复盘说的「执行了 N 条修订」必须等于上游实际发生的 N。
+   *
+   * 为什么需要（批次 9）：
+   *   回路落地后，链路里会留下**修订记录**（谁改的、改了哪节、前后指纹）。
+   *   复盘棒如果自己另起一个数字（"改了 5 处"，实际 2 处），
+   *   那复盘本身就是编的 —— 和它之前编「情报卡 8 条」是同一类毛病。
+   * ⇒ 纯确定性判据：复盘里出现的「N 条修订」必须等于上游实际修订数。
+   */
+  if (rules.revisions_must_match_upstream && Number.isFinite(Number(o.revisionCount)) &&
+      o.revisionCount !== undefined && o.revisionCount !== null) {
+    const actual = Number(o.revisionCount);
+    const m = text.match(/(\d+)\s*条[^。；\n]{0,6}修订/g) || [];
+    const claimed = m.map((x) => Number((x.match(/\d+/) || ["0"])[0]));
+    const badNums = claimed.filter((n) => n !== actual);
+    if (badNums.length) {
+      out.pass = false;
+      out.code = "revision_count_mismatch";
+      out.reason = "复盘里说有 " + badNums[0] + " 条修订，但上游实际发生了 " + actual +
+        " 条 —— 复盘不许另起数字";
+      return out;
+    }
+  }
+
   /* 规则四：链接可达性 —— 交付里声明「可访问」的链接必须真的能打开。
    *
    * 为什么需要（实测）：契约能判「链接长得对」（纯 ASCII、括号配平），

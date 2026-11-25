@@ -524,6 +524,41 @@ async function sectionG() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * G5. 批次 9 续：修订条数对账（复盘不许另起数字）
+ *
+ * 回路落地后链路里会留下**修订记录**。如果复盘自己另起一个数字
+ * （"改了 5 处"，实际 2 处），那复盘本身就是编的 ——
+ * 和它之前编「情报卡 8 条」是同一类毛病。
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+async function sectionG5() {
+  console.log("── G5. 批次 9：修订条数对账 ──");
+  const { judgeCrossStage } = require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+  const rules = { revisions_must_match_upstream: true };
+
+  /* G5-01：数字对得上 ⇒ 放行。 */
+  const good = "数据来源\n\n本周交付记录。\n\n本轮交付\n\n本轮执行了 2 条修订。\n\n链路断点\n\n审校改的两处都落地了。";
+  const v1 = judgeCrossStage({ upstream: ["x"], text: good, rules, revisionCount: 2 });
+  check("G5-01", v1.pass === true,
+    "G5-01 复盘说的修订条数与上游实际一致 ⇒ 放行（别误杀）",
+    JSON.stringify({ pass: v1.pass, reason: v1.reason }));
+
+  /* G5-02：数字对不上 ⇒ 判红（复盘自己编数字）。 */
+  const bad = "数据来源\n\n本周交付记录。\n\n本轮交付\n\n本轮执行了 5 条修订。\n\n链路断点\n\n审校改的地方都落地了。";
+  const v2 = judgeCrossStage({ upstream: ["x"], text: bad, rules, revisionCount: 2 });
+  check("G5-02", v2.pass === false && String(v2.reason || "").indexOf("另起数字") >= 0,
+    "G5-02 复盘说的条数对不上 ⇒ 判红（复盘自己编数字）",
+    JSON.stringify({ pass: v2.pass, code: v2.code, reason: v2.reason }));
+
+  /* G5-03：根本没提修订条数 ⇒ 不判红（没提就不查）。 */
+  const silent = "数据来源\n\n本周交付记录。\n\n本轮交付\n\n完成一轮链路。\n\n链路断点\n\n无。";
+  const v3 = judgeCrossStage({ upstream: ["x"], text: silent, rules, revisionCount: 2 });
+  check("G5-03", v3.pass === true,
+    "G5-03 复盘没提修订条数 ⇒ 不判红（没提就不查，别冤枉人）",
+    JSON.stringify({ pass: v3.pass, reason: v3.reason }));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * G4. 批次 9：「审校 → 修订」回路（审校改好的稿真的覆盖主笔的稿）
  *
  * 为什么：以前这条链是**单向**的 —— 审校提的修改只躺在它的产物里，
@@ -1187,6 +1222,7 @@ function userDataFingerprint() {
   if (MODE === "all" || MODE === "g2") await sectionG2();
   if (MODE === "all" || MODE === "g3") await sectionG3();
   if (MODE === "all" || MODE === "g4") await sectionG4();
+  if (MODE === "all" || MODE === "g5") await sectionG5();
   if (MODE === "all") sectionC();
   if (MODE === "all") sectionCX();
   if (MODE === "all" || MODE === "urls") await sectionX();

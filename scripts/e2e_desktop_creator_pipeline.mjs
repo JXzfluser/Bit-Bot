@@ -245,6 +245,7 @@ const STUB_REPLY_MATCH = {
     "本轮交付",
     "",
     "完成一轮完整链路：情报核验 → 选题 brief → 候选稿 → 事实审校 → 复盘。产物按目录归档，成品单独落在 05-publish/ 下。",
+    "本轮执行了 1 条修订（事实编辑把内容主笔那一稿的「可发布候选版本」改成审校后的版本）。",
     "",
     "链路断点",
     "",
@@ -1053,6 +1054,17 @@ function startStub() {
             : bad("P13 主笔的稿还是审校改之前的（「提了意见没人执行」照旧）",
                   JSON.stringify({ has_revised: draftTxt.indexOf("单次推理成本的结构变化") >= 0,
                                   has_old: draftTxt.indexOf("推理成本这次真的下了一档") >= 0 }));
+        }
+        /* 修订对账（批次 9）：复盘说的修订条数必须与上游实际发生的一致 ——
+           回路落地后链路里有修订记录，复盘不许自己另起数字。 */
+        {
+          const reviewP = files13.filter((f) => String(f).indexOf("/06-analysis/") >= 0)[0] || "";
+          const reviewTxt = reviewP && fs.existsSync(reviewP) ? fs.readFileSync(reviewP, "utf8") : "";
+          const mRev = reviewTxt.match(/(\d+)\s*条[^。；\n]{0,6}修订/);
+          mRev && Number(mRev[1]) === 1
+            ? ok("P13 复盘说的修订条数与上游实际一致（" + mRev[1] + " 条）")
+            : bad("P13 复盘说的修订条数对不上（或没写）",
+                  JSON.stringify({ claimed: mRev ? mRev[1] : null, actual: 1 }));
         }
         /* 链接可达性（批次 8）：交付物里应该多一段 Host 实测的可达性记录 ——
            这是「核验状态」这句话配得上字面意思的那一环。
