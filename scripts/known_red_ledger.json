@@ -682,7 +682,7 @@
       "matrix_line_prefix": "G-136 prove_task_axis_pixels（见 /tmp/g136-task-axis-pixels.log；  ✗ TA-11 1440x900 与基线差异 8.5208% > 0.5%（110430/1296000 像素",
       "kind": "environment",
       "reason": "像素基线是在**本地环境**渲染出来的；CI runner 的字体/渲染栈不同（很可能是缺中文字体走了 fallback）⇒ 同一份界面在 CI 上与基线差 8.52%。**决定性证据：同一个 commit 在本地跑是 32/0 全绿**（TA-01~TA-13 全过，含 TA-12 基线逐字节未变、TA-13 用户真数据一个字节没动）—— 同一份代码、同一条判据，本地过、CI 红 ⇒ 红在环境不在产品。",
-      "evidence": "本地 node scripts/prove_task_axis_pixels.mjs → PASS=32 FAIL=0 SKIP=0（TA-04/TA-12/TA-13 全绿）；CI run 45538932681 与 45528173907 同一批 commit 均报「✗ TA-11 1440x900 与基线差异 8.5208% > 0.5%（110430/1296000 像素）」。两轮 CI 之间产品代码没有动过像素相关部分（批次 8/9/10 都不碰界面样式）⇒ 差异只能来自渲染环境。",
+      "evidence": "本地 node scripts/prove_task_axis_pixels.mjs → PASS=32 FAIL=0 SKIP=0（TA-04/TA-12/TA-13 全绿）；CI run 45538932681 与 45528173907 同一批 commit 均报「✗ TA-11 1440x900 与基线差异 8.5208% > 0.5%（110430/1296000 像素）」。两轮 CI 之间产品代码没有动过像素相关部分（批次 8/9/10 都不碰界面样式）⇒ 差异只能来自渲染环境。 第三轮 CI run 45546453872（head cf9fe7b）仍报同一条「✗ G-136 prove_task_axis_pixels … ✗ TA-11 1440x900 与基线差异 8.5208%」⇒ **三轮 CI 完全一致**，不是本批引入。",
       "owner": "unassigned",
       "owner_reason": "修法有两��：① 在 CI runner 上装齐与基线一致的中文字体；② 基线按 CI 渲染环境重新生成（基线只能人工刷新，门禁不许自己覆盖）。两条都要人决定用哪条，本轮没人认领。",
       "first_seen": "2026-11-25",
@@ -697,7 +697,7 @@
         "log": "/tmp/g136-task-axis-pixels.log",
         "needs": "ci-only"
       },
-      "conditional": "两轮 CI（45528173907 / 45538932681）都报同一条，不是本批引入。⚠ 修的时候别把基线换成「CI 渲染版」就算完 —— 那会让本地开发环境的像素回归失去意义。正确做法是让**两端渲染一致**（字体），再决定基线归属。"
+      "conditional": "三轮 CI（45528173907 / 45538932681 / 45546453872）都报同一条，不是本批引入。⚠ 修的时候别把基线换成「CI 渲染版」就算完 —— 那会让本地开发环境的像素回归失去意义。正确做法是让**两端渲染一致**（字体），再决定基线归属。"
     },
     {
       "id": "smoke_grok_desktop_parity.sh#G-17-real-copy-artifact",
@@ -705,7 +705,7 @@
       "matrix_line_prefix": "✗ G-17 real copy artifact",
       "kind": "unattributed",
       "reason": "G-17 的**附件上限判据本地全过**（7 个附件→too_many_attachments、26MB 图→too_large、201MB 视频走 200MB 档、累计口径、无真实路径→no_real_path，逐字与期望串一致）。红的是矩阵里**更靠后**的一条：它要求 `data/workspace/uploads/g17doc1.txt` 落盘、且 `data/box-copy/` 里**最新**的那个文件含 `\"binary_intact\": true`。这条依赖完整的 kernel AttachFiles → copy_to_box 链路，尚未在本地复现出同样的状态 ⇒ 根因未查清。",
-      "evidence": "本地在**影子根**（.gate-matrix 等价物）里跑 stageAttachments 段：判据串逐字匹配期望（too_many_attachments|6|image|27262976/26214400|video|210763776/209715200|5|no_real_path）；但 `data/box-copy/` 在只跑 stageAttachments 时是空的 ⇒ 那条断言依赖的是 attach_files 那步的真实复制产物，需跑通完整内核链路才能判定。CI 两轮（45528173907 / 45538932681）报同一条红 ⇒ 不是本批引入。",
+      "evidence": "本地在**影子根**（.gate-matrix 等价物）里跑 stageAttachments 段：判据串逐字匹配期望（too_many_attachments|6|image|27262976/26214400|video|210763776/209715200|5|no_real_path）；但 `data/box-copy/` 在只跑 stageAttachments 时是空的 ⇒ 那条断言依赖的是 attach_files 那步的真实复制产物，需跑通完整内核链路才能判定。CI 两轮（45528173907 / 45538932681）报同一条红 ⇒ 不是本批引入。 第三轮 CI run 45546453872 仍报同一条「✗ G-17 real copy artifact」⇒ 三轮一致。",
       "owner": "unassigned",
       "owner_reason": "下一步查法：在影子根里跑通完整 attach_files 链路，看 copy_to_box 的 dest 是否真落在 `data/workspace/uploads/<basename>`、box-copy 记录里有没有 binary_intact 字段。需要能复现内核链路的本机环境，本轮没查完。",
       "first_seen": "2026-11-25",
@@ -720,7 +720,7 @@
         "log": "/tmp/g17",
         "needs": "ci-only"
       },
-      "conditional": "两轮 CI 都报同一条，**不是本批引入**。本条只是「不许装作没看见」的记录 —— 归因还没做完，别把它当成已查清。"
+      "conditional": "三轮 CI（45528173907 / 45538932681 / 45546453872）都报同一条，**不是本批引入**。本条只是「不许装作没看见」的记录 —— 归因还没做完，别把它当成已查清。"
     },
     {
       "id": "smoke_grok_desktop_parity.sh#G-16-cold-start-pixels",
@@ -728,7 +728,7 @@
       "matrix_line_prefix": "✗ G-16 E2E 冷启动+像素断言（见 /tmp/e2e-g16.log；bytes=11511）",
       "kind": "unattributed",
       "reason": "G-16 是「E2E 冷启动 + GP-70 像素断言」的合起来的一条；CI 上红，**它与 G-136 是同一个像素基线问题**（都指向 1440×900 与基线的差异），但 G-16 还包含冷启动环节 ⇒ 冷启动那部分是否也红，尚未拆开确认。归因没做完。",
-      "evidence": "CI run 45538932681 与 45528173907 都报「✗ G-16 E2E 冷启动+像素断言（bytes=11511）」；同一批 commit 里 G-136 的像素断言也红，且本地 prove_task_axis_pixels 32/0 全绿 ⇒ 像素部分高度疑似同一个环境差异。但 G-16 的冷启动子项未单独验证 ⇒ 不能断言整条红都是像素。",
+      "evidence": "CI run 45538932681 与 45528173907 都报「✗ G-16 E2E 冷启动+像素断言（bytes=11511）」；同一批 commit 里 G-136 的像素断言也红，且本地 prove_task_axis_pixels 32/0 全绿 ⇒ 像素部分高度疑似同一个环境差异。但 G-16 的冷启动子项未单独验证 ⇒ 不能断言整条红都是像素。 第三轮 CI run 45546453872 仍报同一条「✗ G-16 E2E 冷启动+像素断言（bytes=11511）」⇒ 三轮一致。",
       "owner": "unassigned",
       "owner_reason": "下一步查法：把 G-16 的冷启动与像素两段拆开跑（看 /tmp/e2e-g16.log 里冷启动那几行到底过没过），再决定是跟 G-136 合并归因还是单列。",
       "first_seen": "2026-11-25",
@@ -743,7 +743,7 @@
         "log": "/tmp/e2e-g16.log",
         "needs": "ci-only"
       },
-      "conditional": "两轮 CI 都报同一条，**不是本批引入**。归因未完成（冷启动部分未拆开验证）。"
+      "conditional": "三轮 CI（45528173907 / 45538932681 / 45546453872）都报同一条，**不是本批引入**。归因未完成（冷启动部分未拆开验证）。"
     }
   ],
   "notes_layer_isolation": {
