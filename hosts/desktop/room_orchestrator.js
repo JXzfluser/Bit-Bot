@@ -1090,10 +1090,92 @@ const NARRATION_PATTERNS = [
   /请把.*(?:收成|整理成|并补)/, /^(?:如上|同上|以上)[。.]?$/,
 ];
 
+/**
+ * **系统调试串**特征（批次 10 续）。
+ *
+ * 缘起（**真 provider 第四轮**）：第一棒交上来的是 5630 字的**内核调试串**：
+ *     Host FFI results applied (MoonBit kernel / ADR 0002):
+ *     - fail kind=group_chat cmd=`bots=【群任务】追踪今天的,AI,科技热点,...`
+ * ⇒ 它字符数够、有链接、条目数也够 ⇒ **旧验收全放过了**
+ * ⇒ 但它不是「成果本身」，是系统噪声，用户拿到手会一脸懵。
+ *
+ * ⇒ 这类必须**判红**：产物里出现内核/协议层的调试痕迹 ⇒ 不是成员交上来的成果。
+ */
+const SYSTEM_NOISE_PATTERNS = [
+  /Host FFI results applied/i,
+  /MoonBit kernel/i,
+  /\bfail kind=/i,
+  /^\s*-\s*fail\s+kind=/m,
+  /\bcmd=`/,
+  /\bintent=\"?(group_chat|webfetch|attach_files|create_room)\b/i,
+  /\bturn_id=\"?[0-9a-f-]{8,}/i,
+];
+
+function looksLikeSystemNoise(text) {
+  const t = String(text || "");
+  if (!t.trim()) return false;
+  return SYSTEM_NOISE_PATTERNS.some((re) => re.test(t));
+}
+
+/**
+ * 剥掉**开头**的转述句（模型常在正文前加一句「已完成这一棒的…」）。
+ * 只剥开头一段/一句，后面的正文一个字不动。
+ */
+function stripLeadingNarration(text) {
+  const t = String(text || "");
+  const lines = t.split(/\r?\n/);
+  let i = 0;
+  /* 剥掉开头的空行 */
+  while (i < lines.length && !String(lines[i] || "").trim()) i++;
+  /* 剥掉开头命中转述特征的行（最多 2 行） */
+  let stripped = 0;
+  while (i < lines.length && stripped < 2) {
+    const l = String(lines[i] || "").trim();
+    if (!l) { i++; continue; }
+    if (!NARRATION_PATTERNS.some((re) => re.test(l))) break;
+    i++; stripped++;
+  }
+  return lines.slice(i).join("\n").trim();
+}
+
+/**
+ * 这段文本里**有没有实质内容**（不是一句汇报）。
+ * 判据：长度够 + 至少有一个结构信号（链接 / 小节标题 / 多段）。
+ */
+function hasSubstantiveContent(text) {
+  const t = String(text || "").trim();
+  if (t.length < 120) return false;
+  if (/https?:\/\//.test(t)) return true;
+  if (/^#{1,6}\s/m.test(t)) return true;
+  const paras = t.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+  if (paras.length >= 3) return true;
+  return false;
+}
+
+/**
+ * 「这一棒只交了转述吗？」
+ *
+ * ⚠ 批次 10 续（**真 provider 第五轮实测**）：不能只看**开头**。
+ *   模型交的是这样的：
+ *     「已完成这一棒的侦查与证据沉淀。下面是成果正文（请 Host 落盘到 `01-inbox/`）：
+ *      ## 情报卡 1：……
+ *      - **事实**：……」
+ *   ⇒ 旧写法（`/^已完成/` 命中开头就整篇判转述）把**合格的成果**误杀了
+ *   ⇒ 第一棒因此被驳回 ⇒ 五棒一次都跑不完。
+ *
+ * ⇒ 新写法：**剥掉开头的转述句**，看剩下的有没有实质内容：
+ *   · 剥掉后还有实质 ⇒ 不是「只交了转述」（是「先说了一句，再交正文」）
+ *   · 剥掉后没有实质 ⇒ 就是只交了转述 ⇒ 驳回（老行为不变）
+ */
 function looksLikeNarration(text) {
   const t = String(text || "").trim();
   if (!t) return true;
-  return NARRATION_PATTERNS.some((re) => re.test(t));
+  const hit = NARRATION_PATTERNS.some((re) => re.test(t));
+  if (!hit) return false;
+  /* 命中了 ⇒ 看剥掉开头转述句之后还剩什么 */
+  const rest = stripLeadingNarration(t);
+  if (rest && hasSubstantiveContent(rest)) return false;
+  return true;
 }
 
 /** 团队共享目录名（与 hosts/desktop/main.js 的 teamCreateWorkspace 同一条口径：
@@ -1977,6 +2059,18 @@ function judgeStage(input) {
   const rules = Object.assign({}, (contract && contract.rules) || {}, o.rules || {});
   const out = { pass: true, code: "ok", reason: "", chars: text.length, artifact: null, warn: "", content: "", target_path: "" };
 
+  /* 系统调试串 ⇒ **判红**（批次 10 续）。
+   * 缘起（真 provider 第四轮）：内核调试串 5630 字、字符数够、有链接、条目数够
+   * ⇒ 旧验收全放过 ⇒ 用户拿到一份系统噪声。
+   * ⇒ 这不是「像转述」（那种只记 warn），是**根本不是成果** ⇒ 必须驳回。 */
+  if (looksLikeSystemNoise(text)) {
+    out.pass = false;
+    out.code = "system_noise_not_deliverable";
+    out.reason = "这一棒交上来的是**系统调试串**（内核/协议层的回显），不是成果本身" +
+      "—— 成员这一棒实际没答题（常见原因：材料或 prompt 触发了内核误判）";
+    return out;
+  }
+
   /* 没有契约 ⇒ 放行，但把「像转述」记下来（复盘可见，不拦人）。 */
   if (!contract || (!contract.path && !contract.dir)) {
     if (looksLikeNarration(text)) {
@@ -2216,6 +2310,9 @@ module.exports = {
   replaceSectionBody,
   readPublishedHistory,
   looksLikeNarration,
+  stripLeadingNarration,
+  hasSubstantiveContent,
+  looksLikeSystemNoise,
   createTeamBudget,
   createCancelScope,
   sanitizeBoardKey,

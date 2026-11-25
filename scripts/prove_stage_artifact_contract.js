@@ -1096,6 +1096,67 @@ async function sectionG6() {
       "G6-11c 材料**不在编排 prompt 里**（编排 prompt 会整段进内核做意图识别）");
   }
 
+  /* G6-12：**系统调试串**必须判红（批次 10 续，真 provider 第四轮实测）。
+   *
+   * 缘起：内核把材料误判成建房，第一棒交上来的是 5630 字调试串
+   *     Host FFI results applied (MoonBit kernel / ADR 0002):
+   *     - fail kind=group_chat cmd=`bots=【群任务】追踪今天的,AI,科技热点,...`
+   * ⇒ 它字符数够、有链接、条目数也够 ⇒ **旧验收全放过了**
+   * ⇒ 但它不是「成果本身」，是系统噪声。 */
+  {
+    const { judgeStage: js2, looksLikeSystemNoise: lsn } =
+      require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+    const noise = [
+      "Host FFI results applied (MoonBit kernel / ADR 0002):",
+      "- fail kind=group_chat cmd=`bots=【群任务】追踪今天的,AI,科技热点,从公开来源核验后挑,3,个最值得写的题`",
+      "- 候选 1：Google Cloud 出海峰会报名开启",
+      "- 候选 2：业界首提端侧超节点",
+    ].join("\n");
+    const vNoise = js2({
+      text: noise,
+      contract: { dir: "01-inbox", file: "{date}.md", rules: { min_chars: 200, max_items: 3 } },
+      dataRoot: "/tmp",
+    });
+    check("G6-12", lsn(noise) === true && vNoise.pass === false &&
+      String(vNoise.code || "") === "system_noise_not_deliverable",
+      "G6-12 系统调试串**判红**（字符数够也不能放过 —— 它不是成果）",
+      JSON.stringify({ detected: lsn(noise), pass: vNoise.pass, code: vNoise.code }));
+
+    /* 反向对照：正常产物**不能**被误判成系统噪声 */
+    const good = "## 情报卡 1：文心 5.5 Flash Preview 正式开源\n\n- **事实**：2026-11-24 正式开源。\n- **原始链接**：https://www.qbitai.com/2026/11/512370.html";
+    check("G6-13", lsn(good) === false,
+      "G6-13 正常产物**不会**被误判成系统噪声（判据没误杀）");
+  }
+
+  /* G6-14：**转述判据要看整篇**，不能只看开头（批次 10 续，真 provider 第五轮实测）。
+   *
+   * 缘起：模型交的是「已完成这一棒的侦查与证据沉淀。下面是成果正文（请 Host 落盘到
+   * `01-inbox/`）：## 情报卡 1：…… - **事实**：……」
+   * ⇒ 旧写法（`/^已完成/` 命中开头就整篇判转述）把**合格的成果**误杀了
+   * ⇒ 第一棒被驳回 ⇒ 五棒一次都跑不完（真 provider 连跑两轮都断在这）。 */
+  {
+    const { looksLikeNarration: lsn2 } =
+      require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+    const modelReal = [
+      "已完成这一棒的侦查与证据沉淀。下面是成果正文（请 Host 落盘到 `01-inbox/`）：",
+      "",
+      "## 情报卡 1：文心 5.5 Flash Preview 正式开源",
+      "",
+      "- **事实**：2026-11-24 正式开源，采用 Apache 2.0 协议。",
+      "- **原始链接**：https://www.qbitai.com/2026/11/512370.html",
+      "- **证据摘录**：报道写明该模型正式开源并采用 Apache 2.0 协议，可自由商用。",
+      "- **讨论热度**：不适用（厂商发布 + 媒体转述，未见第三方复现）。",
+    ].join("\n");
+    check("G6-14", lsn2(modelReal) === false,
+      "G6-14 「先说一句再交正文」**不算只交转述**（真 provider 第五轮的实测形态）");
+    /* 老行为不变：纯转述仍然判红 */
+    check("G6-15",
+      lsn2("已完成这一棒的侦查与证据沉淀。") === true &&
+      lsn2("已看过上一棒：情报线索已看过一遍，园区光伏这条最值得做。【交给】脚本撰写") === true &&
+      lsn2("") === true,
+      "G6-15 纯转述**仍然判红**（老行为不变，判据没被放松）");
+  }
+
   /* G6-10：既有形态**行为不变**（编号夹具 / 纯列表 / 题 N｜ / brief 夹具 都还是原来的数） */
   const briefShape = [
     "# 选题 brief：园区光伏", "",
