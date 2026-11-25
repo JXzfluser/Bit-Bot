@@ -19891,7 +19891,7 @@ function createHostFfi(repoRoot, opts = {}) {
       /* 内置版本号（批次 7）：每次改这个内置模板（prompt 或 rules）+1。
          存量库里存着旧版 ⇒ 这里驱动 prompt+rules 的整体升级。
          用户改过的 prompt 不动（用 builtin_prompt_fp 判定）。 */
-      builtin_version: 2,
+      builtin_version: 3,
       default_name: "自媒体内容团队",
       job: "内容流水线",
       description:
@@ -20012,7 +20012,14 @@ function createHostFfi(repoRoot, opts = {}) {
 【禁用表达】
 “我的判断是”“真正有价值的是”“这说明”“这意味着”“毫无疑问”“重塑格局”“进入新时代”，以及空泛三段式、硬凑金句、广告腔和故作深刻的反问。
 【固定交付】
-按任务需要输出：A. 140–220 字中文短帖；B. 280–420 字展开版；C. 仅在适合时给 3–5 条串文大纲；D. 用户明确要求时写长文。**用下面 3 个小节标题分开写**（标题就用这几个字，后面跟内容）：「正文」「事实依据」「仍需确认」。
+按任务需要输出：A. 140–220 字中文短帖；B. 280–420 字展开版；C. 仅在适合时给 3–5 条串文大纲；D. 用户明确要求时写长文。**用下面 4 个小节标题分开写**（标题就用这几个字，后面跟内容）：「本轮选题」「正文」「事实依据」「仍需确认」。
+【本轮选题】
+brief 里通常有 3 个题，但这一轮只有 1 个发布位。这一节必须写清：
+1. 选了**哪一个**题（写题号或题目标题，和 brief 里对得上）；
+2. 为什么选它；
+3. 另外几个题**这次为什么不做**（一句话各自一条）。
+—— 不写这一节，Host 会判你没交选题裁决，稿子不予采用。
+（如果上游给了「历史成品」清单，说明哪些角度已经写过 —— 选的时候别选重复的；重复了就换题或明说为什么仍然要写。）
 【正文】只放读者要读的稿子正文 —— 一句一源、来源单独成行、URL 只出现一次，不许把中文或全角标点混进链接里。
 【事实依据】每条来源单独一行，写清来源名、完整链接、这段事实是从哪里来的。
 【仍需确认】哪些地方还需要核实、需要用户拍板。
@@ -20045,6 +20052,12 @@ function createHostFfi(repoRoot, opts = {}) {
               /* 正文 / 事实依据 / 仍需确认 必须是三个**分开的段落** ——
                  实测混在一起时用户得自己从稿子里抠正文。 */
               "must_include_sections": [
+                /* 选题裁决（批次 9）：brief 有 3 个题但只有 1 个发布位 ——
+                   以前另外 2 个**无声消失**了（用户问「这个角度上个月发过没有」
+                   「3 个 brief 谁上」，产品答不上来）。
+                   ⇒ 主笔必须交「本轮选题」这一节：选了哪个、为什么、
+                     另外几个为什么不做。 */
+                { "label": "本轮选题", "min_chars": 40 },
                 { "label": "正文", "min_chars": 120 },
                 "事实依据",
                 "仍需确认",
@@ -20121,7 +20134,7 @@ function createHostFfi(repoRoot, opts = {}) {
                稿子里仍是「推理成本这次真的下了一档」，比被批评的还重）。
                ⇒ 用审校的「可发布候选版本」这一节覆盖内容主笔那一棒
                  （内存 + 磁盘都更新），并留一条修订记录给复盘核对。 */
-            replaces: [{ section: "可发布候选版本", upstream: "内容主笔" }],
+            replaces: [{ section: "可发布候选版本", upstream: "内容主笔", target_section: "正文" }],
           },
         },
         {
@@ -20294,17 +20307,37 @@ function createHostFfi(repoRoot, opts = {}) {
           if (!tr.deliverable) { tr.deliverable = JSON.parse(JSON.stringify(sr.deliverable)); continue; }
           if (!tr.deliverable.rules) tr.deliverable.rules = {};
           for (const [k, v] of Object.entries(sr.deliverable.rules)) {
-            if (tr.deliverable.rules[k] === undefined) tr.deliverable.rules[k] = v;
+            /* 结构性规则（数组/对象）：内置版本更高时**整体升级**。
+               为什么不像数值规则那样「只补缺失的键」：
+               `must_include_sections` 是「要交哪几个小节」——
+               内置加了一个小节（主笔的「本轮选题」），老库里的数组**有但不全**
+               ⇒ 只补缺失的键永远补不上，实测踩过：
+               升级后「本轮选题」没进契约 ⇒ 主笔不交选题裁决也不判红。 */
+            const structural = Array.isArray(v) || (v && typeof v === "object");
+            if (structural) {
+              if (needUpgrade) tr.deliverable.rules[k] = JSON.parse(JSON.stringify(v));
+            } else if (tr.deliverable.rules[k] === undefined) {
+              tr.deliverable.rules[k] = v;
+            }
           }
           /* 成品出口（publish）也是内置契约的一部分：老库里没有 ⇒ 补上。 */
           if (Array.isArray(sr.deliverable.publish) && !Array.isArray(tr.deliverable.publish)) {
             tr.deliverable.publish = JSON.parse(JSON.stringify(sr.deliverable.publish));
           }
-          /* 修订回路（replaces）同理：老库里没有 ⇒ 补上。
-             不补 ⇒ 存量用户的审校改了稿，主笔那一棒还是旧稿
-             （「提了意见没人执行」照旧）。 */
-          if (Array.isArray(sr.deliverable.replaces) && !Array.isArray(tr.deliverable.replaces)) {
-            tr.deliverable.replaces = JSON.parse(JSON.stringify(sr.deliverable.replaces));
+          /* 修订回路（replaces）：老库里没有 ⇒ 补上；
+             有了但**内置版本更高** ⇒ 整体升级。
+             为什么整体升级而不像 rules 那样「只补缺失的键」：
+             `replaces` 是**内置定义的机制声明**（哪一节覆盖哪一节），
+             不是用户偏好 —— 而 target_section 是后来才加的字段，
+             老库里那个数组「有但不全」⇒ 只补缺失的键会永远补不上
+             （实测踩过：升级逻辑补不了数组里的新字段，
+             回路静默退化成整段覆盖，把主笔的其它小节也冲掉了）。 */
+          if (Array.isArray(sr.deliverable.replaces)) {
+            if (!Array.isArray(tr.deliverable.replaces)) {
+              tr.deliverable.replaces = JSON.parse(JSON.stringify(sr.deliverable.replaces));
+            } else if (needUpgrade) {
+              tr.deliverable.replaces = JSON.parse(JSON.stringify(sr.deliverable.replaces));
+            }
           }
         }
         if (needUpgrade) {

@@ -531,6 +531,32 @@ async function sectionG() {
  * 和它之前编「情报卡 8 条」是同一类毛病。
  * ══════════════════════════════════════════════════════════════════════════ */
 
+async function sectionG5b() {
+  console.log("── G5b. 批次 9：历史成品清单（去重的输入） ──");
+  const { readPublishedHistory } = require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+  /* 造一个已产出过成品的团队目录 */
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "hist-probe-")));
+  const teamDir = path.join(root, "workspace", "自媒体内容团队", "05-publish");
+  fs.mkdirSync(teamDir, { recursive: true });
+  fs.writeFileSync(path.join(teamDir, "2026-11-24-post.md"),
+    "正文\n\n推理成本这次真的下了一档。我们把一次完整任务的花费拆成三段：模型调用、上下文重读、失败重试。", "utf8");
+  fs.writeFileSync(path.join(teamDir, "2026-11-25-post.md"),
+    "正文\n\n我们上次讲了重试成本，这次换个角度：上下文重读到底占了多少。", "utf8");
+  const hist = readPublishedHistory(root, "自媒体内容团队", { max: 12 });
+  check("G5-04", hist.length === 2,
+    "G5-04 读得到这个团队**已经产出过**的成品（去重的输入）",
+    JSON.stringify(hist));
+  check("G5-05", hist.length === 2 && hist.every((h) => h.title && h.title.length > 8),
+    "G5-05 清单带的是**正文开头**（成员能据此判断角度重不重复），不是光一个文件名",
+    JSON.stringify(hist.map((h) => h.title)));
+  /* 没有成品目录时 ⇒ 空清单，不报错 */
+  const emptyRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "hist-empty-")));
+  check("G5-06", Array.isArray(readPublishedHistory(emptyRoot, "自媒体内容团队", {})) &&
+    readPublishedHistory(emptyRoot, "自媒体内容团队", {}).length === 0,
+    "G5-06 没有产出过东西 ⇒ 空清单（第一轮不报错）",
+    JSON.stringify(readPublishedHistory(emptyRoot, "自媒体内容团队", {})));
+}
+
 async function sectionG5() {
   console.log("── G5. 批次 9：修订条数对账 ──");
   const { judgeCrossStage } = require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
@@ -613,7 +639,7 @@ async function sectionG4() {
   const chain = [{ name: "内容主笔", delivered_content: G4_WRITER_BODY }];
   const r1 = applyRevisionLoop({
     chain, selfName: "事实编辑", body: G4_REVIEW_BODY,
-    contract: { replaces: [{ section: "可发布候选版本", upstream: "内容主笔" }] },
+    contract: { replaces: [{ section: "可发布候选版本", upstream: "内容主笔", target_section: "正文" }] },
   });
   check("G4-01", r1.ok === true && !!r1.replaced &&
     r1.replaced.content.indexOf("真的下了一档") >= 0 &&
@@ -629,6 +655,29 @@ async function sectionG4() {
     r1.replaced.revision.before_sha !== r1.replaced.revision.after_sha),
     "G4-02 留了修订记录（前后指纹不同、谁改的改了哪节都记着）",
     JSON.stringify(r1.replaced && r1.replaced.revision));
+
+  /* G4-01b：**按小节替换**，不丢上游的其它小节。
+     实测踩过：整段覆盖把主笔的「本轮选题」整段抹掉了（那节是主笔的，
+     审校那一节里没有）⇒ 产物里选题裁决消失。 */
+  {
+    const writerFull = [
+      "本轮选题", "", "选了题 1，因为有一手公告支撑。",
+      "", "正文", "", "这是主笔的原稿。",
+      "", "事实依据", "", "来源 1。",
+    ].join("\n");
+    const chainB = [{ name: "内容主笔", delivered_content: writerFull }];
+    const rB = applyRevisionLoop({
+      chain: chainB, selfName: "事实编辑", body: G4_REVIEW_BODY,
+      contract: { replaces: [{ section: "可发布候选版本", upstream: "内容主笔", target_section: "正文" }] },
+    });
+    const outB = rB.replaced ? rB.replaced.content : "";
+    check("G4-01b", rB.ok === true && outB.indexOf("审校") >= 0 === false &&
+      outB.indexOf("真的下了一档") >= 0 &&
+      outB.indexOf("本轮选题") >= 0 && outB.indexOf("事实依据") >= 0 &&
+      outB.indexOf("可发布候选版本") < 0,
+    "G4-01b 覆盖**只换目标那一节**，上游别的小节一个字不动（实测踩过：整段覆盖把「本轮选题」抹了）",
+    JSON.stringify({ has_revised: outB.indexOf("真的下了一档") >= 0, keeps_pick: outB.indexOf("本轮选题") >= 0, keeps_src: outB.indexOf("事实依据") >= 0, no_dup_title: outB.indexOf("可发布候选版本") < 0 }));
+  }
 
   /* G4-03：没声明 replaces ⇒ 一字不变（opt-in）。 */
   const r3 = applyRevisionLoop({
@@ -666,7 +715,7 @@ async function sectionG4() {
             must_include_sections: ["可发布候选版本", "改动说明", "风险标记", "仍需人工确认", "原始来源清单"],
           },
           /* 回路声明：审校改好的稿覆盖主笔的稿 */
-          replaces: [{ section: "可发布候选版本", upstream: "脚本撰写" }],
+          replaces: [{ section: "可发布候选版本", upstream: "脚本撰写", target_section: "正文" }],
         },
       ],
     },
@@ -1223,6 +1272,7 @@ function userDataFingerprint() {
   if (MODE === "all" || MODE === "g3") await sectionG3();
   if (MODE === "all" || MODE === "g4") await sectionG4();
   if (MODE === "all" || MODE === "g5") await sectionG5();
+  if (MODE === "all" || MODE === "g5") await sectionG5b();
   if (MODE === "all") sectionC();
   if (MODE === "all") sectionCX();
   if (MODE === "all" || MODE === "urls") await sectionX();

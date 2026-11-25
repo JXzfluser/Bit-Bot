@@ -184,6 +184,12 @@ const STUB_REPLY_MATCH = {
      （must_include_sections），而且链接不能是坏链（no_broken_urls）。
      ⇒ 一句一源、独立成行、URL 只出现一次。 */
   "落到「03-drafts」": [
+    "本轮选题",
+    "",
+    "选的是题 1（推理成本下探之后，中小团队的 Agent 该怎么重新算账）——它有一手官方公告支撑，证据链最完整。",
+    "题 2（推理框架 v2 升级）这轮不做：迁移价值依赖用户是否已部署本地推理栈，我们不知道，缺依据。",
+    "题 3（推理框架升级前的迁移与回滚成本）这轮不做：和题 2 是同一件事，合并到题 1 里说更省版面。",
+    "",
     "正文",
     "",
     "推理成本这次真的下了一档。我们把一次完整任务的花费拆成三段：模型调用、上下文重读、失败重试。",
@@ -1054,6 +1060,19 @@ function startStub() {
             : bad("P13 主笔的稿还是审校改之前的（「提了意见没人执行」照旧）",
                   JSON.stringify({ has_revised: draftTxt.indexOf("单次推理成本的结构变化") >= 0,
                                   has_old: draftTxt.indexOf("推理成本这次真的下了一档") >= 0 }));
+        }
+        /* 选题裁决（批次 9）：brief 有 3 个题但只有 1 个发布位 ——
+           以前另外 2 个**无声消失**了。现在主笔必须交「本轮选题」这一节，
+           说清选了哪个、为什么、另几个为什么不做。 */
+        {
+          const draftP2 = files13.filter((f) => String(f).indexOf("/03-drafts/") >= 0)[0] || "";
+          const draftTxt2 = draftP2 && fs.existsSync(draftP2) ? fs.readFileSync(draftP2, "utf8") : "";
+          const hasPick = draftTxt2.indexOf("本轮选题") >= 0;
+          const saysWhy = /为什么|不做|理由/.test(draftTxt2);
+          hasPick && saysWhy
+            ? ok("P13 主笔交了**选题裁决**（选了哪个 + 另外几个为什么不做）")
+            : bad("P13 主笔没交选题裁决（另外两个题又无声消失了）",
+                  JSON.stringify({ has_pick: hasPick, says_why: saysWhy }));
         }
         /* 修订对账（批次 9）：复盘说的修订条数必须与上游实际发生的一致 ——
            回路落地后链路里有修订记录，复盘不许自己另起数字。 */

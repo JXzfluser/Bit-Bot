@@ -648,7 +648,12 @@ function createProductSurface(repoRoot, opts = {}) {
         const section = String(r.section || "").trim().slice(0, 60);
         const upstream = String(r.upstream || "").trim().slice(0, 60);
         if (!section || !upstream) return null;
-        return { section, upstream };
+        const out2 = { section, upstream };
+        /* target_section：覆盖上游的**哪一节**。
+           审校的「可发布候选版本」对应主笔的「正文」—— 名字不一样，
+           不指定就会覆盖落空（实测踩过：回路静默失效）。 */
+        if (r.target_section) out2.target_section = String(r.target_section).slice(0, 60);
+        return out2;
       }).filter(Boolean).slice(0, 4);
       if (reps.length) out.replaces = reps;
     }
@@ -3889,6 +3894,22 @@ function createProductSurface(repoRoot, opts = {}) {
           prev = isPipeline && res.delivered_content
             ? Object.assign({}, res, { text: res.delivered_content })
             : res;
+          /* 把**历史成品清单**也递下去（批次 9）：
+             用户评审提的「这个角度我上个月发过没有？谁查？」——
+             产品以前答不上来（没有地方记着做过什么）。
+             ⇒ 真源是 05-publish/ 里已经产出过的成品，Host 读出来附给它，
+               让它选题时能避开重复的角度。
+             （清单是**已产出过**的作品，不是「已发布到网上」——
+               真正的发布动作要用户点头，产品不替用户发。） */
+          if (isPipeline) {
+            const hist = roomOrchestrator.readPublishedHistory(DATA_ROOT, room.title, { max: 12 });
+            if (hist.length) {
+              const histNote = "【这个团队已经产出过的成品】\n" +
+                hist.map((h) => "- " + h.title).join("\n") +
+                "\n（选角度时避开重复；如果还是要写同一个角度，说明为什么。）";
+              prev = Object.assign({}, prev, { text: String(prev.text || "") + "\n\n" + histNote });
+            }
+          }
           /* 把**本轮已发生的修订**也递下去（批次 9）：
              复盘棒要能确定性核对「提了 N 条、执行了几条」——
              它得先知道上游发生过几次修订。

@@ -1262,6 +1262,108 @@ function resolvePublishTargets(contract, opts) {
 }
 
 /**
+ * 把原文里的某一个小节**换掉**，其它小节原样保留。
+ *
+ * 为什么需要（实测踩到）：
+ *   回路第一次的实现是「用审校的这一节**整段**覆盖上游」——
+ *   结果主笔稿里的「本轮选题」这一节**被整段抹掉了**（那节是主笔的，
+ *   审校那一节里没有）。产物里选题裁决就没了。
+ *   ⇒ 覆盖必须是**按小节**的：只替换指定的那一节，别人的小节一个字不动。
+ *
+ * @param {string} text   原文
+ * @param {string} label  要替换的小节标题
+ * @param {string} newBody 新的这一节的内容（不含标题行）
+ * @returns {string} 替换后的全文（找不到该小节 ⇒ 原样返回）
+ */
+function replaceSectionBody(text, label, newBody) {
+  const s = String(text || "");
+  const lab = String(label || "");
+  if (!lab || !newBody) return s;
+  const lines = s.split(/\r?\n/);
+  const allLabels = collectSectionLabels(s);
+  const startsWithLabel = (line) => {
+    const bare = String(line || "").trim()
+      .replace(/^#{1,6}\s*/, "").replace(/^[【\[]/, "").replace(/[】\]]$/, "")
+      .replace(/[：:]$/, "").trim();
+    return bare === lab || bare.startsWith(lab + "：") || bare.startsWith(lab + ":") ||
+      bare.startsWith(lab + " ") || bare.startsWith(lab + "｜") || bare.startsWith(lab + "|");
+  };
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    if (startsWithLabel(lines[i])) { start = i; break; }
+  }
+  if (start < 0) return s;
+  /* 找这一节的结束位置（下一个小节标题） */
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    if (/^#{1,6}\s/.test(t)) { end = i; break; }
+    if (/^[一二三四五六七八九十]+\s*[、.．]/.test(t)) { end = i; break; }
+    const bare = t.replace(/^#{1,6}\s*/, "").replace(/^[【\[]/, "").replace(/[】\]]$/, "");
+    if (allLabels.some((L) => {
+      const l = String(L || "");
+      if (!l) return false;
+      return bare === l || bare.startsWith(l + "：") || bare.startsWith(l + ":") ||
+        bare.startsWith(l + " ") || bare.startsWith(l + "｜");
+    })) { end = i; break; }
+  }
+  const head = lines.slice(0, start);
+  const tail = lines.slice(end);
+  const bodyLines = String(newBody).split(/\r?\n/);
+  /* 保留原标题行，只换内容 */
+  const titleLine = lines[start];
+  return head.concat([titleLine], bodyLines, [""], tail).join("\n");
+}
+
+/**
+ * 读「历史成品清单」（批次 9）：这个团队**已经产出过**的成品。
+ *
+ * 为什么需要（评审）：
+ *   用户评审提了一条 ——「这个角度我上个月发过没有？谁查？」
+ *   产品答不上来：没有任何地方记着「做过什么」。
+ *   而真源是现成的：**05-publish/ 里的成品就是已产出过的作品**
+ *   （批次 7 才开始往那儿放东西，之前是空的）。
+ *
+ * ⇒ Host 读 05-publish/ 下每个文件的**首行**（标题），
+ *   递给下一棒，让它选题时能避开重复的角度。
+ *
+ * @returns {Array<{file:string, title:string}>}
+ */
+function readPublishedHistory(dataRoot, roomTitle, opts) {
+  const o = opts || {};
+  const root = String(dataRoot || "").trim();
+  if (!root) return [];
+  const dir = path.join(root, "workspace", sanitizeTeamDir(roomTitle || o.title || ""), "05-publish");
+  let names = [];
+  try {
+    if (!fs.existsSync(dir)) return [];
+    names = fs.readdirSync(dir).filter((n) => /\.md$/i.test(n)).sort();
+  } catch (_) {
+    return [];
+  }
+  const out = [];
+  for (const n of names.slice(0, Math.max(1, Number(o.max || 20)))) {
+    let title = "";
+    try {
+      const raw = fs.readFileSync(path.join(dir, n), "utf8");
+      const first = String(raw).split(/\r?\n/).map((x) => x.trim()).filter(Boolean)[0] || "";
+      /* 第一行常是小节标题（「正文」/「可发布候选版本」）⇒ 往后找第一行像正文的 */
+      title = first;
+      const lines = String(raw).split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+      const bodyLine = lines.find((x) => x.length > 12 && !/^#/.test(x) &&
+        !/^[【\[（(]/.test(x) && !/^(正文|事实依据|仍需确认|可发布候选版本|改动说明|风险标记|仍需人工确认|原始来源清单|数据来源|本轮交付|链路断点|改进建议|数据缺口|本轮选题)$/.test(x));
+      if (bodyLine) title = bodyLine.slice(0, 60);
+    } catch (_) {
+      title = "";
+    }
+    out.push({ file: n, title: title || n });
+  }
+  return out;
+}
+
+/**
  * 「审校 → 修订」回路（批次 9）：把某一棒的小节**覆盖**到上游的交付物上。
  *
  * 为什么需要（实测 + 评审）：
@@ -1300,15 +1402,36 @@ function applyRevisionLoop(input) {
     const target = chain.find((c) => c && String(c.name || "") === upstreamName);
     if (!target) continue;
     /* 取本棒的这一小节 —— 找不到 ⇒ 明确说不覆盖，不静默放过 */
-    const revised = extractSectionBody(body, section, collectSectionLabels(body));
+    /* 取本节内容（**去掉标题行**）—— 覆盖时上游那节自己的标题保留，
+       否则会变成「正文」下面又套一个「可发布候选版本」标题。 */
+    const revisedRaw = extractSectionBody(body, section, collectSectionLabels(body));
+    const revised = revisedRaw
+      ? revisedRaw.split(/\r?\n/).slice(1).join("\n").replace(/^\s+/, "").replace(/\s+$/, "")
+      : "";
     if (!revised) {
       return {
         ok: false, reason: "本棒没有「" + section + "」这一节，没法覆盖上游",
         replaced: null,
       };
     }
+    /* 覆盖上游的**哪一节**：
+       - target_section 显式指定 ⇒ 覆盖那一节
+       - 没指定 ⇒ 找上游里与本节「同名的」小节
+       - 都没有 ⇒ 整段覆盖（上游没有小节结构时）
+       为什么需要 target_section：审校的「可发布候选版本」对应主笔的「正文」，
+       两者**名字不一样**（实测踩过：不指定时覆盖落空，回路静默失效）。 */
+    const targetSection = String(spec.target_section || "");
+    const upstreamLabels = collectSectionLabels(String(target.delivered_content || ""));
+    const sameName = upstreamLabels.find((L) => L === section);
+    const effectiveTarget = targetSection || sameName || "";
     const before = String(target.delivered_content || "");
-    if (before === revised) {
+    /* ⚠️ **按小节替换**，不是整段覆盖 ——
+       整段覆盖会把上游的其它小节（本例：主笔的「本轮选题」）整段抹掉。
+       实测踩过：回路生效后，产物里选题裁决消失了。 */
+    const merged = effectiveTarget
+      ? replaceSectionBody(before, effectiveTarget, revised)
+      : (revised + "\n\n" + before);
+    if (merged === before) {
       return { ok: true, reason: "覆盖内容与上游相同（无变化）", replaced: null };
     }
     return {
@@ -1318,8 +1441,9 @@ function applyRevisionLoop(input) {
         upstream_name: upstreamName,
         upstream_from: selfName,
         section,
+        target_section: effectiveTarget,
         before_chars: before.length,
-        after_chars: revised.length,
+        after_chars: merged.length,
         /* 修订记录：复盘棒能确定性核对「提了 N 条、执行了几条」 */
         revision: {
           at: new Date().toISOString(),
@@ -1329,7 +1453,7 @@ function applyRevisionLoop(input) {
           before_sha: sha1(before),
           after_sha: sha1(revised),
         },
-        content: revised,
+        content: merged,
       },
     };
   }
@@ -1875,6 +1999,8 @@ module.exports = {
   extractPercentages,
   extractCleanUrls,
   applyRevisionLoop,
+  replaceSectionBody,
+  readPublishedHistory,
   looksLikeNarration,
   createTeamBudget,
   createCancelScope,
