@@ -4104,7 +4104,139 @@ body.grok-ui .cn-hint {
    · 一级「要你拍板」(#cmd-active) → 二级四个可点的桶 tab(#cmd-buckets)
      → 三级按桶分栏(#cmd-detail) → 四级「已完成」折叠(#cmd-done)
      → 五级「值班」折叠(#cmd-duty)。 */
-.cmd-panel { margin: 0 16px 8px; }
+/* ── 指挥台 = 和聊天**并列的一级视图**（批次 11：指挥台重做）───────────────
+   缘起：它以前是 #main 里的一个 **flex 项**，塞在聊天流与输入框之间 ⇒
+     · 顶栏还写着「Bit Bot」、底下还挂着「给 Bit Bot 发消息」——
+       一个**任务视图长在聊天区里** ⇒ 跟整体完全不搭；
+     · 宽窗是「挤压」聊天流、窄窗是「浮层」，**宽窄行为还不一致**。
+   ⇒ 现在：绝对定位**铺满主列**、自己滚动 ⇒ 聊天流与输入框都在它下面，
+     宽窄**一致**；顶栏换成指挥台自己的标识（见 body.cmd-view）。
+   ⇒ 定位仍是**全局**：Task 是一等公民，任务属于**用户**而不是某一个群 ——
+     三个群一起跑活儿，「哪件事要我拍板」必须能一屏看完。
+     下沉到每个群 = 回到「先点进群才知道有事」的老路。 */
+.cmd-panel {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  background: var(--bg0);
+  z-index: 4;
+}
+
+/* 内容壳：居中一块，左右留白 ⇒ 卡片不会贴着窗口边，也不会拉满超宽屏。 */
+.cmd-shell {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}
+
+/* 指挥台自己的顶栏：一行 = 标题 + 范围说明 + 操作。
+   （以前没有顶栏，指挥台的标题是一行普通文字，和整个界面的层级对不上。） */
+.cmd-top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-4);
+}
+.cmd-top-left { flex: 1 1 auto; min-width: 0; }
+.cmd-top-title { font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.01em; }
+.cmd-top-sub {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  margin-top: 3px;
+}
+.cmd-top-actions { display: flex; gap: var(--space-2); flex: 0 0 auto; }
+
+/* 顶栏中间：指挥台视图时替换聊天对象 pill（见 index.html 的 cmd-top-title）。 */
+#cmd-top-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+body.cmd-view #bot-pill { display: none; }
+/* [hidden]{display:none!important} 是既有兜底(T-1b) ⇒ 这里必须用 !important 顶开它。 */
+body.cmd-view #cmd-top-title { display: flex !important; }
+/* 指挥台视图 ⇒ **聊天输入框让位**。
+   它是 #main 的 grid item，铺满的指挥台盖不住它（它在 grid 的下一行）⇒ 只能显式让位。
+   （语义也该这样：任务视图里那个「给 Bit Bot 发消息」是聊天的输入框，
+   在这儿出现会让用户以为在指挥台里发消息。） */
+body.cmd-view #composer { display: none !important; }
+.cmd-top-name { font-weight: 600; font-size: var(--text-md); }
+
+/* 侧栏入口：一行「指挥台」+ 待办角标。
+   （以前是一颗没有上下文的 ☰，用户看不出那是什么、也不知道有没有事。） */
+.sb-cmd-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  margin-left: 2px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.sb-cmd-entry:hover { background: var(--surface-2, var(--input-bg)); }
+.sb-cmd-entry[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.sb-cmd-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.sb-cmd-badge[hidden] { display: none; }
+
+/* 「要你拍板」这一段：最要紧的事 ⇒ 标题行带计数，卡片带强调色条。 */
+.cmd-sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.cmd-sec-count { font-size: var(--text-xs); color: var(--muted); font-weight: 600; }
+
+/* 四个状态桶：从「散落的 tab」改成**分段控件**（像邮件客户端的筛选条）。 */
+.cmd-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-top: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.cmd-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.cmd-tab-on {
+  background: var(--accent-soft, var(--input-bg));
+  color: var(--ink);
+  font-weight: 600;
+}
 .cmd-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cmd-head-title { font-weight: 700; }
 .cmd-hint { margin-top: 6px; }
@@ -4130,13 +4262,50 @@ body.grok-ui .cn-hint {
 .cmd-section { margin-bottom: var(--space-5); }
 .cmd-list { display: flex; flex-direction: column; gap: var(--space-4); }
 
-/* 任务卡:根元素从 div.frame-box 换成 article.cmd-card。 */
+/* 任务卡:根元素从 div.frame-box 换成 article.cmd-card。
+   批次 11：卡片改成**一行标题 + 一行 meta**（以前标题/标签/成员/群各占一行，
+   一张卡要五行才说完事 ⇒ 一屏放不下几件 ⇒ 「不搭」的另一半）。 */
 .cmd-card {
+  position: relative;
   border: 1px solid var(--line); border-radius: var(--radius-md);
-  background: var(--surface); padding: var(--space-5);
+  background: var(--surface); padding: var(--space-4) var(--space-5);
+  overflow: hidden;
 }
+/* 「要你拍板」的卡：左侧一道强调色条 ⇒ 扫一眼就知道哪几件等你。 */
+.cmd-card[data-bucket="needs_you"] { border-left: 3px solid var(--danger); }
+.cmd-card[data-bucket="working"] { border-left: 3px solid var(--accent); }
 .cmd-card-head { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
-.cmd-card-title { font-size: var(--text-md); font-weight: 600; margin: 0; }
+.cmd-card-title { font-size: var(--text-md); font-weight: 600; margin: 0; flex: 1 1 auto; min-width: 0; }
+/* meta 一行：状态 · 群 · 成员 */
+/* 「还有 N 件」/「收起」—— 文字按钮，不做成实心按钮：
+   它是**导航**（去哪儿看全量），不是主操作 ⇒ 别跟「插话/改向」抢视觉权重。 */
+.cmd-link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cmd-link-btn:hover { opacity: .78; }
+
+.cmd-card-open {
+  margin-left: auto;
+  flex: 0 0 auto;
+  opacity: .72;
+}
+.cmd-card-open:hover { opacity: 1; }
+
+.cmd-card-meta {
+  display: flex; align-items: center; gap: var(--space-3);
+  flex-wrap: wrap; margin-top: 4px;
+  font-size: var(--text-xs); color: var(--muted);
+}
+.cmd-card-meta .cmd-state { flex: 0 0 auto; }
+.cmd-card-room { margin-top: 0; }
+.cmd-card-when { margin-left: auto; opacity: .75; }
 .cmd-state {
   font-size: var(--text-xs); color: var(--muted);
   border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 0 6px;
@@ -4168,12 +4337,8 @@ body.grok-ui .cn-hint {
    「rail 当浮层、不挤主列」这条路(layout-contract.md §3.2),指挥台走同一条:
    既不画到输入区底下,也不把对话挤没。 */
 @media (max-width: 900px) {
-  .cmd-panel {
-    position: absolute;
-    inset: 0 16px 8px;
-    margin: 0;
-    overflow-y: auto;
-    background: var(--bg0);
-    z-index: 3;
-  }
+  /* 宽窄**同一套**了：窄窗不再另作浮层（那套规则本来就是为「挤压」打的补丁）。
+     指挥台铺满主列、自己滚动；窄窗下内边距收紧一点。 */
+  .cmd-panel { padding: 0; }
+  .cmd-shell { padding: 12px; }
 }

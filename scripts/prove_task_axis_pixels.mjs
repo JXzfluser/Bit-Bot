@@ -21,6 +21,7 @@
  *   TA-14 像素判据有牙:故意改 1% 像素 ⇒ 判据必须翻红
  *   TA-15 几何判据有牙:把卡片推出视口 ⇒ TA-03 必须翻红
  *   TA-16 已知残留如实记录:#cmd-active 与 needs_you 分区重复渲染同一张卡
+ *   TA-17 变异对照:TA-10 改判据后必须有牙(把聊天输入框强行变回浮层 ⇒ 必须判红)
  *
  * 基线口径(R-5,照抄 e2e_desktop_layout_target.mjs:39-47 的做法与它写的理由):
  *   默认**只读** reference/ 下的基线做比对,产物写 artifacts/task-axis-pixels/;
@@ -65,7 +66,7 @@ const BASELINES = { "1440x900": "task-axis-1440x900.png", "480x720": "task-axis-
 /* 方案 §4 批 2:差异像素占比 ≤ 0.5%。 */
 const PIXEL_TOLERANCE = 0.005;
 /* 这一档里会跑的判据编号(视口给不出时逐条报 SKIP,不许悄悄不吭声)。 */
-const VIEWPORT_CLAIMS = ["TA-01", "TA-02", "TA-03", "TA-05", "TA-06", "TA-07", "TA-08", "TA-09", "TA-10", "TA-11", "TA-14", "TA-15", "TA-16"];
+const VIEWPORT_CLAIMS = ["TA-01", "TA-02", "TA-03", "TA-05", "TA-06", "TA-07", "TA-08", "TA-09", "TA-10", "TA-11", "TA-14", "TA-15", "TA-16", "TA-17"];
 
 /* 计数用对象:一档视口中途挂了要能**回滚**这一档的计数(否则重试会把
  * 数字算重 —— 实测 Electron 在 Xvfb 下偶尔中途死一次,重试是必要的)。 */
@@ -298,6 +299,11 @@ const PROBE = () => {
     panelClientBox: panelClient,
     mainRect: rect(main),
     composerRect: rect(composer),
+    /* 批次 11：指挥台与聊天**互斥** ⇒ 指挥台视图下 composer 是 display:none。
+       TA-10 需要知道它到底「不可见」还是「可见但浮在面板上」⇒ 把可见性单独取出来。 */
+    composerVisible: composer
+      ? (getComputedStyle(composer).display !== "none" && composer.getClientRects().length > 0)
+      : false,
     activeHidden: active ? active.hidden : null,
     activeCardCount: activeList ? activeList.querySelectorAll(".cmd-card").length : 0,
     activeText: active ? (active.textContent || "").trim().slice(0, 60) : "",
@@ -507,12 +513,80 @@ async function runViewport(w, h, fixture, port) {
      * 是个滚动容器 ⇒ 下面的内容滚得到」—— 两件事都成立才算没被压住。 */
     const panelBottom = g.panelClientBox ? g.panelClientBox.bottom : (g.panelRect ? g.panelRect.bottom : null);
     const composerTop = g.composerRect ? g.composerRect.y : null;
-    const overlapsComposer = panelBottom !== null && composerTop !== null && panelBottom > composerTop + 0.5;
-    if (!overlapsComposer) {
-      ok("[TA-10] " + tag + " 指挥台没被浮动 composer 压住（面板可见区底 " + panelBottom + " ≤ 输入区顶 " + composerTop + "）");
+    const composerVisible = !!g.composerVisible;
+    /* 【批次 11：判据改成两态，但**比原来更强**】
+     *
+     * 旧判据只有一条：面板可见区底 ≤ 输入区顶。
+     * 它成立的前提是「指挥台和聊天同屏」—— 现在指挥台跟聊天**互斥**，
+     * 指挥台视图下 composer 被 display:none ⇒ 它的 rect 退化成 0，
+     * 旧判据把「输入区顶 0」当真值 ⇒ 误判红（面板明明没被压住）。
+     *
+     * 新判据（两条都成立才算没被压住）：
+     *   A. composer **不可见**（互斥生效）⇒ 压住根本无从发生；
+     *      **并且**面板可见区底不许超出视口底（不然就是画到屏幕外了）。
+     *   B. composer 可见（没互斥）⇒ 沿用旧判据：面板可见区底 ≤ 输入区顶。
+     *
+     * ⇒ 比旧判据多了一条：互斥时还要检查面板没画到屏幕外。
+     * ⇒ 旧设计（composer 可见）在 A 分支里**仍然必须满足 B** ⇒ 没放松。
+     * ⇒ 判据有牙由 TA-17 证明（把 composer 强行变回浮层 ⇒ 必须判红）。 */
+    const viewportBottom = (g.viewport && g.viewport.h !== undefined) ? g.viewport.h : null;
+    let ta10ok = true, ta10why = "";
+    if (!composerVisible) {
+      if (viewportBottom !== null && panelBottom !== null && panelBottom > viewportBottom + 0.5) {
+        ta10ok = false;
+        ta10why = "互斥已生效，但面板可见区底 " + panelBottom + " 超出了视口底 " + viewportBottom;
+      } else {
+        ta10why = "指挥台与聊天互斥 ⇒ 聊天输入框不可见（不存在压住）";
+      }
+    } else if (panelBottom !== null && composerTop !== null && panelBottom > composerTop + 0.5) {
+      ta10ok = false;
+      ta10why = "面板可见区底 " + panelBottom + " > 输入区顶 " + composerTop + "（面板内容画到输入区底下）";
     } else {
-      bad("TA-10 " + tag + " 指挥台被浮动 composer 压住",
-        "面板可见区底 " + panelBottom + " > 输入区顶 " + composerTop + "（面板内容画到输入区底下）");
+      ta10why = "面板可见区底 " + panelBottom + " ≤ 输入区顶 " + composerTop;
+    }
+    if (ta10ok) {
+      ok("[TA-10] " + tag + " 指挥台没被浮动 composer 压住（" + ta10why + "）");
+    } else {
+      bad("TA-10 " + tag + " 指挥台被浮动 composer 压住", ta10why);
+    }
+
+    /* TA-17 变异对照：判据必须有牙。
+     *
+     * 批次 11 改了 TA-10 的判据（两态）⇒ **判据被改过，就必须证明它还咬得动**。
+     * 变异：把聊天输入框强行变回「浮在指挥台上面」—— 也就是**互斥失效**的样子。
+     * 期望：TA-10 必须判红（面板可见区底 > 输入区顶 ⇒ 面板内容被输入框压住）。
+     *
+     * ⇒ 变异只改**运行时页面样式**，不碰源文件一个字节；判完立刻撤。 */
+    try {
+      await win.evaluate(() => {
+        const st = document.createElement("style");
+        st.id = "ta17-mutate";
+        st.textContent =
+          "body.cmd-view #composer{display:flex !important;position:fixed !important;" +
+          "left:0 !important;right:0 !important;bottom:0 !important;z-index:99999 !important;}";
+        document.head.appendChild(st);
+      });
+      await win.waitForTimeout(200);
+      const gm = await win.evaluate(PROBE);
+      const mPanelBottom = gm.panelClientBox ? gm.panelClientBox.bottom : (gm.panelRect ? gm.panelRect.bottom : null);
+      const mComposerTop = gm.composerRect ? gm.composerRect.y : null;
+      const mComposerVisible = !!gm.composerVisible;
+      const mOverlaps = mPanelBottom !== null && mComposerTop !== null && mPanelBottom > mComposerTop + 0.5;
+      if (mComposerVisible && mOverlaps) {
+        ok("[TA-17] 变异对照有牙：把聊天输入框强行变回浮层 ⇒ TA-10 判红（面板底 " + mPanelBottom + " > 输入区顶 " + mComposerTop + "）");
+      } else {
+        bad("TA-17] 变异对照**没咬到**", "注入浮层 composer 后 TA-10 竟然还判绿（composerVisible=" + mComposerVisible + ", 面板底 " + mPanelBottom + ", 输入区顶 " + mComposerTop + "）⇒ 判据失效");
+      }
+    } catch (e) {
+      bad("TA-17 变异对照跑不起来", String(e && e.message).slice(0, 200));
+    } finally {
+      try {
+        await win.evaluate(() => {
+          const el = document.getElementById("ta17-mutate");
+          if (el) el.remove();
+        });
+      } catch (_) { /* ignore */ }
+      await win.waitForTimeout(200);
     }
 
     /* 截图(默认态:默认桶「在跑」、面板没滚动)⇒ 拿去跟基线比。 */

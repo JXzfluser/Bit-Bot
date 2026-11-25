@@ -2546,6 +2546,11 @@
       <span class="bot-pill-avatar"></span>
       <span class="bot-pill-name">Bit Bot</span>
     </div>
+    <!-- 批次 11：指挥台视图时，顶栏中间换成**指挥台自己的标识**
+         （以前指挥台开着，顶栏还写着聊天对象「Bit Bot」⇒ 视图与标题不是一套东西）。 -->
+    <div id="cmd-top-title" hidden>
+      <span class="cmd-top-name" data-i18n="cmdTitle">团队指挥台</span>
+    </div>
     <span id="devmode-badge" data-i18n="devBadge">开发模式</span>
       <div id="header-actions">
       <div id="model-picker" title="国产多模型配置" aria-label="模型" data-i18n-title="railModelsTitle" data-i18n-aria="modelLabel">
@@ -2564,8 +2569,13 @@
       <button type="button" id="sidebar-toggle-btn" title="收起侧栏" aria-label="收起或展开侧栏" aria-expanded="true" data-i18n-title="railActionCollapse" data-i18n-aria="railActionToggleSidebar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
       <button type="button" id="sidebar-search-toggle" title="搜索 Bot / 群组 (Ctrl/Cmd+K)" aria-label="搜索 Bot 或群组" data-i18n-aria="searchAria" data-i18n-title="railActionSearch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
       <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话" data-i18n-title="railActionNewChat" data-i18n-aria="railActionNewChatAria">+</button>
-      <!-- B-8 团队指挥台:不是又一个聊天流 —— 是"谁在干什么、要我拍什么板"。 -->
-      <button type="button" id="cmd-open-btn" title="团队指挥台" aria-label="团队指挥台" data-i18n-title="cmdPanel" data-i18n-aria="cmdPanel" aria-expanded="false">☰</button>
+      <!-- B-8 团队指挥台:不是又一个聊天流 —— 是"谁在干什么、要我拍什么板"。
+           批次 11：入口从一颗没有上下文的 ☰ 图标，改成**带文字和角标**的一行
+           （角标 = 现在有多少件要你拍板）⇒ 用户不用点进去才知道有事。 -->
+      <button type="button" id="cmd-open-btn" class="sb-cmd-entry" title="团队指挥台" aria-label="团队指挥台" data-i18n-title="cmdPanel" data-i18n-aria="cmdPanel" aria-expanded="false">
+        <span class="sb-cmd-badge" id="cmd-nav-badge" hidden></span>
+        <span data-i18n="cmdNavLabel">指挥台</span>
+      </button>
     </div>
     <!-- 侧栏搜索：搜的是「Bot」和「群组」。产品模型就是 Bot + 群 Bot——会话
          属于某个 Bot、收在账户条弹层里，不在这颗放大镜的搜索范围里。
@@ -2777,28 +2787,52 @@
            四级 #cmd-done     「已完成」默认折叠 —— **原复盘区并进来**(同一份 Task 实体)
            五级 #cmd-duty     「值班」默认折叠(未来的事,不该抢首屏)
          复盘区(#cmd-review)与它的渲染函数已删 —— 复盘 = 已完 = 同一份 Task 实体。 -->
+    <!-- B-8 团队指挥台 —— **和聊天并列的一级视图**（批次 11 重做）。
+         定位：Task 是一等公民，任务属于**用户**而不是某一个群 ⇒ 指挥台**全局**
+         （三个群一起跑活儿，「哪件事要我拍板」要能一屏看完）；但**呈现**必须
+         像一个一级视图，而不是聊天区里插的一段（以前顶栏还写着「Bit Bot」、
+         底下还挂着聊天输入框 ⇒ 一个任务视图长在聊天区里 ⇒ 跟整体不搭）。
+         ⇒ 现在：自己一个顶栏、自己一块内容、自己滚动；聊天视图与它**互斥**。 -->
     <div id="command-panel" class="cmd-panel" hidden role="region" aria-label="团队指挥台" data-i18n-aria="cmdTitle">
-      <div class="cmd-head">
-        <div class="cmd-head-title" data-i18n="cmdTitle">团队指挥台</div>
-        <button type="button" id="cmd-refresh-btn" class="bb-btn bb-btn-sm" data-i18n="cmdRefresh">刷新</button>
-        <button type="button" id="cmd-panel-close" class="bb-btn bb-btn-sm" data-i18n="cmdClose">关闭</button>
+      <div class="cmd-shell">
+        <div class="cmd-top">
+          <div class="cmd-top-left">
+            <div class="cmd-top-title" data-i18n="cmdTitle">团队指挥台</div>
+            <div class="cmd-top-sub" id="cmd-top-sub"></div>
+          </div>
+          <div class="cmd-top-actions">
+            <button type="button" id="cmd-refresh-btn" class="bb-btn bb-btn-sm" data-i18n="cmdRefresh">刷新</button>
+            <button type="button" id="cmd-panel-close" class="bb-btn bb-btn-sm" data-i18n="cmdClose">关闭</button>
+          </div>
+        </div>
+        <div id="cmd-hint" class="cmd-note cmd-hint" data-i18n="cmdHint">任务来自各群的真实执行记录。</div>
+        <!-- 第一层：要你拍板（最要紧的事，永远在最上面）
+             第二层：四个状态桶（分段控件）
+             第三层：按桶分栏
+             第四层：已完成（折叠）
+             第五层：值班（折叠） -->
+        <!-- 分段控件：**提到顶部**（批次 11）。
+             它原来夹在「要你拍板」列表和按桶分栏之间 ⇒ 用户要滚到底才发现这屏能切。
+             而它是这屏**唯一的导航** ⇒ 必须第一眼就看见。 -->
+        <div id="cmd-buckets" class="cmd-tabs" role="tablist"></div>
+        <section id="cmd-active" class="cmd-active" hidden>
+          <div class="cmd-sec-head">
+            <span class="cmd-sec-title" data-i18n="cmdActiveTitle">要你拍板</span>
+            <span class="cmd-sec-count" id="cmd-active-count"></span>
+          </div>
+          <div id="cmd-active-list" class="cmd-list"></div>
+          <div id="cmd-active-more" class="cmd-note" hidden></div>
+        </section>
+        <div id="cmd-detail" class="cmd-sections"></div>
+        <details id="cmd-done" class="cmd-fold">
+          <summary class="cmd-fold-summary"><span data-i18n="cmdDoneTitle">已完成</span><span class="cmd-fold-count" id="cmd-done-count"></span></summary>
+          <div id="cmd-done-list" class="cmd-list"></div>
+        </details>
+        <details id="cmd-duty" class="cmd-fold">
+          <summary class="cmd-fold-summary"><span data-i18n="cmdDuty">值班</span><span class="cmd-fold-count" id="cmd-duty-count"></span></summary>
+          <div id="cmd-duty-list" class="cmd-list"></div>
+        </details>
       </div>
-      <div id="cmd-hint" class="cmd-note cmd-hint" data-i18n="cmdHint">任务来自各群的真实执行记录。</div>
-      <section id="cmd-active" class="cmd-active" hidden>
-        <h3 class="cmd-sec-title" data-i18n="cmdActiveTitle">要你拍板</h3>
-        <div id="cmd-active-list" class="cmd-list"></div>
-        <div id="cmd-active-more" class="cmd-note" hidden></div>
-      </section>
-      <div id="cmd-buckets" class="cmd-tabs" role="tablist"></div>
-      <div id="cmd-detail" class="cmd-sections"></div>
-      <details id="cmd-done" class="cmd-fold">
-        <summary class="cmd-fold-summary"><span data-i18n="cmdDoneTitle">已完成</span><span class="cmd-fold-count" id="cmd-done-count"></span></summary>
-        <div id="cmd-done-list" class="cmd-list"></div>
-      </details>
-      <details id="cmd-duty" class="cmd-fold">
-        <summary class="cmd-fold-summary"><span data-i18n="cmdDuty">值班</span><span class="cmd-fold-count" id="cmd-duty-count"></span></summary>
-        <div id="cmd-duty-list" class="cmd-list"></div>
-      </details>
     </div>
     <div id="settings-panel" class="bb-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="bb-sheet" id="settings-sheet">
@@ -19249,11 +19283,18 @@
         cmdClose: "关闭",
         cmdRefresh: "刷新",
         cmdHint: "任务来自各群的真实执行记录。",
+        cmdNavLabel: "指挥台",
+        cmdScope: "{r} 个群 · {t} 件事 · {n} 件等你拍板",
         cmdUnavailable: "拿不到群列表(rooms.list 不可用)。",
         cmdActiveTitle: "要你拍板",
         cmdRunningTitle: "在跑的",
         cmdDoneTitle: "已完成",
         cmdMoreCount: "还有 {n} 件",
+        cmdEmptyWorking: "没有在跑的任务。",
+        cmdEmptyWaiting: "没有在等排期的任务。",
+        cmdEmptyNeedsYou: "没有等你拍板的事。",
+        cmdEmptyClosed: "没有已结束的任务。",
+        cmdCollapse: "收起",
         cmdSteerScopeHint: "下一棒会看到，当前这轮看不到",
         allowOnce: "本次允许",
         alwaysAllow: "总是允许",
@@ -20775,11 +20816,18 @@
         cmdClose: "關閉",
         cmdRefresh: "重新整理",
         cmdHint: "任務來自各群的真實執行記錄。",
+        cmdNavLabel: "指揮台",
+        cmdScope: "{r} 個群 · {t} 件事 · {n} 件等你拍板",
         cmdUnavailable: "拿不到群清單(rooms.list 不可用)。",
         cmdActiveTitle: "要你拍板",
         cmdRunningTitle: "在跑的",
         cmdDoneTitle: "已完成",
         cmdMoreCount: "還有 {n} 件",
+        cmdEmptyWorking: "沒有在跑的任務。",
+        cmdEmptyWaiting: "沒有在等排期的任務。",
+        cmdEmptyNeedsYou: "沒有等你拍板的事。",
+        cmdEmptyClosed: "沒有已結束的任務。",
+        cmdCollapse: "收起",
         cmdSteerScopeHint: "下一棒會看到，當前這輪看不到",
         allowOnce: "本次允許",
         alwaysAllow: "總是允許",
@@ -22301,11 +22349,18 @@
         cmdClose: "Close",
         cmdRefresh: "Refresh",
         cmdHint: "Tasks are rebuilt from each group's real run records.",
+        cmdNavLabel: "Command",
+        cmdScope: "{r} groups · {t} tasks · {n} need you",
         cmdUnavailable: "Group list unavailable (rooms.list missing).",
         cmdActiveTitle: "Needs you",
         cmdRunningTitle: "Running",
         cmdDoneTitle: "Completed",
         cmdMoreCount: "{n} more",
+        cmdEmptyWorking: "Nothing running right now.",
+        cmdEmptyWaiting: "Nothing waiting to be scheduled.",
+        cmdEmptyNeedsYou: "Nothing needs your call.",
+        cmdEmptyClosed: "Nothing finished yet.",
+        cmdCollapse: "Collapse",
         cmdSteerScopeHint: "The next hop sees it, the current turn does not",
         allowOnce: "Allow once",
         alwaysAllow: "Always allow",
@@ -26477,7 +26532,12 @@
     /* P1 批 1:桶从「只计数」变成**可点的 tab** ⇒ 渲染层多一个状态:当前选中哪个桶。
        默认落在「在跑」—— 一级信息(要你拍板)由 #cmd-active 单独占首屏,
        二级信息(正在跑的事)才轮到 tab。 */
-    var CMD_STATE = { tasks: [], selected: null, note: "", duty: {}, records: [], tab: "working" };
+    var CMD_STATE = { tasks: [], selected: null, note: "", duty: {}, records: [],
+      /* 默认桶：**「在跑」**（批次 11 想过改成 needs_you ⇒ 又撤回）。
+         像素门 TA-06 结尾「回到默认桶(在跑)」就钉住了这个默认。
+         「在跑常常是空的」是真的 —— 但那是**数据状态**，不是 UI 该替用户决定的；
+         解决办法是空态说人话（见 cmdEmptyFor），不是偷偷换默认视图。 */
+      tab: "working", activeExpanded: false };
 
     function cmdEsc(s) {
       return String(s == null ? "" : s)
@@ -26682,22 +26742,56 @@
       var t = task;
       var title = t.task_title || t.task || (t.steps[0] && t.steps[0].text) || t.room_title || "";
       var who = t.members.join("、");
+      /* 【批次 11 修 bug】line 原来先看 t.needs_you，没有就无条件写「在跑」。
+         但 bucket=needs_you 有**两条来源**：state=waiting（显式等用户）或 needs_you 非空。
+         前一种 needs_you 是 null ⇒ 卡片顶上贴着「需要你拍板」，下面却写着「在跑」——
+         自相矛盾，用户会以为这活儿还轮不到自己 ⇒ **按 bucket 判**，不再按字段猜。 */
       var line = "";
-      if (t.needs_you) line = cmdT("cmdNeedsYou") + "：" + t.needs_you.question;
-      else if (t.partial) line = cmdT("cmdPartial") + " " + t.returned + "/" + t.total;
-      else if (t.report) line = cmdT("cmdClosed") + " " + t.returned + "/" + t.total;
-      else line = cmdT("cmdWorking");
+      var showLine = true;
+      if (t.bucket === "needs_you") {
+        if (t.needs_you && t.needs_you.question) {
+          line = cmdT("cmdNeedsYou") + "：" + t.needs_you.question;
+        } else {
+          /* 顶上已经有「需要你拍板」的状态徽标了 ⇒ 这里再写一遍就是重复。
+             没有具体问题时**不写这一行**（留着空白更糟）。 */
+          line = "";
+          showLine = false;
+        }
+      } else if (t.bucket === "closed") {
+        line = cmdT("cmdClosed") + " " + t.returned + "/" + t.total;
+      } else if (t.bucket === "waiting") {
+        line = cmdT("cmdWaiting");
+      } else {
+        line = cmdT("cmdWorking");
+      }
+      /* 批次 11：卡片重排 —— 标题一行，meta 一行（状态 · 群 · 成员），
+         下面才是「要你拍板的问题 / 进度」。
+         以前标题、状态标签、成员、群名各占一行 ⇒ 一张卡五行才说完事，
+         一屏放不下几件 ⇒ 跟整个界面的密度对不上。 */
+      var when = "";
+      try {
+        var at = Date.parse(t.at || "");
+        if (isFinite(at)) when = mcRelTime(new Date(at).toISOString());
+      } catch (e) { when = ""; }
       return '<article class="cmd-card" data-cmd-task="' + cmdEsc(t.task_sig || t.at) +
         '" data-bucket="' + cmdEsc(t.bucket || "") +
         '" data-task-sig="' + cmdEsc(t.task_sig || "") + '">' +
         '<div class="cmd-card-head">' +
         '<h4 class="cmd-card-title">' + cmdEsc(String(title).slice(0, 120)) + "</h4>" +
         '<span class="cmd-state" data-cmd-state="' + cmdEsc(t.bucket || "") + '">' +
-        cmdEsc(cmdBucketLabel(t.bucket)) + "</span></div>" +
-        '<div class="cmd-sub">' + cmdEsc(who ? who : cmdT("cmdMembers")) + "</div>" +
-        '<div class="cmd-line">' + cmdEsc(line) + "</div>" +
-        '<div class="cmd-room cmd-card-room">' + cmdEsc(t.room_title || t.room_id) +
-        (t.archived ? ' <span class="cmd-tag" data-i18n="cmdArchived">' + cmdEsc(cmdT("cmdArchived")) + "</span>" : "") + "</div>" +
+        cmdEsc(cmdBucketLabel(t.bucket)) + "</span>" +
+        /* 「打开群」放在标题行右端：跟状态徽标并排 ⇒ 不占额外行高，
+           也不会把 meta 行挤到换行（meta 行本来要放群 · 成员 · 时间）。 */
+        '<button type="button" class="bb-btn bb-btn-sm cmd-card-open" data-cmd-open-room="' +
+          cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">' + cmdEsc(cmdT("cmdOpenRoom")) + "</button>" +
+        "</div>" +
+        '<div class="cmd-card-meta">' +
+        '<span class="cmd-card-room">' + cmdEsc(t.room_title || t.room_id) + "</span>" +
+        '<span class="cmd-card-who">' + cmdEsc(who ? who : cmdT("cmdMembers")) + "</span>" +
+        (t.archived ? ' <span class="cmd-tag" data-i18n="cmdArchived">' + cmdEsc(cmdT("cmdArchived")) + "</span>" : "") +
+        (when ? '<span class="cmd-card-when">' + cmdEsc(when) + "</span>" : "") +
+        "</div>" +
+        (showLine ? '<div class="cmd-line">' + cmdEsc(line) + "</div>" : "") +
         // 批 1 让成员真并行 ⇒ 用户必须看得见**谁干了什么**,
         // 否则并行只会变成"一堆 bot 同时动但说不清"。
         cmdRenderSteps(t.steps, t.task_sig, t.room_id) +
@@ -26725,15 +26819,15 @@
               '<span class="cmd-note cmd-steer-hint" data-i18n="cmdSteerScopeHint">' + cmdEsc(cmdT("cmdSteerScopeHint")) + "</span>" +
             "</div>"
           : "") +
-        '<div class="cmd-actions">' +
-        '<button type="button" class="bb-btn bb-btn-sm" data-cmd-open-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">' + cmdEsc(cmdT("cmdOpenRoom")) + "</button>" +
-        // 「刹停」只在**真在跑**且有 task_sig 时才给 —— 没有在跑的,
-        // 按下去只会得到一句 "no_running_task",不如不给。
+        /* 「刹停」只在**真在跑**且有 task_sig 时才给 —— 没有在跑的,
+           按下去只会得到一句 "no_running_task",不如不给。
+           （「打开群」已并进 meta 行 ⇒ 这里没有其它按钮时不留空行。） */
         (t.bucket === "working" && t.task_sig
-          ? '<button type="button" class="bb-btn bb-btn-sm bb-btn-danger-soft" data-cmd-cancel="' +
-                        cmdEsc(t.task_sig) + '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdCancel">' + cmdEsc(cmdT("cmdCancel")) + "</button>"
+          ? '<div class="cmd-actions">' +
+            '<button type="button" class="bb-btn bb-btn-sm bb-btn-danger-soft" data-cmd-cancel="' +
+                        cmdEsc(t.task_sig) + '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdCancel">' + cmdEsc(cmdT("cmdCancel")) + "</button>" +
+            "</div>"
           : "") +
-        "</div>" +
         "</article>";
     }
 
@@ -26805,11 +26899,29 @@
         var b = CMD_BUCKETS[k];
         var list = byBucket[b.key] || [];
         var on = b.key === CMD_STATE.tab;
+        /* 【撤回】批次 11 曾经把 needs_you 桶分区藏掉（说"一级区已经渲染过了"）——
+           那**破坏了桶 tab 的语义**：点「需要你拍板」时对应分区必须亮着
+           （像素门 TA-06 就是钉这一条）。一级区和桶分区**都留着**，
+           同一张卡出现两处是已知残留（TA-16 如实记着，不假装它是设计）。 */
         html += '<section class="cmd-section" data-bucket="' + b.key + '"' + (on ? "" : " hidden") + ">" +
           '<h4 class="cmd-sec-title">' + cmdEsc(cmdT(b.sec)) + "</h4>" +
           '<div class="cmd-list">';
         if (!list.length) {
-          html += '<div class="frame-box cmd-empty" data-i18n="cmdEmpty">' + cmdEsc(cmdT("cmdEmpty")) + "</div>";
+          /* 空态**按桶说人话**：「没有在跑的任务」≠「你没有任务」。
+             以前所有空桶都写同一句「还没有任务」⇒ 在「在跑」桶看到这句，
+             用户会以为整个团队没干活（其实有 18 件在等他拍板）。 */
+          /* data-i18n 必须写**字面量**（copy contract CC-05 扫源码里的字面量，
+             拼出来的键名它看不见 ⇒ 哪天漏了词条也没人发现）。
+             ⇒ 四个桶各写各的字面量，不拼。 */
+          if (b.key === "working") {
+            html += '<div class="frame-box cmd-empty" data-i18n="cmdEmptyWorking">' + cmdEsc(cmdT("cmdEmptyWorking")) + "</div>";
+          } else if (b.key === "waiting") {
+            html += '<div class="frame-box cmd-empty" data-i18n="cmdEmptyWaiting">' + cmdEsc(cmdT("cmdEmptyWaiting")) + "</div>";
+          } else if (b.key === "needs_you") {
+            html += '<div class="frame-box cmd-empty" data-i18n="cmdEmptyNeedsYou">' + cmdEsc(cmdT("cmdEmptyNeedsYou")) + "</div>";
+          } else {
+            html += '<div class="frame-box cmd-empty" data-i18n="cmdEmptyClosed">' + cmdEsc(cmdT("cmdEmptyClosed")) + "</div>";
+          }
         } else {
           for (var m = 0; m < list.length; m++) html += cmdCardHtml(list[m]);
         }
@@ -26839,7 +26951,12 @@
         return;
       }
       sec.hidden = false;
-      var shown = needs.length > 3 ? needs.slice(0, 3) : needs;
+      /* 批次 11：「还有 N 件」以前是**纯文本** ⇒ 用户只能看到前 3 条，
+         要看全量得去按桶分栏那边找（还要先选中对应的桶）。
+         ⇒ 现在它是一个按钮：点了就在这儿展开全量。
+         （不新增数据源 —— 还是同一份 CMD_STATE.tasks，只是多渲染几张卡。） */
+      var expanded = !!CMD_STATE.activeExpanded;
+      var shown = (!expanded && needs.length > 3) ? needs.slice(0, 3) : needs;
       var html = "";
       for (var j = 0; j < shown.length; j++) html += cmdCardHtml(shown[j]);
       list.innerHTML = html;
@@ -26847,7 +26964,13 @@
         var rest = needs.length - shown.length;
         if (rest > 0) {
           more.hidden = false;
-          more.textContent = cmdTp("cmdMoreCount", { n: String(rest) });
+          more.innerHTML = '<button type="button" class="cmd-link-btn" data-cmd-expand="1" data-i18n="cmdMoreCount">' +
+            cmdEsc(cmdTp("cmdMoreCount", { n: String(rest) })) + "</button>";
+        } else if (expanded && needs.length > 3) {
+          /* 展开后变成「收起」—— 否则点开就回不去。 */
+          more.hidden = false;
+          more.innerHTML = '<button type="button" class="cmd-link-btn" data-cmd-collapse="1" data-i18n="cmdCollapse">' +
+            cmdEsc(cmdT("cmdCollapse")) + "</button>";
         } else {
           more.hidden = true;
           more.textContent = "";
@@ -26888,6 +27011,23 @@
         } catch (_) { records = []; }
         CMD_STATE.tasks = aggregateCommandTasks(rooms, records);
         CMD_STATE.note = "";
+        /* 侧栏角标：现在有多少件要你拍板（不用点进来才知道有事）。 */
+        cmdUpdateBadge(CMD_STATE.tasks);
+        /* 顶栏副标题：这个视图到底跨了多少东西（批次 11）。
+           指挥台是**全局**视图 ⇒ 必须说清楚它聚合的是几���群、几件事，
+           否则用户会以为「我只有一个群，怎么冒出这么多任务」。 */
+        try {
+          var sub = document.getElementById("cmd-top-sub");
+          if (sub) {
+            var roomN = 0, needN = 0;
+            var seenRooms = {};
+            (CMD_STATE.tasks || []).forEach(function (t) {
+              if (t && t.room_id && !seenRooms[t.room_id]) { seenRooms[t.room_id] = 1; roomN += 1; }
+              if (t && t.bucket === "needs_you") needN += 1;
+            });
+            sub.textContent = cmdTp("cmdScope", { r: roomN, t: (CMD_STATE.tasks || []).length, n: needN });
+          }
+        } catch (e) { /* 副标题拿不到就不写 */ }
 
         // 值班(批 H):逐房读排班。读不到就当没有 —— **不编排班**。
         var dutyByRoom = {};
@@ -26915,6 +27055,35 @@
       cmdRender();
     }
 
+    /* 指挥台视图的开关（批次 11）。
+     *
+     * 缘起：指挥台以前是 #main 里的一个 flex 项 ⇒ 开着的时候，聊天流被挤到
+     * 零高度、而**聊天输入框还挂在底下** ⇒ 一个任务视图长在聊天区里，
+     * 顶栏还写着聊天对象「Bit Bot」⇒ 跟整体完全不搭。
+     *
+     * ⇒ 现在指挥台**和聊天互斥**：开它 ⇒ 顶栏换成指挥台自己的标识、
+     *   聊天输入框让位；关它 ⇒ 一切回到聊天。
+     *   （body.cmd-view 是这两个状态的唯一开关，不另起数据源、不另写状态机。）
+     */
+    function cmdSetView(on) {
+      try { document.body.classList.toggle("cmd-view", !!on); } catch (e) { /* 老浏览器没有 classList 就当没这层 */ }
+    }
+
+    /** 侧栏入口的角标：现在有多少件**要你拍板**（用户不用点进去才知道有事）。 */
+    function cmdUpdateBadge(tasks) {
+      var badge = document.getElementById("cmd-nav-badge");
+      if (!badge) return;
+      var n = 0;
+      try {
+        /* 按 bucket 判，不按 t.needs_you 判 ——
+           bucket 才是聚合算好的四桶（needs_you/working/waiting/closed），
+           和卡片上的标签、统计数字必须是**同一把尺**。 */
+        n = (tasks || []).filter(function (t) { return t && t.bucket === "needs_you"; }).length;
+      } catch (e) { n = 0; }
+      badge.textContent = n > 99 ? "99+" : String(n);
+      badge.hidden = n <= 0;
+    }
+
     async function cmdOpen() {
       // P1 批 1 D-1:面板的显隐走 **hidden 属性**(不再写行内 style.display)
       // —— ui_chrome.css 里 [hidden]{display:none!important} 是既有兜底(T-1b)。
@@ -26922,6 +27091,7 @@
       if (el) el.hidden = false;
       var btn = document.getElementById("cmd-open-btn");
       if (btn) btn.setAttribute("aria-expanded", "true");
+      cmdSetView(true);
       await cmdRefresh();
     }
 
@@ -26930,6 +27100,7 @@
       if (el) el.hidden = true;
       var btn = document.getElementById("cmd-open-btn");
       if (btn) btn.setAttribute("aria-expanded", "false");
+      cmdSetView(false);
     }
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -26948,6 +27119,19 @@
         // t.getAttribute("data-cmd-tab") ⇒ 点「在跑」两个字没反应、
         // 点按钮的空白处才切(批 2 的像素门真点 tab 时当场抓到)。
         // ⇒ 改成 closest() 往上找那个带 data-cmd-tab 的按钮。
+        /* 批次 11：「还有 N 件」/「收起」。
+           以前「还有 N 件」是纯文本 ⇒ 看不到全量只能去下面按桶分栏找。
+           ⇒ 现在点了就展开/收起（全量仍来自同一份 CMD_STATE.tasks）。 */
+        if (t.closest && t.closest("[data-cmd-expand]")) {
+          CMD_STATE.activeExpanded = true;
+          cmdRender();
+          return;
+        }
+        if (t.closest && t.closest("[data-cmd-collapse]")) {
+          CMD_STATE.activeExpanded = false;
+          cmdRender();
+          return;
+        }
         var tabEl = t.closest ? t.closest("[data-cmd-tab]") : null;
         var tabKey = tabEl ? tabEl.getAttribute("data-cmd-tab") : (t.getAttribute("data-cmd-tab") || null);
         if (tabKey) {
