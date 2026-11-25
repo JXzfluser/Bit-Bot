@@ -102,6 +102,36 @@ try {
     ? ok("A 自己建的群写回后**仍在**（合并没把自己也弄丢）")
     : bad("A 自己的群丢了", JSON.stringify(after2.map((r) => r && r.id)));
 
+  /* ---- 级联删除（删 Bot ⇒ 成员不足 2 人的群被移除）**不能被复活** ----
+   * ⚠️ 这是批次 10 续自己引入的一条新红（CI 的 G-14 cleanup）：
+   *   群面「一律保留」的修法把**级联删除**也复活了 ⇒ 「我明明解散了这个群，
+   *   它又出现了」。⇒ 「真删除」与「并发丢更新」在数据上完全一样（都是
+   *   「基线里有、我没写」）⇒ **分不出来** ⇒ 删除必须是**显式意图**。
+   * ⇒ 这里用**真接口**（删 Bot）走一遍 ⇒ 群行必须真的消失。 */
+  {
+    /* 造一个 2 成员的群（只有 a1/a2 在群里），删掉其中一个 ⇒ 群应被级联移除。 */
+    const b3 = surfA.botsCreate({ name: "丙成员", job: "审阅" });
+    const b3id = b3 && b3.bot && b3.bot.id;
+    const room2 = surfA.roomCreate(b3id + "," + b2, "将被解散的群");
+    const r2id = room2 && room2.room && room2.room.id;
+    const beforeRows = readRooms().length;
+    /* botsDelete 需要 confirm === "yes"（删除是不可逆动作，两段确认）。 */
+    const del = surfA.deleteBot ? surfA.deleteBot(b3id, "yes") : null;
+    const afterRows = readRooms();
+    const gone = !afterRows.some((r) => r && String(r.id) === String(r2id));
+    gone && del && del.ok !== false
+      ? ok("删掉成员不足 2 人的群里的 Bot ⇒ **群行被级联移除，没被复活**" +
+           "（这条是本批自己引入的红：群面「一律保留」会把级联删除也复活）")
+      : bad("级联删除的群行复活了（或者删除失败）",
+            JSON.stringify({ del: del && (del.ok || del.error), r2id, beforeRows,
+                             after: afterRows.map((r) => r && r.id) }).slice(0, 300));
+    /* 别人的群**仍然**不能被复活（并发丢更新的修复不能因此退化）。 */
+    const bStillThere2 = afterRows.some((r) => r && String(r.id) === String(bRoomId));
+    bStillThere2
+      ? ok("级联删除**没有**让别的群复活（并发丢更新的修复仍在）")
+      : bad("别的群被误删了", JSON.stringify(afterRows.map((r) => r && r.id)));
+  }
+
   /* 真改动要生效 */
   const renamed = surfB.roomRename({ room: aId, title: "A 改过的群" });
   if (renamed && renamed.ok !== false) {

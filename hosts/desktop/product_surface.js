@@ -1007,6 +1007,9 @@ function createProductSurface(repoRoot, opts = {}) {
         rooms_dropped = before
           .filter((r) => r && !kept.has(r.id))
           .map((r) => ({ id: r.id, title: r.title || r.id }));
+        /* 登记**显式删除意图**：级联移除的群行不能在合并时被复活
+         * （见 explicitlyRemovedRoomIds 的注释）。 */
+        for (const r of rooms_dropped) explicitlyRemovedRoomIds.add(String(r.id));
         rooms_removed = rooms_dropped.length;
         saveRooms(rooms);
       }
@@ -2282,6 +2285,19 @@ function createProductSurface(repoRoot, opts = {}) {
   /* rooms.json 的读-改-写基底：本次 requireWritableRooms 交给调用方的那份快照，
      落盘时用来分辨「我删掉的群」和「别的进程刚建的群」。见 saveRooms / mergeRoomsAgainstDisk。 */
   let roomsBaseText = null;
+  /* 本轮**明确删除**的群行 id（批次 10 续修 G-14 新红）。
+   *
+   * 缘起：群面没有独立的「解散群」入口，但**删 Bot 会级联移除成员不足 2 人的群**
+   *   （product_surface 的 botsDelete 里那段 filter）。
+   * ⇒ 而「真删除」与「并发丢更新」在数据上**完全一样**：
+   *   都是「基线里有它、我这次没写它」⇒ 靠数据**分不出来**。
+   * ⇒ 所以删除必须是**显式意图**：谁真的删了，就登记进来；
+   *   合并时按登记册丢弃，没登记的一律保留（那才是并发丢更新）。
+   *
+   * ⇒ 这也是为什么不能简单写成「群面没有删除入口 ⇒ 一律保留」：
+   *   级联删除**就是**一条删除入口。
+   */
+  const explicitlyRemovedRoomIds = new Set();
 
   // 只给「要落盘」的路径用：文件不存在可以当空目录开（还没有群），坏文件不行。
   // EVENT_ONLY 下写侧的基底必须是事件折叠（遗留文件走自导入路径）。
@@ -2335,7 +2351,7 @@ function createProductSurface(repoRoot, opts = {}) {
       seen.add(d.id);
       const m = mine.get(d.id);
       if (!m) {
-        /* 我这次没写它 —— **不等于「我删了它」**。
+        /* 我这次没写它 —— **默认不等于「我删了它」**。
          *
          * 缘起（**真 provider 第八轮**：群建起来后**整批消失**，rooms.json 变成
          * `{"version":1,"rooms":[]}`）：老判定是「基底里有 = 我删的，基底里没有 =
@@ -2347,8 +2363,15 @@ function createProductSurface(repoRoot, opts = {}) {
          *   T3 进程 A 写回 ⇒ 「基线里有 + 我没写」 ⇒ 被判成「我删的」⇒ **群被抹掉**
          * ⇒ 「基线刷新过」之后，那条判定就不成立了。
          *
-         * ⇒ 而群面**根本没有删除入口**（群不能被删）⇒ 「我这次没写它」**一律保留**。
-         *   （真用户看到的症状：刚建好的团队凭空消失，转录里却还留着它的成员回合。） */
+         * ⇒ 但「一律保留」也不对：**级联删除**（删 Bot ⇒ 成员不足 2 人的群被移除）
+         *   也会被复活 ⇒ CI 的 G-14 cleanup 会红（真用户看到的症状：
+         *   「我明明把这个群解散了，它又出现了」）。
+         *
+         * ⇒ 而「真删除」与「并发丢更新」在数据上**完全一样**（都是「基线里有、
+         *   我没写」）⇒ **分不出来** ⇒ 所以删除必须是**显式意图**：
+         *   `explicitlyRemovedRoomIds` 登记册里有的 ⇒ 丢弃（真删了）；
+         *   没登记的 ⇒ 保留（那是并发丢更新）。 */
+        if (explicitlyRemovedRoomIds.has(String(d.id))) continue;
         merged.push(d);
         continue;
       }
