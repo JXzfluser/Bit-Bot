@@ -716,6 +716,46 @@ function pickPipelineOrder(candidates) {
 }
 
 /**
+ * 流水线的「下一棒是谁」—— **契约 order 优先**（批次 10 续，真 provider 第十四轮）。
+ *
+ * 缘起（真 bug，不是门禁问题）：第一棒（情报侦察员）交完情报卡，末尾写了一句
+ *   「【交给】内容主笔：把上面候选稿扩写成 1200—1500 字成稿…」
+ * ⇒ 旧逻辑「模型显式点名时以它为准」⇒ **选题策划师整棒被跳过**
+ * ⇒ 内容主笔**没拿到 brief** ⇒ 交出一个只有标题的空壳
+ * ⇒ 验收判红「「正文」这一节只有标题没有内容」⇒ 五棒跑不完。
+ *
+ * ⇒ 流水线的顺序是**建团时由角色契约的 order 定死**的：情报侦察员没有资格
+ *   决定谁写稿 —— 它的职责是交情报卡；跳过选题策划师，主笔就没有 brief 可写。
+ * ⇒ 契约冲突时**按契约走**，并把冲突**如实说出来**（不偷偷改）。
+ *
+ * ⇒ 非流水线场景不用这个函数（那里模型点名是自由的）。
+ *
+ * @param {Array} pipelineBots  按 order 排好的流水线成员
+ * @param {string} currentId    这一棒是谁
+ * @param {object|null} handoffPicked  模型点名想交给的人（可能 null）
+ * @returns {{next:object|null, conflict:string}}
+ */
+function resolveNextPipelineMember(pipelineBots, currentId, handoffPicked) {
+  const list = Array.isArray(pipelineBots) ? pipelineBots : [];
+  const at = list.findIndex((m) => m && m.id === currentId);
+  const byOrder = at >= 0 && at + 1 < list.length ? list[at + 1] : null;
+  if (!handoffPicked) return { next: byOrder || null, conflict: "" };
+  if (!byOrder) {
+    /* 已经是最后一棒：契约没有「下一棒」⇒ 尊重模型的点名（没有契约可违背）。 */
+    return { next: handoffPicked, conflict: "" };
+  }
+  if (String(handoffPicked.id) === String(byOrder.id)) {
+    return { next: byOrder, conflict: "" };
+  }
+  return {
+    next: byOrder,
+    conflict: "这一棒想交给「" + String(handoffPicked.name || handoffPicked.id) +
+      "」，但角色契约的顺序是下一棒「" + String(byOrder.name || byOrder.id) +
+      "」⇒ 已按契约走（流水线顺序建团时就定死，不由成员临时改）。",
+  };
+}
+
+/**
  * lead 综合回合的 prompt：成员原话 + 缺口 + 共享任务板。
  * 失败成员的**原始错误文本不进 prompt**（provider 细节不该再喂给模型），
  * 缺口用「谁没成功」如实点名，完整原因留在 final_report.sections 里。
@@ -2341,6 +2381,7 @@ module.exports = {
   buildBoardText,
   buildResponderPrompt,
   pickPipelineOrder,
+  resolveNextPipelineMember,
   buildSynthesisPrompt,
   buildRelayPrompt,
   contractConstraintLines,

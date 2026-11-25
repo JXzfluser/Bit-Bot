@@ -126,6 +126,11 @@ jobs:
       - name: Model provider catalog
         run: node scripts/prove_llm_provider_catalog.js
 
+      # Pipeline order comes from the role contract, not from a member's
+      # one-off "hand off to X" line (batch 10 follow-up, live provider).
+      - name: Pipeline handoff order
+        run: node scripts/prove_pipeline_handoff_order.js
+
       # Concurrent writers must not lose updates (batch 10 follow-up):
       # a live provider run showed the freshly created team vanishing.
       - name: Concurrent write merge

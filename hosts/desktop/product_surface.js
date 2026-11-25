@@ -4141,6 +4141,33 @@ function createProductSurface(repoRoot, opts = {}) {
             || candidates.find((m) => m.name && handoffRaw.includes(m.name))
             || null
           : null;
+        /* ⚠️ 流水线里**契约 order 优先于模型的交接标记**（批次 10 续，
+         *   真 provider 第十四轮实测抓到的真 bug）。
+         *
+         * 缘起：第一棒（情报侦察员）交完 3 条情报卡，末尾写了一句
+         *   「【交给】内容主笔：把上面候选稿扩写成 1200—1500 字成稿…」
+         * ⇒ 旧的逻辑「模型显式点名时以它为准」⇒ **选题策划师被整棒跳过**
+         *   ⇒ 内容主笔**没拿到 brief** ⇒ 交出来一个只有标题的空壳
+         *   ⇒ 验收判红「「正文」这一节只有标题没有内容」⇒ 五棒跑不完。
+         *
+         * ⇒ 为什么必须改：流水线的顺序是**建团时由角色契约的 order 定死的**，
+         *   不是每轮重新商量的事。情报侦察员**没有资格决定谁写稿** ——
+         *   它的职责是交情报卡；跳过选题策划师，主笔就没有 brief 可写。
+         * ⇒ 契约冲突时**按契约走**，并把「模型想交给谁、契约说该交给谁」
+         *   如实记进这一棒的结果（final_report 里看得见），不是偷偷改。
+         *
+         * ⇒ 非流水线（并行分工 / 对话）行为**一字不变**：那里模型点名是自由的。 */
+        let handoff_conflict = "";
+        if (isPipeline) {
+          /* 契约 order 优先于模型的交接标记（真 provider 第十四轮抓到的真 bug）。
+             判据与理由见 room_orchestrator.resolveNextPipelineMember 的注释。 */
+          const picked = nextMember;
+          const resolved = roomOrchestrator.resolveNextPipelineMember(pipelineBots, current.id, picked);
+          nextMember = resolved.next;
+          handoff_conflict = resolved.conflict || "";
+        }
+        if (nextMember) res.handoff_to = nextMember.id;
+        else if (handoff_conflict) res.handoff_conflict = handoff_conflict;
         /* 流水线（批次 4）：按契约 order **自动接棒**。
          * 为什么不靠模型的交接标记：流水线的顺序在**建团时**就定死了（角色
          * 契约里的 order），角色 prompt 里也没写交接标记 ⇒ 等模型写标记 = 链路
@@ -4150,7 +4177,7 @@ function createProductSurface(repoRoot, opts = {}) {
           const at = pipelineBots.findIndex((m) => m.id === current.id);
           nextMember = at >= 0 && at + 1 < pipelineBots.length ? pipelineBots[at + 1] : null;
         }
-        res.handoff_to = nextMember ? nextMember.id : "";
+        if (!res.handoff_to) res.handoff_to = nextMember ? nextMember.id : "";
         if (nextMember && !seen.has(nextMember.id)) {
           /* 递给下一棒的是**成果正文**（通道 A 落盘的文件正文 / 通道 B 成员交的
              正文），不是它的汇报 —— 汇报对下一棒没有信息量。 */
@@ -4282,6 +4309,8 @@ function createProductSurface(repoRoot, opts = {}) {
             } : undefined,
             rejected: !!c.rejected,
             reject_reason: c.reject_reason || "",
+            /* 流水线里模型想改交接对象、但契约不允许 ⇒ 如实说（不是偷偷改）。 */
+            handoff_conflict: c.handoff_conflict || "",
           };
         }),
         /* 流水线带着缺口继续时，把**未解疑问**如实报出来（批次 10 续）。

@@ -1794,6 +1794,15 @@
       "wired_in": "G-140"
     },
     {
+      "file": "prove_pipeline_handoff_order.js",
+      "layer": "L2",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_pipeline_handoff_order.js — 流水线下一棒由**契约 order** 决定（批次 10 续，真 provider 第十四轮抓到的真 bug）：第一棒交完情报卡后写了一句「【交给】内容主笔：把上面候选稿扩写成 1200—1500 字成稿…」⇒ 旧逻辑「模型显式点名时以它为准」⇒ 选题策划师整棒被跳过 ⇒ 内容主笔没拿到 brief ⇒ 交出只有标题的空壳 ⇒ 验收判红「交了标题不算交付」⇒ 五棒永远跑不完。流水线顺序是**建团时由角色契约的 order 定死**的，情报侦察员没资格决定谁写稿 ⇒ 冲突时按契约走，并把「想交给谁/契约说该交给谁」如实说出来（非流水线场景模型点名仍自由）。本门钉住：冲突走契约、冲突如实说、一致时不制造噪音、没点名走契约、最后一棒不制造假冲突、逐棒顺序正确；变异对照（退回模型优先 ⇒ 必须翻红 ⇒ 判据有牙）",
+      "wired_in": "G-145"
+    },
+    {
       "file": "prove_approval_single_source.js",
       "layer": "L2",
       "blocking": true,

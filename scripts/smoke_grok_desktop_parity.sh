@@ -5155,6 +5155,14 @@ for g142_id in HM-01 HM-02 HM-03 HM-10 HM-11 HM-12 HM-13 HM-14 HM-15 HM-16 HM-20
   fi
 done
 
+# G-145 流水线下一棒由契约 order 决定（真 provider 第十四轮抓到的真 bug：
+#   第一棒一句「【交给】内容主笔」⇒ 选题策划师整棒被跳过 ⇒ 主笔没 brief ⇒ 交空壳）
+if timeout 180 node scripts/prove_pipeline_handoff_order.js > /tmp/g145-handoff-order.log 2>&1; then
+  ok "G-145 prove_pipeline_handoff_order（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g145-handoff-order.log | tail -1)）"
+else
+  bad "G-145 prove_pipeline_handoff_order（见 /tmp/g145-handoff-order.log；$(grep '✗' /tmp/g145-handoff-order.log | head -3 | tr '\n' ' ')）"
+fi
+
 # G-144 并发写不许丢更新（批次 10 续，真 provider 第八轮实测「群建起来后整批消失」）
 #   变异对照：退回整面覆盖 ⇒ 对应断言必须翻红 ⇒ 判据有牙。
 if timeout 300 node scripts/prove_concurrent_write_merge.js > /tmp/g144-concurrent-merge.log 2>&1; then
