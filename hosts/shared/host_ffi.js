@@ -103,8 +103,22 @@ function llmFailureCode(ok, errText) {
  * 实测正常一棒就在 12 次被误停。死循环那棒是**持续高频**（15 分钟 72 次）
  * ⇒ 真正的区分靠「连续工具失败就停」（内核已有）+ 这里的次数上限兜底。
  * ⇒ 20 次 / 180 秒：正常一棒够用，死循环仍会被兜住。 */
-const LLM_CALL_GUARD_MAX = Number(process.env.BITBOT_LLM_CALL_GUARD_MAX || 20);
-const LLM_CALL_GUARD_WINDOW_MS = Number(process.env.BITBOT_LLM_CALL_GUARD_WINDOW_MS || 180000);
+/* ⚠️ 阈值口径（批次 10 续，真 provider 第十轮实测改）：
+ *
+ * 老值 20 次 / 180 秒是按「**搜索 + 几次抓正文 + 写**」估的，
+ * 而 Host 找料之后**模型不再需要抓取**，真 provider 下一次调用要 10~20 秒
+ * ⇒ 一棒要写完 + 自检 + 改，**20 次调用根本写不完一棒**。
+ * 实测第十轮：第一棒正常通过（正文 5505 字），第二棒直接撞闸：
+ *   「这一棒在 180 秒内调用了模型 20 次（多半在反复抓同一个页面），已停下」
+ * —— 撞的其实是**时间窗**（真 provider 慢），不是真的死循环。
+ *
+ * ⇒ 默认放宽到 **30 次 / 600 秒（10 分钟）**：
+ *   · 真 provider 一棒的真实需要（10~30 次）能过；
+ *   · 死循环仍会被兜住（10 分钟 30 次，且内核另有「连续工具失败就停」）；
+ *   · 本地 stub 门禁**显式**传小值（20 次 / 180 秒）⇒ 门禁照样快、死循环照样红。
+ */
+const LLM_CALL_GUARD_MAX = Number(process.env.BITBOT_LLM_CALL_GUARD_MAX || 30);
+const LLM_CALL_GUARD_WINDOW_MS = Number(process.env.BITBOT_LLM_CALL_GUARD_WINDOW_MS || 600000);
 const llmCallGuard = new Map();
 
 function llmCallGuardCheck(key) {

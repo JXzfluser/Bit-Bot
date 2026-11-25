@@ -150,6 +150,12 @@ export PATH="$HOME/.moon/bin:$PATH"
 export ELECTRON_DISABLE_SANDBOX=1
 export PLAYWRIGHT_CORE_PATH="$REPO_ROOT/hosts/desktop/node_modules/playwright-core"
 export BITBOT_ROOM_RESPONDER_TIMEOUT_MS="${BITBOT_ROOM_RESPONDER_TIMEOUT_MS:-600000}"
+# 真 provider 一棒要写完 + 自检 + 改，一次调用 10~20 秒 ⇒ 20 次 / 180 秒
+# 那个闸根本不够写一棒（实测第十轮：第二棒直接撞闸，流水线 1/2 中断）。
+# ⇒ 真 provider 演练用宽预算；本地 stub 门禁走默认值（30 次 / 600 秒），
+#    死循环照样由内核的「连续工具失败就停」与本闸兜住。
+export BITBOT_LLM_CALL_GUARD_MAX="${BITBOT_LLM_CALL_GUARD_MAX:-60}"
+export BITBOT_LLM_CALL_GUARD_WINDOW_MS="${BITBOT_LLM_CALL_GUARD_WINDOW_MS:-900000}"
 
 timeout "${PILOT_TIMEOUT:-2400}" xvfb-run -a node scripts/e2e_desktop_creator_pipeline.mjs
 RC=$?

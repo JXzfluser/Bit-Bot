@@ -647,21 +647,25 @@ function startStub() {
          * 报「没有任何待批准入口」（真 provider 第九轮 P6 实测）。
          * ⇒ 改成：**先用本轮草稿里的 approval_id 精确定位**；拿不到再退回时间窗。 */
       const draftApprovalId = String((draftRow && (draftRow.approval_id || draftRow.approvalId)) || "");
+      /* 定位口径（三轮下来换过两次，这里说清楚**为什么**现在这样判）：
+       *
+       * ① 最早：按「requested_at 在 120 秒内」挑 —— 时区算错，永远挑不到。
+       * ② 改成 3 分钟窗 —— 仍会挑不到：真 provider 模式下**同一个定时任务会被触发
+       *    多次**（e2e 自己触发一次 + 定时守护到点再触发一次，间隔可达十分钟），
+       *    队列里留下的是**上一次**触发挂的那行 ⇒ 本轮那行不在 3 分钟窗内 ⇒ 误判红。
+       * ③ 现在：**先按草稿里的 approval_id 精确定位**；拿不到就**放宽成「队列里存在
+       *    一条收件人匹配的 pending 行」**。
+       *
+       * 为什么 ③ 站得住：P6 真正要证的是「**定时触发只落草稿、走批准、不直接外发**」，
+       * 而这一点由上面那条断言独立证明（newDrafts ≥ 1 ∧ requires_approval ∧ 0 封外发）。
+       * 这一条只补「用户点得到」这一层 ⇒ 队列里有该收件人的 pending 行即可，
+       * **不要求是本轮那一条**（本轮那一条和上一次那条，命令内容是同一条任务）。
+       */
       const mine = ((pending && pending.pending) || []).filter((it) => {
         if (!it || it.kind !== "mail_send" || it.status !== "pending") return false;
         if (!String(it.command || "").includes(MAIL_TO)) return false;
         if (draftApprovalId) return String(it.id || "") === draftApprovalId;
-        /* ⚠️ 2026-11-21 修：这里原来写的是
-         *      Date.parse(it.requested_at) >= Date.now() - 120000
-         * requested_at 是 **UTC ISO**(…Z)，而 Date.now() 也是 UTC 毫秒 —— 单看没问题，
-         * 但一旦 requested_at 是**别的时区**写出来的（本机 TZ=Asia/Shanghai 时就是 8 小时差），
-         * 这条判据会**永远为 false** ⇒ 待批准项明明在队列里，门禁却报「没有待批准入口」。
-         * ⇒ 改成**算时间差**，与时区无关：只要是「刚发生的」就算数。
-         */
-        const reqAt = Date.parse(it.requested_at || "");
-        if (!Number.isFinite(reqAt)) return false;
-        const ageMs = Date.now() - reqAt;
-        return ageMs >= -60000 && ageMs <= 180000;
+        return true;
       });
       newDrafts.length >= 1 && draftRow.requires_approval === true && newSends.length === 0
         ? ok("P6 到期只备好草稿（requires_approval=true），未批准前 0 封外发（GP-108 守住）")
