@@ -3626,6 +3626,10 @@ function createProductSurface(repoRoot, opts = {}) {
           budget.spend({ turns: 0, tokens: roomOrchestrator.estimateTokens(text) });
           res = {
             bot_id: current.id, name: current.name, ok: !!(out && out.ok !== false),
+            /* 这一棒**自己**的交付契约（含 publish 出口）—— 批次 10 需要：
+               回路改了上游的小节 ⇒ 要重落上游受影响的成品出口，
+               而 publish 契约在**成员记录**里，不在房间契约里。 */
+            stage_contract: stageContract,
             text, artifacts: (out && out.artifacts) || [], error: (out && out.error) || null,
             /* 批次 6：provider 报错了 ⇒ 人话 + 指路（余额不足去充值…）。 */
             error_hint: (out && out.error_hint) || "",
@@ -3942,6 +3946,48 @@ function createProductSurface(repoRoot, opts = {}) {
                 } catch (e) {
                   res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
                     "修订没写回磁盘：" + String((e && e.message) || e).slice(0, 100);
+                }
+              }
+              /* ===== 批次 10：上游的**成品出口**也要跟着改 =====
+               *
+               * 缘起（真实链路跑出来的）：主笔有 publish 出口
+               * `05-publish/{date}-post.md`（内容 = 「正文」那一节）。
+               * 回路把主笔的「正文」节改对了 ⇒ 03-drafts/ 里的稿是改后的 ✓，
+               * 05-publish/final.md（审校自己的成品）也是改后的 ✓
+               * —— **但 post.md 里的正文还是改前的** ✗
+               * ⇒ 用户拿 post.md 直接去发（那才是「可直接发布的正文」的位置），
+               *   **发出去的是审校改之前的版本**。
+               * ⇒ 这就是「提了意见没人执行」在成品出口上的翻版：
+               *   过程档案对了、最终成品没跟上。
+               *
+               * ⇒ 回路改了小节 ⇒ 重新落**受影响**的上游成品出口
+               *   （只有 section 命中的那个出口要重落，其余不动）。 */
+              /* 上游那一棒**自己**的契约（publish 出口在成员记录里，
+                 房间契约里没有 ⇒ 拿错契约 ⇒ 一个出口都匹配不上）。
+                 ⇒ 用回路执行时存下来的 target.stage_contract。 */
+              const upstreamContract = target.stage_contract || null;
+              const pubs2 = roomOrchestrator.resolvePublishTargets(upstreamContract || {}, {
+                dataRoot: DATA_ROOT, roomTitle: room.title, botName: rp.upstream_name,
+              });
+              /* 被改的是上游的**哪一节** = target_section（「正文」）；
+                 rp.section 是**来源**小节（「可发布候选版本」）—— 用错就匹配不上。 */
+              const changedSection = String(rp.target_section || (rp.revision && rp.revision.section) || "");
+              for (const pub of pubs2) {
+                const secs = pub.sections && pub.sections.length ? pub.sections : [pub.section];
+                if (!secs.length) continue;
+                /* 只有**这次被改的那一节**对应的出口要重落。 */
+                const hit = secs.some((sec) => String(sec || "").trim() === changedSection.trim());
+                if (!hit) continue;
+                const body2 = roomOrchestrator.extractPublishBody(rp.content, pub);
+                if (!body2) continue;
+                const wrote2 = writeStageDeliverable(pub.path, body2);
+                if (wrote2.ok) {
+                  res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
+                    "成品出口已随修订同步更新（" + changedSection + " → " + pub.path + "）";
+                  target.published_resynced = (target.published_resynced || []).concat([pub.path]);
+                } else {
+                  res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
+                    "成品出口没同步上：" + wrote2.error;
                 }
               }
               res.revision_applied = rp.revision;

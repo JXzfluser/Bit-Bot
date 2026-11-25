@@ -1084,6 +1084,48 @@ function startStub() {
                                   has_old: draftTxt.indexOf(REV_OLD) >= 0,
                                   revised_needle: REV_NEW, original_needle: REV_OLD }));
         }
+        /* 批次 10：**上游的成品出口必须跟着修订一起更新**。
+         *
+         * 真实链路跑出来的 bug：主笔的 publish 出口是
+         * `05-publish/{date}-post.md`（内容 = 「正文」那一节）。
+         * 回路把主笔的「正文」节改对了 ⇒ 03-drafts/ 是改后的 ✓、
+         * 05-publish/final.md 是改后的 ✓ —— **但 post.md 还是改前的** ✗
+         * ⇒ 用户拿 post.md（那才是「可直接发布的正文」的位置）去发，
+         *   **发出去的是审校改之前的版本**。
+         *
+         * ⇒ 这条钉住：成品出口里的正文必须和主笔稿一样是**改后**的。 */
+        {
+          /* 成品出口**不在** stages13 的 artifact_path 里（那是每棒的交付路径）
+             ⇒ 直接扫磁盘上的 05-publish/*post.md。 */
+          let postP = "";
+          try {
+            const wsDir = path.join(DATA, "workspace");
+            for (const team of fs.readdirSync(wsDir)) {
+              const pubDir = path.join(wsDir, team, "05-publish");
+              if (!fs.existsSync(pubDir)) continue;
+              for (const f of fs.readdirSync(pubDir)) {
+                if (/post\.md$/.test(f)) { postP = path.join(pubDir, f); break; }
+              }
+              if (postP) break;
+            }
+          } catch (_) { /* 目录不存在 */ }
+          const postTxt = postP && fs.existsSync(postP) ? fs.readFileSync(postP, "utf8") : "";
+          const REV_NEW2 = String((FIXTURE_ASSERTIONS.revised || "单次推理成本的结构变化"));
+          const REV_OLD2 = String((FIXTURE_ASSERTIONS.original || "推理成本这次真的下了一档"));
+          if (!postP) {
+            SKIP++;
+            console.log("  · P13 SKIP 这一轮没有 post.md 成品出口 —— 跳过这条");
+          } else {
+            postTxt.indexOf(REV_NEW2) >= 0 && postTxt.indexOf(REV_OLD2) < 0
+              ? ok("P13 **成品出口跟着修订同步了**（post.md 里是审校改后的正文，不是改前的）")
+              : bad("P13 成品出口**没跟着修订同步**（post.md 里还是审校改之前的正文）" +
+                    "—— 用户拿它直接发，发出去的是没改的版本",
+                    JSON.stringify({ has_revised: postTxt.indexOf(REV_NEW2) >= 0,
+                                    has_old: postTxt.indexOf(REV_OLD2) >= 0,
+                                    path: postP }));
+          }
+        }
+
         /* 选题裁决（批次 9）：brief 有 3 个题但只有 1 个发布位 ——
            以前另外 2 个**无声消失**了。现在主笔必须交「本轮选题」这一节，
            说清选了哪个、为什么、另几个为什么不做。 */
@@ -1149,6 +1191,49 @@ function startStub() {
             m && m.role === "system" && String(m.content || "").indexOf("你的岗位说明") >= 0);
           return (nm ? nm[1] : "?") + (relay ? "(接力)" : "(DM)") + (role ? "(岗位✓)" : "(岗位✗)");
         });
+        /* 批次 10：Host 找料真的接进流水线了吗？
+           判据：第一棒（接力·情报侦察员）的请求里必须带着【Host 已经取回的材料】
+           —— 这是「成员零次 web_fetch」的前提。
+           ⚠ 只有在**真网络**下才有材料（离线环境拿不到料）⇒ 拿不到就 SKIP，
+           不能报假红，也不能报假绿。 */
+        {
+          const relayReqs = recs.filter((r) => {
+            const all = (r.messages || []).map((m) => String(m.content || "")).join("\n");
+            return all.indexOf("这一轮只有你在做这件事") >= 0;
+          });
+          const firstRelay = relayReqs[0];
+          const firstAll = firstRelay
+            ? (firstRelay.messages || []).map((m) => String(m.content || "")).join("\n")
+            : "";
+          const hasMat = firstAll.indexOf("Host 已经取回的材料") >= 0;
+          const matDir = path.join(DATA, "workspace");
+          const matRoots = [];
+          try {
+            for (const name of fs.readdirSync(matDir)) {
+              const md = path.join(matDir, name, "00-materials");
+              if (fs.existsSync(md)) matRoots.push(md);
+            }
+          } catch (_) { /* 目录不存在 */ }
+          const matFiles = [];
+          for (const md of matRoots) {
+            try { for (const f of fs.readdirSync(md)) matFiles.push(path.join(md, f)); } catch (_) { /* 忽略 */ }
+          }
+          if (!firstRelay) {
+            SKIP++;
+            console.log("  · P13 SKIP 没录到接力请求 —— 跳过这条，不算绿");
+          } else if (!hasMat && !matFiles.length) {
+            SKIP++;
+            console.log("  · P13 SKIP 这个环境取不到材料（无外网/搜索源不可用）" +
+              "—— 不报假红也不报假绿");
+          } else {
+            (hasMat && matFiles.length)
+              ? ok("P13 Host 找料真的接进流水线：材料落盘了，也进了第一棒的 prompt" +
+                   "（成员零次 web_fetch 的前提）")
+              : bad("P13 Host 找料**没真的接进流水线**",
+                    JSON.stringify({ has_material_in_prompt: hasMat, material_files: matFiles.length }));
+          }
+        }
+
         /* 诊断只在**有红**时打（门禁绿的时候刷一屏 JSON 只会让人眼瞎）。
            红了才看得出：哪一棒没跑、哪一棒没过、预算花在哪。 */
         if (FAIL > 0) {
