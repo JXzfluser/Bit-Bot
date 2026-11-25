@@ -27,6 +27,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(import.meta.dirname, "..");
 const LEDGER = path.join(REPO, "scripts/known_red_ledger.json");
@@ -245,6 +246,30 @@ if (fs.existsSync(RED_LINES)) {
 /* l1Rows 必须等 redRows 填好再算(redRows 下面才声明 ⇒ 提前算会 TDZ)。 */
 const l1Rows = redRows.filter((r) => r.tier === TIER);
 
+/**
+ * 读 CI 证据（check-run 注解里抓到的红行）。
+ *
+ * 为什么需要：有些红**只在 CI 上复现**（同一份代码本地绿、CI 红）——
+ * 典型是像素基线那类环境差异。本地实跑必然 grep 不到自己的锚点，
+ * 拿本地的尺子量它 ⇒ 得到「复现不出来」的假结论 ⇒ 台账被误判成漏账/造假。
+ *
+ * ⇒ 证据文件由 CI 抓注解后落盘（scripts/known_red_ledger.ci.json）。
+ *   本机没有这份文件 ⇒ 如实 SKIP（拿不到证据 ≠ 通过），不假装复现。
+ */
+function readCiEvidence(entry) {
+  /* ESM 里没有 __dirname ⇒ 用 import.meta.url 换算（本文件是 .mjs）。 */
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const p = path.resolve(here, "known_red_ledger.ci.json");
+  try {
+    if (!fs.existsSync(p)) return null;
+    const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+    const lines = Array.isArray(raw.lines) ? raw.lines : [];
+    return lines.join("\n");
+  } catch (_) {
+    return null;
+  }
+}
+
 /* ---------------------------------------- 3. 每条台账的红都还能复现 ------ */
 const reproResults = [];
 {
@@ -269,6 +294,28 @@ const reproResults = [];
      * ⇒ 这类红**如实报 SKIP**(≠ PASS,也不算红),并把「它只在哪种跑法下出现」写出来。
      * ⇒ 台账里用 verify.needs = "all-layers-only" 声明。 */
     const needs = String((e.verify || {}).needs || "");
+    /* 「只在 CI 上复现」的红（环境差异那一类）——
+     *   本地同 commit 是绿的 ⇒ 本地实跑**必然** grep 不到自己的锚点
+     *   ⇒ 拿本地的尺子量它，得到的是「复现不出来」的假结论。
+     * ⇒ 这类红用 **CI 的 check-run 注解**当证据：注解里必须有它自己的
+     *   matrix_line_prefix ⇒ 才算「还在红」；CI 上不红了 ⇒ 它其实已修
+     *   （反向检查同样成立：修了就必须从 CI 上消失）。
+     * ⇒ 需要 CI 注解时如实 SKIP（拿不到证据 ≠ 通过）。
+     *   判定走 scripts/known_red_ledger.ci.json（由 CI 抓注解生成）。 */
+    if (needs === "ci-only") {
+      const ciLog = readCiEvidence(e);
+      if (!ciLog) {
+        reproResults.push({ entry: e, ok: true, skip: true,
+          detail: "这条红**只在 CI 上复现**（本地同 commit 绿）⇒ 复现检查要看 CI 注解，" +
+            "本机没有这份证据 ⇒ 如实 SKIP（≠ PASS）" });
+        continue;
+      }
+      const stillRed = ciLog.indexOf(String(e.matrix_line_prefix || e.id)) >= 0;
+      reproResults.push({ entry: e, ok: stillRed,
+        detail: stillRed ? "CI 上仍在红（注解里有它的红行）" : "CI 上已不红了 ⇒ 这条其实已修，应标 resolved" });
+      if (!stillRed) problems.push(e.id + "：CI 上已经不红了 ⇒ 这条台账该标 resolved");
+      continue;
+    }
     if (needs === "all-layers-only") {
       reproResults.push({ entry: e, ok: true, skip: true,
         detail: "只在全量(all)跑法下出现的红(层间顺序依赖)⇒ 单层跑法里它是绿的 ⇒ 本条不复现,也不实跑 all 矩阵" });

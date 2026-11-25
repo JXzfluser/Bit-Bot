@@ -693,8 +693,9 @@
           "scripts/prove_task_axis_pixels.mjs"
         ],
         "anchor": "TA-11 1440x900 与基线差异",
-        "note": "本地门禁跑在仓内源码上（真 Chromium 渲染），不需要额外环境；CI 上跑同一条命令却红 ⇒ 差异在渲染环境，不在代码。",
-        "log": "/tmp/g136-task-axis-pixels.log"
+        "note": "本地门禁跑在仓内源码上（真 Chromium 渲染），不需要额外环境；CI 上跑同一条命令却红 ⇒ 差异在渲染环境，不在代码。 ⚠ 这条红**只在 CI 上复现**（本地同 commit 是绿的）⇒ 用 CI 的 check-run 注解当证据，不在本地实跑复现。",
+        "log": "/tmp/g136-task-axis-pixels.log",
+        "needs": "ci-only"
       },
       "conditional": "两轮 CI（45528173907 / 45538932681）都报同一条，不是本批引入。⚠ 修的时候别把基线换成「CI 渲染版」就算完 —— 那会让本地开发环境的像素回归失去意义。正确做法是让**两端渲染一致**（字体），再决定基线归属。"
     },
@@ -715,8 +716,9 @@
           "scripts/smoke_grok_desktop_parity.sh"
         ],
         "anchor": "G-17 real copy artifact",
-        "note": "要看矩阵跑完后的 `data/box-copy/` 最新记录内容，以及 `data/workspace/uploads/` 下有没有无子目录的 <basename> 文件。",
-        "log": "/tmp/g17"
+        "note": "要看矩阵跑完后的 `data/box-copy/` 最新记录内容，以及 `data/workspace/uploads/` 下有没有无子目录的 <basename> 文件。 ⚠ 这条红**只在 CI 上复现**（本地同 commit 是绿的）⇒ 用 CI 的 check-run 注解当证据，不在本地实跑复现。",
+        "log": "/tmp/g17",
+        "needs": "ci-only"
       },
       "conditional": "两轮 CI 都报同一条，**不是本批引入**。本条只是「不许装作没看见」的记录 —— 归因还没做完，别把它当成已查清。"
     },
@@ -737,8 +739,9 @@
           "scripts/smoke_grok_desktop_parity.sh"
         ],
         "anchor": "G-16 E2E 冷启动+像素断言",
-        "note": "看 /tmp/e2e-g16.log 的最后几行：冷启动那几行 ✓ 还是 ✗。",
-        "log": "/tmp/e2e-g16.log"
+        "note": "看 /tmp/e2e-g16.log 的最后几行：冷启动那几行 ✓ 还是 ✗。 ⚠ 这条红**只在 CI 上复现**（本地同 commit 是绿的）⇒ 用 CI 的 check-run 注解当证据，不在本地实跑复现。",
+        "log": "/tmp/e2e-g16.log",
+        "needs": "ci-only"
       },
       "conditional": "两轮 CI 都报同一条，**不是本批引入**。归因未完成（冷启动部分未拆开验证）。"
     }
