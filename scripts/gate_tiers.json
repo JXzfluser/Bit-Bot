@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "updated": "2026-11-23",
+  "version": 3,
+  "updated": "2026-11-25",
   "owner": "team/t3-gate-tiering",
   "purpose": "门禁分层清单（可执行）：每一层都是 scripts/smoke_grok_desktop_parity.sh 里的一段；门名必须字面出现在矩阵里（AC-07 的接线口径）。",
   "how_to_run": {
@@ -2072,6 +2072,15 @@
       "kind": "门",
       "reason": "门：prove_task_command_http.mjs — P1 批 4：手机端「指挥」（真起入站服务 + 真 HTTP：插话/改向/刹停/换人四条路由，真起一轮再真取消 ⇒ {\"ok\":true,\"cancelled\":1}，注入同一份 surface 命中跨实例的「在跑的任务表」，未签名 ⇒ 401 且不产生任何 effect，三组变异对照）；L2 真实用户旅程：真内核 + 真 Host + 真文件（可起本地 stub 供应商），不开 Electron ⇒ 合并/提频跑；红即阻塞",
       "wired_in": "G-138"
+    },
+    {
+      "file": "prove_host_research_materials.js",
+      "layer": "L2",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_host_research_materials.js — Host 找料门（批次 10）：真 provider 实测 13 轮、五棒一次没跑完、**零产物**，根因是「找料 + 逐条核验」全压在成员身上（降级搜索给的候选一半以上是登录墙 ⇒ 模型换着试 ⇒ 一棒 web_fetch 165~322 次 ⇒ 撞 900 秒闸）。本门钉住：找料**真的能产出材料**（真实网络）、材料里的链接**逐条实测可达**（死链在交给成员之前就剔掉）、死链被认出、**找料模式下 web_fetch 被直接拒**（确定性约束，不靠 prompt 求模型自觉）、恢复默认后又能抓（额度不是永久焊死）、每棒额度生效、候选不相关时**如实标注**（不假装相关）；隔离（门禁只读网络、用户真数据 0 字节被改）",
+      "wired_in": "G-142"
     }
   ],
   "frozen": [

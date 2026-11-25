@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-22",
+  "updated": "2026-11-25",
   "owner": "team/red-ledger",
   "purpose": "「已知红清单」的可执行台账：L1 里真实存在的红，逐条落账（为什么红 / 谁修 / 怎么复现）。",
   "readme": [
@@ -21,7 +21,8 @@
     "product": "真产品缺陷：用户会撞上的问题，需要排期修",
     "environment": "环境/机器不具备：无显示器、机器慢、依赖没装 —— 不是产品的锅",
     "known-missing": "能力缺口：需要真机 / 真 provider / 平台专属产物才能验",
-    "gate-criterion": "门禁或矩阵自己的判据过期/漂移：产品没坏，红在尺上"
+    "gate-criterion": "门禁或矩阵自己的判据过期/漂移：产品没坏，红在尺上",
+    "unattributed": "尚未归因的既有红：确认「不是本批引入」，但还没查清根因 —— 必须在 reason 里写清已知的部分证据和下一步查法，不许硬凑一个原因"
   },
   "owner_vocabulary": {
     "team/t3-gate-tiering": "门禁分层 / 矩阵接线这一摊的 owner（矩阵调用姿势、计数钉、分层归属）",
@@ -674,6 +675,72 @@
       },
       "who_fixes": "逐门给「仓库相对」的门补自己的数据根（同 shell_v2 的 isolatedRepoRoot 口径），补完一条改一条。",
       "conditional": "只在 **L3/全量(all) 跑法**下出现：L1 与 L2 跑完真 data/ 逐文件未变（L1=105/0、L2=199/0，守卫都绿）；L3 会拉起 40 多扇真 Electron 门，其中「仓库相对」的那批还在写真目录 ⇒ 守卫才红。"
+    },
+    {
+      "id": "prove_task_axis_pixels.mjs#TA-11-ci-render",
+      "gate": "prove_task_axis_pixels.mjs",
+      "matrix_line_prefix": "G-136 prove_task_axis_pixels（见 /tmp/g136-task-axis-pixels.log；  ✗ TA-11 1440x900 与基线差异 8.5208% > 0.5%（110430/1296000 像素",
+      "kind": "environment",
+      "reason": "像素基线是在**本地环境**渲染出来的；CI runner 的字体/渲染栈不同（很可能是缺中文字体走了 fallback）⇒ 同一份界面在 CI 上与基线差 8.52%。**决定性证据：同一个 commit 在本地跑是 32/0 全绿**（TA-01~TA-13 全过，含 TA-12 基线逐字节未变、TA-13 用户真数据一个字节没动）—— 同一份代码、同一条判据，本地过、CI 红 ⇒ 红在环境不在产品。",
+      "evidence": "本地 node scripts/prove_task_axis_pixels.mjs → PASS=32 FAIL=0 SKIP=0（TA-04/TA-12/TA-13 全绿）；CI run 45538932681 与 45528173907 同一批 commit 均报「✗ TA-11 1440x900 与基线差异 8.5208% > 0.5%（110430/1296000 像素）」。两轮 CI 之间产品代码没有动过像素相关部分（批次 8/9/10 都不碰界面样式）⇒ 差异只能来自渲染环境。",
+      "owner": "unassigned",
+      "owner_reason": "修法有两��：① 在 CI runner 上装齐与基线一致的中文字体；② 基线按 CI 渲染环境重新生成（基线只能人工刷新，门禁不许自己覆盖）。两条都要人决定用哪条，本轮没人认领。",
+      "first_seen": "2026-11-25",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "node",
+          "scripts/prove_task_axis_pixels.mjs"
+        ],
+        "anchor": "TA-11 1440x900 与基线差异",
+        "note": "本地门禁跑在仓内源码上（真 Chromium 渲染），不需要额外环境；CI 上跑同一条命令却红 ⇒ 差异在渲染环境，不在代码。",
+        "log": "/tmp/g136-task-axis-pixels.log"
+      },
+      "conditional": "两轮 CI（45528173907 / 45538932681）都报同一条，不是本批引入。⚠ 修的时候别把基线换成「CI 渲染版」就算完 —— 那会让本地开发环境的像素回归失去意义。正确做法是让**两端渲染一致**（字体），再决定基线归属。"
+    },
+    {
+      "id": "smoke_grok_desktop_parity.sh#G-17-real-copy-artifact",
+      "gate": "smoke_grok_desktop_parity.sh",
+      "matrix_line_prefix": "✗ G-17 real copy artifact",
+      "kind": "unattributed",
+      "reason": "G-17 的**附件上限判据本地全过**（7 个附件→too_many_attachments、26MB 图→too_large、201MB 视频走 200MB 档、累计口径、无真实路径→no_real_path，逐字与期望串一致）。红的是矩阵里**更靠后**的一条：它要求 `data/workspace/uploads/g17doc1.txt` 落盘、且 `data/box-copy/` 里**最新**的那个文件含 `\"binary_intact\": true`。这条依赖完整的 kernel AttachFiles → copy_to_box 链路，尚未在本地复现出同样的状态 ⇒ 根因未查清。",
+      "evidence": "本地在**影子根**（.gate-matrix 等价物）里跑 stageAttachments 段：判据串逐字匹配期望（too_many_attachments|6|image|27262976/26214400|video|210763776/209715200|5|no_real_path）；但 `data/box-copy/` 在只跑 stageAttachments 时是空的 ⇒ 那条断言依赖的是 attach_files 那步的真实复制产物，需跑通完整内核链路才能判定。CI 两轮（45528173907 / 45538932681）报同一条红 ⇒ 不是本批引入。",
+      "owner": "unassigned",
+      "owner_reason": "下一步查法：在影子根里跑通完整 attach_files 链路，看 copy_to_box 的 dest 是否真落在 `data/workspace/uploads/<basename>`、box-copy 记录里有没有 binary_intact 字段。需要能复现内核链路的本机环境，本轮没查完。",
+      "first_seen": "2026-11-25",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "bash",
+          "scripts/smoke_grok_desktop_parity.sh"
+        ],
+        "anchor": "G-17 real copy artifact",
+        "note": "要看矩阵跑完后的 `data/box-copy/` 最新记录内容，以及 `data/workspace/uploads/` 下有没有无子目录的 <basename> 文件。",
+        "log": "/tmp/g17"
+      },
+      "conditional": "两轮 CI 都报同一条，**不是本批引入**。本条只是「不许装作没看见」的记录 —— 归因还没做完，别把它当成已查清。"
+    },
+    {
+      "id": "smoke_grok_desktop_parity.sh#G-16-cold-start-pixels",
+      "gate": "smoke_grok_desktop_parity.sh",
+      "matrix_line_prefix": "✗ G-16 E2E 冷启动+像素断言（见 /tmp/e2e-g16.log；bytes=11511）",
+      "kind": "unattributed",
+      "reason": "G-16 是「E2E 冷启动 + GP-70 像素断言」的合起来的一条；CI 上红，**它与 G-136 是同一个像素基线问题**（都指向 1440×900 与基线的差异），但 G-16 还包含冷启动环节 ⇒ 冷启动那部分是否也红，尚未拆开确认。归因没做完。",
+      "evidence": "CI run 45538932681 与 45528173907 都报「✗ G-16 E2E 冷启动+像素断言（bytes=11511）」；同一批 commit 里 G-136 的像素断言也红，且本地 prove_task_axis_pixels 32/0 全绿 ⇒ 像素部分高度疑似同一个环境差异。但 G-16 的冷启动子项未单独验证 ⇒ 不能断言整条红都是像素。",
+      "owner": "unassigned",
+      "owner_reason": "下一步查法：把 G-16 的冷启动与像素两段拆开跑（看 /tmp/e2e-g16.log 里冷启动那几行到底过没过），再决定是跟 G-136 合并归因还是单列。",
+      "first_seen": "2026-11-25",
+      "blocks_release": false,
+      "verify": {
+        "cmd": [
+          "bash",
+          "scripts/smoke_grok_desktop_parity.sh"
+        ],
+        "anchor": "G-16 E2E 冷启动+像素断言",
+        "note": "看 /tmp/e2e-g16.log 的最后几行：冷启动那几行 ✓ 还是 ✗。",
+        "log": "/tmp/e2e-g16.log"
+      },
+      "conditional": "两轮 CI 都报同一条，**不是本批引入**。归因未完成（冷启动部分未拆开验证）。"
     }
   ],
   "notes_layer_isolation": {
