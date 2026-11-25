@@ -1393,6 +1393,42 @@ function createProductSurface(repoRoot, opts = {}) {
     }
   }
 
+  /**
+   * 批准队列的**唯一读取口**（批次 10 续修 P11）。
+   *
+   * 缘起：队列的**渲染**与**决定**读的是**两个不同的真源** ——
+   *   渲染（`pendingApprovals`）在 `BITBOT_EVENT_READ` 开启时读**事件读模型**；
+   *   决定（`approvalDecide`）却仍读**遗留 jsonl**。
+   * ⇒ 界面上**显示**着待批准行，用户点「本次允许 / 拒绝」却拿到
+   *   `approval_not_found` —— **看得见、管不着**（真 provider 第七轮 P11 实测）。
+   *
+   * ⇒ 修法：两边共用**同一个读取函数**，读模型优先、JSON 兜底。
+   *   （**尺子与真源脱钩时改尺子**，不是改产品行为。）
+   */
+  function readApprovalsEntries() {
+    // EVENT_ONLY：读模型为主，遗留文件走自导入路径。
+    if (eventOnlyMode()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
+        const raw = hit.approvals || [];
+        // prev 缓存以这次读到的为准（随后的 atomicWrite diff 左半边必须精确）
+        setLastTextFor(PENDING_APPROVALS_PATH, canonicalTextFor("approvals", { approvals: raw }));
+        return JSON.parse(JSON.stringify(raw));
+      }
+      const raw = readApprovalsFileRaw();
+      setLastTextFor(PENDING_APPROVALS_PATH, canonicalTextFor("approvals", { approvals: raw }));
+      return JSON.parse(JSON.stringify(raw));
+    }
+    // EVENT_READ（非 ONLY）：读模型优先，异常时回退 JSON。
+    if (eventReadModel.eventReadEnabled()) {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length) {
+        return JSON.parse(JSON.stringify(hit.approvals || []));
+      }
+    }
+    return readApprovalsFileRaw();
+  }
+
   function pendingApprovals(nowIsoParam) {
     // T1-05 EVENT_ONLY：读模型为主，遗留文件走自导入路径（同 loadRooms 的分层）。
     if (eventOnlyMode()) {
@@ -1466,6 +1502,42 @@ function createProductSurface(repoRoot, opts = {}) {
     }
   }
 
+  /** 批准队列的写回合并：与 mergeRoomsAgainstDisk 同一条纪律（见那里的注释）。 */
+  function mergeApprovalsAgainstDisk(mine) {
+    const mineList = Array.isArray(mine) ? mine.filter((e) => e && e.id) : [];
+    let disk = null;
+    try { disk = readApprovalsFileRaw(); } catch { disk = null; }
+    if (!Array.isArray(disk)) return mineList;
+    const base = new Map();
+    try {
+      const hit = eventReadModel.readSurfaces(DATA_ROOT);
+      if (hit.ok && !hit.anomalies.length) {
+        for (const e of (hit.approvals || [])) if (e && e.id) base.set(String(e.id), e);
+      }
+    } catch { /* 读不到基线就按「没动过」处理 */ }
+    const mineById = new Map(mineList.map((e) => [String(e.id), e]));
+    const diskById = new Map(disk.filter((e) => e && e.id).map((e) => [String(e.id), e]));
+    const out = [];
+    const seen = new Set();
+    for (const d of disk) {
+      if (!d || !d.id) continue;
+      const id = String(d.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const m = mineById.get(id);
+      if (!m) { out.push(d); continue; }               // 我没写它 ⇒ 保留（别人挂的）
+      const b = base.get(id);
+      out.push(b && JSON.stringify(b) === JSON.stringify(m) ? d : m);
+    }
+    for (const m of mineList) {
+      const id = String(m.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(m);                                       // 我挂的 ⇒ 保留
+    }
+    return out;
+  }
+
   // opts: { scope: "wide" } ⇒ 「总是允许」按**类**放行(kind:*)。
   // 默认走**作用域**规则(kind:<作用域>),窄得多。
   function approvalDecide(id, decision, nowIsoParam, opts) {
@@ -1473,29 +1545,13 @@ function createProductSurface(repoRoot, opts = {}) {
       return { ok: false, error: "invalid_decision", mode: "host_approval_decide" };
     }
 
-    // Load all pending approvals
-    // EVENT_ONLY：读模型为主（fold 保存的是原始行），库空时遗留文件即真源。
-    let entries = [];
-    if (eventOnlyMode()) {
-      const hit = eventReadModel.readSurfaces(DATA_ROOT);
-      if (hit.ok && !hit.anomalies.length && hit.count > 0) {
-        entries = JSON.parse(JSON.stringify(hit.approvals || []));
-      } else {
-        entries = readApprovalsFileRaw();
-      }
-      // prev 缓存以这次读到的为准（随后的 atomicWrite diff 左半边必须精确）
-      setLastTextFor(PENDING_APPROVALS_PATH, canonicalTextFor("approvals", { approvals: entries }));
-    } else {
-      try {
-        if (fs.existsSync(PENDING_APPROVALS_PATH)) {
-          const lines = fs.readFileSync(PENDING_APPROVALS_PATH, "utf8").split("\n").filter(Boolean);
-          entries = lines.map(line => {
-            try { return JSON.parse(line); } catch { return null; }
-          }).filter(Boolean);
-        }
-      } catch {
-        return { ok: false, error: "read_failed", mode: "host_approval_decide" };
-      }
+    // Load all pending approvals —— **必须和界面渲染读同一个真源**
+    // （批次 10 续修 P11：渲染读事件库、决定读 jsonl ⇒ 看得见却点不动）。
+    let entries;
+    try {
+      entries = readApprovalsEntries();
+    } catch {
+      return { ok: false, error: "read_failed", mode: "host_approval_decide" };
     }
 
     const entry = entries.find(e => e.id === id);
@@ -1528,7 +1584,33 @@ function createProductSurface(repoRoot, opts = {}) {
     entry.decided_at = nowIsoParam || nowIso();
 
     // Rewrite pending approvals file
-    atomicWrite(PENDING_APPROVALS_PATH, entries.map(e => JSON.stringify(e)).join("\n") + "\n");
+    /* 三方合并（批次 10 续，P11 的根因之二）：写回是**整面覆盖** ⇒
+     * 并发写下会把**别人刚挂出的行**整批抹掉（实测：真 provider 第七轮里
+     * pending-approvals.jsonl 被写成 0 行，而界面上还显示着那两行）。
+     * ⇒ 与群面同一条判据：**「我这次没写它」不等于「我删了它」** ——
+     *   基线刷新过之后那条判定就不成立（详见 mergeRoomsAgainstDisk 的注释）。
+     * ⇒ 合并规则（按 id）：
+     *   · 两边都有 ⇒ 谁的**不是**基线原样就用谁的（基线原样 = 我没动它）
+     *   · 只有盘上有 ⇒ **保留**（别人挂出的，我不抹）
+     *   · 只有我有 ⇒ **保留**（我挂出的，别人不抹）
+     */
+    const nextEntriesText = mergeApprovalsAgainstDisk(entries).map(e => JSON.stringify(e)).join("\n") + "\n";
+    atomicWrite(PENDING_APPROVALS_PATH, nextEntriesText);
+
+    /* EVENT_READ（非 ONLY）下 `atomicWrite` 写的是**文件**，事件库不更新
+     * ⇒ 渲染（读事件库）仍显示 pending ⇒ 用户点了像没点。
+     * ⇒ 这一面有账时，把 delta **同步提交进事件库**（读改写同一份，不脱钩）。 */
+    if (!eventOnlyMode() && eventReadModel.eventReadEnabled()) {
+      try {
+        const def = eventMirror.surfaceOf(PENDING_APPROVALS_PATH);
+        const hit = eventReadModel.readSurfaces(DATA_ROOT);
+        if (def && hit.ok && !hit.anomalies.length && hit.count > 0) {
+          mirror().commitText(def, canonicalTextFor("approvals", hit), nextEntriesText);
+        }
+      } catch {
+        /* 事件库不可用时静默：文件已经是真源，下一次读会走 JSON 兜底。 */
+      }
+    }
 
     // Log decision
     appendJsonl(APPROVALS_LOG_PATH, {
@@ -2253,8 +2335,21 @@ function createProductSurface(repoRoot, opts = {}) {
       seen.add(d.id);
       const m = mine.get(d.id);
       if (!m) {
-        // 我没写回去：基底里有 = 我删的（群面目前没有删除入口，这条为将来留）；基底里没有 = 别人刚建的，不归我删。
-        if (!baseRooms.has(d.id)) merged.push(d);
+        /* 我这次没写它 —— **不等于「我删了它」**。
+         *
+         * 缘起（**真 provider 第八轮**：群建起来后**整批消失**，rooms.json 变成
+         * `{"version":1,"rooms":[]}`）：老判定是「基底里有 = 我删的，基底里没有 =
+         * 别人刚建的」⇒ 可 `roomsBaseText` 是**每次写前重读盘**刷新的
+         * （`requireWritableRooms`），于是：
+         *   T0 进程 A 读到 rooms = []（基线 = 空）
+         *   T1 进程 B 建了群 ⇒ 盘上 = [群]
+         *   T2 进程 A **又读了一次**（基线刷新成 [群]），手里的 data 仍是 T0 的旧快照
+         *   T3 进程 A 写回 ⇒ 「基线里有 + 我没写」 ⇒ 被判成「我删的」⇒ **群被抹掉**
+         * ⇒ 「基线刷新过」之后，那条判定就不成立了。
+         *
+         * ⇒ 而群面**根本没有删除入口**（群不能被删）⇒ 「我这次没写它」**一律保留**。
+         *   （真用户看到的症状：刚建好的团队凭空消失，转录里却还留着它的成员回合。） */
+        merged.push(d);
         continue;
       }
       const b = baseRooms.get(d.id);
@@ -2262,8 +2357,9 @@ function createProductSurface(repoRoot, opts = {}) {
     }
     for (const m of data.rooms) {
       if (!m || !m.id || seen.has(m.id)) continue;
-      // 我这轮带了、盘上却没有 = 别的写者删了它；不复活（和 bots 面同一条判据）。
-      if (baseRooms.has(m.id)) continue;
+      /* 我这轮带了、盘上却没有 —— 同样是「基线刷新过」造成的错觉：
+       * 别把它当成「别的写者删了它」。群面没有删除入口 ⇒ **一律保留我的**。
+       * （否则同一颗子弹从另一面打回来：我的群也会被别人的旧快照挤掉。） */
       merged.push(m);
     }
     return { ...data, rooms: merged };
@@ -6159,6 +6255,18 @@ function createProductSurface(repoRoot, opts = {}) {
     roomLibraryAdd,
     roomMembersUpdate,
     roomRename,
+
+    /* 群面 IO 口（给门禁用：确定性重演「旧快照写回」的并发交错）。
+       纯读写，不改行为。 */
+    __roomsIO: {
+      load: loadRooms,
+      save: saveRooms,
+      requireWritable: requireWritableRooms,
+    },
+    /* 批准面写回合并（给门禁用：确定性重演「读-改-写之间被别人插队」）。 */
+    __approvalsIO: {
+      merge: mergeApprovalsAgainstDisk,
+    },
 
     // Account (GP-74) — local profile semantics only
     accountStatus,

@@ -5155,6 +5155,32 @@ for g142_id in HM-01 HM-02 HM-03 HM-10 HM-11 HM-12 HM-13 HM-14 HM-15 HM-16 HM-20
   fi
 done
 
+# G-144 并发写不许丢更新（批次 10 续，真 provider 第八轮实测「群建起来后整批消失」）
+#   变异对照：退回整面覆盖 ⇒ 对应断言必须翻红 ⇒ 判据有牙。
+if timeout 300 node scripts/prove_concurrent_write_merge.js > /tmp/g144-concurrent-merge.log 2>&1; then
+  ok "G-144 prove_concurrent_write_merge（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g144-concurrent-merge.log | tail -1)）"
+else
+  bad "G-144 prove_concurrent_write_merge（见 /tmp/g144-concurrent-merge.log；$(grep '✗' /tmp/g144-concurrent-merge.log | head -3 | tr '\n' ' ')）"
+fi
+
+# G-143 审批队列单源门（批次 10 续，P11 的根因所在）
+#   真 provider 第七轮实测：界面上明明显示着待批准行，用户点「本次允许/拒绝」
+#   却拿到 approval_not_found ⇒ 队列有**两个读取口**（渲染读事件库、决定读 jsonl）。
+#   ⇒ 本门钉住：渲染看得见 ↔ 决定找得到、决定成功、决定后不再当待批准、
+#     决定不抹掉别人的行、行形状不变。
+if timeout 180 node scripts/prove_approval_single_source.js > /tmp/g143-approval-source.log 2>&1; then
+  ok "G-143 prove_approval_single_source（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g143-approval-source.log | tail -1)）"
+else
+  bad "G-143 prove_approval_single_source（见 /tmp/g143-approval-source.log；$(grep '✗' /tmp/g143-approval-source.log | head -3 | tr '\n' ' ')）"
+fi
+for g143_id in 渲染 决定 状态 行形状; do
+  if grep -q "$g143_id" /tmp/g143-approval-source.log 2>/dev/null; then
+    ok "G-143 锚点：$g143_id"
+  else
+    bad "G-143 锚点缺失：$g143_id"
+  fi
+done
+
 if timeout 180 node scripts/prove_llm_provider_catalog.js > /tmp/g141-provider-catalog.log 2>&1; then
   ok "G-141 prove_llm_provider_catalog（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g141-provider-catalog.log | tail -1)）"
 else

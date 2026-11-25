@@ -126,6 +126,17 @@ jobs:
       - name: Model provider catalog
         run: node scripts/prove_llm_provider_catalog.js
 
+      # Concurrent writers must not lose updates (batch 10 follow-up):
+      # a live provider run showed the freshly created team vanishing.
+      - name: Concurrent write merge
+        run: node scripts/prove_concurrent_write_merge.js
+
+      # Approval queue must have ONE source of truth (batch 10 follow-up).
+      # The live provider run showed the queue rendering rows from one source
+      # while the decision path looked in another -> "visible but not actionable".
+      - name: Approval single source
+        run: node scripts/prove_approval_single_source.js
+
       # Host find-the-material (batch 10): search -> probe reachability ->
       # fetch body -> hand to the member. This is the root-cause fix for
       # "13 live runs, zero artifacts": the first stage used to hunt for
