@@ -201,6 +201,11 @@ async function runRelay(opts) {
     deps: {
       runResponderTurn: async (botId, prompt, ctx) => {
         calls.push({ bot_id: botId, prompt: String(prompt || "") });
+        /* botSeq：让门禁能**逐棒指定交什么**（批次 9 的回路端到端测试需要：
+           第一棒交 brief、第二棒交稿，才能验「审校的改后稿覆盖第二棒的稿」）。 */
+        if (opts.botSeq && opts.botSeq[botId]) {
+          return { ok: true, text: String(opts.botSeq[botId].text || "") };
+        }
         if (botId === "b1") {
           if (writeFiles) writeArtifact(root, CONTRACT.stages[0].path, BRIEF_BODY);
           /* 交接标记两种情况都带：负例里如果没有交接，"下游不接力"就成恒绿断言。 */
@@ -516,6 +521,140 @@ async function sectionG() {
       Array.isArray(f.stage_results) && f.stage_results.every((x) => typeof x.duration_ms === "number")),
     "SG-06 转录里的 final_report 也带用时与每棒用时（真源不只实体有）",
     JSON.stringify(frs.map((f) => [f.duration_ms, (f.stage_results || []).length])));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * G4. 批次 9：「审校 → 修订」回路（审校改好的稿真的覆盖主笔的稿）
+ *
+ * 为什么：以前这条链是**单向**的 —— 审校提的修改只躺在它的产物里，
+ * 主笔的稿一个字没变 ⇒ 「提了意见没人执行」。
+ * 实测逐字对比：审校说「建议改为『单次推理成本结构变化』」，
+ * 稿子里仍是「推理成本这次真的下了一档」（比被批评的还重）。
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+const G4_WRITER_BODY = [
+  "正文",
+  "",
+  "推理成本这次**下探**了。我们把一次完整任务的花费拆成三段：模型调用、上下文重读、失败重试。",
+  "第三段几乎没人算，但重试吃掉了总成本的近四成——工具调用失败一次，后面整段推理要重来。",
+  "",
+  "事实依据",
+  "",
+  "来源 1：https://example.com/alive-note —— 一手公告。",
+  "",
+  "仍需确认",
+  "",
+  "定价页是否已同步更新。",
+].join("\n");
+
+const G4_REVIEW_BODY = [
+  "可发布候选版本",
+  "",
+  "推理成本这次**真的下了一档**。我们把一次完整任务的花费拆成三段：模型调用、上下文重读、失败重试。",
+  "第三段几乎没人算，但重试吃掉了总成本的近四成——工具调用失败一次，后面整段推理要重来。",
+  "",
+  "改动说明",
+  "",
+  "原句「推理成本下探」改成了「推理成本这次真的下了一档」，因为公告只说推理能力更新，未给出统一下调口径。",
+  "",
+  "风险标记",
+  "",
+  "「近四成」只有内部样本支撑，不能当行业结论写。",
+  "",
+  "仍需人工确认",
+  "",
+  "定价页是否已同步更新；重试样本能否扩到更多任务类型；这两点定了我再发。",
+  "",
+  "原始来源清单",
+  "",
+  "来源 1：https://example.com/alive-note —— 一手公告，可用。",
+].join("\n");
+
+async function sectionG4() {
+  console.log("── G4. 批次 9：审校 → 修订回路（改好的稿真的覆盖上游） ──");
+
+  /* G4-01：声明了 replaces ⇒ 主笔那一棒的稿**被覆盖**了。 */
+  const { applyRevisionLoop } = require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+  const chain = [{ name: "内容主笔", delivered_content: G4_WRITER_BODY }];
+  const r1 = applyRevisionLoop({
+    chain, selfName: "事实编辑", body: G4_REVIEW_BODY,
+    contract: { replaces: [{ section: "可发布候选版本", upstream: "内容主笔" }] },
+  });
+  check("G4-01", r1.ok === true && !!r1.replaced &&
+    r1.replaced.content.indexOf("真的下了一档") >= 0 &&
+    r1.replaced.content.indexOf("**下探**") < 0,
+    "G4-01 审校的「可发布候选版本」覆盖上游 ⇒ 改后稿生效（老句没了）",
+    JSON.stringify({ ok: r1.ok, reason: r1.reason, has_new: r1.replaced ? r1.replaced.content.indexOf("真的下了一档") >= 0 : null }));
+
+  /* G4-02：修订留痕 —— 复盘棒要能确定性核对「提了 N 条、执行了几条」。 */
+  check("G4-02", !!(r1.replaced && r1.replaced.revision &&
+    r1.replaced.revision.section === "可发布候选版本" &&
+    r1.replaced.revision.from === "内容主笔" &&
+    r1.replaced.revision.by === "事实编辑" &&
+    r1.replaced.revision.before_sha !== r1.replaced.revision.after_sha),
+    "G4-02 留了修订记录（前后指纹不同、谁改的改了哪节都记着）",
+    JSON.stringify(r1.replaced && r1.replaced.revision));
+
+  /* G4-03：没声明 replaces ⇒ 一字不变（opt-in）。 */
+  const r3 = applyRevisionLoop({
+    chain, selfName: "事实编辑", body: G4_REVIEW_BODY, contract: {},
+  });
+  check("G4-03", r3.ok === true && !r3.replaced && r3.reason === "no_replaces_declared",
+    "G4-03 没声明 replaces ⇒ 行为一字不变（opt-in）",
+    JSON.stringify({ ok: r3.ok, reason: r3.reason }));
+
+  /* G4-04：声明了但本棒没有那一节 ⇒ 如实说不覆盖，不静默放过。 */
+  const r4 = applyRevisionLoop({
+    chain, selfName: "事实编辑", body: "只有意见，没有稿。",
+    contract: { replaces: [{ section: "可发布候选版本", upstream: "内容主笔" }] },
+  });
+  check("G4-04", r4.ok === false && String(r4.reason || "").indexOf("没有") >= 0,
+    "G4-04 声明了却拿不到那一节 ⇒ 如实说不覆盖（不静默放过）",
+    JSON.stringify({ ok: r4.ok, reason: r4.reason }));
+
+  /* G4-05：端到端 —— 三棒真跑一遍（选题 → 写稿 → 审校），
+     看**主笔那一棒落在磁盘上的稿子**是不是真的被审校改写了。
+     这是整条回路最关键的证据：不是「逻辑算对了」，是「文件真的变了」。 */
+  const c5 = await runRelay({
+    writeFiles: false,
+    contract: {
+      stages: [
+        { match: { name: "选题策划" }, dir: "02-briefs", file: "{date}.md", rules: { min_chars: 120, min_items: 1 } },
+        {
+          match: { name: "脚本撰写" }, dir: "03-drafts", file: "{date}-draft.md",
+          rules: { min_chars: 120, must_include: ["事实依据"], min_urls: 1 },
+        },
+        {
+          match: { name: "事实核查" }, dir: "04-review", file: "{date}-review.md",
+          rules: {
+            min_chars: 120, must_include: ["来源"],
+            must_include_sections: ["可发布候选版本", "改动说明", "风险标记", "仍需人工确认", "原始来源清单"],
+          },
+          /* 回路声明：审校改好的稿覆盖主笔的稿 */
+          replaces: [{ section: "可发布候选版本", upstream: "脚本撰写" }],
+        },
+      ],
+    },
+    botSeq: {
+      b1: { text: "选题 brief：园区光伏回本周期\n- 事实：2024 年装机 3.2MW，年发电 320 万度。\n- 读者场景：园区能源负责人要在 Q3 前决定是否加装光伏。\n- 原始链接与证据：https://example.com/alive-note\n- 写作任务：算一笔回本账，附来源。\n【交给】脚本撰写" },
+      b2: { text: G4_WRITER_BODY + "\n【交给】事实核查" },
+      b3: { text: G4_REVIEW_BODY },
+    },
+  });
+  const sr5 = (c5.fr && c5.fr.stage_results) || [];
+  const writer5 = sr5.find((s) => s && s.name === "脚本撰写");
+  const review5 = sr5.find((s) => s && s.name === "事实核查");
+  check("G4-05", writer5 && writer5.pass === true && review5 && review5.pass === true,
+    "G4-05 端到端：三棒都过了验收（写稿 + 审校）",
+    JSON.stringify({ writer: writer5 && [writer5.pass, writer5.reason], review: review5 && [review5.pass, review5.reason] }));
+  /* 主笔那一棒的文件，磁盘上的内容必须是**审校改后**的 */
+  const draftPath5 = resolveDeliverablePath(
+    { dir: "03-drafts", file: "{date}-draft.md" },
+    { dataRoot: path.join(c5.root, "data"), roomTitle: ROOM.title });
+  const draftOnDisk5 = fs.existsSync(draftPath5) ? fs.readFileSync(draftPath5, "utf8") : "";
+  check("G4-06", draftOnDisk5.indexOf("真的下了一档") >= 0 && draftOnDisk5.indexOf("**下探**") < 0,
+    "G4-06 **磁盘上主笔那一棒的稿**被审校改写了（老句没了、新句在）—— 回路真的落地",
+    JSON.stringify({ has_new: draftOnDisk5.indexOf("真的下了一档") >= 0, has_old: draftOnDisk5.indexOf("**下探**") >= 0, len: draftOnDisk5.length }));
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1047,6 +1186,7 @@ function userDataFingerprint() {
   if (MODE === "all" || MODE === "positive") await sectionG();
   if (MODE === "all" || MODE === "g2") await sectionG2();
   if (MODE === "all" || MODE === "g3") await sectionG3();
+  if (MODE === "all" || MODE === "g4") await sectionG4();
   if (MODE === "all") sectionC();
   if (MODE === "all") sectionCX();
   if (MODE === "all" || MODE === "urls") await sectionX();

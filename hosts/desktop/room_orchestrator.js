@@ -1261,6 +1261,87 @@ function resolvePublishTargets(contract, opts) {
   return out;
 }
 
+/**
+ * 「审校 → 修订」回路（批次 9）：把某一棒的小节**覆盖**到上游的交付物上。
+ *
+ * 为什么需要（实测 + 评审）：
+ *   审校那一棒交的是「可发布候选版本」这一节 —— **已经是改好的稿**。
+ *   以前这条链是单向的：审校的修改只躺在它的产物里，主笔那一棒的稿
+ *   **一个字都没变** ⇒ 「提了意见没人执行」。
+ *   逐字对比实测产物：审校说「建议改为『单次推理成本结构变化』」，
+ *   稿子里仍是「推理成本这次真的下了一档」（比被批评的更重）。
+ *
+ * 为什么不是「让主笔重跑」：
+ *   - 主笔重跑要再花一次模型调用，而且**可能把审校的修改改回去**；
+ *   - 审校手里已经有改好的稿了（它必须交这一节才能过验收）⇒ 直接用它更准。
+ *   ⇒ 回路 = **用审校的改后稿覆盖主笔的稿**，并留一条修订记录。
+ *
+ * 契约声明（opt-in，不声明行为一字不变）：
+ *   deliverable.replaces = [{ section: "可发布候选版本", upstream: "内容主笔" }]
+ *     section  —— 取这一棒的这一小节作为覆盖内容
+ *     upstream —— 覆盖哪一棒（按角色名匹配）
+ *
+ * @returns {{ok:boolean, reason:string, replaced:object|null}}
+ */
+function applyRevisionLoop(input) {
+  const o = input || {};
+  const chain = Array.isArray(o.chain) ? o.chain : [];
+  const contract = o.contract || {};
+  const specs = Array.isArray(contract.replaces) ? contract.replaces : [];
+  if (!specs.length) return { ok: true, reason: "no_replaces_declared", replaced: null };
+  const selfName = String(o.selfName || "");
+  const body = String(o.body || "");
+  for (const spec of specs) {
+    if (!spec || typeof spec !== "object") continue;
+    const section = String(spec.section || "");
+    const upstreamName = String(spec.upstream || "");
+    if (!section || !upstreamName) continue;
+    /* 找到要覆盖的那一棒 */
+    const target = chain.find((c) => c && String(c.name || "") === upstreamName);
+    if (!target) continue;
+    /* 取本棒的这一小节 —— 找不到 ⇒ 明确说不覆盖，不静默放过 */
+    const revised = extractSectionBody(body, section, collectSectionLabels(body));
+    if (!revised) {
+      return {
+        ok: false, reason: "本棒没有「" + section + "」这一节，没法覆盖上游",
+        replaced: null,
+      };
+    }
+    const before = String(target.delivered_content || "");
+    if (before === revised) {
+      return { ok: true, reason: "覆盖内容与上游相同（无变化）", replaced: null };
+    }
+    return {
+      ok: true,
+      reason: "",
+      replaced: {
+        upstream_name: upstreamName,
+        upstream_from: selfName,
+        section,
+        before_chars: before.length,
+        after_chars: revised.length,
+        /* 修订记录：复盘棒能确定性核对「提了 N 条、执行了几条」 */
+        revision: {
+          at: new Date().toISOString(),
+          section,
+          from: upstreamName,
+          by: selfName,
+          before_sha: sha1(before),
+          after_sha: sha1(revised),
+        },
+        content: revised,
+      },
+    };
+  }
+  return { ok: true, reason: "no_matching_replace_spec", replaced: null };
+}
+
+/** 极简 sha1（只用于修订记录的指纹，不做安全用途）。 */
+function sha1(text) {
+  const crypto = require("crypto");
+  return crypto.createHash("sha1").update(String(text || ""), "utf8").digest("hex").slice(0, 12);
+}
+
 /** 从交付正文里取出成品正文（按 section / sections）。 */
 function extractPublishBody(content, target) {
   const text = String(content || "");
@@ -1770,6 +1851,7 @@ module.exports = {
   judgeCrossStage,
   extractPercentages,
   extractCleanUrls,
+  applyRevisionLoop,
   looksLikeNarration,
   createTeamBudget,
   createCancelScope,

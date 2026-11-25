@@ -20087,7 +20087,9 @@ function createHostFfi(repoRoot, opts = {}) {
 4. 仍需人工确认 —— 需要用户拍板或需要更多证据的地方。
 5. 原始来源清单 —— 每条来源一行，标出是不是一手来源。
 【验收】
-逐条回到 brief 原始链接；保留作者语气，只改必要之处；发现证据冲突时不替用户裁决，列出冲突与建议。把审校后的**候选版本正文完整写在回复里**（Host 会替你落盘到共享目录 04-review/，并单独抽出「可发布候选版本」这一节写成可直接发布的成品）；不要只回一句「已完成」，也不要只交意见不交改好的稿。`,
+逐条回到 brief 原始链接；保留作者语气，只改必要之处；发现证据冲突时不替用户裁决，列出冲突与建议。把审校后的**候选版本正文完整写在回复里**（Host 会替你落盘到共享目录 04-review/，并单独抽出「可发布候选版本」这一节写成可直接发布的成品）；不要只回一句「已完成」，也不要只交意见不交改好的稿。
+【你的修改会真的生效】
+「可发布候选版本」这一节里的正文，Host 会**用它覆盖主笔那一棒的稿**（原句 → 改后的稿），并记一条修订留痕。所以这一节必须是你**改完之后**的完整稿，不是原稿、也不是意见清单。改了几处就在「改动说明」里写几处。`,
           deliverable: {
             order: 4, dir: "04-review", file: "{date}-review.md",
             rules: {
@@ -20113,6 +20115,13 @@ function createHostFfi(repoRoot, opts = {}) {
               { dir: "05-publish", file: "{date}-final.md", section: "可发布候选版本" },
               { dir: "05-publish", file: "{date}-sources.md", section: "原始来源清单" },
             ],
+            /* 修订回路（批次 9）：审校改好的稿**覆盖**主笔的稿 ——
+               「提了意见没人执行」的根因是这条链单向，修改只躺在审校的产物里，
+               主笔的稿一个字没变（实测：审校说「建议改为『单次推理成本结构变化』」，
+               稿子里仍是「推理成本这次真的下了一档」，比被批评的还重）。
+               ⇒ 用审校的「可发布候选版本」这一节覆盖内容主笔那一棒
+                 （内存 + 磁盘都更新），并留一条修订记录给复盘核对。 */
+            replaces: [{ section: "可发布候选版本", upstream: "内容主笔" }],
           },
         },
         {
@@ -20285,6 +20294,12 @@ function createHostFfi(repoRoot, opts = {}) {
           /* 成品出口（publish）也是内置契约的一部分：老库里没有 ⇒ 补上。 */
           if (Array.isArray(sr.deliverable.publish) && !Array.isArray(tr.deliverable.publish)) {
             tr.deliverable.publish = JSON.parse(JSON.stringify(sr.deliverable.publish));
+          }
+          /* 修订回路（replaces）同理：老库里没有 ⇒ 补上。
+             不补 ⇒ 存量用户的审校改了稿，主笔那一棒还是旧稿
+             （「提了意见没人执行」照旧）。 */
+          if (Array.isArray(sr.deliverable.replaces) && !Array.isArray(tr.deliverable.replaces)) {
+            tr.deliverable.replaces = JSON.parse(JSON.stringify(sr.deliverable.replaces));
           }
         }
         if (needUpgrade) {

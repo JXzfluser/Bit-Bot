@@ -640,6 +640,18 @@ function createProductSurface(repoRoot, opts = {}) {
      * （成员读不了共享目录的文件 ⇒ 只能编）。 */
     const order = Number(input.order);
     if (Number.isFinite(order) && order > 0) out.order = Math.floor(order);
+    /* 修订回路（批次 9）：replaces: [{section, upstream}]
+       不在白名单 ⇒ 用户配的回路声明会被静默丢掉。 */
+    if (Array.isArray(input.replaces)) {
+      const reps = input.replaces.map((r) => {
+        if (!r || typeof r !== "object") return null;
+        const section = String(r.section || "").trim().slice(0, 60);
+        const upstream = String(r.upstream || "").trim().slice(0, 60);
+        if (!section || !upstream) return null;
+        return { section, upstream };
+      }).filter(Boolean).slice(0, 4);
+      if (reps.length) out.replaces = reps;
+    }
     /* 成品出口（批次 7）：publish: [{dir, file, section|segments}]
      * 不在白名单 ⇒ 用户配的成品出口会被静默丢掉。 */
     if (Array.isArray(input.publish)) {
@@ -3799,6 +3811,48 @@ function createProductSurface(repoRoot, opts = {}) {
           res.ok ? (res.text || "") : "（这一棒没成功）",
           "接力第 " + (hop + 1) + " 棒 · " + res.name,
         );
+        /* 「审校 → 修订」回路（批次 9）：这一棒声明了 replaces ⇒ 用它的小节
+         * **覆盖**上游那一棒的交付物（内存 + 磁盘都更新）。
+         *
+         * 为什么（实测）：以前这条链是单向的 —— 审校提的修改只躺在它的产物里，
+         * 主笔的稿**一个字没变** ⇒ 「提了意见没人执行」。
+         * 逐字对比实测产物：审校说「建议改为『单次推理成本结构变化』」，
+         * 稿子里仍是「推理成本这次真的下了一档」（比被批评的更重）。
+         *
+         * 为什么不是「让主笔重跑」：审校手里**已经有改好的稿**了
+         * （它必须交「可发布候选版本」这一节才能过验收）⇒ 直接用它更准，
+         * 也省一次模型调用，还避免主笔把修改改回去。
+         *
+         * 契约 opt-in：没声明 replaces ⇒ 一字不变。 */
+        if (res.ok && res.delivered_content && stageContract) {
+          const loop = roomOrchestrator.applyRevisionLoop({
+            chain, contract: stageContract, body: res.delivered_content, selfName: res.name,
+          });
+          if (!loop.ok) {
+            /* 声明了却做不到 ⇒ 如实说，不静默放过。 */
+            res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
+              "修订回路没生效：" + loop.reason;
+          } else if (loop.replaced) {
+            const rp = loop.replaced;
+            const target = chain.find((c) => c && String(c.name || "") === rp.upstream_name);
+            if (target) {
+              target.delivered_content = rp.content;
+              target.revised_by = rp.upstream_from;
+              target.revision = rp.revision;
+              /* 磁盘上那一棒的文件也要更新 —— 否则用户打开的还是旧稿。 */
+              if (target.delivered_path && fs.existsSync(target.delivered_path)) {
+                try {
+                  fs.writeFileSync(target.delivered_path, rp.content, "utf8");
+                  target.revised_on_disk = true;
+                } catch (e) {
+                  res.stage.warn = (res.stage.warn ? res.stage.warn + "；" : "") +
+                    "修订没写回磁盘：" + String((e && e.message) || e).slice(0, 100);
+                }
+              }
+              res.revision_applied = rp.revision;
+            }
+          }
+        }
         chain.push(res);
         if (!res.ok) break; // 这一棒失败：不再往下传（传下去就是拿失败当进度）
         const parsed = roomOrchestrator.parseRelayReply(res.text);
