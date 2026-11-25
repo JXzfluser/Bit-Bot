@@ -640,9 +640,17 @@ function startStub() {
       );
       const newSends = listFiles(SEND_DIR, ".json").filter((f) => !sendsBefore.has(f));
       const pending = await win.evaluate(() => window.bitbot.approvals.listPending());
+      const draftRow = newDrafts.length ? readJson(path.join(DRAFT_DIR, newDrafts[0]), {}) : {};
+      /* ⚠️ 定位口径（批次 10 续修）：原来靠「3 分钟内 requested_at」挑本轮那条 ——
+         * 而队列里还留着**更早步骤**挂出的批准行（定时任务、@now 探针…），
+         * 它们 requested_at 更早 ⇒ 本轮那条反倒被时间窗滤掉 ⇒
+         * 报「没有任何待批准入口」（真 provider 第九轮 P6 实测）。
+         * ⇒ 改成：**先用本轮草稿里的 approval_id 精确定位**；拿不到再退回时间窗。 */
+      const draftApprovalId = String((draftRow && (draftRow.approval_id || draftRow.approvalId)) || "");
       const mine = ((pending && pending.pending) || []).filter((it) => {
         if (!it || it.kind !== "mail_send" || it.status !== "pending") return false;
         if (!String(it.command || "").includes(MAIL_TO)) return false;
+        if (draftApprovalId) return String(it.id || "") === draftApprovalId;
         /* ⚠️ 2026-11-21 修：这里原来写的是
          *      Date.parse(it.requested_at) >= Date.now() - 120000
          * requested_at 是 **UTC ISO**(…Z)，而 Date.now() 也是 UTC 毫秒 —— 单看没问题，
@@ -655,7 +663,6 @@ function startStub() {
         const ageMs = Date.now() - reqAt;
         return ageMs >= -60000 && ageMs <= 180000;
       });
-      const draftRow = newDrafts.length ? readJson(path.join(DRAFT_DIR, newDrafts[0]), {}) : {};
       newDrafts.length >= 1 && draftRow.requires_approval === true && newSends.length === 0
         ? ok("P6 到期只备好草稿（requires_approval=true），未批准前 0 封外发（GP-108 守住）")
         : bad("P6 到期触发行为不符", JSON.stringify({ ticked, newDrafts, draftRow, newSends }).slice(0, 500));
@@ -843,8 +850,15 @@ function startStub() {
           }).filter(Boolean);
         } catch { return []; }
       };
+      /* ⚠️ 同样别用「3 分钟内」挑（批次 10 续修）：队列里可能有更早挂出的行，
+         * 「刚挂出的」那一行反而挑不到 ⇒ 报「没挂出待批准」。
+         * ⇒ 取**最后一条**本群来源、收件人匹配的 pending 行。 */
       const myQueueRows = () => pendAll().filter((e) => e && e.source === "routine" &&
         String(e.command || "").includes(MAIL_TO) && e.status === "pending");
+      const latestQueueRow = () => {
+        const rows = myQueueRows();
+        return rows.length ? rows[rows.length - 1] : null;
+      };
       // 重新建一条（面板真点击），触发一次挂出待批准，再把它删掉。
       await win.click("#ri-routine-add").catch(() => {});
       await win.waitForFunction(() => document.body.dataset.roomForm === "open", null, { timeout: 10000 }).catch(() => {});
@@ -866,15 +880,8 @@ function startStub() {
         }
         await win.evaluate(async () => { await window.bitbot.turn("tick routines", {}); }).catch(() => {});
         let row11 = null;
-        for (let i = 0; i < 30 && !row11; i += 1) {
-          /* 同 P6：算**时间差**而不是拿 UTC 时间戳去比本地时钟，
-           * 否则 TZ≠UTC 的机器上永远挑不出「刚挂出来的」那一行。 */
-          row11 = myQueueRows().find((e) => {
-            const t = Date.parse(e.requested_at || "");
-            if (!Number.isFinite(t)) return false;
-            const ageMs = Date.now() - t;
-            return ageMs >= -60000 && ageMs <= 180000;
-          }) || null;
+        for (let i = 0; i < 60 && !row11; i += 1) {
+          row11 = latestQueueRow();
           if (!row11) await new Promise((r) => setTimeout(r, 500));
         }
         await win.evaluate(() => refreshApprovalQueue()).catch(() => {});
@@ -1006,7 +1013,30 @@ function startStub() {
         let room13 = null;
         let tx13 = [];
         let report13 = null;
-        for (let i = 0; i < 400; i += 1) {
+        /* ⏱ 等待窗口：真 provider 五棒要跑**五次模型调用**（实测第一棒就 47 秒，
+           加上 Host 找料、逐条探活、抓正文），stub 模式下 100 秒绰绰有余 ——
+           真 provider 模式下 100 秒**必然**看不到 final_report（实测第 9 轮：
+           第一棒真产物已经落盘，流水线记录却是 0/0，纯粹是等不及）。
+           ⇒ LIVE 模式给足窗口，stub 模式保持原样（别让门禁变慢）。 */
+        const P13_WAIT = LIVE ? 12000 : 400;
+        /* 📷 群面监视器（取证用）：真 provider 第 8/9 轮实测「一键成队后群整批消失」
+           （rooms.json 变成 {rooms:[]}），而成员答过的话还在转录里。
+           ⇒ 这里每 250ms 记一次群面签名，失败时把时间线打出来 —— 谁在什么时候
+           把群抹了，不靠猜。 */
+        const roomWatch = [];
+        const watchTimer = setInterval(() => {
+          try {
+            const j = JSON.parse(fs.readFileSync(ROOMS, "utf8"));
+            const sig = (Array.isArray(j.rooms) ? j.rooms : []).map((r) => r && r.id).join(",");
+            const last = roomWatch[roomWatch.length - 1];
+            if (!last || last.sig !== sig) {
+              roomWatch.push({ at: new Date().toISOString().slice(11, 23), n: sig ? sig.split(",").length : 0, sig });
+            }
+          } catch (err) {
+            roomWatch.push({ at: new Date().toISOString().slice(11, 23), err: String((err && err.message) || err).slice(0, 60) });
+          }
+        }, 250);
+        for (let i = 0; i < P13_WAIT; i += 1) {
           const rooms = readJson(ROOMS, { rooms: [] });
           const list = Array.isArray(rooms.rooms) ? rooms.rooms : [];
           room13 = list.find((r) => r && String(r.title || "").indexOf("自媒体内容团队") >= 0) || null;
@@ -1021,6 +1051,7 @@ function startStub() {
           }
           await new Promise((r) => setTimeout(r, 250));
         }
+        clearInterval(watchTimer);
         room13
           ? ok("P13 「一键成队」把团队建起来了（群名=" + String(room13.title || "") + "，成员 " +
               (Array.isArray(room13.members) ? room13.members.length : 0) + " 个）")
@@ -1047,7 +1078,8 @@ function startStub() {
         stages13.length >= 5 && passed13.length === stages13.length
           ? ok("P13 流水线**五棒按顺序跑完且都过了验收**（" + passed13.length + "/" + stages13.length +
               "：" + order13 + "）")
-          : bad("P13 流水线没跑完或有人没过验收（" + passed13.length + "/" + stages13.length + "）",
+          : bad("P13 流水线没跑完或有人没过验收（" + passed13.length + "/" + stages13.length + "）" +
+              "｜群面时间线：" + JSON.stringify(roomWatch.slice(0, 12)),
                 JSON.stringify(stages13.map((s) => [s && s.name, s && s.pass, s && s.reason])).slice(0, 300));
         /* 五棒都过了 ⇒ 五个交付文件都得真落盘（各自目录） */
         const files13 = stages13.map((s) => s && s.artifact_path).filter(Boolean);
