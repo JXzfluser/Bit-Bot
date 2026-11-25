@@ -4113,14 +4113,27 @@ function createProductSurface(repoRoot, opts = {}) {
         chain.push(res);
         if (!res.ok) break; // 这一棒失败：不再往下传（传下去就是拿失败当进度）
         const parsed = roomOrchestrator.parseRelayReply(res.text);
-        // ---- 停点 2：成员说「要先问清楚」。这一轮到此为止，等用户回答后继续。 ----
+        // ---- 停点 2：成员说「要先问清楚」。 ----
+        /* ⚠️ 流水线里**不停整条链**（批次 10 续，真 provider 第十一轮实测）。
+         *
+         * 缘起：第二棒交上来的是合格的选题 brief，但里面写着
+         *   「上一棒的**情报卡 3 全文我没有收到**（群记录中被截断）……
+         *    已向情报侦察员索要卡 3；卡 3 到手后可替换。」
+         * ⇒ 旧的「停点 2」把整条链 break ⇒ **第三棒永远不跑** ⇒ 五棒跑不完。
+         * ⇒ 而**没有人会来补这个料**：用户不知道要补什么，材料也不会自己长出来，
+         *   队里的上游已经交完手了 ⇒ 流水线卡死在第二棒，**永远出不了成品**。
+         *
+         * ⇒ 改成**带着缺口往前走**：记下这一棒的待补信息、**递给下一棒**，
+         *   让它自己绕过去（拿到的部分先写，拿不准的写进它的「仍需确认」）。
+         *   最终报告里如实写明「第 N 棒有未解疑问，已带着疑问继续」。
+         * ⇒ 单棒（对话）行为**一字不变**：那里「停下等用户回答」是对的。 */
         if (parsed.confirm !== null) {
           paused = {
             bot_id: res.bot_id, name: res.name,
             question: clipRoomText(parsed.confirm || "（这位成员没有写清要确认什么）", CONFIRM_MAX_CHARS).text,
           };
           res.needs_confirm = paused.question;
-          break;
+          if (!isPipeline) break;   // 单棒：停 = 等用户回答
         }
         const handoffRaw = parsed.handoff ? String(parsed.handoff) : "";
         let nextMember = handoffRaw
@@ -4144,6 +4157,16 @@ function createProductSurface(repoRoot, opts = {}) {
           prev = isPipeline && res.delivered_content
             ? Object.assign({}, res, { text: res.delivered_content })
             : res;
+          /* 上一棒说「要确认」时，把**缺口如实递给下一棒**（流水线继续的前提）：
+             * 让它知道缺什么、自己绕过去，而不是把缺口烂在这一棒。 */
+          if (res.needs_confirm) {
+            prev = Object.assign({}, prev, {
+              text: String(prev.text || "") +
+                "\n\n【上一棒提出的待补信息】" + res.needs_confirm +
+                "\n（它没能拿到这些。**不要停下来等**——用你手里已有的写，"
+                + "拿不准的地方写进你的「仍需确认」。）",
+            });
+          }
           /* 把**历史成品清单**也递下去（批次 9）：
              用户评审提的「这个角度我上个月发过没有？谁查？」——
              产品以前答不上来（没有地方记着做过什么）。
@@ -4261,6 +4284,12 @@ function createProductSurface(repoRoot, opts = {}) {
             reject_reason: c.reject_reason || "",
           };
         }),
+        /* 流水线带着缺口继续时，把**未解疑问**如实报出来（批次 10 续）。
+         * 用户看到的是「第二棒说缺料，但没人会补」⇒ 必须让他知道这件事，
+         * 而不是让成品里凭空少一块、事后才发现。 */
+        open_questions: chain
+          .filter((c) => c && c.needs_confirm)
+          .map((c) => ({ bot_id: c.bot_id, name: c.name, question: String(c.needs_confirm || "") })),
         /* 验收小结：哪棒过了、哪棒被驳回、为什么 —— 复盘与指挥台直接读这个。 */
         stage_results: chain.map((c) => ({
           bot_id: c.bot_id, name: c.name, hop: c.hop, ok: !!c.ok,
