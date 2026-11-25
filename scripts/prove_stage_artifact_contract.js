@@ -952,7 +952,8 @@ const G2_CONTRACT = {
 async function sectionG6() {
   console.log("── G6. 批次 10 续：契约的验收约束进 prompt ──");
   const ro = require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
-  const { buildRelayPrompt, buildResponderPrompt, contractConstraintLines, judgeStage } = ro;
+  const { buildRelayPrompt, buildResponderPrompt, contractConstraintLines, judgeStage,
+          countDeliverableItems } = ro;
 
   const contract = {
     dir: "01-inbox", file: "{date}.md",
@@ -1000,6 +1001,93 @@ async function sectionG6() {
   check("G6-05", /最多交 7 条/.test(other.join("\n")) && !/最多交 3 条/.test(other.join("\n")),
     "G6-05 约束行跟着契约变（换契约就不是「3 条」了 ⇒ 判据有牙）",
     other.join(" | "));
+
+  /* G6-07：**真模型的产物形态**必须被正确计数（批次 10 续的真 provider 实测）。
+   *
+   * 缘起（真 MiniMax 实测）：模型交的情报卡长这样 ——
+   *     ## 情报卡 1（Top 1）：文心 5.5 Flash Preview 正式开源
+   *     - **事实**：2026-11-24 发布
+   *     - **原始链接**：https://qbitai.com/…
+   *   ⇒ 旧计数规则把每个 `- **字段**：` 行都算成一条
+   *   ⇒ **3 条情报被数成 36 条** ⇒ 契约 max_items:3 判它超限 ⇒ 驳回
+   *   ⇒ 五棒在第一棒就断了（真 provider 连续两轮都断在这里）。
+   *
+   * ⇒ 门禁夹具必须**用真模型的形态**，否则这条 bug 会被"干净的夹具"掩盖。 */
+  const realShape = [
+    "## 情报卡 1（Top 1）：文心 5.5 Flash Preview 正式开源",
+    "",
+    "- **事实**：2026-11-24 正式开源，采用 Apache 2.0 协议。",
+    "- **来源平台**：量子位（科技媒体现场报道）",
+    "- **原始链接**：https://www.qbitai.com/2026/11/512370.html",
+    "- **证据摘录**：报道写明该模型正式开源并采用 Apache 2.0 协议。",
+    "- **讨论热度**：不适用（厂商发布 + 媒体转述，未见第三方复现）。",
+    "- **为什么值得关注**：端侧可直接部署，许可宽松。",
+    "- **待核查问题**：模型在真实业务上的表现是否如官方所述。",
+    "- **核验状态**：已核验（量子位原文可达，链接由 Host 实测）。",
+    "",
+    "## 情报卡 2（Top 2）：端侧超节点",
+    "",
+    "- **事实**：辛米尔科技实测有效吞吐量提升 270%。",
+    "- **原始链接**：https://www.qbitai.com/2026/11/512362.html",
+    "- **证据摘录**：同样一组芯片、同样一批模型，仅改变任务组织方式。",
+    "",
+    "## 情报卡 3（Top 3）：2026 奇点智能技术大会",
+    "",
+    "- **事实**：70+ 技术大咖围绕 AI 智能体生态等议题分享。",
+    "- **原始链接**：https://www.qbitai.com/2026/11/512297.html",
+    "- **证据摘录**：会上发布两份年度研究报告。",
+  ].join("\n");
+  const realCount = countDeliverableItems(realShape);
+  check("G6-07", realCount === 3,
+    "G6-07 **真模型的产物形态**数出来是 3 条（不是 24/36 —— 字段行不是条目）",
+    "数出来 " + realCount + " 条");
+
+  /* G6-08：真形态交上去必须**过**契约（3 条 ≤ 上限 3） */
+  const vReal = judgeStage({
+    text: realShape,
+    contract: { dir: "01-inbox", file: "{date}.md", rules: { max_items: 3, min_items: 3, min_chars: 200 } },
+    dataRoot: "/tmp",
+  });
+  check("G6-08", vReal.pass === true,
+    "G6-08 真形态的 3 条情报能过契约（max_items=3 / min_items=3）",
+    JSON.stringify({ pass: vReal.pass, reason: vReal.reason }));
+
+  /* G6-09：反向对照 —— 真的交 36 条**仍然**要判红（判据没被放松） */
+  const tooManyReal = Array.from({ length: 12 }, (_, i) =>
+    "## 情报卡 " + (i + 1) + "\n- **事实**：x\n- **原始链接**：https://example.com/" + i).join("\n\n");
+  const vTooMany = judgeStage({
+    text: tooManyReal,
+    contract: { dir: "01-inbox", file: "{date}.md", rules: { max_items: 3 } },
+    dataRoot: "/tmp",
+  });
+  check("G6-09", vTooMany.pass === false && /条目超了/.test(String(vTooMany.reason || "")),
+    "G6-09 真的交 12 条**仍然判红**（计数改精确了，判据没被放松）",
+    JSON.stringify({ pass: vTooMany.pass, reason: vTooMany.reason }));
+
+  /* G6-10：既有形态**行为不变**（编号夹具 / 纯列表 / 题 N｜ / brief 夹具 都还是原来的数） */
+  const briefShape = [
+    "# 选题 brief：园区光伏", "",
+    "- 事实：园区 2024 年光伏装机 3.2MW（来源：园区年报，第 12 页）",
+    "- 读者场景：制造业园区能源负责人要在 Q3 前决定是否加装光伏",
+    "- 主角度：算一笔账——回本周期对现金流紧张的园区意味着什么",
+    "- 信息缺口：电价构成未核；需查当地工商业电价文件",
+    "- 内容形式：3 分钟口播短视频",
+    "- 写作任务：给主笔一条硬约束：所有数字必须能回到年报或电价文件",
+  ].join("\n");
+  check("G6-10",
+    countDeliverableItems("1. A\n   来源：x\n2. B\n3. C") === 3 &&
+    countDeliverableItems("- 第一条\n- 第二条\n- 第三条") === 3 &&
+    countDeliverableItems("题 1｜A\n题 2｜B\n题 3｜C") === 3 &&
+    countDeliverableItems(briefShape) === 6 &&
+    countDeliverableItems("1. A\n   - 字段：x\n2. B") === 2,
+    "G6-10 既有形态计数不变（编号 / 纯列表 / 题 N｜ / brief 夹具 6 条 / 编号+缩进字段）",
+    JSON.stringify({
+      numbered: countDeliverableItems("1. A\n   来源：x\n2. B\n3. C"),
+      plainList: countDeliverableItems("- 第一条\n- 第二条\n- 第三条"),
+      ti: countDeliverableItems("题 1｜A\n题 2｜B\n题 3｜C"),
+      brief: countDeliverableItems(briefShape),
+      indented: countDeliverableItems("1. A\n   - 字段：x\n2. B"),
+    }));
 
   /* G6-06：**上限必须真的能挡住** —— 24 条要判红（真 provider 交的就是 24 条） */
   const many = Array.from({ length: 24 }, (_, i) => `${i + 1}. 第 ${i + 1} 条情报`).join("\n");
