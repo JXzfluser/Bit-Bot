@@ -68,6 +68,9 @@ esac
 export "$BASE_VAR=${!BASE_VAR:-$DEFAULT_BASE}"
 export "$MODEL_VAR=${!MODEL_VAR:-$DEFAULT_MODEL}"
 export BITBOT_LLM_PROVIDER="$PROVIDER"
+# 间接展开的结果落到普通变量（`${!VAR:-x}` 不是合法 bash 语法）。
+BASE_VALUE="${!BASE_VAR}"
+MODEL_VALUE="${!MODEL_VAR}"
 
 echo "=== 真 provider 五棒演练 ==="
 echo "  provider : $PROVIDER"
@@ -121,7 +124,7 @@ echo "--- 预检 3/3：真打一次 chat（验账户能出 token）---"
 CHAT=$(curl -s -o /tmp/live-pilot-chat.json -w "%{http_code}" --max-time 60 \
   -H "Authorization: Bearer $KEY_VALUE" -H "Content-Type: application/json" \
   -d "{\"model\":\"${!MODEL_VAR}\",\"messages\":[{\"role\":\"user\",\"content\":\"说「好」一个字\"}],\"max_tokens\":16}" \
-  "${!BASE_URL:-${!BASE_VAR}}/chat/completions" 2>/dev/null)
+  "$BASE_VALUE/chat/completions" 2>/dev/null)
 case "$CHAT" in
   200)
     node -e '

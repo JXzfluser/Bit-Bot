@@ -935,6 +935,80 @@ const G2_CONTRACT = {
   ],
 };
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * G6. 批次 10 续：契约的**验收约束**必须进编排 prompt
+ *
+ * 为什么：真 provider 实测（MiniMax-M3.1-Flash，真网络找料，真五棒）——
+ *   情报侦察员交回 **24 条**，契约 `max_items: 3`
+ *   ⇒ Host 判「条目超了（24 条，上限 3 条）」⇒ 驳回 ⇒ 链路在第一棒就断了。
+ *
+ *   为什么它交 24 条？因为**编排 prompt 里没写「最多 3 条」**：
+ *   契约的 max_items 只在 Host 侧验收时生效 —— 成员看不见那个数字。
+ *   ⇒ 「prompt 与验收共用同一份契约」此前只做到了**落点**一致，
+ *     没做到**约束**一致 ⇒ 模型按自己的理解交，Host 按契约判。
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+async function sectionG6() {
+  console.log("── G6. 批次 10 续：契约的验收约束进 prompt ──");
+  const ro = require(path.resolve(__dirname, "..", "hosts", "desktop", "room_orchestrator.js"));
+  const { buildRelayPrompt, buildResponderPrompt, contractConstraintLines, judgeStage } = ro;
+
+  const contract = {
+    dir: "01-inbox", file: "{date}.md",
+    rules: {
+      min_chars: 200, max_items: 3, min_items: 3,
+      must_include: ["http"],
+      must_include_sections: [{ label: "本轮选题", min_chars: 40 }, "正文", "事实依据"],
+    },
+  };
+
+  /* G6-01：约束行本身要说得清楚、人能看懂 */
+  const lines = contractConstraintLines(contract);
+  const joined = lines.join("\n");
+  check("G6-01", /最多交 3 条/.test(joined) && /至少交 3 条/.test(joined) &&
+    /不少于 200 字/.test(joined) && /本轮选题/.test(joined),
+    "G6-01 契约约束说清楚了（条数上下限 / 字数下限 / 必含小节）",
+    joined);
+
+  /* G6-02：串行接力的 prompt 里必须带这些约束 */
+  const relayPrompt = buildRelayPrompt({
+    task: "找 3 条情报", roster: [{ id: "b1", name: "情报侦察员" }], hop: 0,
+    contract,
+  });
+  check("G6-02", /最多交 3 条/.test(relayPrompt) && /本轮选题/.test(relayPrompt),
+    "G6-02 串行接力的 prompt 里带着契约约束（真模型照做才不会被驳回）",
+    relayPrompt.slice(0, 200));
+
+  /* G6-03：并行分工的 prompt 里也必须带（真 provider 实测的正是这条路径） */
+  const respPrompt = buildResponderPrompt({
+    task: "找 3 条情报", subtask: "搜集", contract,
+  });
+  check("G6-03", /最多交 3 条/.test(respPrompt) && /本轮选题/.test(respPrompt),
+    "G6-03 并行分工的 prompt 里也带着契约约束（真 provider 实测红的就是这条路径）",
+    respPrompt.slice(0, 200));
+
+  /* G6-04：无契约 ⇒ **一字不变**（契约是 opt-in，不能给所有 prompt 加噪音） */
+  const bare = buildRelayPrompt({ task: "做点事", roster: [{ id: "b1", name: "x" }], hop: 0 });
+  const bareResp = buildResponderPrompt({ task: "做点事" });
+  check("G6-04", !/最多交/.test(bare) && !/至少交/.test(bare) && !/不少于 .* 字/.test(bare) &&
+    !/最多交/.test(bareResp) && !/至少交/.test(bareResp),
+    "G6-04 没有契约 ⇒ prompt 一字不变（契约是 opt-in）");
+
+  /* G6-05：反向对照 —— 约束行必须**真的**跟着契约变（不是写死的「最多 3 条」） */
+  const other = contractConstraintLines({ rules: { max_items: 7, min_chars: 50 } });
+  check("G6-05", /最多交 7 条/.test(other.join("\n")) && !/最多交 3 条/.test(other.join("\n")),
+    "G6-05 约束行跟着契约变（换契约就不是「3 条」了 ⇒ 判据有牙）",
+    other.join(" | "));
+
+  /* G6-06：**上限必须真的能挡住** —— 24 条要判红（真 provider 交的就是 24 条） */
+  const many = Array.from({ length: 24 }, (_, i) => `${i + 1}. 第 ${i + 1} 条情报`).join("\n");
+  const v = judgeStage({ text: many + "\nhttp://example.com/x", contract, dataRoot: "/tmp" });
+  check("G6-06", v.pass === false && /条目超了/.test(String(v.reason || "")),
+    "G6-06 上限真的能挡住（24 条判红 —— 真 provider 交的就是这个数）",
+    JSON.stringify({ pass: v.pass, reason: v.reason }));
+}
+
 async function sectionG2() {
   console.log("── G2. 批次 7 新判据：成品出口 / 坏链 / 跨棒 / 数字对账 ──");
 
@@ -1308,6 +1382,7 @@ function userDataFingerprint() {
   if (MODE === "all" || MODE === "g4") await sectionG4();
   if (MODE === "all" || MODE === "g5") await sectionG5();
   if (MODE === "all" || MODE === "g5") await sectionG5b();
+  if (MODE === "all" || MODE === "g6") await sectionG6();
   if (MODE === "all") sectionC();
   if (MODE === "all") sectionCX();
   if (MODE === "all" || MODE === "urls") await sectionX();

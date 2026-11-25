@@ -4375,6 +4375,61 @@ function createProductSurface(repoRoot, opts = {}) {
       ));
       const results = new Array(selected.length);
       let cursor = 0;
+      /* ===== Host 找料（批次 10 续）—— **并行分工模式**也要 =====
+       *
+       * 缘起（真 provider 实测，P2 就是最常用的用法）：
+       *   「@三个 bot 一起干活」走的是并行分工分支，**不是**流水线
+       *   ⇒ 批次 10 的找料只接在流水线第一棒上 ⇒ 这条路上成员仍自己去抓
+       *   ⇒ 三个 Bot 全部撞「180 秒内调用模型 20 次」，零产出。
+       *
+       * ⇒ 并行分工也要**一轮找一次料，全员共享**：
+       *   并行模式下成员之间没有上下游（各干各的）⇒ 每个人都需要自己找料
+       *   ⇒ 共享同一份材料正合适（同一个任务的料），还省掉重复搜索。
+       * ⇒ 找料失败**不阻断**（老行为不变），如实告诉成员「Host 没拿到料」。
+       */
+      let fanoutMaterials = null;
+      try {
+        const prepF = await prepareMaterials({
+          query: String(task || "").trim(),
+          roomTitle: room.title || room.name || "",
+          dataRoot: DATA_ROOT,
+          max: 6,
+          bodyChars: 700,
+        });
+        if (prepF && prepF.ok && Array.isArray(prepF.candidates) && prepF.candidates.length) {
+          fanoutMaterials = {
+            text: prepF.candidates
+              .map((c, i) =>
+                "候选 " + (i + 1) + "：" + (c.title || "(无标题)") + "\n链接：" + c.url + "\n摘录：" +
+                (c.body || "（正文抓不到，只有标题和链接）"),
+              )
+              .join("\n\n"),
+            count: prepF.candidates.length,
+            skipped: prepF.skipped || 0,
+            path: prepF.path || "",
+          };
+          /* 材料给全了 ⇒ **禁掉抓取**（确定性约束，不靠模型自觉）。 */
+          if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageFetchMax === "function") {
+            roomRuntimeDeps.setStageFetchMax(
+              0,
+              "Host 已经把取回并实测可达的材料给你了，**这一棒不需要再抓网页**。" +
+              "直接用材料交成果；材料里抓不到正文的条目标『待核查』即可。",
+            );
+          }
+        } else {
+          fanoutMaterials = {
+            text: "（Host 这次没能取回可用材料：" + String((prepF && prepF.reason) || "unknown") +
+              "。如果你需要自己搜，请**最多搜一次**，不要逐条抓网页——" +
+              "很多站点是登录墙，抓不到会耗掉整轮时间。）",
+            count: 0, skipped: 0, path: "",
+          };
+        }
+      } catch (e) {
+        fanoutMaterials = {
+          text: "（Host 找料出错：" + String((e && e.message) || e).slice(0, 120) + "。）",
+          count: 0, skipped: 0, path: "",
+        };
+      }
       const runMember = async (r) => {
         const scope = roomCancelScope();
         registerTaskScope(taskSig, scope);
@@ -4399,6 +4454,8 @@ function createProductSurface(repoRoot, opts = {}) {
         });
         const prompt = roomOrchestrator.buildResponderPrompt({
           task, subtask, boardText, contract: stageContract,
+          /* Host 找料（批次 10 续）：并行分工也带材料。 */
+          materials: fanoutMaterials,
         });
         const ctx = {
           room: room.id,
@@ -4679,6 +4736,14 @@ function createProductSurface(repoRoot, opts = {}) {
       const workers = [];
       for (let i = 0; i < Math.min(concurrency, selected.length); i++) workers.push(worker());
       await Promise.all(workers);
+      /* 整轮收尾：**恢复抓取上限到默认**（批次 10 续）。
+       * 并行分工的找料把上限设成了 0；不恢复 ⇒ 下一轮任务成员就再也抓不了网页。
+       * 幂等，多恢复一次无害。 */
+      try {
+        if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageFetchMax === "function") {
+          roomRuntimeDeps.setStageFetchMax(-1);
+        }
+      } catch (_) { /* 复位失败不判红 */ }
       const settled = results.map((res, i) => res || {
         bot_id: selected[i].id, name: selected[i].name, ok: false, text: "", artifacts: [],
         error: String((res && res.error) || "not_started"),

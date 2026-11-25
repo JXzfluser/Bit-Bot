@@ -412,6 +412,60 @@ function parseRelayReply(text) {
  *   2) 做完交付**成果正文**，不是「我做到了」；
  *   3) 缺信息就写【需要确认】并停下 —— 这一轮真的会停在这里等用户回答。
  */
+/**
+ * 契约的**验收约束** → 编排 prompt 里的人话（批次 10 续）。
+ *
+ * 缘起（**真 provider 实测**，这是真产出为零的最后一环）：
+ *   情报侦察员交回 **24 条**，契约 `max_items: 3` ⇒ Host 判「条目超了（24 条，
+ *   上限 3 条）」⇒ 驳回 ⇒ 链路在第一棒就断了 ⇒ 五棒一次没跑完。
+ *
+ *   为什么它交 24 条？因为**编排 prompt 里根本没写「最多 3 条」**：
+ *   · 契约的 `max_items` 只在 **Host 侧验收**时生效 —— 成员看不见；
+ *   · 岗位 prompt 里虽然写了「每次最多 3 条」，但岗位 prompt 走 roomContext
+ *     （只进模型请求、不参与内核意图解析）⇒ **模型看得到**……可它照样交了 24 条
+ *     （真模型不会百分百照做，必须在**编排 prompt** 里再说一次硬约束）；
+ *   · 编排 prompt 只说了「成果会被 Host 落到哪个目录」—— **只说落点，不说约束**。
+ *
+ * ⇒ 「prompt 与验收共用同一份契约」这句话，此前只做到了**落点**一致，
+ *   没做到**约束**一致 ⇒ 模型在按自己的理解交，Host 在按契约判。
+ *   ⇒ 这就是「提了要求没人执行」的另一个翻版。
+ *
+ * @returns {string[]} 要拼进 prompt 的行
+ */
+function contractConstraintLines(contract) {
+  const c = typeof contract === "string" ? {} : (contract || {});
+  const r = Object.assign({}, c.rules || {});
+  const lines = [];
+  const maxItems = Number(r.max_items || 0);
+  const minItems = Number(r.min_items || 0);
+  if (maxItems > 0) {
+    lines.push("   **最多交 " + maxItems + " 条** —— 超了整棒会被判不合格、这一棒就白跑了。");
+  }
+  if (minItems > 0) {
+    lines.push("   **至少交 " + minItems + " 条** —— 少于这个数同样判不合格。");
+  }
+  const minChars = Number(r.min_chars || 0);
+  if (minChars > 0) {
+    lines.push("   正文**不少于 " + minChars + " 字**。");
+  }
+  const secs = [];
+  if (Array.isArray(r.must_include_sections)) {
+    for (const s of r.must_include_sections) {
+      if (typeof s === "string" && s.trim()) secs.push(s.trim());
+      else if (s && typeof s === "object" && s.label) secs.push(String(s.label).trim());
+    }
+  } else if (Array.isArray(c.must_include_sections)) {
+    for (const s of c.must_include_sections) {
+      if (typeof s === "string" && s.trim()) secs.push(s.trim());
+      else if (s && typeof s === "object" && s.label) secs.push(String(s.label).trim());
+    }
+  }
+  if (secs.length) {
+    lines.push("   正文必须用这几个**小节标题**分开写（少一个就判不合格）：" + secs.join("、") + "。");
+  }
+  return lines;
+}
+
 function buildRelayPrompt(input) {
   const opts = input || {};
   const task = String(opts.task || "").trim();
@@ -483,6 +537,8 @@ function buildRelayPrompt(input) {
       "你**不用自己写文件**，把成果正文完整写在这条回复里就行；" +
       "只交一句「已完成」或一个路径，Host 会判这一棒没交出成果（后面的人不接力，产物也不落盘）。",
     );
+    /* 验收约束也要说（批次 10 续）—— 只说落点不说约束，模型会按自己的理解交。 */
+    for (const l of contractConstraintLines(opts.contract)) lines.push(l);
   }
   lines.push(
     "4. 确实需要另一位成员的专业能力才能继续时，另起一行写：" +
@@ -588,6 +644,23 @@ function buildResponderPrompt(input) {
     lines.push("【你的分工】" + subtask + "（只做这一件；别人做别的，别重做）");
   }
   if (boardText) lines.push(boardText);
+  /* Host 找料（批次 10 续）—— **并行分工模式**也要。
+   *
+   * 缘起（真 provider 实测）：P2「@三个 bot 一起干活」是最常用的用法，
+   * 而并行分工**不走**流水线 ⇒ 批次 10 的找料只接在流水线第一棒上
+   * ⇒ 这条路上成员仍自己去抓 ⇒ 三个 Bot 全部撞「180 秒内调用模型 20 次」。
+   * ⇒ 找料与禁抓必须覆盖**所有**需要联网的路径，不只是流水线。
+   */
+  if (opts.materials && String(opts.materials.text || "").trim()) {
+    lines.push(
+      "【Host 已经取回的材料（不用你再上网找）】",
+      String(opts.materials.text).trim(),
+      "这些材料里每一条链接都**由 Host 实测过能打开**，死链已经剔掉了。",
+      "直接用下面的材料做判断和写作；**不要自己去 web_search / web_fetch 找料**" +
+        "（你一去抓就会陷在登录墙和打不开的站点里，任务会超时）。",
+      "材料抓不到正文的地方只写标题和链接、并标「待核查」，**不要编造细节**。",
+    );
+  }
   lines.push(
     "先看共享任务板：别人已经做过的部分不要重写，只补自己分工里缺的东西。",
   );
@@ -601,6 +674,8 @@ function buildResponderPrompt(input) {
       "你**不用自己写文件**，把成果正文完整写在这条回复里就行；" +
       "只交一句「已完成」或一个路径，Host 会判这一棒没交出成果（产物也不落盘）。",
     );
+    /* 验收约束也要说（批次 10 续）—— 并行分工同样会被契约按数量判不合格。 */
+    for (const l of contractConstraintLines(contract)) lines.push(l);
     lines.push(
       "做完把**成果正文**交上来（成稿的正文、脚本、清单、结论都行），不要只写「已完成」「如上」。",
     );
@@ -2038,6 +2113,7 @@ module.exports = {
   pickPipelineOrder,
   buildSynthesisPrompt,
   buildRelayPrompt,
+  contractConstraintLines,
   composeDeliverable,
   matchFragments,
   parseRelayReply,
