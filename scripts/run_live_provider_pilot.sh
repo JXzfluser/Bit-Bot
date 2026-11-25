@@ -155,6 +155,11 @@ export BITBOT_ROOM_RESPONDER_TIMEOUT_MS="${BITBOT_ROOM_RESPONDER_TIMEOUT_MS:-600
 # ⇒ 真 provider 演练用宽预算；本地 stub 门禁走默认值（30 次 / 600 秒），
 #    死循环照样由内核的「连续工具失败就停」与本闸兜住。
 export BITBOT_LLM_CALL_GUARD_MAX="${BITBOT_LLM_CALL_GUARD_MAX:-60}"
+# 内核 turn 超时（BITBOT_KERNEL_TIMEOUT_MS 默认 180000 = 3 分钟）。
+# 真 provider 写一棒要几分钟（实测第二棒 6000+ 字）⇒ 3 分钟不够，
+# 实测第十二轮第二棒直接 kernel_timeout（in_flight=k48）⇒ 链又断在第二棒。
+# ⇒ 真 provider 演练用 15 分钟；本地 stub 门禁走默认值（门禁照样快）。
+export BITBOT_KERNEL_TIMEOUT_MS="${BITBOT_KERNEL_TIMEOUT_MS:-900000}"
 export BITBOT_LLM_CALL_GUARD_WINDOW_MS="${BITBOT_LLM_CALL_GUARD_WINDOW_MS:-900000}"
 
 timeout "${PILOT_TIMEOUT:-2400}" xvfb-run -a node scripts/e2e_desktop_creator_pipeline.mjs
