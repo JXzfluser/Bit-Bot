@@ -114,7 +114,14 @@ const MAIL_TO = "news@example.com";
  * 匹配键刻意用「落到「01-inbox」」这种**只在当前棒 prompt 里出现**的片段：
  * ECHO_ALL 模式下五个角色的岗位 prompt 全在同一个请求里，只按目录名匹配会
  * 命中每一棒。 */
-const STUB_REPLY_MATCH = {
+/* 夹具可外置（批次 10）：BITBOT_STUB_REPLY_MATCH_FILE 指向一个 JSON 文件时，
+   用它**整份替换**下面的硬编码夹具。
+   为什么需要：门禁夹具是「新契约的活文档」，但真实场景演练要喂**真内容**
+   （真材料 + 真写作），不该每次都改门禁源码。 */
+const STUB_REPLY_MATCH_FILE = String(process.env.BITBOT_STUB_REPLY_MATCH_FILE || "").trim();
+const STUB_REPLY_MATCH = STUB_REPLY_MATCH_FILE
+  ? JSON.parse(fs.readFileSync(STUB_REPLY_MATCH_FILE, "utf8"))
+  : {
   /* 批次 7 后契约变严了（max_items: 3 / 条目计数认全中文编号）：
      这份夹具必须**满足新契约**，否则门禁验的是「夹具不满足契约」，
      而不是「产品跑通了五棒」。它是新契约的活文档。 */

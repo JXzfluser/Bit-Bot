@@ -3325,6 +3325,23 @@ function createProductSurface(repoRoot, opts = {}) {
     // 成员被**赋予了职责**(job/description)⇒ 这个群就是一支团队,不是闲聊。
     // ⇒ 团队里的任务走**并行 + 分工**;随手拉几个人聊天仍然走 auto_route。
     //
+    /* ===== Host 找料（批次 10）=====
+     * 真 provider 实测的根因：第一棒自己上网「找 + 核验」，候选一半以上是
+     * 登录墙 ⇒ 换着试 ⇒ 一棒 165~322 次抓取 ⇒ 撞闸 ⇒ 五棒一次没跑完。
+     * ⇒ 找料这件事挪到 Host：搜索 → 探活（剔死链）→ 抓正文 → 贴进 prompt。
+     * 依赖从 roomRuntimeDeps 拿（跟 verifyLinks 一样由 main.js 注入真实现），
+     * 没注入时**不阻断流水线**（老行为不变）。 */
+    async function prepareMaterials(input) {
+      const deps2 = roomRuntimeDeps || {};
+      if (typeof deps2.prepareMaterials === "function") {
+        return await deps2.prepareMaterials(input);
+      }
+      if (deps2.ffi && typeof deps2.ffi.prepareResearchMaterials === "function") {
+        return await deps2.ffi.prepareResearchMaterials(input);
+      }
+      return { ok: false, reason: "prepare_materials_not_available", candidates: [], skipped: 0 };
+    }
+
     // 判据:群里**至少两个成员有职责**。单成员 / 无职责 ⇒ 老行为。
     // 显式覆盖:opts.teamMode = true/false;BITBOT_ROOM_TEAM_MODE=0 全局退回。
     // ===== 团队模式(B-7)=====
@@ -3457,6 +3474,68 @@ function createProductSurface(repoRoot, opts = {}) {
       for (let hop = 0; hop < maxHops && current; hop++) {
         if (seen.has(current.id)) break; // 踢皮球：同一个人不跑第二棒
         seen.add(current.id);
+
+      /* ===== Host 找料（批次 10）=====
+       * 缘起（真 provider 实测，13 轮零产物）：第一棒自己去网上「找 + 逐条核验」，
+       * 而降级搜索给的候选**一半以上是登录墙/付费墙** ⇒ 模型抓到失败就换 URL
+       * 再试 ⇒ 实测一棒 web_fetch 165~322 次 ⇒ 撞 900 秒闸 ⇒ 五棒一次没跑完。
+       *
+       * ⇒ **Host 找料**：搜索 → **逐条探活**（死的直接剔除）→ 抓正文 → 贴进 prompt。
+       *   成员拿到就是「标题 + 可达链接 + 正文」，**web_fetch 次数降到 0**。
+       * ⇒ 只在**第一棒**做一次（后面几棒靠上一棒的成果正文往下走）。
+       * ⇒ 找料失败**不阻断流水线**：如实把失败原因记下，让成员自己想办法
+       *   （老行为不变）—— 但要告诉成员「Host 没拿到料」，免得它以为是没任务。 */
+        let stageMaterials = null;
+        if (isPipeline && hop === 0) {
+        const materialQuery = String(task || "").trim();
+        try {
+          const prep = await prepareMaterials({
+            query: materialQuery,
+            roomTitle: room.title || room.name || "",
+            dataRoot: DATA_ROOT,
+            max: 6,
+            bodyChars: 700,
+          });
+          if (prep && prep.ok && Array.isArray(prep.candidates) && prep.candidates.length) {
+            /* 材料已给全 ⇒ **禁掉这一棒的 web_fetch**（确定性约束，不靠模型自觉）。
+               缘起（真 provider 实测 13 轮零产物）：成员自己抓 → 候选一半以上是
+               登录墙 → 换着试 → 一棒 224 次 → 撞 900 秒闸 → 五棒一次没跑完。
+               ⇒ Host 抓过并探活过，成员再抓就是纯浪费。 */
+            try {
+              if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageFetchMax === "function") {
+                roomRuntimeDeps.setStageFetchMax(
+                  0,
+                  "Host 已经把取回并实测可达的材料给你了，**这一棒不需要再抓网页**。" +
+                  "直接用材料写情报卡；材料里抓不到正文的条目标『待核查』即可。",
+                );
+              }
+            } catch (_) { /* 禁抓失败不影响这一棒（只是模型可能多抓几次） */ }
+            stageMaterials = {
+              text: prep.candidates
+                .map((c, i) =>
+                  "候选 " + (i + 1) + "：" + (c.title || "(无标题)") + "\n链接：" + c.url + "\n摘录：" +
+                  (c.body || "（正文抓不到，只有标题和链接）"),
+                )
+                .join("\n\n"),
+              count: prep.candidates.length,
+              skipped: prep.skipped || 0,
+              path: prep.path || "",
+            };
+          } else {
+            stageMaterials = {
+              text: "（Host 这次没能取回可用材料：" + String((prep && prep.reason) || "unknown") +
+                "。你可以自己 web_search，但**每次 web_fetch 都要谨慎**——" +
+                "很多站点是登录墙，抓不到会耗掉整轮时间。）",
+              count: 0, skipped: 0, path: "",
+            };
+          }
+        } catch (e) {
+          stageMaterials = {
+            text: "（Host 找料出错：" + String((e && e.message) || e).slice(0, 120) + "。）",
+            count: 0, skipped: 0, path: "",
+          };
+        }
+      }
         if (typeof deps.onFanout === "function") {
           // 每一棒都播一次：界面上的「工作中」必须跟着**当前这一棒**走。
           // 只播第一棒的话，第二棒在跑时用户还看着第一个人的名字。
@@ -3482,6 +3561,8 @@ function createProductSurface(repoRoot, opts = {}) {
         });
         const prompt = roomOrchestrator.buildRelayPrompt({
           task, roster, hop, prev, boardText, confirmAnswer, maxHops, contract: stageContract,
+          /* Host 找料（批次 10）：只有第一棒带材料。 */
+          materials: hop === 0 ? stageMaterials : null,
           /* 流水线：上一棒交的是**成果正文**（整张情报卡 / 一份 brief）⇒ 放宽，
              否则下一棒拿到的是被截断的半截，等于没拿到上游。 */
           prevMaxChars: isPipeline ? 2500 : 0,
@@ -3526,6 +3607,13 @@ function createProductSurface(repoRoot, opts = {}) {
         try {
           if (roomRuntimeDeps && typeof roomRuntimeDeps.resetStageFetchBudget === "function") {
             roomRuntimeDeps.resetStageFetchBudget();
+          }
+          /* 抓取额度复位：**每一棒**都恢复默认。
+             顺序很关键 —— 找料（第一棒）在本棒**开头**做，它会把上限设成 0；
+             这一句在**之后**执行，所以必须跳过第一棒，否则会把禁抓覆盖掉。
+             （第一棒的禁抓由下一棒前的这一次复位还原。） */
+          if (hop > 0 && roomRuntimeDeps && typeof roomRuntimeDeps.setStageFetchMax === "function") {
+            try { roomRuntimeDeps.setStageFetchMax(-1); } catch (_) { /* 恢复失败不判红 */ }
           }
         } catch (_) { /* 清额度失败不影响这一棒 */ }
         try {
@@ -3972,6 +4060,17 @@ function createProductSurface(repoRoot, opts = {}) {
         chain.map((c) => ({ bot_id: c.bot_id, name: c.name, ok: c.ok, text: c.text })),
         { threshold: Number(deps.duplicateThreshold || roomOrchestrator.DUPLICATE_THRESHOLD) },
       );
+      /* 整轮收尾：**恢复抓取上限到默认**。
+       * 找料模式（第一棒）把上限设成了 0；如果这一轮只有一棒，
+       * 不会走到「hop>0 才恢复」那句 ⇒ 上限会永远停在 0，
+       * **下一轮任务的成员就再也抓不了网页了**。
+       * ⇒ 整轮结束统一复位（幂等，多恢复一次无害）。 */
+      try {
+        if (roomRuntimeDeps && typeof roomRuntimeDeps.setStageFetchMax === "function") {
+          roomRuntimeDeps.setStageFetchMax(-1);
+        }
+      } catch (_) { /* 复位失败不判红 */ }
+
       const final_report = {
         kind: "final_report", room_id: room.id, responder_policy: responderPolicy,
         task: clipRoomText(task, ROOM_TASK_MAX).text,

@@ -445,6 +445,20 @@ function buildRelayPrompt(input) {
     const prevMax = Math.max(400, Number(opts.prevMaxChars || 0));
     lines.push("【上一棒】" + String(prev.name || prev.bot_id || "") + " 交给你：" + clip(prev.text, prevMax));
   }
+  /* Host 找料（批次 10）——**材料直接进 prompt**。
+   * 为什么不是让成员去读文件：岗位 prompt 明写「不得访问本机文件」，
+   * 而且成员**没有**读共享目录的可靠途径 ⇒ 材料只存在于文件里 = 模型看不到。
+   * ⇒ Host 把料直接贴进 prompt，成员只做判断与写作。 */
+  if (opts.materials && String(opts.materials.text || "").trim()) {
+    lines.push(
+      "【Host 已经取回的材料（不用你再上网找）】",
+      String(opts.materials.text).trim(),
+      "这些材料里每一条链接都**由 Host 实测过能打开**，死链已经剔掉了。",
+      "直接用下面的材料做判断和写作；**不要自己去 web_search / web_fetch 找料**" +
+        "（你一去抓就会陷在登录墙和打不开的站点里，任务会超时）。",
+      "材料抓不到正文的地方只写标题和链接、并标「待核查」，**不要编造细节**。",
+    );
+  }
   if (confirmAnswer) {
     lines.push("【你的上一问的答复】" + confirmAnswer);
   }
@@ -1010,9 +1024,10 @@ function looksLikeNarration(text) {
 /** 团队共享目录名（与 hosts/desktop/main.js 的 teamCreateWorkspace 同一条口径：
  *  目录名 = 标题去掉非法字符后截 48 —— 两边必须一致，否则成员按 prompt 写的路径
  *  和 Host 建的目录对不上。）。 */
-function sanitizeTeamDir(title) {
-  return String(title || "team").replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 48) || "team";
-}
+/* 团队目录名清洗：实现下沉到 hosts/shared/host_ffi.js（唯一一份）。
+   批次 10 起 Host 侧（prepareResearchMaterials）也要用同一个名字落材料目录
+   ⇒ 两份实现必然漂移，这里改成复用底层那份。 */
+const { sanitizeTeamDir } = require("../shared/team_paths.js");
 
 /**
  * 交付契约的目标路径解析（唯一一份）。

@@ -3152,6 +3152,14 @@ surface.setRoomRuntimeDeps({
       if (ffi && typeof ffi.resetStageFetchBudget === "function") ffi.resetStageFetchBudget();
     } catch (_) { /* 清额度失败不影响这一棒 */ }
   },
+  /* 当前这一棒的抓取上限（批次 10）：Host 找料后禁掉 web_fetch。
+   * 0 = 完全禁（材料已给全）；-1 = 恢复默认。 */
+  setStageFetchMax: (n, why) => {
+    try {
+      if (ffi && typeof ffi.setStageFetchMax === "function") return ffi.setStageFetchMax(n, why);
+    } catch (_) { /* 设置失败不影响这一棒 */ }
+    return -1;
+  },
   selectResponders: selectRoomResponders,
   /* 链接可达性核验（批次 8）：交付里的来源，Host **真的去访问一次**。
      为什么必须 Host 做：成员会自己说「我核验过了」—— 那是自证。
@@ -3163,6 +3171,16 @@ surface.setRoomRuntimeDeps({
       return Promise.resolve([]);
     }
     return ffi.verifyLinkReachability(urls, { timeoutMs: 9000, concurrency: 3, max: 12 });
+  },
+  /* Host 找料（批次 10）：**搜索 + 探活 + 抓正文**一次做完，再贴进第一棒的 prompt。
+   * 缘起（真 provider 实测 13 轮零产出）：成员自己找料 ⇒ 候选一半以上是登录墙
+   * ⇒ 换着试 ⇒ 一棒 165~322 次抓取 ⇒ 撞 900 秒闸 ⇒ 五棒一次没跑完。
+   * ⇒ 找料挪到 Host：死的链接在**交给成员之前**就剔掉，成员零次 web_fetch。 */
+  prepareMaterials: (input) => {
+    if (!ffi || typeof ffi.prepareResearchMaterials !== "function") {
+      return Promise.resolve({ ok: false, reason: "prepare_materials_unavailable", candidates: [], skipped: 0 });
+    }
+    return ffi.prepareResearchMaterials(input);
   },
 });
 

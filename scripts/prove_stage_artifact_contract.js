@@ -402,8 +402,23 @@ const BOTS_WITH_CONTRACT = {
 async function sectionF() {
   console.log("── F. 真实产品路径（契约在成员记录里）+ 模板两份真相 ──");
 
-  /* F-01/F-02：模板侧 —— 角色带结构化契约，且两份真相逐字一致。 */
-  const tplFile = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "data", "desktop", "bot-templates.json"), "utf8"));
+  /* F-01/F-02：模板侧 —— 角色带结构化契约，且两份真相逐字一致。
+   *
+   * 批次 10 修正：原来这里直接读 `data/desktop/bot-templates.json` ——
+   * 那是**用户库**（首次启动从种子落盘，.gitignore 掉了）。
+   * ⇒ 门禁在拿「用户自己的文件」当基准 ⇒
+   *   1) 干净 clone 里这个文件根本不存在 ⇒ 门禁读不到；
+   *   2) 更要命的是：**改种子就得改用户库**才过得了 ⇒
+   *      等于让门禁逼着人篡改用户数据。
+   * ⇒ 改成测**产品行为**：用隔离数据根跑一次 loadBotTemplates（首次落盘），
+   *   再比对「落盘出来的文件」与「host_ffi 种子」逐字一致。
+   *   存量用户库的升级由 builtin_version + 指纹表负责（另有门禁覆盖）。 */
+  const { createHostFfi } = require(path.resolve(__dirname, "..", "hosts", "shared", "host_ffi.js"));
+  const seedRoot = fs.mkdtempSync(path.join(require("os").tmpdir(), "bitbot-sf04-"));
+  const seedFfi = createHostFfi(path.resolve(__dirname, ".."), { dataRoot: seedRoot });
+  seedFfi.loadBotTemplates({ dataRoot: seedRoot });
+  const seededFile = path.join(seedRoot, "desktop", "bot-templates.json");
+  const tplFile = JSON.parse(fs.readFileSync(seededFile, "utf8"));
   const media = (tplFile.templates || []).find((t) => t.id === "media-content-team");
   const roles = (media && media.roles) || [];
   check("SF-01", roles.length === 5 && roles.every((r) => r.deliverable && r.deliverable.dir && r.deliverable.file && r.deliverable.rules),
@@ -431,7 +446,7 @@ async function sectionF() {
     if (lit !== r.prompt) { seedSame = false; break; }
   }
   check("SF-04", seedSame,
-    "SF-04 模板的**两份真相**（host_ffi 种子 ↔ bot-templates.json）逐字一致（不能各写一份）");
+    "SF-04 模板的**两份真相**（host_ffi 种子 ↔ 首次落盘产物）逐字一致（不能各写一份）");
 
   /* F-05/F-06：成员记录带契约 ⇒ 接力自动验收（正例）。 */
   const c = await runRelay({

@@ -5134,6 +5134,27 @@ echo "== G-141 模型供应商目录：MiniMax 要能选上，换 provider 不�
 #      provider_id 就直接用 ⇒ 这次用 minimax、请求却发到 **deepseek 的端点**。
 # ⇒ 本门钉住：内置目录保证在场（用户同名条目优先）、active 不跨 provider 串台、
 #   switch model 是自由字符串（目录里有即可切）、负向对照（短路合并 / 放回串台 ⇒ 必须翻红）。
+# 批次 10（2026-11-25）：Host 找料。
+#   真 provider 实测 13 轮、五棒一次没跑完 ⇒ 根因是「找料 + 逐条核验」全压在
+#   成员身上：降级搜索给的候选一半以上是登录墙 ⇒ 模型换着试 ⇒ 一棒 165~322 次
+#   抓取 ⇒ 撞 900 秒闸 ⇒ **零产物**。
+#   ⇒ 批次 10 把找料挪到 Host：搜索 → 逐条探活（剔死链）→ 抓正文 → 贴进 prompt，
+#     并在这一棒**禁掉 web_fetch**（确定性约束，不靠模型自觉）。
+# ⇒ 本门钉住：真网络下能产出材料、材料里的链接**实测全部可达**、
+#   死链被认出、find-material failure does not block the pipeline。
+if timeout 300 node scripts/prove_host_research_materials.js > /tmp/g142-materials.log 2>&1; then
+  ok "G-142 prove_host_research_materials（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g142-materials.log | tail -1)）"
+else
+  bad "G-142 prove_host_research_materials（见 /tmp/g142-materials.log；$(grep '✗' /tmp/g142-materials.log | head -3 | tr '\n' ' ')）"
+fi
+for g142_id in HM-01 HM-02 HM-03 HM-10 HM-11 HM-12 HM-13 HM-14 HM-15 HM-16 HM-20 HM-30 HM-31 HM-32; do
+  if grep -q "\[$g142_id\]" /tmp/g142-materials.log 2>/dev/null; then
+    ok "G-142 锚点：$g142_id"
+  else
+    bad "G-142 锚点缺失：$g142_id"
+  fi
+done
+
 if timeout 180 node scripts/prove_llm_provider_catalog.js > /tmp/g141-provider-catalog.log 2>&1; then
   ok "G-141 prove_llm_provider_catalog（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g141-provider-catalog.log | tail -1)）"
 else

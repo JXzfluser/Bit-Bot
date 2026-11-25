@@ -126,6 +126,13 @@ jobs:
       - name: Model provider catalog
         run: node scripts/prove_llm_provider_catalog.js
 
+      # Host find-the-material (batch 10): search -> probe reachability ->
+      # fetch body -> hand to the member. This is the root-cause fix for
+      # "13 live runs, zero artifacts": the first stage used to hunt for
+      # material itself and burned 165-322 web_fetch calls on login walls.
+      - name: Host research materials
+        run: node scripts/prove_host_research_materials.js
+
       # Best-effort only: Live Host / Chrome / display may be absent on ubuntu-latest.
       - name: Optional host_h4_smoke batch1
         continue-on-error: true

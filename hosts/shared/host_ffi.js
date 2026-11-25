@@ -19,6 +19,7 @@ const { createRoomRuntime } = require("./room_runtime");
 const { dispatchRoomTurn } = require("./room_dispatch");
 const effectKinds = require("./effect_kinds");
 const { getEffectGate } = require("./effect_gate");
+const { sanitizeTeamDir } = require("./team_paths");
 const remoteTurn = require("./remote_turn");
 
 /* 「什么形状算密钥」是一份合同:内核(core/secret_shapes.mbt)、
@@ -174,7 +175,16 @@ function htmlToReadableText(html, maxChars) {
  *
  * 口径：BITBOT_PUBLIC_FEEDS（逗号分隔，默认下面这组）。
  * ───────────────────────────────────────────────────────────────────── */
+/**
+ * 没有搜索凭据时的兜底源（批次 10 补了中文 AI 源）。
+ *
+ * 缘起：HN Algolia 只对**英文 query** 有效（HN 是英文站，中文搜不到 story）。
+ * 而 Bit-Bot 的用户主要说中文 ⇒ 光有英文源，中文 query 拿到的全是无关内容。
+ * ⇒ 兜底列表里必须有中文 AI 源（实测量子位 RSS 能拿到 10 条中文 AI 头条）。
+ */
 const DEFAULT_PUBLIC_FEEDS = [
+  "https://www.qbitai.com/feed",              /* 量子位：中文 AI */
+  "https://www.leiphone.com/feed",            /* 雷峰网：中文科技 */
   "https://hnrss.org/frontpage",
   "https://techcrunch.com/feed/",
   "https://www.theverge.com/rss/index.xml",
@@ -184,6 +194,94 @@ function publicFeedList() {
   const raw = String(process.env.BITBOT_PUBLIC_FEEDS || "").trim();
   if (!raw) return DEFAULT_PUBLIC_FEEDS.slice();
   return raw.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+/**
+ * 免 key 的真·按 query 搜索（批次 10）。
+ *
+ * 缘起（真 provider 实测 + 真实网络验证）：
+ *   降级路径原来是「抓固定几个 RSS 的最新条目」⇒ 给的候选**跟 query 无关**
+ *   （实测：查「AI 推理成本」返回了心脏病人体研究、文学评论）⇒
+ *   成员拿到不相关的料，写出来的东西也是不相关的 —— **机制全通也没用**。
+ *
+ * ⇒ Hacker News 的 Algolia API：免 key、公开、按 query 真的搜。
+ *   实测 "LLM inference cost" → 直接返回 a16z 的 LLMflation、推理成本压缩等真条目。
+ *
+ * @returns {Promise<Array<{title:string,url:string,snippet:string,source_feed:string}>>}
+ */
+async function hnAlgoliaSearch(query, topN) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const n = Math.max(1, Math.min(Number(topN) || 8, 20));
+  /* tags=story —— 默认 endpoint 把评论也算进来（评论没有 title，
+   * 会被后面过滤掉，白白占名额）。 */
+  const url = "https://hn.algolia.com/api/v1/search?query=" + encodeURIComponent(q)
+    + "&tags=story&hitsPerPage=" + n;
+  try {
+    const res = await httpTextFollow(url, { timeoutMs: 12000 });
+    if (!res || !res.ok) return [];
+    const data = JSON.parse(String(res.body || ""));
+    const hits = Array.isArray(data && data.hits) ? data.hits : [];
+    const out = [];
+    for (const h of hits) {
+      const link = String((h && (h.url || h.story_url)) || "").trim();
+      const title = String((h && h.title) || "").trim();
+      if (!link || !title) continue;          /* 没有外链的讨论帖没法当来源 */
+      out.push({
+        title,
+        url: link,
+        snippet: "",                          /* 正文在 prepareResearchMaterials 里抓 */
+        source_feed: "hn.algolia.com",
+        points: Number(h && h.points) || 0,
+      });
+    }
+    return out;
+  } catch (_) {
+    return [];
+  }
+}
+
+/**
+ * query 关键词（用于降级 RSS 的相关度排序）。
+ * 中文按 2-gram，英文按单词 —— 够用来判「像不像这个主题」。
+ */
+function queryKeywords(query) {
+  const q = String(query || "").toLowerCase().trim();
+  if (!q) return [];
+  const out = [];
+  /* 英文词 */
+  for (const w of q.split(/[^a-z0-9]+/)) if (w.length >= 3) out.push(w);
+  /* 中文 2-gram */
+  const han = q.replace(/[^\u4e00-\u9fa5]+/g, " ");
+  for (const seg of han.split(/\s+/)) {
+    if (seg.length === 1) { out.push(seg); continue; }
+    for (let i = 0; i + 1 < seg.length; i++) out.push(seg.slice(i, i + 2));
+  }
+  return Array.from(new Set(out));
+}
+
+/**
+ * 从混合 query 里抽**英文/拉丁词**。
+ *
+ * 缘起：中文 query 直接丢给 HN Algolia 搜不到 story（HN 是英文站），
+ * 但中文用户经常混写（「AI 推理成本」「GPT-5 降价」）⇒ 里面的英文词
+ * 恰恰是英文源能匹配的锚点。
+ */
+function latinWords(text) {
+  const out = [];
+  for (const w of String(text || "").toLowerCase().split(/[^a-z0-9.+#-]+/)) {
+    if (w.length >= 2) out.push(w);
+  }
+  return Array.from(new Set(out));
+}
+
+/** 相关度打分：标题命中权重高于正文。 */
+function relevanceScore(text, keywords) {
+  if (!keywords.length) return 0;
+  const t = String(text || "").toLowerCase();
+  let n = 0;
+  for (const k of keywords) if (t.includes(k)) n++;
+  return n;
 }
 
 /** 从 RSS/XML 里抽 {title, url}（轻量解析，够用就好，不引第三方库）。 */
@@ -222,6 +320,13 @@ const webFetchRate = [];
 /* 按「棒」计的抓取总次数（每棒上限，默认 24 次）。 */
 const WEBFETCH_STAGE_MAX = Number(process.env.BITBOT_WEBFETCH_STAGE_MAX || 24);
 let webFetchStageCount = 0;
+/* 当前这一棒允许的抓取次数（批次 10）。
+ * 为什么要能调低：Host 找料（prepareResearchMaterials）已经把**活的**链接
+ * 和正文都取回来贴进 prompt 了 ⇒ 成员再抓就是纯浪费（实测一棒 224 次抓取、
+ * 零产物，根因就在这）。
+ * ⇒ 找料模式下把它设成 **0**：web_fetch 直接被拒，并说清为什么。
+ *   —— 这是**确定性**约束，不靠模型「自觉」。 */
+let webFetchStageMax = WEBFETCH_STAGE_MAX;
 
 function webFetchRateExceeded() {
   const now = Date.now();
@@ -239,6 +344,24 @@ const webFetchHostFails = new Map();
 /** 每棒开始时清掉该成员的抓取额度（下一棒重新算）。 */
 function resetStageFetchBudget() {
   webFetchStageCount = 0;
+}
+
+/**
+ * 设当前这一棒的抓取上限（批次 10）。
+ * @param {number} n  0 = 完全禁止抓取（材料已给全）；负数 = 恢复默认。
+ * @param {string} why 禁止时告诉成员的原因（会出现在错误信息里）。
+ */
+let webFetchStageMaxReason = "";
+function setStageFetchMax(n, why) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v < 0) {
+    webFetchStageMax = WEBFETCH_STAGE_MAX;
+    webFetchStageMaxReason = "";
+    return webFetchStageMax;
+  }
+  webFetchStageMax = Math.floor(v);
+  webFetchStageMaxReason = String(why || "");
+  return webFetchStageMax;
 }
 
 function webFetchHostKey(url) {
@@ -1989,9 +2112,11 @@ function createHostFfi(repoRoot, opts = {}) {
      *   「这棒已经抓够了，用手里���材料交出来」。 */
     const used = Number(webFetchStageCount || 0);
     {
-      if (used >= WEBFETCH_STAGE_MAX) {
-        const msg = "这一棒已经抓了 " + used + " 次，够了 —— 用手里的材料交出来" +
-          "（标题、链接、摘要已经够写情报卡；抓不到的来源标『无法访问』）";
+      if (used >= webFetchStageMax) {
+        const msg = webFetchStageMaxReason
+          ? webFetchStageMaxReason
+          : "这一棒已经抓了 " + used + " 次，够了 —— 用手里的材料交出来" +
+            "（标题、链接、摘要已经够写情报卡；抓不到的来源标『无法访问』）";
         return {
           kind: "webfetch",
           ok: false,
@@ -6531,16 +6656,176 @@ function createHostFfi(repoRoot, opts = {}) {
     return { provider, key, base };
   }
 
+  /**
+   * Host 找料（批次 10）：**Host 一次性把料取回来**，成员只做判断。
+   *
+   * 缘起（真 provider 实测，13 轮零产出的根因）：
+   *   web_search 降级到公开 RSS 时，给的候选里**一半以上是登录墙/付费墙**
+   *   ⇒ 模型抓到失败 → 换一个再试 → 再失败 → 再换
+   *   ⇒ 实测一棒 web_fetch 165~322 次 → 撞 900 秒闸 → **五棒一次没跑完**。
+   *   ⇒ 这不是模型笨，是**任务设计让它没法不撒网**。
+   *
+   * ⇒ Host 在把候选交给成员**之前**先做三件事：
+   *   1. 探活（复用 verifyLinkReachability）—— 死的**直接丢掉**
+   *   2. 抓正文（htmlToReadableText）—— 成员拿到就有，不用自己抓
+   *   3. 落成材料文件（共享目录 00-materials/）—— 成员读文件，不上网
+   * ⇒ 成员的 web_fetch 调用次数降到 **0**。
+   *
+   * @returns {{ok:boolean, path:string, candidates:Array, skipped:number, reason:string}}
+   */
+  async function prepareResearchMaterials(input) {
+    const o = input || {};
+    const query = String(o.query || o.topic || "").trim();
+    const dataRoot = String(o.dataRoot || DATA_ROOT);
+    const roomTitle = String(o.roomTitle || "");
+    const maxCandidates = Math.max(1, Math.min(Number(o.max || 8), 20));
+    const bodyChars = Math.max(200, Math.min(Number(o.bodyChars || 900), 4000));
+    const at = new Date().toISOString();
+    const date = at.slice(0, 10);
+
+    if (!query) {
+      return { ok: false, reason: "empty_query", candidates: [], skipped: 0, path: "" };
+    }
+
+    /* 1) 找候选（没搜索凭据 ⇒ 降级公开 RSS，已内置） */
+    let sr = null;
+    try {
+      sr = await webSearch(query, { topN: maxCandidates + 4 });
+    } catch (e) {
+      return { ok: false, reason: "search_failed:" + String((e && e.message) || e).slice(0, 80), candidates: [], skipped: 0, path: "" };
+    }
+    const rawSources = (sr && Array.isArray(sr.sources)) ? sr.sources : [];
+    if (!rawSources.length) {
+      return { ok: false, reason: (sr && sr.error) || "no_candidates", candidates: [], skipped: 0, path: "" };
+    }
+
+    /* 2) 探活 + 抓正文 —— 死的直接丢掉（模型看不到它就不会去试） */
+    const probed = await verifyLinkReachability(
+      rawSources.map((s) => String(s.url || "")).filter(Boolean),
+      { timeoutMs: 9000, concurrency: 3, max: maxCandidates + 6 },
+    );
+    const alive = new Map();
+    for (const pr of probed) if (pr && pr.ok) alive.set(String(pr.url), pr);
+
+    const candidates = [];
+    let skipped = 0;
+    for (const s of rawSources) {
+      if (candidates.length >= maxCandidates) break;
+      const url = String(s.url || "");
+      if (!url) { skipped++; continue; }
+      if (!alive.has(url)) { skipped++; continue; }   /* 死的丢掉 —— 模型不必试 */
+      /* 3) 抓正文（模型省一次 web_fetch） */
+      let body = String(s.snippet || "");
+      if (body.length < bodyChars) {
+        try {
+          const fres = await httpTextFollow(url, { timeoutMs: 12000 });
+          if (fres && fres.ok) {
+            const readable = htmlToReadableText(fres.body, bodyChars + 400);
+            if (readable.length > 120) body = readable.slice(0, bodyChars);
+          }
+        } catch (_) { /* 抓不到就用摘要，不编 */ }
+      }
+      candidates.push({
+        title: String(s.title || "").slice(0, 200),
+        url,
+        body,
+        source_feed: String(s.source_feed || ""),
+        alive: true,
+      });
+    }
+
+    if (!candidates.length) {
+      return {
+        ok: false, reason: "all_candidates_unreachable", candidates: [], skipped,
+        path: "", probed: probed.length,
+      };
+    }
+
+    /* 落材料文件（共享目录） */
+    const lines = [];
+    lines.push("# 材料 · " + query);
+    lines.push("");
+    lines.push("> Host 于 " + at + " 取回并**逐条验证过可达性**（死的已经剔除，下面每条都实测能打开）。");
+    lines.push("> 你**不用再自己上网找**——直接用下面的材料写情报卡。");
+    lines.push("> 抓不到正文的条目已标注，别据此编造内容。");
+    lines.push("");
+    candidates.forEach((c, i) => {
+      lines.push("## 候选 " + (i + 1) + "：" + (c.title || "(无标题)"));
+      lines.push("");
+      lines.push("链接：" + c.url);
+      lines.push("");
+      lines.push("摘录：");
+      lines.push(c.body || "（这个页面正文抓不到，只有标题和链接；不要据此写细节，标为『待核查』。）");
+      lines.push("");
+    });
+    const md = lines.join("\n");
+    const dir = path.join(dataRoot, "workspace", sanitizeTeamDir(roomTitle), "00-materials");
+    const file = path.join(dir, date + "-materials.md");
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, md, "utf8");
+    } catch (e) {
+      return { ok: false, reason: "write_failed:" + String((e && e.message) || e).slice(0, 80), candidates, skipped, path: "" };
+    }
+    return {
+      ok: true, path: file, candidates, skipped,
+      probed: probed.length, bytes: Buffer.byteLength(md, "utf8"),
+      search_provider: String((sr && sr.provider) || ""),
+      search_degraded: !!(sr && sr.degraded),
+    };
+  }
+
   async function webSearch(query, opts = {}) {
     const q = String(query || "").trim();
     if (!q) return { ok: false, error: "empty_query", sources: [] };
     const cfg = resolveSearchConfig();
     if (!cfg.key) {
-      /* 没有搜索凭据 ⇒ **不失败**：去抓公开 RSS，把真标题+链接给成员。
+      /* 没有搜索凭据 ⇒ **不失败**：去找真材料给成员。
        * 缘起（真 MiniMax 实测）：搜索走不通时，模型改用 web_fetch 到处乱试
-       * ⇒ 一棒抓了 111 次 ⇒ 整轮撞闸、零产物。给它真材料比让它空手硬扛好。 */
-      const feeds = publicFeedList();
+       * ⇒ 一棒抓了 111 次 ⇒ 整轮撞闸、零产物。给它真材料比让它空手硬扛好。
+       *
+       * 批次 10 修正：**RSS 固定源给的候选跟 query 无关**（实测查「AI 推理成本」
+       * 返回心脏病人体研究）⇒ 机制全通也没用，写的还是不相关的东西。
+       * ⇒ 降级路径改成两段：
+       *   1) HN Algolia —— 免 key、公开、**真按 query 搜**
+       *   2) RSS 兜底 —— 仍不相关时用，但**按相关度排序**，并如实标注 */
       const topN2 = Math.min(10, Math.max(1, Number(opts.topN) || 8));
+      const kws = queryKeywords(q);
+      /* 中文 query 搜不到 story ⇒ 用里面混写的英文词再搜一次
+       * （「AI 推理成本」⇒ AI / inference? 至少 AI 能命中英文源）。
+       * 英文词多于 1 个时用空格连（Algolia 默认 AND，多词太严）。 */
+      /* 语种分流（批次 10）：
+       *   中文 query ⇒ 英文源基本搜不到（HN 是英文站）；混写的英文词又太泛
+       *   （实测「AI 推理成本」⇒ 只抽到 "ai" ⇒ 搜出一堆 2024 年的泛 AI 老帖）。
+       *   ⇒ **中文 query 走中文源优先**；英文 query 走 Algolia 优先。
+       */
+      const hanRatio = (q.match(/[\u4e00-\u9fa5]/g) || []).length / Math.max(1, q.length);
+      const isCJK = hanRatio > 0.2;
+      let algolia = [];
+      if (!isCJK) {
+        algolia = await hnAlgoliaSearch(q, Math.min(topN2 || 8, 12));
+        if (!algolia.length) {
+          const lat = latinWords(q);
+          const latQuery = lat.length >= 2 ? lat.slice(0, 3).join(" ") : (lat.length === 1 ? lat[0] : "");
+          if (latQuery) algolia = await hnAlgoliaSearch(latQuery, Math.min(topN2 || 8, 12));
+        }
+      }
+      if (algolia.length) {
+        const srcs = algolia.map((it) => ({
+          title: it.title, url: it.url,
+          snippet: String(it.snippet || "").slice(0, 400),
+          source_feed: it.source_feed || "hn.algolia.com",
+          points: it.points || 0,
+        }));
+        return {
+          ok: true,
+          provider: "hn_algolia",
+          degraded: true,
+          note: "没有配搜索凭据，下面是用公开搜索接口按关键词找到的真实条目（要更准请在设置里配搜索 key）",
+          sources: srcs,
+        };
+      }
+      const feeds = publicFeedList();
       const sources = [];
       const notes = [];
       let fetchedBodies = 0;
@@ -6579,12 +6864,33 @@ function createHostFfi(repoRoot, opts = {}) {
           notes.push(feed + "：" + String((e && e.message) || e).slice(0, 40));
         }
       }
+      /* 中文 query：英文源只在**真相关**时才补进来（相关度必须够高）。
+       * 免得「AI 推理成本」混进 2024 年的泛 AI 老帖当情报。 */
+      if (isCJK) {
+        const cjkAlgolia = await hnAlgoliaSearch(q, 8);
+        for (const it of cjkAlgolia) {
+          const rel = relevanceScore(it.title, kws) * 3 + relevanceScore(it.snippet, kws);
+          if (rel <= 0) continue;              /* 不相关就不要 */
+          sources.push({ title: it.title, url: it.url, snippet: "", source_feed: "hn.algolia.com" });
+        }
+      }
       if (sources.length) {
+        /* 按 query 相关度排序（标题权重更高）—— 不相关的排后面，
+           让成员先看最像的（批次 10：RSS 兜底天然不相关，不排序就是纯噪声）。 */
+        for (const src of sources) {
+          src.relevance =
+            relevanceScore(src.title, kws) * 3 + relevanceScore(src.snippet, kws);
+        }
+        sources.sort((a, b) => (b.relevance - a.relevance));
+        const anyHit = sources.some((x) => x.relevance > 0);
         return {
           ok: true,
           provider: "public_feed",
           degraded: true,
-          note: "没有配搜索凭据，下面是公开源的最新条目（要更准的搜索请在设置里配搜索 key）",
+          relevance: anyHit ? "partial" : "none",
+          note: anyHit
+            ? "没有配搜索凭据，下面是公开源里与主题**部分相关**的条目（已按相关度排序；要更准请在设置里配搜索 key）"
+            : "没有配搜索凭据，公开源里**没有与这个主题相关的条目**——下面是科技源最新头条，别据此编造与主题相关的内容",
           sources,
         };
       }
@@ -19868,7 +20174,7 @@ function createHostFfi(repoRoot, opts = {}) {
    * 漏一档升级链就断（本次就差点踩到）。版本号 + 指纹是自动的。
    */
   const BOT_TEMPLATE_PROMPT_FINGERPRINTS = {
-    "情报侦察员": ["15a199812e654294"],
+    "情报侦察员": ["15a199812e654294", "b9c466056266169a"],
     "选题策划师": ["8630d35a16ecb508"],
     "内容主笔": ["0cbed6643986f284", "4ff27858861812c1", "556968082701916a"],
     "事实编辑": ["52c8f00aa8edece2", "16042c8278ddd3bf"],
@@ -19891,7 +20197,7 @@ function createHostFfi(repoRoot, opts = {}) {
       /* 内置版本号（批次 7）：每次改这个内置模板（prompt 或 rules）+1。
          存量库里存着旧版 ⇒ 这里驱动 prompt+rules 的整体升级。
          用户改过的 prompt 不动（用 builtin_prompt_fp 判定）。 */
-      builtin_version: 3,
+      builtin_version: 4,
       default_name: "自媒体内容团队",
       job: "内容流水线",
       description:
@@ -19921,12 +20227,18 @@ function createHostFfi(repoRoot, opts = {}) {
 - 不得执行本机命令，不得访问本机文件。
 【工作方法】
 先从官方来源和社交平台公开页面发现线索，再回到官方公告、产品页、论文、作者原文或当事人公开内容核验。关键事实记录主体、动作、时间和结果。只有平台讨论、没有一手证据的内容写“未确认”；找不到原始出处的二手信息放入“待核查”，不得进入候选选题。
-【别在核验上死磕】
-真网上大量页面是登录墙、付费墙或需要 JS 渲染，抓不到就是抓不到。规则：
-1. web_search 给你的标题、链接和摘要**已经够写情报卡**了 —— 直接用，核验状态写“待核查”。
-2. 最多再抓取 2 条正文做补充；某站点连着抓不到就立刻放弃它，换下一条候选。
-3. 抓不到就如实写“来源无法访问（原因）”，不要反复换着试，也不要编造链接或原文。
-4. 材料够 3 条就收工交出来 —— 交出可用的情报，比追求每条都核验过更重要。
+【别在核验上死磕，更别自己去撒网】
+真网上大量页面是登录墙、付费墙或需要 JS 渲染，抓不到就是抓不到。
+**关键：Host 已经把材料取回来贴给你了**（见 prompt 里的【Host 已经取回的材料】）——
+每条链接都**由 Host 实测过能打开**，死链已经剔掉了。
+规则：
+1. **先看 Host 给的材料** —— 它已经包含标题、可达链接和正文摘录，够写情报卡了。
+2. **不要自己去 web_search / web_fetch 找料**：候选里一半以上是登录墙，
+   换着试会把整轮时间耗光（实测一棒抓了 322 次，最后一条都没交出来）。
+3. 只有当材料**明显不够 3 条**时，才可以用 web_search 补，**最多补搜 1 次**；
+   不要 web_fetch 逐条抓正文（材料里已经有正文）。
+4. 材料里抓不到正文的条目，写标题和链接、标“待核查”，**不要编造细节**。
+5. 材料够 3 条就收工交出来 —— 交出可用的情报，比追求每条都核验过更重要。
 【固定交付】
 交付到共享目录 01-inbox/ 下（文件名由 Host 按当天日期定），每次最多 3 条。每条包含：事实或平台线索、来源平台、原始链接、证据摘录、讨论热度或代表性观点（仅在可见时记录）、为什么值得关注、一个待核查问题、核验状态。
 【验收】
@@ -27652,7 +27964,9 @@ brief 里通常有 3 个题，但这一轮只有 1 个发布位。这一节必�
     verifyLinkReachability,
     probeLinkReachability,
     resetStageFetchBudget,
+    setStageFetchMax,
     publicFeedList,
+    prepareResearchMaterials,
     // C-5:建群。rooms.json 是 Host 的文件,所以建群是 Host 侧的动作。
     // 内核只给模型下发 schema,真正的建群在这里同步发生 ——
     // 模型拿到的观测必须是「真建出来了」或「如实没建成」。
