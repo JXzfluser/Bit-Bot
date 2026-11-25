@@ -1888,6 +1888,98 @@ function createHostFfi(repoRoot, opts = {}) {
     }
   }
 
+  /**
+   * 链接可达性核验（批次 8）。
+   *
+   * 为什么做：契约能判「链接长得对」（纯 ASCII、括号配平），判不了「链接是死的」。
+   * 实测评审里那条无源选题的来源 `https://example.com/audit-notes` ——
+   * **格式完全正确、能过 min_urls**，实测 HTTP 404 ⇒ 格式判据对它完全无效。
+   * ⇒ 唯一能判的办法是**真的去访问那个 URL**。
+   *
+   * 为什么放在 Host（而不是让成员自己核验）：
+   *   成员会自己说「我核验过了」—— 那是自证。Host 拿着产物去访问，
+   *   结果写进产物 ⇒ 「核验状态」这句话才配得上它的字面意思。
+   *
+   * 限流：并发上限 + 每条超时 + 单批条数上限 ——
+   *   实测教训（批次 6）：一棒抓了 224 次，核验不能重蹈覆辙。
+   */
+  async function verifyLinkReachability(urls, opts) {
+    const o = opts || {};
+    const list = Array.from(new Set((urls || []).map((x) => String(x || "").trim()).filter(Boolean)))
+      .slice(0, Math.max(1, Number(o.max || 12)));
+    const timeoutMs = Math.max(1000, Number(o.timeoutMs || 9000));
+    const concurrency = Math.max(1, Math.min(Number(o.concurrency || 3), list.length || 1));
+    const results = [];
+    let idx = 0;
+    const worker = async () => {
+      while (idx < list.length) {
+        const u = list[idx++];
+        results.push(await probeLinkReachability(u, timeoutMs));
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, worker));
+    return results;
+  }
+
+  /** 单条链接的可达性探测（跟随一次重定向）。 */
+  function probeLinkReachability(url, timeoutMs) {
+    return new Promise((resolve) => {
+      let u;
+      try {
+        u = new URL(String(url));
+      } catch {
+        resolve({ url: String(url), ok: false, status: 0, reason: "bad_url" });
+        return;
+      }
+      const lib = u.protocol === "https:" ? https : http;
+      const req = lib.request(
+        {
+          protocol: u.protocol,
+          hostname: u.hostname,
+          port: u.port || (u.protocol === "https:" ? 443 : 80),
+          path: u.pathname + u.search,
+          method: "GET",
+          headers: {
+            "User-Agent": "BitBot/1.0 (+link-verifier)",
+            Accept: "text/html,application/xhtml+xml,*/*",
+            Range: "bytes=0-2047",
+          },
+          timeout: Math.max(1000, Number(timeoutMs) || 9000),
+        },
+        (res) => {
+          const status = res.statusCode || 0;
+          res.resume();
+          if (status >= 300 && status < 400 && res.headers && res.headers.location) {
+            let next = "";
+            try { next = new URL(res.headers.location, String(url)).toString(); } catch (_) { next = ""; }
+            if (!next || next === String(url)) {
+              resolve({ url: String(url), ok: status < 400, status, reason: status < 400 ? "" : "http_" + status });
+              return;
+            }
+            probeLinkReachability(next, timeoutMs).then((r) => {
+              resolve(Object.assign({}, r, { redirected_from: String(url), final_url: next }));
+            });
+            return;
+          }
+          resolve({
+            url: String(url),
+            ok: status >= 200 && status < 400,
+            status,
+            reason: status >= 200 && status < 400 ? "" : "http_" + status,
+          });
+        },
+      );
+      req.on("timeout", () => { req.destroy(); resolve({ url: String(url), ok: false, status: 0, reason: "timeout" }); });
+      req.on("error", (e) => {
+        resolve({
+          url: String(url), ok: false, status: 0,
+          reason: String((e && e.code) || (e && e.message) || "network_error").slice(0, 60),
+        });
+      });
+      req.end();
+    });
+  }
+
   async function executeWebFetch(command, opts) {
     const at = new Date().toISOString();
     const url = String(command || "").trim();
@@ -19850,6 +19942,13 @@ function createHostFfi(repoRoot, opts = {}) {
                * 直接把这个假数字当真的用了（「数据来源：情报卡 8 条」）。
                * max_items 是**确定性**判据，专治这种虚报。 */
               "max_items": 3,
+              /* 链接可达性核验（批次 8）：Host 会真的去访问交付里的每个链接，
+                 结果写进产物（情报卡里多一段「链接可达性」）。
+                 **不判红**：搜索来的链接可能带追踪参数或临时挂掉，
+                 打不开 ≠ 这条情报是假的 —— 判红会逼成员撒网换链接，
+                 那正是实测里 224 次抓取的成因。
+                 ⇒ 只要求「真的核验过」，不要求「全都打得开」。 */
+              "link_check_min": 1,
             },
           },
         },
@@ -19938,6 +20037,11 @@ function createHostFfi(repoRoot, opts = {}) {
                  然后契约还要求它算账。
                  ⇒ 只查百分比（伪造风险最高、又最好确定性检出的一类）。 */
               "percentages_must_come_from_upstream": true,
+              /* 要发出去的稿子，来源必须真的能打开（批次 8）。
+                 实测那条无源选题的来源 `https://example.com/audit-notes` ——
+                 格式完全正确、能过 min_urls，实测 HTTP 404。
+                 ⇒ 稿子层面的链接可达性是**硬要求**：死链不该发出去。 */
+              "require_reachable_links": true,
               /* 正文 / 事实依据 / 仍需确认 必须是三个**分开的段落** ——
                  实测混在一起时用户得自己从稿子里抠正文。 */
               "must_include_sections": [
@@ -27492,6 +27596,8 @@ function createHostFfi(repoRoot, opts = {}) {
     htmlToReadableText,
     parseFeedItems,
     httpTextFollow,
+    verifyLinkReachability,
+    probeLinkReachability,
     resetStageFetchBudget,
     publicFeedList,
     // C-5:建群。rooms.json 是 Host 的文件,所以建群是 Host 侧的动作。

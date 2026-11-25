@@ -592,8 +592,8 @@ function createProductSurface(repoRoot, opts = {}) {
    *   no_broken_urls      —— 不许有坏链（链接里混了全角括号/中文）
    *   must_include_sections —— 必含**段落**（不只是必含的词）
    * 这几个键必须进白名单：不在白名单 ⇒ 用户在设置页里配的契约会被静默丢掉。 */
-  const DELIVERABLE_EXTRA_RULE_KEYS = ["min_urls", "unique_urls"];
-  const DELIVERABLE_FLAG_RULE_KEYS = ["no_broken_urls", "links_must_come_from_upstream", "counts_must_match_upstream", "percentages_must_come_from_upstream"];
+  const DELIVERABLE_EXTRA_RULE_KEYS = ["min_urls", "unique_urls", "link_check_min"];
+  const DELIVERABLE_FLAG_RULE_KEYS = ["no_broken_urls", "links_must_come_from_upstream", "counts_must_match_upstream", "percentages_must_come_from_upstream", "require_reachable_links"];
   function normalizeDeliverable(input) {
     if (input === null || input === "" || input === "-") return null;
     if (!input || typeof input !== "object" || Array.isArray(input)) return null;
@@ -3027,6 +3027,19 @@ function createProductSurface(repoRoot, opts = {}) {
   /* 把成员交上来的正文落成交付文件。
    * 路径来自**契约**（Host 自己算出来的），不是模型给的 ⇒ 不是任意路径写入；
    * 仍然再挡一层：只允许落在数据根以内（不写用户主目录、不写系统目录）。 */
+  /** 把链接可达性核验结果渲染成能贴进产物的一段话。 */
+  function renderLinkCheckNote(results) {
+    const rows = (results || []).map((r) => {
+      const mark = r.ok ? "可访问" : "打不开";
+      const why = r.ok ? ("HTTP " + r.status) : (r.reason || "unknown");
+      return "  - " + r.url + " —— " + mark + "（" + why + "）";
+    });
+    if (!rows.length) return "";
+    const okN = (results || []).filter((r) => r.ok).length;
+    return "链接可达性（Host 实测 " + new Date().toISOString().slice(0, 10) + "）：" +
+      results.length + " 条里 " + okN + " 条能打开\n" + rows.join("\n");
+  }
+
   function writeStageDeliverable(targetPath, content) {
     const p = String(targetPath || "").trim();
     if (!p) return { ok: false, error: "契约里没写交付路径" };
@@ -3569,6 +3582,65 @@ function createProductSurface(repoRoot, opts = {}) {
            *    不声明就**一字不改**（契约是 opt-in）。
            * ⚠️ 位置很要紧：必须在**落盘之前**判 —— 否则会出现「文件已写、
            *    这一棒却被判红」的半个状态（失败不留半个状态）。 */
+          /* 链接可达性核验（批次 8）：这一棒交的来源，Host **真的去访问一次**。
+           *
+           * 为什么必须做（实测）：契约能判「链接长得对」，判不了「链接是死的」。
+           *   评审里那条无源选题的来源 `https://example.com/audit-notes` ——
+           *   **格式完全正确、纯 ASCII、能过 min_urls**，实测 HTTP 404。
+           *   格式判据对它完全无效 ⇒ 只有真访问才能判。
+           *
+           * 为什么是 Host 做：成员会自己说「我核验过了」—— 那是自证。
+           *   Host 拿着产物去访问，结果写进产物 ⇒ 「核验状态」才名副其实。
+           *
+           * 为什么不阻塞验收：登录墙/付费墙/SPA 都可能打不开，
+           *   打不开 ≠ 产物不合格 ⇒ 核验结果**如实记录**（写进产物 + 转录），
+           *   契约显式要求 require_reachable_links 时才判红。
+           *
+           * 依赖从 roomRuntimeDeps 注入（verifyLinks）：
+           *   - 没注入 ⇒ **一字不改**（门禁/离线环境不会因此变红）
+           *   - 注入的可以是真核验器，也可以是 stub（门禁里可控）
+           */
+          let linkResults = null;
+          if (verdict.pass && stageContract && stageContract.rules &&
+              (stageContract.rules.require_reachable_links || stageContract.rules.link_check_min)) {
+            const delivered = String(
+              (verdict.artifact && verdict.artifact.ok ? verdict.artifact.content : (verdict.content || "")) || "");
+            const urls = roomOrchestrator.extractCleanUrls(delivered);
+            if (urls.length) {
+              const verify = roomRuntimeDeps && typeof roomRuntimeDeps.verifyLinks === "function"
+                ? roomRuntimeDeps.verifyLinks
+                : null;
+              if (verify) {
+                try {
+                  linkResults = await verify(urls);
+                  res.link_check = linkResults;
+                } catch (e) {
+                  /* 核验本身失败 ≠ 产物不合格 —— 如实记下来，别把整棒判红。 */
+                  res.link_check_error = String((e && e.message) || e).slice(0, 160);
+                }
+              } else {
+                res.link_check_skipped = "这一棒没有注入链接核验器（离线环境）—— 链接可达性未核验";
+              }
+            }
+          }
+          if (verdict.pass && linkResults && linkResults.length) {
+            const xs2 = roomOrchestrator.judgeCrossStage({
+              upstream: [],
+              text: "",
+              rules: stageContract.rules,
+              linkResults,
+            });
+            if (!xs2.pass) {
+              verdict.pass = false;
+              verdict.code = xs2.code;
+              verdict.reason = xs2.reason;
+              res.stage = verdict;
+              res.ok = false;
+              res.rejected = true;
+              res.reject_reason = xs2.reason;
+              if (!res.error) res.error = xs2.reason;
+            }
+          }
           if (verdict.pass && stageContract && stageContract.rules) {
             /* 串行接力/流水线：上游成果 = 前面几棒已经交付的内容。 */
             const upstreamTexts = chain
@@ -3600,7 +3672,15 @@ function createProductSurface(repoRoot, opts = {}) {
              * 为什么必须由 Host 写：实测成员**没有写文件的工具**（write_result 是
              * Gmail 的 MCP 工具）⇒ 角色 prompt 里的「写入 xxx.md」成员兑现不了 ⇒
              * 它只能交回复文本 ⇒ prompt 又让它「只汇报路径和条数」⇒ 产物成了汇报。 */
-            const written = writeStageDeliverable(verdict.target_path, verdict.content);
+            /* 核验结果**写进产物**（批次 8）：交付物里的来源清单旁边，
+               附一段 Host 实测的可达性 ⇒ 「核验状态」这句话才名副其实。
+               只在真的核验过时才写（没注入核验器 ⇒ 产物一字不变）。 */
+            let contentToWrite = verdict.content;
+            if (Array.isArray(res.link_check) && res.link_check.length) {
+              const note = renderLinkCheckNote(res.link_check);
+              if (note) contentToWrite = String(verdict.content).replace(/\s*$/, "") + "\n\n" + note;
+            }
+            const written = writeStageDeliverable(verdict.target_path, contentToWrite);
             res.delivered_content = verdict.content;
             if (written.ok) {
               res.delivered_path = written.path;
@@ -4166,6 +4246,65 @@ function createProductSurface(repoRoot, opts = {}) {
            *    不声明就**一字不改**（契约是 opt-in）。
            * ⚠️ 位置很要紧：必须在**落盘之前**判 —— 否则会出现「文件已写、
            *    这一棒却被判红」的半个状态（失败不留半个状态）。 */
+          /* 链接可达性核验（批次 8）：这一棒交的来源，Host **真的去访问一次**。
+           *
+           * 为什么必须做（实测）：契约能判「链接长得对」，判不了「链接是死的」。
+           *   评审里那条无源选题的来源 `https://example.com/audit-notes` ——
+           *   **格式完全正确、纯 ASCII、能过 min_urls**，实测 HTTP 404。
+           *   格式判据对它完全无效 ⇒ 只有真访问才能判。
+           *
+           * 为什么是 Host 做：成员会自己说「我核验过了」—— 那是自证。
+           *   Host 拿着产物去访问，结果写进产物 ⇒ 「核验状态」才名副其实。
+           *
+           * 为什么不阻塞验收：登录墙/付费墙/SPA 都可能打不开，
+           *   打不开 ≠ 产物不合格 ⇒ 核验结果**如实记录**（写进产物 + 转录），
+           *   契约显式要求 require_reachable_links 时才判红。
+           *
+           * 依赖从 roomRuntimeDeps 注入（verifyLinks）：
+           *   - 没注入 ⇒ **一字不改**（门禁/离线环境不会因此变红）
+           *   - 注入的可以是真核验器，也可以是 stub（门禁里可控）
+           */
+          let linkResults = null;
+          if (verdict.pass && stageContract && stageContract.rules &&
+              (stageContract.rules.require_reachable_links || stageContract.rules.link_check_min)) {
+            const delivered = String(
+              (verdict.artifact && verdict.artifact.ok ? verdict.artifact.content : (verdict.content || "")) || "");
+            const urls = roomOrchestrator.extractCleanUrls(delivered);
+            if (urls.length) {
+              const verify = roomRuntimeDeps && typeof roomRuntimeDeps.verifyLinks === "function"
+                ? roomRuntimeDeps.verifyLinks
+                : null;
+              if (verify) {
+                try {
+                  linkResults = await verify(urls);
+                  res.link_check = linkResults;
+                } catch (e) {
+                  /* 核验本身失败 ≠ 产物不合格 —— 如实记下来，别把整棒判红。 */
+                  res.link_check_error = String((e && e.message) || e).slice(0, 160);
+                }
+              } else {
+                res.link_check_skipped = "这一棒没有注入链接核验器（离线环境）—— 链接可达性未核验";
+              }
+            }
+          }
+          if (verdict.pass && linkResults && linkResults.length) {
+            const xs2 = roomOrchestrator.judgeCrossStage({
+              upstream: [],
+              text: "",
+              rules: stageContract.rules,
+              linkResults,
+            });
+            if (!xs2.pass) {
+              verdict.pass = false;
+              verdict.code = xs2.code;
+              verdict.reason = xs2.reason;
+              res.stage = verdict;
+              res.ok = false;
+              res.rejected = true;
+              res.reject_reason = xs2.reason;
+              if (!res.error) res.error = xs2.reason;
+            }
+          }
           if (verdict.pass && stageContract && stageContract.rules) {
             /* 并行分工：**没有上下游关系**（各写各的）⇒ 不做跨棒比对。
                注意别在这里引用串行路径的 chain —— 这个分支里根本没有那个变量。 */
@@ -4191,7 +4330,15 @@ function createProductSurface(repoRoot, opts = {}) {
             res.delivered_path = verdict.artifact.path;
             res.delivered_bytes = verdict.artifact.bytes;
           } else if (verdict.pass && verdict.content) {
-            const written = writeStageDeliverable(verdict.target_path, verdict.content);
+            /* 核验结果**写进产物**（批次 8）：交付物里的来源清单旁边，
+               附一段 Host 实测的可达性 ⇒ 「核验状态」这句话才名副其实。
+               只在真的核验过时才写（没注入核验器 ⇒ 产物一字不变）。 */
+            let contentToWrite = verdict.content;
+            if (Array.isArray(res.link_check) && res.link_check.length) {
+              const note = renderLinkCheckNote(res.link_check);
+              if (note) contentToWrite = String(verdict.content).replace(/\s*$/, "") + "\n\n" + note;
+            }
+            const written = writeStageDeliverable(verdict.target_path, contentToWrite);
             res.delivered_content = verdict.content;
             if (written.ok) {
               res.delivered_path = written.path;

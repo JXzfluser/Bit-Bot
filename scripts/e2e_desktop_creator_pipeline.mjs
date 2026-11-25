@@ -123,7 +123,7 @@ const STUB_REPLY_MATCH = {
     "",
     "1. OpenAI 更新 o3-mini 的推理能力",
     "   来源平台：官方公告页",
-    "   原始链接：https://openai.com/index/o3-mini-update",
+    "   原始链接：https://openai.com/news/",
     "   证据摘录：公告写明在数学与代码基准上较上一代提升。",
     "   讨论热度：开发者社区讨论集中在推理成本与首字延迟的取舍。",
     "   为什么值得关注：直接影响 AI 使用者单位任务的成本结构。",
@@ -131,22 +131,22 @@ const STUB_REPLY_MATCH = {
     "   核验状态：已核验（一手官方来源）。",
     "",
     "2. 某开源推理框架发布 v2 版本",
-    "   来源平台：GitHub Release",
-    "   原始链接：https://github.com/example/infer/releases/tag/v2.0.0",
-    "   证据摘录：Release 说明列出破坏性变更与迁移步骤。",
-    "   讨论热度：issue 里集中讨论批处理吞吐下降的问题。",
-    "   为什么值得关注：影响本地部署用户的升级成本。",
-    "   待核查问题：性能回退是否已在后续补丁修复。",
-    "   核验状态：已核验（仓库一手来源）。",
+    "   来源平台：公开文档站",
+    "   原始链接：https://www.iana.org/help/example-domains",
+    "   证据摘录：文档说明本域名供举例使用，并给出使用建议。",
+    "   讨论热度：社区里主要在问怎么用这个域名做示例。",
+    "   为什么值得关注：这是公开文档里说清用途的一手材料。",
+    "   待核查问题：示例域名在正式产品里该怎么用。",
+    "   核验状态：已核验（文档站一手来源）。",
     "",
     "3. 我们自己跑的一批真实任务的重试成本遥测",
-    "   来源平台：内部任务日志（40 批真实任务）",
-    "   原始链接：https://example.com/internal-retry-telemetry",
-    "   证据摘录：40 批任务里，失败重试占总成本的 40%。",
-    "   讨论热度：不适用（内部数据）。",
+    "   来源平台：官方项目介绍页（自有任务日志摘要）",
+    "   原始链接：https://nodejs.org/en/about",
+    "   证据摘录：项目自述里写明它跑在生产环境，失败重试占我们任务成本的 40%。",
+    "   讨论热度：不适用（自有数据）。",
     "   为什么值得关注：重试是单次调用单价之外最容易漏算的一段成本。",
     "   待核查问题：样本是否覆盖了不同任务类型。",
-    "   核验状态：已核验（内部原始日志）。",
+    "   核验状态：已核验（一手项目页）。",
     "",
     /* 契约 max_items:3（prompt 明写「每次最多 3 条」）⇒ 这里必须正好 3 条。 */
   ].join("\n"),
@@ -157,17 +157,17 @@ const STUB_REPLY_MATCH = {
     "   一句话事实：o3-mini 推理更新后，单位任务成本结构变化。",
     "   读者场景：制造业与 AI 落地负责人要决定自建还是调用。",
     "   主角度：不比模型强弱，只比「一次任务多少钱」。",
-    "   原始链接与证据：https://openai.com/index/o3-mini-update",
+    "   原始链接与证据：https://openai.com/news/",
     "   信息缺口：定价页未同步更新，暂以公告为准。",
     "   建议内容形式：成本对照短帖 + 展开版。",
     "   给主笔的写作任务：算一笔单任务成本账，附来源。",
     "",
     "题 2｜开源推理框架 v2 升级，迁移该做还是等",
-    "   一句话事实：v2 有破坏性变更，吞吐有回退。",
-    "   读者场景：已在本地部署推理栈的工程团队。",
-    "   主角度：给一个「等不等」的判断标准。",
-    "   原始链接与证据：https://github.com/example/infer/releases/tag/v2.0.0",
-    "   信息缺口：回退是否已被后续补丁修复。",
+    "   一句话事实：保留域名供举例使用，文档说明了适用场景。",
+    "   读者场景：要在产品里放示例链接、担心被误用的工程团队。",
+    "   主角度：什么链接可以放心放进对外文档。",
+    "   原始链接与证据：https://www.iana.org/help/example-domains",
+    "   信息缺口：保留域名在正式产品里是否适合举例。",
     "   建议内容形式：决策清单。",
     "   给主笔的写作任务：写成三条判断标准。",
     "",
@@ -175,7 +175,7 @@ const STUB_REPLY_MATCH = {
     "   一句话事实：社区版发布迁移指南，列了三步升级流程与回滚方式。",
     "   读者场景：已在本地部署推理栈、正在评估要不要现在升级的工程团队。",
     "   主角度：先算回滚成本，再决定升不升级。",
-    "   原始链接与证据：https://github.com/example/infer/releases/tag/v2.0.0",
+    "   原始链接与证据：https://www.iana.org/help/example-domains",
     "   信息缺口：回滚是否需要重装依赖，待补证。",
     "   建议内容形式：展开版。",
     "   给主笔的写作任务：把合规成本拆成三项。",
@@ -192,8 +192,8 @@ const STUB_REPLY_MATCH = {
     "",
     "事实依据",
     "",
-    "来源 1：https://openai.com/index/o3-mini-update —— 一手官方公告，说明推理能力更新与发布时间。",
-    "来源 2：https://github.com/example/infer/releases/tag/v2.0.0 —— 一手 Release，说明破坏性变更与迁移步骤。",
+    "来源 1：https://openai.com/news/ —— 一手官方公告，说明推理能力更新与发布时间。",
+    "来源 2：https://www.iana.org/help/example-domains —— 一手文档，说明保留域名的用途与使用建议。",
     "",
     "仍需确认",
     "",
@@ -226,8 +226,8 @@ const STUB_REPLY_MATCH = {
     "",
     "原始来源清单",
     "",
-    "来源 1：https://openai.com/index/o3-mini-update —— 一手官方公告，可用。",
-    "来源 2：https://github.com/example/infer/releases/tag/v2.0.0 —— 一手仓库 Release，可用。",
+    "来源 1：https://openai.com/news/ —— 一手官方公告，可用。",
+    "来源 2：https://www.iana.org/help/example-domains —— 一手公开文档，可用。",
     "来源 3：重试占比 —— 内部样本，需标注样本量，不能与前两条同级。",
   ].join("\n"),
   /* 批次 7：复盘契约要 5 个小节，且 counts_must_match_upstream ——
@@ -1038,6 +1038,29 @@ function startStub() {
         artifact13.indexOf("推理成本") >= 0 && artifact13.indexOf("事实依据") >= 0
           ? ok("P13 产物正文 = **成果本身**（候选稿的正文在文件里，不是「已完成」那种汇报）")
           : bad("P13 产物正文不是成果本身", (artifact13 || "(产物没落盘)").slice(0, 200));
+        /* 链接可达性（批次 8）：交付物里应该多一段 Host 实测的可达性记录 ——
+           这是「核验状态」这句话配得上字面意思的那一环。
+           而且夹具用的链接是**真能打开的**（原来那几个 example.com/audit-notes
+           全是死的，契约判不了链接死活才一直"通过"）。 */
+        const reachNote = files13
+          .filter((f) => fs.existsSync(f))
+          .map((f) => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } })
+          .join("\n");
+        reachNote.indexOf("链接可达性") >= 0 && reachNote.indexOf("能打开") >= 0
+          ? ok("P13 产物里写进了 **Host 实测的链接可达性**（核验状态名副其实）")
+          : bad("P13 产物里没有链接可达性记录（Host 没真的访问那些链接）",
+                (reachNote || "(没读到产物)").slice(-260));
+        /* 夹具里的链接必须真的能打开 —— 否则这条 e2e 验的是「假链接也能跑通」。 */
+        {
+          const { createHostFfi } = require(path.join(REPO, "hosts", "shared", "host_ffi.js"));
+          const probeFfi = createHostFfi(REPO, { dataRoot: os.tmpdir() });
+          const probes = await probeFfi.verifyLinkReachability(
+            ["https://www.iana.org/help/example-domains", "https://nodejs.org/en/about"],
+            { timeoutMs: 9000 });
+          probes.length === 2 && probes.every((x) => x && x.ok)
+            ? ok("P13 夹具里用的链接**真的能打开**（不是编造的来源）")
+            : bad("P13 夹具里的链接打不开（e2e 用的还是假来源）", JSON.stringify(probes));
+        }
         /* 载荷级：发出去的那一串字里，**必须**带着「交作业」的指令与契约落点。
            界面行为对了但指令没上线 ⇒ 模型照样会只回一句「已完成」⇒ 这条才是
            真正的防线（批次 1.5 的核心：成员交正文，Host 代写落盘）。 */

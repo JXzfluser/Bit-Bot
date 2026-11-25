@@ -3153,6 +3153,17 @@ surface.setRoomRuntimeDeps({
     } catch (_) { /* 清额度失败不影响这一棒 */ }
   },
   selectResponders: selectRoomResponders,
+  /* 链接可达性核验（批次 8）：交付里的来源，Host **真的去访问一次**。
+     为什么必须 Host 做：成员会自己说「我核验过了」—— 那是自证。
+     为什么要有：契约能判「链接长得对」，判不了「链接是死的」
+     （实测那条无源选题的来源格式完全正确、实测 HTTP 404）。
+     没注入核验器的地方（如门禁的离线环境）⇒ 行为一字不变。 */
+  verifyLinks: (urls) => {
+    if (!ffi || typeof ffi.verifyLinkReachability !== "function") {
+      return Promise.resolve([]);
+    }
+    return ffi.verifyLinkReachability(urls, { timeoutMs: 9000, concurrency: 3, max: 12 });
+  },
 });
 
 

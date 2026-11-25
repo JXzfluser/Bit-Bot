@@ -134,13 +134,17 @@ const DRAFT_BODY = [
 const NARRATION_B1 = "已看过上一棒：情报线索已看过一遍，园区光伏这条最值得做。";
 const NARRATION_B2 = "已看过上一棒：选题 brief 已看过一遍，可以开写。";
 
-function mkSurface(roomDef, bots) {
+function mkSurface(roomDef, bots, runtimeDeps) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "stage-contract-")));
   const dir = path.join(root, "data", "desktop");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "bots.json"), JSON.stringify(bots || BOTS));
   fs.writeFileSync(path.join(dir, "rooms.json"), JSON.stringify({ version: 1, rooms: [roomDef] }));
-  return { surface: createProductSurface(root), root };
+  const surface = createProductSurface(root);
+  /* 运行时依赖（批次 8：链接可达性核验）走**真产品那条路** ——
+     surface.setRoomRuntimeDeps —— 与真跑一致，不另开一条旁路。 */
+  if (runtimeDeps) surface.setRoomRuntimeDeps(runtimeDeps);
+  return { surface, root };
 }
 
 const txOf = (surface, id = ROOM.id) =>
@@ -188,7 +192,7 @@ async function runRelay(opts) {
       : (opts.contract || CONTRACT),
     transcript: [],
   });
-  const { surface, root } = mkSurface(roomDef, opts.bots);
+  const { surface, root } = mkSurface(roomDef, opts.bots, opts.runtimeDeps);
   const calls = [];
   const r = await dispatchRoomTurn({
     surface,
@@ -515,6 +519,110 @@ async function sectionG() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * G3. 批次 8：链接可达性核验（Host 真的去访问交付里的每个链接）
+ *
+ * 为什么这是最深的一条：契约能判「链接长得对」，判不了「链接是死的」。
+ * 实测评审里那条无源选题的来源 `https://example.com/audit-notes` ——
+ * **格式完全正确、纯 ASCII、能过 min_urls**，实测 HTTP 404。
+ * ⇒ 格式判据对它完全无效，只有真访问才能判。
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** 一个可控的 stub 核验器：按 URL 白名单决定通不通。 */
+function stubVerifier(reachable) {
+  const set = new Set((reachable || []).map((x) => String(x)));
+  return async (urls) => (urls || []).map((u) => (
+    set.has(String(u))
+      ? { url: u, ok: true, status: 200, reason: "" }
+      : { url: u, ok: false, status: 404, reason: "http_404" }
+  ));
+}
+
+const G3_CONTRACT = {
+  stages: [
+    {
+      match: { name: "脚本撰写" },
+      dir: "03-drafts",
+      file: "{date}-draft.md",
+      rules: {
+        min_chars: 120,
+        must_include: ["事实依据"],
+        min_urls: 1,
+        require_reachable_links: true,
+        link_check_min: 1,
+      },
+    },
+  ],
+};
+
+async function sectionG3() {
+  console.log("── G3. 批次 8：链接可达性核验（Host 真的访问） ──");
+
+  const withUrl = "正文\n\n" + "推理成本这次真的下了一档。".repeat(8) +
+    "\n\n事实依据\n\n来源 1：https://example.com/alive-note —— 一手公告。\n\n仍需确认\n\n定价页待确认。";
+
+  /* G3-01：链接打得开 ⇒ 验收通过，且产物里**多了一段可达性记录**。 */
+  const c1 = await runRelay({
+    writeFiles: false, contract: G3_CONTRACT, replyBody: withUrl,
+    runtimeDeps: { verifyLinks: stubVerifier(["https://example.com/alive-note"]) },
+  });
+  const sr1 = (c1.fr && c1.fr.stage_results) || [];
+  const last1 = sr1[sr1.length - 1] || {};
+  check("G3-01", last1.pass === true,
+    "G3-01 链接打得开 ⇒ 验收通过（别误杀正确产物）",
+    JSON.stringify({ pass: last1.pass, reason: last1.reason }));
+  /* 路径用**产品自己的解析器**算，别写死日期 ——
+     写死日期的门禁一到第二天就红（今天就踩到了：11-25 跨日）。 */
+  const p1 = resolveDeliverablePath(G3_CONTRACT.stages[0], {
+    dataRoot: path.join(c1.root, "data"), roomTitle: ROOM.title,
+  });
+  const body1 = fs.existsSync(p1) ? fs.readFileSync(p1, "utf8") : "";
+  check("G3-02", body1.indexOf("链接可达性") >= 0 && body1.indexOf("能打开") >= 0,
+    "G3-02 产物里**写进了可达性记录**（核验状态这句话才名副其实）",
+    JSON.stringify(body1.slice(-160)));
+
+  /* G3-03：链接打不开 ⇒ 判红（这是格式判据永远抓不到的那条）。 */
+  const c2 = await runRelay({
+    writeFiles: false, contract: G3_CONTRACT, replyBody: withUrl,
+    runtimeDeps: { verifyLinks: stubVerifier([]) },
+  });
+  const sr2 = (c2.fr && c2.fr.stage_results) || [];
+  const last2 = sr2[sr2.length - 1] || {};
+  check("G3-03", last2.pass === false && String(last2.reason || "").indexOf("打不开") >= 0,
+    "G3-03 链接打不开 ⇒ 判红（格式判据永远抓不到的那条）",
+    JSON.stringify({ pass: last2.pass, code: last2.code, reason: last2.reason }));
+
+  /* G3-04：没注入核验器 ⇒ **一字不改**（离线环境不该因此变红）。 */
+  const c3 = await runRelay({ writeFiles: false, contract: G3_CONTRACT, replyBody: withUrl });
+  const sr3 = (c3.fr && c3.fr.stage_results) || [];
+  const last3 = sr3[sr3.length - 1] || {};
+  check("G3-04", last3.pass === true,
+    "G3-04 没注入核验器 ⇒ 行为一字不变（离线环境不该误伤）",
+    JSON.stringify({ pass: last3.pass, reason: last3.reason }));
+
+  /* G3-05：核验器自己崩了 ⇒ **不判红**（核验失败 ≠ 产物不合格）。 */
+  const c4 = await runRelay({
+    writeFiles: false, contract: G3_CONTRACT, replyBody: withUrl,
+    runtimeDeps: { verifyLinks: async () => { throw new Error("network down"); } },
+  });
+  const sr4 = (c4.fr && c4.fr.stage_results) || [];
+  const last4 = sr4[sr4.length - 1] || {};
+  check("G3-05", last4.pass === true,
+    "G3-05 核验器自己崩了 ⇒ 不判红（核验失败 ≠ 产物不合格）",
+    JSON.stringify({ pass: last4.pass, reason: last4.reason }));
+
+  /* G3-06：真核验器（真网络）—— 判得开/判不开的链接它分得清。
+     这一条不 stub，真的去访问 example.com。 */
+  {
+    const { createHostFfi } = require(path.resolve(__dirname, "..", "hosts", "shared", "host_ffi.js"));
+    const ffi = createHostFfi(path.resolve(__dirname, ".."), { dataRoot: os.tmpdir() });
+    const probe = (await ffi.verifyLinkReachability(["https://example.com"], { timeoutMs: 9000 }))[0];
+    check("G3-06", probe && probe.ok === true,
+      "G3-06 真核验器能打开真实站点（example.com）",
+      JSON.stringify(probe));
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * G2. 批次 7 的新判据：成品出口 / 坏链 / 跨棒一致性 / 数字对账
  *
  * 每条都**双向验证**：
@@ -601,7 +709,11 @@ async function sectionG2() {
   check("G2-01", last1.pass === true,
     "G2-01 交对小节结构的正文 ⇒ 验收通过（别误杀正确产物）",
     JSON.stringify({ pass: last1.pass, reason: last1.reason }));
-  const pubPath = path.join(c1.root, "data", "workspace", "自媒体内容团队", "05-publish", "2026-11-24-post.md");
+  /* 日期用产品自己的解析器算 —— 写死日期的门禁一到第二天就红。 */
+  const pubPath = resolveDeliverablePath(
+    { dir: "05-publish", file: "{date}-post.md" },
+    { dataRoot: path.join(c1.root, "data"), roomTitle: ROOM.title },
+  );
   check("G2-02", fs.existsSync(pubPath),
     "G2-02 成品**单独落在 05-publish/**（用户拿到手就能直接复制，不用从过程档案里抠）",
     pubPath);
@@ -934,6 +1046,7 @@ function userDataFingerprint() {
   }
   if (MODE === "all" || MODE === "positive") await sectionG();
   if (MODE === "all" || MODE === "g2") await sectionG2();
+  if (MODE === "all" || MODE === "g3") await sectionG3();
   if (MODE === "all") sectionC();
   if (MODE === "all") sectionCX();
   if (MODE === "all" || MODE === "urls") await sectionX();

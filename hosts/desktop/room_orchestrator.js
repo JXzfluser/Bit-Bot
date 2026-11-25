@@ -1419,6 +1419,44 @@ function judgeCrossStage(input) {
       return out;
     }
   }
+  /* 规则四：链接可达性 —— 交付里声明「可访问」的链接必须真的能打开。
+   *
+   * 为什么需要（实测）：契约能判「链接长得对」（纯 ASCII、括号配平），
+   * 但判不了「链接是死的」。评审里那条无源选题的来源
+   * `https://example.com/audit-notes` —— **格式完全正确、纯 ASCII、能过
+   * min_urls**，实测 HTTP 404。格式判据对它完全无效。
+   * ⇒ 唯一能判的办法是**真的去访问那个 URL**。
+   *
+   * 为什么是 Host 做而不是成员做：成员会自己说「我核验过了」—— 那是自证。
+   *
+   * 为什么不阻塞验收：链接打不开 ≠ 产物不合格（登录墙/付费墙/SPA 都可能）。
+   * ⇒ 但要**如实记录**：核验结果写进产物，让「核验状态」名副其实。
+   *
+   * 规则 keys：
+   *   require_reachable_links  true    —— 有链接打不开 ⇒ 判红
+   *   link_check_min          N       —— 至少要核验 N 条（太少说明没认真查）
+   */
+  if (Array.isArray(o.linkResults) && o.linkResults.length) {
+    const bad = o.linkResults.filter((r) => r && !r.ok);
+    const needMin = Number(rules.link_check_min || 0);
+    if (needMin && o.linkResults.length < needMin) {
+      out.pass = false;
+      out.code = "link_check_too_few";
+      out.reason = "只核验了 " + o.linkResults.length + " 条链接（要求 ≥ " + needMin +
+        " 条）—— 交付里的来源都要真的访问一次";
+      return out;
+    }
+    if (rules.require_reachable_links && bad.length) {
+      out.pass = false;
+      out.code = "unreachable_links";
+      out.unreachable = bad.map((r) => r.url);
+      out.reason = "交付里有 " + bad.length + " 条链接打不开（" +
+        bad.slice(0, 3).map((r) => r.url + "（" + (r.reason || "unknown") + "）").join("、") +
+        "）—— 来源必须真的能打开，不能只是长得像";
+      return out;
+    }
+  }
+
 
   return out;
 }
@@ -1442,6 +1480,29 @@ function extractPercentages(text) {
     out.push(String(CN[m[1]] * 10));
   }
   return Array.from(new Set(out));
+}
+
+/**
+ * 从交付正文里抽出**纯 ASCII**的完整链接（与 countDeliverableUrls 同口径）。
+ * 用于 Host 侧核验可达性：混了全角/中文的坏链不算链接（那是格式问题，
+ * 由 no_broken_urls 判），这里只取**格式正确**的那些去真的访问。
+ */
+function extractCleanUrls(content) {
+  const s = String(content || "");
+  const segs = s.split(/\]\(/);
+  const out = [];
+  for (const seg of segs) {
+    const m = seg.match(/https?:\/\/[^\s]+/g);
+    if (!m) continue;
+    for (const tok of m) {
+      let t = tok;
+      while (t.endsWith(")") || t.endsWith("]")) t = t.slice(0, -1);
+      if (!t) continue;
+      if (/[^\x00-\x7F]/.test(t)) continue; // 混了全角/中文 ⇒ 坏链
+      if (!out.includes(t)) out.push(t);
+    }
+  }
+  return out;
 }
 function readDeliverableArtifact(contract, opts) {
   const o = opts || {};
@@ -1708,6 +1769,7 @@ module.exports = {
   collectSectionLabels,
   judgeCrossStage,
   extractPercentages,
+  extractCleanUrls,
   looksLikeNarration,
   createTeamBudget,
   createCancelScope,
