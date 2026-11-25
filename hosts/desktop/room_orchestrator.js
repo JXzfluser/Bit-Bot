@@ -495,9 +495,21 @@ function buildRelayPrompt(input) {
   }
   if (prev) {
     /* 流水线（批次 4）里上一棒交的是**成果正文**：可能是整张情报卡、也可能是一份
-       brief ⇒ 400 字的截断会把关键内容切掉，下一棒就等于没拿到上游 ⇒ 按需放宽。 */
+       brief ⇒ 400 字的截断会把关键内容切掉，下一棒就等于没拿到上游 ⇒ 按需放宽。
+     *
+     * 【批次 11 续】这里带的是**摘要**，完整正文走 ctx.prevDeliverable
+     * → roomContext → system 通道（独立预算 12K）。原因：
+     *   ① 编排 prompt 整段进内核，内核拿它做意图识别（建房句式**全文子串匹配**）
+     *      ⇒ 上游成果是外部中文正文，带得越全，被误判成「把 X 拉进 Y 群」的风险越大；
+     *   ② 以前 2500 字的全文在 prompt 里，和上一棒正文**重复**占位还各自砍一半。
+     * ⇒ 这里留一段能指路的摘要，并**明说完整正文在系统上下文里**，
+     *    免得模型把摘要当全部、或反过来去转述摘要。 */
     const prevMax = Math.max(400, Number(opts.prevMaxChars || 0));
-    lines.push("【上一棒】" + String(prev.name || prev.bot_id || "") + " 交给你：" + clip(prev.text, prevMax));
+    lines.push(
+      "【上一棒】" + String(prev.name || prev.bot_id || "") +
+      " 交给你（**下面是开头摘要，完整正文在系统上下文里**，以完整正文为准）：" +
+      clip(prev.text, prevMax),
+    );
   }
   /* Host 找料（批次 10）——**材料直接进 prompt**。
    * 为什么不是让成员去读文件：岗位 prompt 明写「不得访问本机文件」，

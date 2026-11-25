@@ -118,6 +118,9 @@ function createRoomRuntime(o) {
       currentTask: task,
       /* Host 取回的材料（批次 10 续）：走 roomContext/system 通道。 */
       materials: (ctx && ctx.materials) || "",
+      /* 上一棒成果正文（批次 11 续）：独立预算的 system 通道。 */
+      prevDeliverable: (ctx && ctx.prevDeliverable) || "",
+      maxPrevDeliverable: Number(process.env.BITBOT_ROOM_PREV_MAX || 12000),
       sanitize: safe,
       maxField: 80,
       maxTotal: Number(process.env.BITBOT_ROOM_CONTEXT_MAX || 4000),

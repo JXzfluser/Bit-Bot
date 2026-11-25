@@ -3697,9 +3697,13 @@ function createProductSurface(repoRoot, opts = {}) {
              ⇒ 材料改走 **ctx.materials → roomContext → system 通道**
                 （只进模型请求、不参与内核意图解析）。 */
           materials: null,
-          /* 流水线：上一棒交的是**成果正文**（整张情报卡 / 一份 brief）⇒ 放宽，
-             否则下一棒拿到的是被截断的半截，等于没拿到上游。 */
-          prevMaxChars: isPipeline ? 2500 : 0,
+          /* 编排 prompt 里只带**摘要**（完整正文走 ctx.prevDeliverable → system 通道）。
+             理由有二：
+               ① 编排 prompt 整段进内核，内核拿它做意图识别（建房句式全文子串匹配）
+                  ⇒ 上游成果是外部中文正文，带得越全误判风险越大；
+               ② 以前 2500 字的全文在 prompt 里**和**上一棒正文重复占位。
+             ⇒ 摘要给 600 字足够指路（门禁断言的「园区光伏」就在里面）。 */
+          prevMaxChars: isPipeline ? 600 : 0,
         });
         const promptTokens = roomOrchestrator.estimateTokens(prompt);
         const gate = budget.canStart({ tokens: promptTokens });
@@ -3721,12 +3725,20 @@ function createProductSurface(repoRoot, opts = {}) {
           subtask: null, subtasks: [],
           /* Host 取回的材料（批次 10 续）：走 roomContext/system 通道。 */
           materials: hop === 0 && stageMaterials ? String(stageMaterials.text || "") : "",
+          /* 上一棒交下来的**成果正文**（批次 11 续）：走 roomContext/system 通道。
+             以前它只走编排 prompt 的「【上一棒】」那一行 ⇒ 被砍到 2500 字
+             （真模型第一棒交 5505 字 ⇒ 第二棒拿到不到一半，等于没拿到上游）。
+             ⇒ 现在完整正文走这条通道；编排 prompt 里只留一段摘要当指路。 */
+          prevDeliverable: prev ? String(prev.text || "") : "",
           shared_board: boardText, board_group_id: room.id,
           previous_turn: prev
             ? {
               bot_id: prev.bot_id, name: prev.name,
-              /* 流水线：上一棒的成果正文要完整递下去（下一棒靠它开工）。 */
-              text: clipRoomText(prev.text, isPipeline ? 2500 : 800).text,
+              /* 流水线：上一棒的成果正文要完整递下去（下一棒靠它开工）。
+                 完整正文走 ctx.prevDeliverable（system 通道，独立预算）；
+                 这里只留一段**摘要**当索引 —— 以前这里也是 2500 字上限，
+                 会和编排 prompt 里那份重复占位、还各自砍一半。 */
+              text: clipRoomText(prev.text, isPipeline ? 600 : 800).text,
             }
             : null,
           confirm_answer: confirmAnswer || "",

@@ -6523,6 +6523,11 @@ function createHostFfi(repoRoot, opts = {}) {
        「没有成员也没有最近转录 ⇒ 返回空串」⇒ **材料会被一起吞掉**
        ⇒ 成员列表空的那一次，模型根本看不到材料。 */
     const materials = String(rc.materials || "").trim();
+    /* 上一棒成果正文（批次 11 续）：走 system 通道、**不进编排 prompt**。
+       编排 prompt 整段进内核，内核拿它做意图识别（建房句式全文子串匹配）
+       ⇒ 上一棒成果是外部中文正文，同样有被误判成建房的风险。
+       ⇒ 它只进模型请求。 */
+    const prevDeliverable = String(rc.prev_deliverable || "").trim();
     const rows = [];
     for (const m of members) {
       const name = String((m && m.name) || "").trim();
@@ -6541,12 +6546,17 @@ function createHostFfi(repoRoot, opts = {}) {
         return "· " + speaker + "：" + text;
       })
       .filter(Boolean);
-    if (!rows.length && !recent.length && !materials) return "";
+    if (!rows.length && !recent.length && !materials && !prevDeliverable) return "";
     const mentioned = (Array.isArray(rc.mentioned) ? rc.mentioned : [])
       .map((s) => String(s || "").trim())
       .filter(Boolean);
     const self = String(rc.self || "").trim();
     const lines = ["\n当前群聊：" + String(rc.title || "").trim()];
+    if (prevDeliverable) {
+      /* 这是**上游交付给你的成果正文**，不是闲聊记录 ⇒ 单独成块并说清是什么。
+         （否则模型会把它当成群里的某句话，转述而不是接着干。） */
+      lines.push("上一棒交给你的成果正文（这是上游的真实产出，直接用它接着干，别转述）：\n" + prevDeliverable);
+    }
     if (rows.length) lines.push("群成员：\n" + rows.join("\n"));
     /* 岗位 prompt（批次 5）：**这一位成员自己的**完整职责。
      * 走 system 通道（这里）而不是编排 prompt：编排 prompt 整段进内核，

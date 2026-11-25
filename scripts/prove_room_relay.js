@@ -77,13 +77,16 @@ const ROOMS = {
   }],
 };
 
-function mkSurface() {
+/* factory 可选：负向对照用**变异过的** product_surface 副本建一个 surface。
+   （不传就用真的那个。变异只发生在临时副本上，源文件一个字节都不动。） */
+function mkSurface(factory) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "relay-"));
   const dir = path.join(root, "data", "desktop");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "bots.json"), JSON.stringify(BOTS));
   fs.writeFileSync(path.join(dir, "rooms.json"), JSON.stringify(ROOMS));
-  return { surface: createProductSurface(root), root };
+  const make = typeof factory === "function" ? factory : createProductSurface;
+  return { surface: make(root), root };
 }
 const txOf = (surface, id = "room-relay") =>
   (surface.loadRooms().rooms.find((r) => r.id === id) || {}).transcript || [];
@@ -419,6 +422,110 @@ const kinds = (t) => t.map((e) => e && e.kind);
       } finally {
         try { fs.unlinkSync(tmpPath); } catch (_) { /* 清理失败不影响结论 */ }
       }
+    }
+  }
+
+  /* ---------- I. 上一棒成果**完整**递给下一棒（批次 11 续） ----------
+   *
+   * 背景：上一棒成果原来只走编排 prompt 的「【上一棒】」那一行，且被砍到 2500 字。
+   * 真 provider 实测：第一棒交 5505 字 ⇒ 第二棒只拿到不到一半 ⇒ 等于没拿到上游。
+   * ⇒ 现在完整正文走 ctx.prevDeliverable → roomContext → system 通道（独立预算）。
+   *
+   * 断言（走产品路径 dispatchRoomTurn）：
+   *   I-1 第二棒的 ctx.prevDeliverable 含**完整**上一棒正文（尾部标记都在）。
+   *   I-2 编排 prompt 里只带**摘要**（尾部标记**不在** prompt 里）⇒ 不重复占位。
+   *   I-3 roomContext 侧真的把 prev_deliverable 填上了，且不吃 maxTotal(4000)。
+   *   I-4 负向对照：把 prevDeliverable 掐掉 ⇒ I-1 必须判红。
+   */
+  {
+    const { buildRoomContext: buildRoomContextData } = require("../hosts/shared/room_context");
+    /* 一段**超过旧上限 2500**、也超过 roomContext 默认预算 4000 的正文。 */
+    const TAIL = "【尾部标记-必须完整送达】";
+    /* ⚠️ 写法上的坑：中文句号「。」(U+3002) 在 JS 里是 **ID_Continue**，
+       所以「"……。"repeat」会被词法器当成**一个标识符** `。repeat`
+       ⇒ 直接 SyntaxError（实测踩到了）。
+       ⇒ 中文标点后面接标识符时必须留空格或拆开写。 */
+    const filler = "甲乙丙丁戊己庚辛壬癸子丑寅卯。";
+    const longBody = "情报正文开头。" + filler.repeat(400) + TAIL;
+    const { surface } = mkSurface();
+    const calls = [];
+    await dispatchRoomTurn({
+      surface,
+      roomId: "room-relay",
+      text: "写一条关于绿色低碳的短视频脚本，3分钟以内",
+      deps: {
+        runResponderTurn: async (botId, prompt, ctx) => {
+          calls.push({ botId, prompt, ctx });
+          if (botId === "b2") {
+            return { ok: true, text: longBody + "\n【交给】事实核查：把光伏装机数据核准一下" };
+          }
+          return { ok: true, text: "数据已核准。" };
+        },
+      },
+    });
+    const second = calls[1] || {};
+    const prevFull = String((second.ctx && second.ctx.prevDeliverable) || "");
+    (second.ctx && second.ctx.hop === 1 && prevFull.indexOf(TAIL) >= 0)
+      ? ok("I-1 第二棒拿到**完整**上一棒成果（尾部标记在，" + prevFull.length + " 字）")
+      : bad("I-1 上一棒成果不完整", JSON.stringify({ hop: second.ctx && second.ctx.hop, len: prevFull.length, hasTail: prevFull.indexOf(TAIL) >= 0 }));
+
+    const secondPrompt = String(second.prompt || "");
+    (secondPrompt.indexOf("【上一棒】") >= 0 && secondPrompt.indexOf(TAIL) < 0)
+      ? ok("I-2 编排 prompt 里只带**摘要**（尾部标记不在 prompt 里 ⇒ 不重复占位、也不撞内核意图解析）")
+      : bad("I-2 编排 prompt 里的上一棒内容不是摘要", JSON.stringify({ len: secondPrompt.length, hasTail: secondPrompt.indexOf(TAIL) >= 0 }));
+
+    /* roomContext 侧：直接调产品的构造函数。
+       关键点：prev_deliverable 有**独立预算** ⇒ 一段 4000+ 的正文不该被 maxTotal 砍掉。 */
+    const rc = buildRoomContextData({
+      room: { id: "r1", title: "群", members: ["b1"] },
+      bots: [{ id: "b1", name: "甲" }],
+      botId: "b1",
+      prevDeliverable: longBody,
+      maxTotal: 4000,
+    });
+    (rc && String(rc.prev_deliverable || "").indexOf(TAIL) >= 0)
+      ? ok("I-3 roomContext 的 prev_deliverable 完整（独立预算 ⇒ 不被 maxTotal=4000 砍掉，" + String(rc.prev_deliverable || "").length + " 字）")
+      : bad("I-3 roomContext 没带上完整上游", JSON.stringify({ len: rc ? String(rc.prev_deliverable || "").length : -1 }));
+
+    /* I-4 负向对照：掐掉 prevDeliverable ⇒ I-1 必须红。 */
+    try {
+      const srcPath = path.join(__dirname, "..", "hosts", "desktop", "product_surface.js");
+      const orig = fs.readFileSync(srcPath, "utf8");
+      const mutated = orig.replace(
+        'prevDeliverable: prev ? String(prev.text || "") : "",',
+        'prevDeliverable: "",',
+      );
+      if (mutated === orig) throw new Error("没找到要掐的字段（源码结构变了？）");
+      /* 变异副本必须放在**同目录** —— product_surface 里是相对 require
+         （./room_orchestrator 等）⇒ 放 /tmp 会解析不到（实测踩到）。
+         同目录 + 用完删除 ⇒ 源文件一个字节不动。 */
+      const tmpPath = path.join(path.dirname(srcPath), ".negative_control_prev_deliverable.js");
+      fs.writeFileSync(tmpPath, mutated, "utf8");
+      delete require.cache[tmpPath];
+      const mutatedSurface = require(tmpPath).createProductSurface;
+      const { surface: mSurface } = mkSurface(mutatedSurface);
+      const mCalls = [];
+      await dispatchRoomTurn({
+        surface: mSurface,
+        roomId: "room-relay",
+        text: "写一条关于绿色低碳的短视频脚本，3分钟以内",
+        deps: {
+          runResponderTurn: async (botId, prompt, ctx) => {
+            mCalls.push({ botId, prompt, ctx });
+            if (botId === "b2") {
+              return { ok: true, text: longBody + "\n【交给】事实核查：把光伏装机数据核准一下" };
+            }
+            return { ok: true, text: "数据已核准。" };
+          },
+        },
+      });
+      const mPrev = String(((mCalls[1] || {}).ctx || {}).prevDeliverable || "");
+      (mPrev.indexOf(TAIL) < 0)
+        ? ok("I-4 负向对照成立：掐掉 prevDeliverable ⇒ 完整上游消失 ⇒ I-1 的判据确实会红")
+        : bad("I-4 负向对照**没咬到**", "掐掉字段后 I-1 竟然还绿");
+      try { fs.unlinkSync(tmpPath); } catch (_) { /* ignore */ }
+    } catch (e) {
+      bad("I-4 负向对照跑不起来", String(e && e.message).slice(0, 200));
     }
   }
 
