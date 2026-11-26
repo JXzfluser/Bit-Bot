@@ -735,10 +735,12 @@
     /* 真源实测：弹层底边在 footer 顶边上方 2px（菜单 228 宽，左缘与胶囊齐平）。 */
     bottom: calc(100% + 2px);
     background: var(--surface);
-    border: 0;
+    border: 1px solid var(--line);
     border-radius: var(--radius-xl);
     padding: 6px;
-    box-shadow: none;
+    /* 无阴影时白菜单贴在同为浅色的侧栏上，看起来像"列表被菜单替换了"。
+       一层很轻的浮起阴影就够了 —— 不破坏 Grok 的克制，但层级读得出来。 */
+    box-shadow: var(--shadow-pop);
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -1338,8 +1340,10 @@
   .room-speaker .rs-name { color: var(--ink); font-weight: 600; font-size: var(--text-sm); }
   .room-speaker .rs-time { font-variant-numeric: tabular-nums; }
   .room-speaker .rs-policy { font-size: var(--text-xs); }
-  .msg.room-error .body { border-color: var(--danger); }
-  .msg.room-error .room-speaker .rs-state { color: var(--danger-ink); font-weight: 600; }
+  /* 失败是"这次没成"，不是危险操作：红边框 + 红色状态字在安静的对话流里
+     像一张警报，读起来比实际严重。改成与正文同级的中性卡片，内容仍然如实。 */
+  .msg.room-error .body { border-color: var(--line); }
+  .msg.room-error .room-speaker .rs-state { color: var(--muted); font-weight: 500; }
   .msg.room-working .body { color: var(--muted); }
   /* 幂等提示与「提及未命中」说明都是次要信息：同一 muted 层级，不抢正文视觉。 */
   .msg.room-deduped .body, .room-mention-note, .room-thread-readfail, .room-list-readfail { color: var(--muted); }
@@ -8044,9 +8048,12 @@
     let composerRoom = null;
     function roomBannerBits(rm) {
       const n = (rm.members || []).length;
+      // 路由规则是"用法说明"，不是常驻信息：塞在 banner 里跟群名抢一行，
+      // 读起来像一条错误提示。放到 title 里，想知道的人悬停就能看到。
       return {
         title: rm.title || rm.id,
-        meta: n + " " + wavegT("roomMembers") + " · " + wavegT("roomRouteHint"),
+        meta: n + " " + wavegT("roomMembers"),
+        hint: wavegT("roomRouteHint"),
       };
     }
     /* 群 banner = 输入卡的表头：显示它时同时给 #composer 挂 has-room，
@@ -8060,7 +8067,10 @@
           const t = document.getElementById("room-banner-title");
           const m = document.getElementById("room-banner-meta");
           if (t) t.textContent = bits.title;
-          if (m) m.textContent = bits.meta;
+          if (m) {
+            m.textContent = bits.meta;
+            m.title = bits.hint || "";
+          }
         }
       }
       const comp = document.getElementById("composer");
