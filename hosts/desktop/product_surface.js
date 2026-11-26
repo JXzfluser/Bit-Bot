@@ -2668,10 +2668,11 @@ function createProductSurface(repoRoot, opts = {}) {
         ? {
             id: bot.id, name: bot.name,
             job: String(bot.job || ""),
+            group: String(bot.group || ""),
             description: String(bot.description || ""),
             prompt: String(bot.prompt || ""),
           }
-        : { id, name: id, job: "", description: "", prompt: "" };
+        : { id, name: id, job: "", group: "", description: "", prompt: "" };
     });
 
     // Parse mentions — GP-51 semantics kept (@Name directed / @everyone all /
@@ -2687,30 +2688,82 @@ function createProductSurface(repoRoot, opts = {}) {
     let responder_policy = "auto_route";
     const namedResponders = [];
     const unknownMentions = [];
+    /* 【批次 15】同名 ⇒ 不许替用户猜。
+       群里有两个都叫「助手」时，旧的写法 `members.find(m => m.name === name)`
+       会**静默挑第一个** ⇒ 用户以为点名了 A，其实是 B 干的（错了还不吭声）。
+       ⇒ 现在：同名命中多个 ⇒ 记 ambiguous_mentions（按未点名处理，不假装定向成功）；
+       带消歧后缀的写法「名字（职责）」⇒ 精确命中那一个（前端在同名时插入的正是它）。 */
+    const ambiguousMentions = [];
     let wantsAll = false;
     let rest = String(text || "");
     while (/^@/.test(rest)) {
       const after = rest.slice(1);
-      const hitMember = members
-        .filter((m) => m.name && after.startsWith(m.name))
-        .sort((a, b) => String(b.name).length - String(a.name).length)[0];
       const tokenMatch = after.match(/^[^\s]+/);
       const token = tokenMatch ? tokenMatch[0] : "";
-      if (!hitMember && token === "everyone") {
-        wantsAll = true;
-        rest = after.slice(token.length).replace(/^\s*/, "");
-        continue;
+
+      /* ① 消歧写法「名字（后缀）」。
+          后缀按 职责 → 分组 → id 尾段 匹配（与前端 botLabel 的取级顺序一致）；
+          后缀可以带空格（成员名带空格是既有语义）⇒ 按**前缀**找，闭括号定长。 */
+      let target = null;
+      let consumed = 0;
+      const dmHits = [];
+      for (const m of members) {
+        const nm = String(m.name || "");
+        if (!nm || !after.startsWith(nm + "（")) continue;
+        const close = after.indexOf("）", nm.length + 1);
+        if (close < 0) continue;
+        const suf = after.slice(nm.length + 1, close);
+        const hit =
+          String(m.job || "").trim() === suf ||
+          String(m.group || "").trim() === suf ||
+          String(m.id || "").endsWith(suf);
+        if (hit) dmHits.push({ m, len: close + 1 });
       }
-      const name = hitMember ? hitMember.name : token;
-      if (!name) break;
-      const target = members.find((m) => m.name === name || m.id === name);
+      if (dmHits.length === 1) {
+        target = dmHits[0].m;
+        consumed = dmHits[0].len;
+      } else if (dmHits.length > 1) {
+        /* 多个都命中这个写法 ⇒ 仍然有歧义 ⇒ 不许挑。 */
+        ambiguousMentions.push(String(token).slice(0, 40));
+        consumed = dmHits[0].len;
+      }
+
+      if (!target && !consumed) {
+        /* ② 老规矩：@everyone / 名字（可带空格）/ id。 */
+        const hitMember = members
+          .filter((m) => m.name && after.startsWith(m.name))
+          .sort((a, b) => String(b.name).length - String(a.name).length)[0];
+        if (!hitMember && token === "everyone") {
+          wantsAll = true;
+          rest = after.slice(token.length).replace(/^\s*/, "");
+          continue;
+        }
+        const name = hitMember ? hitMember.name : token;
+        if (!name) break;
+        const byId = members.find((m) => String(m.id || "") === name);
+        const sameName = members.filter((m) => String(m.name || "") === name);
+        if (byId) {
+          target = byId;
+          consumed = name.length;
+        } else if (sameName.length === 1) {
+          target = sameName[0];
+          consumed = name.length;
+        } else if (sameName.length > 1) {
+          /* 同名 ⇒ 报歧义，不替用户挑（原来是 find ⇒ 静默挑第一个）。 */
+          ambiguousMentions.push(String(name).slice(0, 40));
+          consumed = name.length;
+        } else {
+          if (!wantsAll && unknownMentions.length < 5) {
+            unknownMentions.push(String(name).slice(0, 40));
+          }
+          /* 必须消费掉这段文字：否则 rest 原样不动，while 又从头来过 ⇒ 死循环。 */
+          consumed = name.length;
+        }
+      }
       if (target && !namedResponders.some((x) => x.id === target.id)) {
         namedResponders.push(target);
-      } else if (!target && !wantsAll && unknownMentions.length < 5) {
-        // 打错了 / 不在本群：不能假装定向成功，渲染层要如实说明「按未点名处理」。
-        unknownMentions.push(String(name).slice(0, 40));
       }
-      rest = after.slice(name.length).replace(/^\s*/, "");
+      rest = after.slice(consumed).replace(/^\s*/, "");
     }
     if (wantsAll) {
       responder_policy = "all";
@@ -2732,6 +2785,9 @@ function createProductSurface(repoRoot, opts = {}) {
       responders: responders.map(r => r.id),
       responder_policy,
       unknown_mentions: unknownMentions.length ? unknownMentions : undefined,
+      /* 【批次 15】点名有歧义（群里有两个同名 bot）⇒ 如实说「没指认成功」，
+         不许假装定向到了某一个。渲染层据此提示用户用 id 或带后缀的写法。 */
+      ambiguous_mentions: ambiguousMentions.length ? ambiguousMentions : undefined,
       // Q-5: 一条消息的身份。幂等要认「同一次投递」,不是「同样的文字」——
       // 用户把同一句话再发一遍,那是两条消息、两个任务。
       // 渠道侧(钉钉 msgId / 飞书 message_id)自带稳定 id;桌面/CLI 每次发送新生成。
@@ -3013,7 +3069,26 @@ function createProductSurface(repoRoot, opts = {}) {
     const r = (rooms.rooms || []).find((x) => x.id === room || x.title === room);
     if (!r) return { ok: false, error: "room_not_found" };
     const bots = (loadBots().bots) || [];
-    const target = bots.find((b) => b.id === toRaw || b.name === toRaw);
+    /* 【批次 15 · 真 bug】原来：bots.find(b => b.id === toRaw || b.name === toRaw)
+       ⇒ **同名时静默挑第一个**。用户看到「换人成功」，却不知道换给了谁
+       —— 群里有两个都叫「助手」时，这一换可能换给了错的那个。
+       ⇒ 现在：**id 优先**（唯一）；按名字命中多个 ⇒ 明确报歧义 + 把候选列出来，
+         让用户指认，而不是替用户猜。 */
+    const byId = bots.filter((b) => String(b.id || "") === toRaw);
+    let target = byId.length ? byId[0] : null;
+    if (!target) {
+      const named = bots.filter((b) => String(b.name || "") === toRaw);
+      if (named.length > 1) {
+        return {
+          ok: false,
+          error: "ambiguous_bot",
+          bot: toRaw,
+          count: named.length,
+          candidates: named.map((b) => ({ id: String(b.id || ""), name: String(b.name || ""), job: String(b.job || "") })),
+        };
+      }
+      target = named.length ? named[0] : null;
+    }
     if (!target) return { ok: false, error: "bot_not_found", bot: toRaw };
     const memberIds = r.members || [];
     if (!memberIds.includes(target.id)) {

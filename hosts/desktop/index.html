@@ -19,7 +19,7 @@
     color: var(--ink);
     background-color: var(--page-bg);
     display: grid;
-    /* Layout contract v1 (§1/§2): ONE grid — sidebar | main | optional rail.
+    /* Layout contract v2 (§1/§2): ONE grid — appbar | sidebar | main | optional rail.
        The right panel has a single state source: body[data-panel] =
        none | bot | conv | computer | tools. --panel-w switches with it, so
        there is no 4th column, no 0fr placeholder, and no class-combination
@@ -28,8 +28,15 @@
        data-panel. */
     grid-template-columns: var(--appbar-w) var(--sidebar-w) minmax(0, 1fr) var(--panel-w);
     grid-template-rows: var(--header-h) minmax(0, 1fr) auto;
+    /* 单一真源：body 上永远带 .grok-ui（index.html:2539），而
+       `body.grok-ui`（ui_chrome.css:1136）会覆盖这里的 grid-template-areas
+       （G-28 #37：侧栏从窗口顶开始、顶栏只压聊天列）。
+       ⇒ **这里必须与那份一字不差**，否则就是「两处真相互相打架」：
+       批次 15 就撞上过 —— 这份还写着旧的三列写法，而真正生效的那份是四列，
+       布局门照着这份量 ⇒ 量出来的全是错的。
+       窄屏（≤900）另有一份，见下面 @media 块。 */
     grid-template-areas:
-      "appbar header header header"
+      "appbar agents header header"
       "appbar agents main   rail"
       "appbar agents composer rail";
     transition: grid-template-columns 0.2s ease;
@@ -2556,9 +2563,14 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-3.9-.9L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>
       <span data-i18n="appDomainChat">对话</span>
     </button>
-    <button type="button" class="app-rail-item" data-app-domain="command">
+    <button type="button" class="app-rail-item" id="app-rail-command" data-app-domain="command" aria-expanded="false">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10h6M7 14h4"/></svg>
       <span data-i18n="appDomainCommand">指挥</span>
+      <!-- 【批次 15】角标从侧栏迁到这里。
+           以前「指挥台」按钮在侧栏顶排，角标（要你拍板几件）跟着它；
+           现在指挥台归「指挥」这个**域**，域导航栏是恒在的全局列
+           ⇒ 全局提醒放在这里更对，也不用再在侧栏开第二个入口。 -->
+      <span class="app-rail-badge" id="cmd-nav-badge" hidden></span>
     </button>
     <button type="button" class="app-rail-item" data-app-domain="automation">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
@@ -2602,13 +2614,11 @@
       <button type="button" id="sidebar-toggle-btn" title="收起侧栏" aria-label="收起或展开侧栏" aria-expanded="true" data-i18n-title="railActionCollapse" data-i18n-aria="railActionToggleSidebar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
       <button type="button" id="sidebar-search-toggle" title="搜索 Bot / 群组 (Ctrl/Cmd+K)" aria-label="搜索 Bot 或群组" data-i18n-aria="searchAria" data-i18n-title="railActionSearch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
       <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话" data-i18n-title="railActionNewChat" data-i18n-aria="railActionNewChatAria">+</button>
-      <!-- B-8 团队指挥台:不是又一个聊天流 —— 是"谁在干什么、要我拍什么板"。
-           批次 11：入口从一颗没有上下文的 ☰ 图标，改成**带文字和角标**的一行
-           （角标 = 现在有多少件要你拍板）⇒ 用户不用点进去才知道有事。 -->
-      <button type="button" id="cmd-open-btn" class="sb-cmd-entry" title="团队指挥台" aria-label="团队指挥台" data-i18n-title="cmdPanel" data-i18n-aria="cmdPanel" aria-expanded="false">
-        <span class="sb-cmd-badge" id="cmd-nav-badge" hidden></span>
-        <span data-i18n="cmdNavLabel">指挥台</span>
-      </button>
+      <!-- 【批次 15】这里原来有一颗「指挥台」按钮 —— 现在**删掉了**。
+           域导航栏已经有「指挥」这个域 ⇒ 同一个去处有两个入口 = 用户要猜该点哪个。
+           ⇒ 入口只留一个（域导航栏），角标也跟着迁过去了。
+           这一排现在只剩**动作**（收起侧栏 / 搜索 / 新对话）——
+           「去处」归域导航栏，「动作」留原地，职责分开。 -->
     </div>
     <!-- 侧栏搜索：搜的是「Bot」和「群组」。产品模型就是 Bot + 群 Bot——会话
          属于某个 Bot、收在账户条弹层里，不在这颗放大镜的搜索范围里。
@@ -8109,6 +8119,10 @@
     // rows. Keyed exactly like roomWorking so a frame lands on the right card.
     const roomProgress = new Map();
     let roomBotNames = {};
+    /* 【批次 15】bot id → **完整 bot 对象**（名字/职责/分组）。
+       点名候选要算「同一群里」的消歧标签，而消歧后缀优先用**职责**
+       ⇒ 职责就在这里（以前只有 roomBotNames 里的名字，后缀只能退到短 id）。 */
+    let roomBotDetails = {};
     // G-28: bot id → { name, avatar } cache, used by the DM reply head
     // (avatar + sender name). Populated in refreshBots alongside roomBotNames.
     let botInfoById = {};
@@ -8118,8 +8132,13 @@
         const raw = (view && (view.bots || view.views || view)) || [];
         const list = Array.isArray(raw) ? raw : [];
         const map = {};
-        for (const b of list) if (b && b.id) map[b.id] = b.name || b.id;
+        const details = {};
+        for (const b of list) if (b && b.id) {
+          map[b.id] = b.name || b.id;
+          details[b.id] = b;
+        }
         roomBotNames = map;
+        roomBotDetails = details;
       } catch (_) {
         /* 名字查不到就退回 id —— 如实，不编造显示名 */
       }
@@ -8493,6 +8512,17 @@
         note.textContent = wavegT("roomUnknownMention").replace(
           "{n}",
           e.unknown_mentions.slice(0, 5).map((m) => "@" + m).join("、"),
+        );
+        el.querySelector(".body").appendChild(note);
+      }
+      /* 【批次 15】点名有歧义（群里有两个同名 bot）：Host 不再静默挑第一个，
+         而是记 ambiguous_mentions ⇒ 这里如实告诉用户「没指认成功」。 */
+      if (Array.isArray(e.ambiguous_mentions) && e.ambiguous_mentions.length) {
+        const note = document.createElement("div");
+        note.className = "rr-sec-text room-mention-note";
+        note.textContent = wavegT("roomAmbiguousMention").replace(
+          "{n}",
+          e.ambiguous_mentions.slice(0, 5).map((m) => "@" + m).join("、"),
         );
         el.querySelector(".body").appendChild(note);
       }
@@ -8894,7 +8924,13 @@
     }
     async function openRoomChat(rm) {
       if (!rm || !rm.id) return;
-      composerRoom = { id: rm.id, title: rm.title || rm.id };
+      /* 【批次 15】成员表也存一份：@ 点名的候选要按**当前群**算消歧，
+         不能依赖「群资料面板开过」（gpRooms 那时才有值）。 */
+      composerRoom = {
+        id: rm.id,
+        title: rm.title || rm.id,
+        members: Array.isArray(rm.members) ? rm.members.slice() : [],
+      };
       setRoomBanner(true, roomBannerBits(rm));
       showRoomInHeader(rm);
       const input2 = document.getElementById("composer") ? document.querySelector("#composer #text") : null;
@@ -8905,11 +8941,17 @@
       await loadRoomBotNames();
       await renderRoomTranscript(rm.id);
       if (panelValue() === "room") refreshRoomRail().catch(() => {});
-      /* 【批次 12】指挥台的作用域就是**当前会话** ⇒ 换了群，它的内容必须跟着换。
-         指挥台开着的时候才刷新（没开就不做无用功）。 */
+      /* 【批次 12 + 批次 15 修 bug】指挥台的作用域就是**当前会话** ⇒ 换了群，它的内容必须跟着换。
+         原来这里写的是 `typeof cmdRefresh === "function"` —— 但 cmdRefresh 定义在
+         **另一个 IIFE**（26630 那个装 cmdOpen/cmdClose 的）⇒ 在本作用域里
+         typeof 恒为 "undefined" ⇒ **这一行从来没执行过**
+         ⇒ 指挥台开着的时候切群，面板里还是**上一个群**的数据（成员区、任务卡全是旧的）。
+         ⇒ 改走 window 桥（window.__bitbotCommand.refresh）。
+         【批次 15】面板**关着**也要刷新 —— 角标（要你拍板几件）是全局提醒，
+         用户不该非得先点开指挥台才知道有事（角标的意义就在这儿）。 */
       try {
-        var cp = document.getElementById("command-panel");
-        if (cp && !cp.hidden && typeof cmdRefresh === "function") await cmdRefresh();
+        var cmdApi = window.__bitbotCommand;
+        if (cmdApi && typeof cmdApi.refresh === "function") await cmdApi.refresh();
       } catch (_) { /* 刷新不了就留着旧内容，不报错打断切群 */ }
       /* 批次 14：换群 ⇒ 「自动化」域的可不可用变了（定时任务是逐群的）。
          appRailRender 在另一个 IIFE ⇒ 走 window.__bitbotCommand。 */
@@ -9070,8 +9112,34 @@
       }
       if (title) title.textContent = room.title || room.id;
       const members = Array.isArray(room.members) ? room.members : [];
+      /* 【批次 15】先把这个群的成员资料**一次拉齐**，再算身份标签。
+         为什么不能边渲染边拉：消歧后缀要用「职责」才算得出来（同名 ⇒ 名字不够用），
+         而职责在 bots.detail 里 ⇒ 边渲染边拉的话，先渲染的那几个拿不到后缀，
+         同一个群里的显示名就会**前一个带后缀、后一个不带** ⇒ 又是割裂。
+         成员数上限 6 ⇒ 一次拉齐不贵。 */
+      const memberIds = members.filter((id) => String(id || "").trim());
+      const peerBots = [];
+      try {
+        const details = await Promise.all(memberIds.map(async (id) => {
+          try {
+            const d = await window.bitbot.bots.detail(id);
+            return (d && (d.bot || d)) || { id: id };
+          } catch (_) {
+            return { id: id };
+          }
+        }));
+        for (const b of details) {
+          b.id = String(b.id || "");
+          b.name = String(b.name || roomBotNames[b.id] || b.id);
+          peerBots.push(b);
+        }
+      } catch (_) {
+        for (const id of memberIds) peerBots.push({ id: id, name: roomBotNames[id] || id });
+      }
+      const ident = window.__botIdentity || {};
+      const labelMap = (typeof ident.labelMap === "function") ? ident.labelMap(peerBots) : {};
       host.textContent = "";
-      for (const id of members) {
+      for (const id of memberIds) {
         const row = document.createElement("div");
         row.className = "ri-member";
         row.dataset.botId = id;
@@ -9080,7 +9148,8 @@
         main.className = "ri-main";
         const nm = document.createElement("div");
         nm.className = "ri-name";
-        nm.textContent = roomBotNames[id] || id;
+        /* 显示名走统一标签表（同一群里同名 ⇒ 加消歧后缀）。 */
+        nm.textContent = labelMap[String(id)] || roomBotNames[id] || id;
         const job = document.createElement("div");
         job.className = "ri-job";
         main.appendChild(nm);
@@ -9103,7 +9172,9 @@
         try {
           const d = await window.bitbot.bots.detail(id);
           const b = (d && (d.bot || d)) || {};
-          const sub = roomMemberSubtitle(nm.textContent, b);
+          /* 副标题比的是**原名**（不是加了后缀的显示名）—— 规则是
+             「职责 ≠ 名字才用职责」，拿显示名去比会永远不相等 ⇒ 职责永远被显示。 */
+          const sub = roomMemberSubtitle(roomBotNames[id] || id, b);
           job.textContent = sub;
           // 没有可用副标题就整行不占位：留一个空 div 会把行高撑成两行。
           job.hidden = !sub;
@@ -14214,6 +14285,143 @@
       runUserTurn: runUserTurn,
     };
 
+    /* ===== 批次 15：身份显示 —— 「名字不是身份」 =======================
+     *
+     * 机制层一直用 id 区分 Bot（data-bot-id / member_refs / bot_id / 成员表的 id），
+     * 显示层却一直只印**名字** ⇒ 两个同名 bot 在界面上完全一样。
+     * 而且真出过一次 bug：成员区拿**名字**做键去查 **id**（workingNames[名]）
+     * ⇒ 「在跑」状态永远算不出来。
+     *
+     * 这里做**一个真源**：botLabel(bot, peers) 算出「这个 bot 该怎么显示」。
+     *   · 不重名 ⇒ 就显示名字（界面不许凭空多出后缀）
+     *   · 重名   ⇒ 加消歧后缀：职责 → 分组 → 短 id → 完整 id
+     *     后缀必须在**这一组同名的人里唯一** —— 职责也可能撞，所以逐级退到一定唯一的那一级。
+     *
+     * 所有渲染点（侧栏行 / 指挥台成员区 / 任务卡 / 步骤行）都查**同一套算法**
+     * ⇒ 不会出现「侧栏叫 A、指挥台叫 B」的割裂。
+     *
+     * 跨作用域（指挥台在另一个 IIFE 里）⇒ 走 window 桥，见 window.__botIdentity。
+     */
+
+    /** id 的短形：短 id 只是兜底（丑但唯一）。 */
+    function botShortId(id) {
+      var s = String(id || "");
+      if (!s) return "";
+      return s.length <= 4 ? s : s.slice(-4);
+    }
+
+    /** 两个 bot 是不是「同一个」：优先比 id，其次比名字。 */
+    function botSameIdentity(a, b) {
+      var ai = String((a && a.id) || "");
+      var bi = String((b && b.id) || "");
+      if (ai && bi) return ai === bi;
+      return String((a && a.name) || "") === String((b && b.name) || "");
+    }
+
+    /** 某一级的消歧取值（取不到就空字符串 ⇒ 由调用方退到下一级）。 */
+    function botSuffixValue(b, col, nm) {
+      var x = b || {};
+      if (col === "job") {
+        var j = String(x.job || "").trim();
+        return (j && j !== nm) ? j : "";
+      }
+      if (col === "group") return String(x.group || "").trim();
+      if (col === "shortid") return botShortId(x.id || "");
+      return String(x.id || "");
+    }
+
+    /**
+     * 这个 bot 该怎么显示。
+     * @param bot   {id, name, job, group}
+     * @param peers **同一作用域内**的 bot 列表（重名与否只在这个范围里判定）
+     */
+    function botLabel(bot, peers) {
+      var nm = String((bot && bot.name) || "").trim();
+      if (!nm) return String((bot && bot.id) || "");
+      var list = Array.isArray(peers) ? peers : [];
+      var same = [];
+      var myIdx = -1;
+      for (var i = 0; i < list.length; i++) {
+        var p = list[i] || {};
+        if (String(p.name || "").trim() !== nm) continue;
+        if (myIdx < 0 && botSameIdentity(p, bot)) myIdx = same.length;
+        same.push(p);
+      }
+      /* 不重名 ⇒ 就显示名字。界面不许凭空多出后缀（那是在给用户添噪音）。 */
+      if (same.length < 2) return nm;
+      var mine = myIdx >= 0 ? same[myIdx] : bot;
+      /* 逐级找一个**在这组同名的人里唯一**的后缀 */
+      var cols = ["job", "group", "shortid", "id"];
+      for (var c = 0; c < cols.length; c++) {
+        var seen = {};
+        var uniq = true;
+        for (var j = 0; j < same.length; j++) {
+          var v = botSuffixValue(same[j], cols[c], nm);
+          if (!v || seen[v]) { uniq = false; break; }
+          seen[v] = 1;
+        }
+        if (uniq) return nm + " · " + botSuffixValue(mine, cols[c], nm);
+      }
+      return nm + " · " + String((mine && mine.id) || "");
+    }
+
+    /** 一组 bot 的标签表：{id: 显示名}。渲染点查**这一张表**。 */
+    function botLabelMap(peers) {
+      var map = {};
+      var list = Array.isArray(peers) ? peers : [];
+      for (var i = 0; i < list.length; i++) {
+        var b = list[i] || {};
+        var id = String(b.id || "");
+        if (!id) continue;
+        map[id] = botLabel(b, list);
+      }
+      return map;
+    }
+
+    /* 侧栏的标签表：作用域 = **同一个分组**（未分组的算一个作用域）。
+       分组本来就是用户理解 bot 的框架 ⇒ 同名只在同一组里消歧，
+       不同组同名不必加后缀（上下文已经分得开）。 */
+    let BOT_SIDEBAR_LABELS = {};
+    function recomputeSidebarLabels(bots) {
+      const groups = new Map();
+      const flat = [];
+      const list = Array.isArray(bots) ? bots : [];
+      for (const b of list) {
+        const g = typeof b.group === "string" ? b.group.trim() : "";
+        if (g) {
+          if (!groups.has(g)) groups.set(g, []);
+          groups.get(g).push(b);
+        } else {
+          flat.push(b);
+        }
+      }
+      const map = {};
+      const scopes = [];
+      for (const [, lst] of groups) scopes.push(lst);
+      scopes.push(flat);
+      for (const sc of scopes) {
+        const sub = botLabelMap(sc);
+        for (const k in sub) map[k] = sub[k];
+      }
+      BOT_SIDEBAR_LABELS = map;
+      return map;
+    }
+    function sidebarBotLabel(bot) {
+      if (!bot) return "";
+      const id = String(bot.id || "");
+      return (id && BOT_SIDEBAR_LABELS[id]) || String(bot.name || "");
+    }
+
+    /* 批次 15：跨作用域的桥（指挥台在另一个 IIFE 里）。 */
+    window.__botIdentity = {
+      label: botLabel,
+      labelMap: botLabelMap,
+      shortId: botShortId,
+      sameIdentity: botSameIdentity,
+      sidebarLabel: sidebarBotLabel,
+      recomputeSidebarLabels: recomputeSidebarLabels,
+    };
+
     approveBtn.addEventListener("click", () => {
       if (!pendingApprovalText) return;
       const t = pendingApprovalText;
@@ -15952,6 +16160,13 @@
       refreshBotsChain = refreshBotsChain.then(() => refreshBotsNow()).catch(() => {});
       return refreshBotsChain;
     }
+    /* 【批次 15】把「刷新侧栏」挂到身份桥上。
+       侧栏平时由 Host 的 `bitbot:bots-changed` 广播叫起 ⇒ 普通浏览器里没人叫它
+       ⇒ 门禁没法驱动侧栏重画（同名的两行也就没法验证）。
+       ⇒ 这里给的是**真刷新**（同一个 refreshBots，不是为测试造的后门）。 */
+    try {
+      if (window.__botIdentity) window.__botIdentity.refreshSidebar = refreshBots;
+    } catch (_) { /* ignore */ }
     async function refreshBotsNow() {
       if (!window.bitbot || !window.bitbot.bots) return;
       let view = null;
@@ -16047,6 +16262,9 @@
       const bots = (view && view.bots) || [];
       const hidden = (view && view.hidden_bots) || [];
       const last = botLast || {};
+      /* 【批次 15】先算身份标签表（作用域 = 同一分组）⇒ 侧栏行显示的是**消歧后**的名字。
+         表算一次、所有行共用 ⇒ 不会出现同一组里两行显示成同一个名字。 */
+      recomputeSidebarLabels(bots.concat(hidden));
       if (hiddenCount) hiddenCount.textContent = String(hidden.length);
       // Sidebar-bottom contract: the Hidden Bots entry shows only when count > 0.
       const hiddenLab = document.getElementById("hidden-bots-lab");
@@ -16138,7 +16356,9 @@
             });
           }
           chip.__bot = b;
-          chip.title = b.name || b.id;
+          /* 【批次 15】折叠头像条上只剩一个字母 ⇒ 同名 bot 只能靠颜色分。
+             title 给**消歧后的名字**（谁是谁，一悬停就知道）。 */
+          chip.title = sidebarBotLabel(b) || b.name || b.id;
           paintAvatar(chip.firstElementChild, b);
           chips.push(chip);
         }
@@ -16191,6 +16411,9 @@
       }
       botState = got.state;
       const view = botViewFromState(botState);
+      /* 【批次 15】diff 路径也要重算标签表 —— 否则新来的同名 bot 没有后缀，
+         「就地打补丁」与「整份重画」会画出两个不同的侧栏（KP-07 的老规矩）。 */
+      recomputeSidebarLabels((view.bots || []).concat(view.hidden_bots || []));
       let rebuild = false;
       let order = null;
       for (const e of got.effects) {
@@ -16337,7 +16560,9 @@
       el.dataset.agentId = b.id;
       paintAvatar(el.querySelector(".sess-avatar"), b);
       const nameEl = el.querySelector(".name");
-      if (nameEl) nameEl.textContent = (b.pinned ? "★ " : "") + b.name;
+      /* 【批次 15】显示名走**统一标签表**：同一分组里同名 ⇒ 加消歧后缀。
+         没有重名时就是原样的名字（不凭空多出后缀）。 */
+      if (nameEl) nameEl.textContent = (b.pinned ? "★ " : "") + sidebarBotLabel(b);
       const metaEl = el.querySelector(".meta");
       // G-28: 优先显示最近一次对话摘要（Grok 的做法），没有对话史才退回职责。
       if (metaEl) {
@@ -19060,6 +19285,7 @@
         roomReceipt: "执行回执（点击展开）",
         roomMoreText: "展开全文（{n} 字）",
         roomUnknownMention: "{n} 不在本群成员里，已按未点名处理（本轮按内容派给一个成员）。",
+        roomAmbiguousMention: "{n} 有多个同名成员，没指认成功，已按未点名处理（用带后缀的写法或 id 指名）。",
         roomReportDeduped: "这件事已经汇报过了：同一任务不会重复执行成员回合。",
         roomTranscriptReadFail: "群聊记录暂时读不到（存储不可读）—— 这不代表群里没有消息，恢复后历史仍在。",
         roomReportHead: "群协作汇总",
@@ -19337,6 +19563,8 @@
         cmdSwap: "换人",
         cmdSwapped: "已换人。下一棒会接手。",
         cmdSwapFailed: "没换成:",
+        cmdSwapWho: "可换给",
+        cmdSwapAmbiguous: "有 {n} 个都叫「{name}」—— 请用 id 指定（{ids}）",
         cmdCmdPlaceholder: "插话或改向…",
         cmdSteer: "插话",
         cmdReplan: "改向",
@@ -20615,6 +20843,7 @@
         roomReceipt: "執行回執（點擊展開）",
         roomMoreText: "展開全文（{n} 字）",
         roomUnknownMention: "{n} 不在本群成員裡，已按未點名處理（本輪依內容派給一位成員）。",
+        roomAmbiguousMention: "{n} 有多個同名成員，沒指認成功，已按未點名處理（用帶後綴的寫法或 id 指名）。",
         roomReportDeduped: "這件事已經匯報過了：同一任務不會重複執行成員回合。",
         roomTranscriptReadFail: "群聊記錄暫時讀不到（儲存不可讀）—— 這不代表群裡沒有訊息，恢復後歷史仍在。",
         roomReportHead: "群協作彙總",
@@ -20888,6 +21117,8 @@
         cmdSwap: "換人",
         cmdSwapped: "已換人。下一棒會接手。",
         cmdSwapFailed: "沒換成:",
+        cmdSwapWho: "可換給",
+        cmdSwapAmbiguous: "有 {n} 個都叫「{name}」—— 請用 id 指定（{ids}）",
         cmdCmdPlaceholder: "插話或改向…",
         cmdSteer: "插話",
         cmdReplan: "改向",
@@ -22166,6 +22397,7 @@
         roomReceipt: "Execution receipt (click to expand)",
         roomMoreText: "Show full text ({n} chars)",
         roomUnknownMention: "{n} is not a member of this group, so this was treated as unaddressed (this round routes by content to one member).",
+        roomAmbiguousMention: "{n} matches more than one member here, so nobody was picked (this round routes by content to one member).",
         roomReportDeduped: "Already reported: the same task does not run member turns twice.",
         roomTranscriptReadFail: "Room history is unreadable right now (store unavailable) — that does not mean the room is empty; the messages come back when it recovers.",
         roomReportHead: "Group report",
@@ -22439,6 +22671,8 @@
         cmdSwap: "Swap",
         cmdSwapped: "Swapped. The next hop takes over.",
         cmdSwapFailed: "Could not swap: ",
+        cmdSwapWho: "Swap to",
+        cmdSwapAmbiguous: "{n} bots are all called \u201c{name}\u201d — pick one by id ({ids})",
         cmdCmdPlaceholder: "Steer or replan…",
         cmdSteer: "Steer",
         cmdReplan: "Replan",
@@ -25386,15 +25620,63 @@
     function mentionCurrentRoom() {
       try {
         if (!composerRoom) return null;
-        return (gpRooms || []).find((x) => x && x.id === composerRoom.id) || null;
+        const hit = (gpRooms || []).find((x) => x && x.id === composerRoom.id);
+        if (hit) return hit;
+        /* 【批次 15】群资料面板还没开过 ⇒ gpRooms 是空的 ⇒ 退到**当前群自己带的成员表**
+           （openRoomChat 存下来的）。
+           不然 @ 候选会退成「全部 bot」—— 群里却能 @ 到不在群的人（Host 只能记成
+           unknown mention，白白浪费一次点名）。 */
+        if (Array.isArray(composerRoom.members)) {
+          return { id: composerRoom.id, title: composerRoom.title, members: composerRoom.members };
+        }
+        return null;
       } catch (_) { return null; }
+    }
+    /**
+     * 点名的 token：人要能读懂，Host 也要能**唯一**解析。
+     *   · 不重名 ⇒ 就用名字（老行为，一个字都不改）
+     *   · 重名   ⇒ 用「名字（后缀）」：后缀优先取**职责**（和界面上的标签同一套算法）。
+     *              Host 按「名字（后缀）」解析（职责 → 分组 → id 尾段），命中唯一那个。
+     *   · 兜底   ⇒ id（Host 也认 id，永远唯一；宁可给 id 也不给一个会指错的写法）。
+     * 标签里用的是「名字 · 后缀」（中间点 + 空格），token 里换成全角括号：
+     *    全角括号里可以带空格（职责名带空格很常见），Host 按前缀解析不受影响。
+     */
+    function mentionTokenFor(label, name, id) {
+      const nm = String(name || "");
+      const lb = String(label || "");
+      if (!nm || lb === nm) return nm;
+      const sep = lb.indexOf(" · ");
+      if (sep > 0) return nm + "（" + lb.slice(sep + 3) + "）";
+      return String(id || nm);
     }
     function mentionCandidates(query) {
       const out = [];
       const seen = new Set();
-      const push = (it) => { if (!seen.has(it.token)) { seen.add(it.token); out.push(it); } };
+      /* 【批次 15】去重键从**名字**改成 **id**。
+         以前按名字去重 ⇒ 群里有两个同名 bot 时，第二个被**静默吞掉**
+         ⇒ 用户根本 @ 不到他（候选列表里只有一个人，用户还以为群里就一个）。
+         同名要能点名 ⇒ 去重必须按 id（名字不是身份）。 */
+      const push = (it) => {
+        const key = it.id ? "id:" + it.id : "tok:" + it.token;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(it);
+      };
       const room = mentionCurrentRoom();
       const members = room && Array.isArray(room.members) ? room.members : [];
+      /* 同一作用域（这个群）的消歧标签 —— 与侧栏/成员区同一套算法（window 桥）。 */
+      const ident = window.__botIdentity || {};
+      const peerBots = [];
+      for (const id of members) {
+        const d = roomBotDetails[String(id)] || {};
+        peerBots.push({
+          id: String(id),
+          name: String(d.name || roomBotNames[String(id)] || id),
+          job: String(d.job || ""),
+          group: String(d.group || ""),
+        });
+      }
+      const labelMap = (typeof ident.labelMap === "function") ? ident.labelMap(peerBots) : {};
       if (members.length) {
         // 群里：能点的只有本群成员。点一个不在群里的人，宿主会记 unknown_mentions 并
         // 按「没点名」处理 —— 与其让用户以为定向成功了，不如根本不列出来。
@@ -25405,16 +25687,20 @@
           const info = botInfoById[id] || { id, name: roomBotNames[id] || String(id), avatar: "" };
           const name = info.name || String(id);
           if (query && name.toLowerCase().indexOf(query) !== 0) continue;
-          push({ token: name, label: name, info });
+          const label = labelMap[String(id)] || name;
+          push({ token: mentionTokenFor(label, name, id), label: label, info: info, id: String(id) });
         }
         return out;
       }
       // 一对一：@ 只是把名字插进正文，候选是全部 Bot（不冒充「群里点名」）
+      const soloBots = [];
       for (const id of Object.keys(botInfoById)) {
         const info = botInfoById[id] || { id, name: id, avatar: "" };
         const name = info.name || id;
         if (query && name.toLowerCase().indexOf(query) !== 0) continue;
-        push({ token: name, label: name, info });
+        const d = roomBotDetails[String(id)] || {};
+        soloBots.push({ id: String(id), name: String(name), job: String(d.job || ""), group: String(d.group || "") });
+        push({ token: name, label: name, info: info, id: String(id) });
       }
       return out;
     }
@@ -26723,6 +27009,8 @@
     /** 每个成员的步骤明细:谁跑了、成没成、说了什么、错在哪。 */
     function cmdRenderSteps(steps, taskSig, roomId) {
       if (!Array.isArray(steps) || !steps.length) return "";
+      /* 【批次 15】步骤上的名字也走统一标签（同一个人在哪都是同一个名字）。 */
+      var labels = CMD_STATE.memberLabels || {};
       var html = '<div class="cmd-steps">';
       for (var i = 0; i < steps.length; i++) {
         var st = steps[i] || {};
@@ -26730,9 +27018,10 @@
         var body = st.ok
           ? String(st.text || "").replace(/\s+/g, " ").trim().slice(0, 120)
           : String(st.error || "").slice(0, 120);
+        var stepLabel = String(st.bot_id || "") ? String(labels[st.bot_id] || st.name || "") : String(st.name || "");
         html += '<div class="cmd-step' + (st.ok ? "" : " cmd-step-bad") + '" data-cmd-step="' + cmdEsc(st.name || "") + '">' +
           '<span class="cmd-step-mark">' + mark + "</span>" +
-          '<span class="cmd-step-name">' + cmdEsc(st.name || "") + "</span>" +
+          '<span class="cmd-step-name">' + cmdEsc(stepLabel) + "</span>" +
           '<span class="cmd-step-text">' + cmdEsc(body) + "</span>" +
           // 「换人」:读**同一张任务卡的输入框**当新人选 ⇒ 一步到位,不用中间弹窗。
           (taskSig && st.bot_id
@@ -26899,10 +27188,43 @@
       'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
       '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>';
 
+    /** 【批次 15】能换给谁：当前群里的成员（去掉自己），显示名用统一标签。
+     *  用户点「换人」却不知道该填什么名字 —— 这份名单就是答案。 */
+    function cmdSwapCandidates(excludeId) {
+      var ms = Array.isArray(CMD_STATE.members) ? CMD_STATE.members : [];
+      var out = [];
+      for (var i = 0; i < ms.length; i++) {
+        var m = ms[i] || {};
+        if (String(m.id || "") === String(excludeId || "")) continue;
+        out.push(String(m.label || m.name || m.id || ""));
+      }
+      return out;
+    }
+
+    /** 任务卡的「谁」：用**带 id 的引用**查统一标签表。
+     *  【批次 15】原来只 join 名字 ⇒ 两个同名 bot 会印成「助手、助手」，
+     *  用户根本看不出是两个人。⇒ 现在按 id 查标签 ⇒ 「助手 · 销售、助手 · 支持」。 */
+    function cmdTaskWho(t) {
+      var labels = CMD_STATE.memberLabels || {};
+      var refs = Array.isArray(t.member_refs) ? t.member_refs : [];
+      if (refs.length) {
+        var names = [];
+        for (var i = 0; i < refs.length; i++) {
+          var r = refs[i] || {};
+          var id = String(r.id || "");
+          var lb = id ? String(labels[id] || "") : "";
+          names.push(lb || String(r.name || id));
+        }
+        return names.join("、");
+      }
+      var ms = Array.isArray(t.members) ? t.members : [];
+      return ms.join("、");
+    }
+
     function cmdCardHtml(task) {
       var t = task;
       var title = t.task_title || t.task || (t.steps[0] && t.steps[0].text) || t.room_title || "";
-      var who = t.members.join("、");
+      var who = cmdTaskWho(t);
       /* 【批次 11 修 bug】line 原来先看 t.needs_you，没有就无条件写「在跑」。
          但 bucket=needs_you 有**两条来源**：state=waiting（显式等用户）或 needs_you 非空。
          前一种 needs_you 是 null ⇒ 卡片顶上贴着「需要你拍板」，下面却写着「在跑」——
@@ -27251,7 +27573,8 @@
         html += '<div class="cmd-member" data-cmd-member="' + cmdEsc(m.id) + '" data-cmd-member-status="' + cmdEsc(st) + '">';
         html += '<span class="cmd-member-av" aria-hidden="true">' + cmdEsc(String(m.name || "?").slice(0, 1)) + "</span>";
         html += '<span class="cmd-member-main">';
-        html += '<span class="cmd-member-name">' + cmdEsc(m.name) + "</span>";
+        /* 【批次 15】显示名用统一标签（同名 ⇒ 带消歧后缀），不是裸名字。 */
+        html += '<span class="cmd-member-name">' + cmdEsc(m.label || m.name) + "</span>";
         if (m.job) html += '<span class="cmd-member-job">' + cmdEsc(m.job) + "</span>";
         html += "</span>";
         html += '<span class="cmd-member-state" data-cmd-state="' + cmdEsc(st) + '">' +
@@ -27383,16 +27706,36 @@
             }
           }
         } catch (_) { /* 读不到成员资料就只显示 id，不编造 */ }
-        var workingNames = {};
-        var needNames = {};
+        /* 【批次 15 · 真 bug】原来这里拿 **名字**做键（workingNames[名字]），
+           下面查的却是 **id**（workingNames[mid]）⇒ 名字≠id 时永远查不到
+           ⇒ **「在跑」状态从来算不出来**（截图里只有「等你拍板」是因为
+           那条走的是 confirm_request.candidates，用的是 id）。
+           ⇒ 现在统一用 **id** 作键：优先 member_refs（批次 15 给 task 补的
+           带 id 引用），老数据没有就退到 steps[].bot_id（步骤层一直带着 id）。 */
+        var workingIds = {};
+        var needIds = {};
         for (var ti = 0; ti < CMD_STATE.tasks.length; ti++) {
           var tt = CMD_STATE.tasks[ti];
           if (!tt) continue;
-          var ms = Array.isArray(tt.members) ? tt.members : [];
+          var msIds = [];
+          try {
+            var refs = Array.isArray(tt.member_refs) ? tt.member_refs : [];
+            for (var ri = 0; ri < refs.length; ri++) {
+              var rid = String((refs[ri] || {}).id || "");
+              if (rid) msIds.push(rid);
+            }
+            if (!msIds.length) {
+              var stp = Array.isArray(tt.steps) ? tt.steps : [];
+              for (var si = 0; si < stp.length; si++) {
+                var sid = String((stp[si] || {}).bot_id || "");
+                if (sid) msIds.push(sid);
+              }
+            }
+          } catch (_) { /* 取不到就当没人参与 */ }
           if (tt.bucket === "working") {
-            for (var wi = 0; wi < ms.length; wi++) workingNames[ms[wi]] = 1;
+            for (var wi = 0; wi < msIds.length; wi++) workingIds[msIds[wi]] = 1;
           } else if (tt.bucket === "needs_you") {
-            for (var ni = 0; ni < ms.length; ni++) needNames[ms[ni]] = 1;
+            for (var ni = 0; ni < msIds.length; ni++) needIds[msIds[ni]] = 1;
             /* 等你拍板的人**不一定在 members 里** ——
                confirm_request 把候选人放在 needs_you.candidates（要用户点名谁来做），
                那个人才是真正卡住的人 ⇒ 也要算成「等你拍板」。 */
@@ -27402,26 +27745,45 @@
                 for (var ci = 0; ci < cands.length; ci++) {
                   var cd = cands[ci] || {};
                   var cid = String(cd.id || cd.name || "");
-                  if (cid) needNames[cid] = 1;
+                  if (cid) needIds[cid] = 1;
                 }
               }
-            } catch (_) { /* 没有候选就按 members 算 */ }
+            } catch (_) { /* 没有候选就按成员算 */ }
           }
         }
+        /* 成员区的显示名：作用域 = **当前群的成员**（同一群里同名 ⇒ 消歧）。 */
+        var ident15 = window.__botIdentity || {};
+        var peerBots15 = [];
+        for (var pi = 0; pi < memberIds.length; pi++) {
+          var pid = String(memberIds[pi] || "");
+          if (!pid) continue;
+          var pinfo = byId[pid] || {};
+          peerBots15.push({
+            id: pid,
+            name: String(pinfo.name || pid),
+            job: String(pinfo.job || ""),
+            group: String(pinfo.group || ""),
+          });
+        }
+        var labelMap15 = (typeof ident15.labelMap === "function") ? ident15.labelMap(peerBots15) : {};
         var members = [];
         for (var mk = 0; mk < memberIds.length; mk++) {
           var mid = String(memberIds[mk] || "");
           if (!mid) continue;
           var info = byId[mid] || {};
-          var status = workingNames[mid] ? "working" : (needNames[mid] ? "needs_you" : "idle");
+          var status = workingIds[mid] ? "working" : (needIds[mid] ? "needs_you" : "idle");
           members.push({
             id: mid,
             name: String(info.name || mid),
+            /* 显示名：统一标签算出来的（含消歧后缀）。 */
+            label: labelMap15[mid] || String(info.name || mid),
             job: String(info.job || info.description || ""),
             status: status,
           });
         }
         CMD_STATE.members = members;
+        /* 任务卡与步骤行也查**同一张表** ⇒ 同一个 bot 在任何地方都是同一个名字。 */
+        CMD_STATE.memberLabels = labelMap15;
 
         /* 顶栏副标题：**说清楚这是谁的指挥台**（批次 12）。
            以前写「10 个群 · 72 件事」⇒ 跨群混排，用户不知道在看谁；
@@ -27539,10 +27901,17 @@
         var cmd = window.__bitbotCommand;
         if (cmd && typeof cmd.open === "function") cmd.open();
       } else if (d === "automation") {
+        /* 【批次 15】切去别的域 ⇒ **先把指挥台收起来**。
+           指挥台是聊天区上的一个视图，和「群资料/排程」同时开着 = 两个视图叠着。
+           keepDomain=true：面板收掉，但当前域留在用户点的这一个上。 */
+        var cmdOff = window.__bitbotCommand;
+        if (cmdOff && typeof cmdOff.close === "function") cmdOff.close(true);
         var ctx = window.__appRailCtx;
         if (ctx && typeof ctx.setRoomRailTab === "function") ctx.setRoomRailTab("routines");
         if (ctx && typeof ctx.openRoomRail === "function") ctx.openRoomRail();
       } else if (d === "settings") {
+        var cmdOff2 = window.__bitbotCommand;
+        if (cmdOff2 && typeof cmdOff2.close === "function") cmdOff2.close(true);
         var ctx2 = window.__appRailCtx;
         if (ctx2 && typeof ctx2.runUserTurn === "function") {
           ctx2.runUserTurn("open settings", { skipSession: true, silentUser: true });
@@ -27596,23 +27965,45 @@
       badge.hidden = n <= 0;
     }
 
+    /* 【批次 15】指挥台的显隐 ↔ 域导航栏的当前域，**必须同步**。
+       两件事：
+         1) 指挥台开着 ⇒ 域导航栏要指向「指挥」—— 否则用户停在「对话」域里
+            看到一个属于「指挥」域的面板（而且两个域同时标着选中态）。
+         2) 关掉指挥台 ⇒ 回到「对话」域（指挥台是聊天区上的**另一个视图**）。
+       keepDomain = true 时不抢域（切去别的域时用：先把指挥台收起来，
+       但当前域要留在用户点的那一个上）。 */
+    function cmdSyncRailDomain(domain) {
+      try {
+        var rail = document.getElementById("app-rail");
+        if (!rail) return;
+        rail.setAttribute("data-app-domain", domain);
+        document.body.setAttribute("data-app-domain", domain);
+        var api = window.__bitbotCommand;
+        if (api && typeof api.appRailRender === "function") api.appRailRender();
+      } catch (_) { /* ignore */ }
+    }
+
     async function cmdOpen() {
       // P1 批 1 D-1:面板的显隐走 **hidden 属性**(不再写行内 style.display)
       // —— ui_chrome.css 里 [hidden]{display:none!important} 是既有兜底(T-1b)。
       var el = document.getElementById("command-panel");
       if (el) el.hidden = false;
-      var btn = document.getElementById("cmd-open-btn");
+      /* 【批次 15】展开态记在**域导航栏的「指挥」**上（侧栏那个入口已删）。 */
+      var btn = document.getElementById("app-rail-command");
       if (btn) btn.setAttribute("aria-expanded", "true");
       cmdSetView(true);
+      cmdSyncRailDomain("command");
       await cmdRefresh();
     }
 
-    function cmdClose() {
+    function cmdClose(keepDomain) {
       var el = document.getElementById("command-panel");
       if (el) el.hidden = true;
-      var btn = document.getElementById("cmd-open-btn");
+      var btn = document.getElementById("app-rail-command");
       if (btn) btn.setAttribute("aria-expanded", "false");
       cmdSetView(false);
+      /* 面板关了 ⇒ 回到「对话」域；除非是「切去别的域」顺手收面板（keepDomain）。 */
+      if (!keepDomain) cmdSyncRailDomain("chat");
     }
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -27625,8 +28016,8 @@
       } catch (e) {
         console.error("[app-rail] 绑定失败", e);
       }
-      var open = document.getElementById("cmd-open-btn");
-      if (open) open.addEventListener("click", function () { cmdOpen(); });
+      /* 【批次 15】侧栏那颗「指挥台」按钮已删 ⇒ 它的点击绑定也删。
+         进指挥台的入口只剩**域导航栏的「指挥」**（appRailBind 里那一条）。 */
       var close = document.getElementById("cmd-panel-close");
       if (close) close.addEventListener("click", function () { cmdClose(); });
       var refresh = document.getElementById("cmd-refresh-btn");
@@ -27693,7 +28084,17 @@
           var swapCard = t.closest ? t.closest("[data-cmd-task]") : null;
           var swapInp = swapCard ? swapCard.querySelector(".cmd-input") : null;
           var swapVal = swapInp ? String(swapInp.value || "").trim() : "";
-          if (!swapVal) { CMD_STATE.note = cmdT("cmdCmdEmpty"); cmdRender(); return; }
+          /* 【批次 15】空输入点「换人」⇒ 如实告诉用户**能换给谁**。
+             以前只说一句「先说点什么」，用户根本不知道该填什么名字。
+             候选用**统一标签**（同名的人带消歧后缀）。 */
+          if (!swapVal) {
+            var cands = cmdSwapCandidates(swapBot);
+            CMD_STATE.note = cands.length
+              ? cmdT("cmdSwapWho") + "：" + cands.join("、")
+              : cmdT("cmdCmdEmpty");
+            cmdRender();
+            return;
+          }
           var apiW = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.reassignTask;
           if (typeof apiW !== "function") return;
           apiW({
@@ -27702,7 +28103,16 @@
             from_bot: swapBot,
             to_bot: swapVal,
           }).then(function (r) {
-            CMD_STATE.note = r && r.ok ? cmdT("cmdSwapped") : cmdT("cmdSwapFailed") + ":" + String((r && r.error) || "unknown");
+            /* 【批次 15】同名歧义：Host 现在**不替用户猜**了 ⇒ 前端要把
+               「有几个、叫什么、可以用哪些 id」讲清楚，不是一句 error code。 */
+            if (r && r.ok) {
+              CMD_STATE.note = cmdT("cmdSwapped");
+            } else if (r && r.error === "ambiguous_bot") {
+              var ids = ((r.candidates || []).map(function (c) { return String((c || {}).id || ""); })).filter(Boolean).join("、");
+              CMD_STATE.note = cmdTp("cmdSwapAmbiguous", { n: String(r.count || (r.candidates || []).length || 2), name: String(r.bot || swapVal), ids: ids });
+            } else {
+              CMD_STATE.note = cmdT("cmdSwapFailed") + ":" + String((r && r.error) || "unknown");
+            }
             cmdRender();
           }).catch(function (e) {
             CMD_STATE.note = cmdT("cmdSwapFailed") + ":" + String((e && e.message) || e);
@@ -27796,8 +28206,12 @@
         } catch (_) { list = []; }
         for (var i = 0; i < list.length; i++) {
           if (list[i] && list[i].id === rid) {
-            if (typeof openRoomChat === "function") openRoomChat(list[i]);
-            await cmdRefresh();
+            /* 【批次 15】**await** openRoomChat —— 以前不 await ⇒ 它还在跑，
+               下面那次刷新就先开始了（竞态），而且刷的是**旧作用域**。
+               现在切群由 openRoomChat 自己负责刷新指挥台（作用域就是当前会话），
+               这里**不再**额外刷一次 —— 免得把「切群不刷新」这个 bug 盖住
+               （盖住了，门禁就永远抓不到它）。 */
+            if (typeof openRoomChat === "function") await openRoomChat(list[i]);
             return { ok: true, room_id: rid, title: String(list[i].title || rid) };
           }
         }

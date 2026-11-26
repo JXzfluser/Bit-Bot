@@ -128,3 +128,8 @@ deliverable.md
 #   /.gate-data-*/     单扇门的隔离根（e2e_desktop_shell_v2 等）
 /.gate-matrix/
 /.gate-data-*/
+
+# 门禁的负向对照副本（变异体）—— 只在门跑的那一瞬间存在。
+# 门崩了/被 kill 时会残留：它们是**变异过的产品文件**，绝不能进版本库
+# （下一次真跑门时它们会盖住源文件 ⇒ 门就在量变异体 ⇒ 假绿）。
+.negative_control_*

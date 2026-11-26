@@ -384,16 +384,28 @@ function main() {
     ? ok("只有一个消息流容器 #log")
     : bad("single stream", (html.match(/id="log"/g) || []).length + " #log containers");
   const chrome = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
-  // Layout contract v1 (§1/§3): single 3-column grid; rail width switches
-  // with body[data-panel]; sidebar stays 280, rail 340. The old 4-column
-  // (0fr placeholder) rules must be gone.
+  // Layout contract v2 (批次 14 域导航栏): 单 grid **四列** appbar|sidebar|main|rail ——
+  // appbar 64px（窄屏 48px）是最左一列、纵跨三行；rail 宽由 body[data-panel]
+  // 单值切换（280/340）。
+  // ⚠️ v1（无 appbar 的三列）与更早的四列（0fr 占位）都必须退役 ——
+  //    它们都还写着就会有人以为域导航栏是浮层，可以随便叠。
+  // ⚠️【批次 15】grid-template-areas 有**两份**：index.html 的 body 规则与
+  //    ui_chrome.css 的 body.grok-ui 规则。body 永远带 .grok-ui ⇒ ui_chrome 那份
+  //    才是真正生效的；两份写着不一样的东西时，门禁照哪份量都会量错
+  //    （批次 15 实测：index.html 那份还写着旧写法，布局门照它量 ⇒ 全线飘红）。
+  //    ⇒ 这里把**两份都要一致**钉住（它们必须同时是「appbar agents header header」）。
   /--sidebar-w:\s*280px/.test(chrome) &&
   /--rail-w:\s*340px/.test(chrome) &&
-  /grid-template-columns:\s*var\(--sidebar-w\) minmax\(0, 1fr\) var\(--panel-w\)/.test(html) &&
+  /--appbar-w:\s*64px/.test(html) &&
+  /grid-template-columns:\s*var\(--appbar-w\) var\(--sidebar-w\) minmax\(0, 1fr\) var\(--panel-w\)/.test(html) &&
+  /"appbar agents header header"/.test(html) &&
+  /"appbar agents main\s+rail"/.test(html) &&
+  /"appbar agents header header"/.test(chrome) &&
   /body\[data-panel="tools"\]/.test(html) &&
+  !/grid-template-columns:\s*var\(--sidebar-w\) minmax\(0, 1fr\) var\(--panel-w\)/.test(html) &&
   !/grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr 0fr/.test(html)
-    ? ok("右栏开合独立：单 grid sidebar|main|rail 三列，rail 宽由 data-panel 单值切换（280/340，旧 4 列 0fr 已退役）")
-    : bad("rails", "contract-v1 single-grid layout missing");
+    ? ok("右栏开合独立：单 grid appbar|sidebar|main|rail 四列，域导航栏 64px 纵跨三行，rail 宽由 data-panel 单值切换（280/340）；两份 grid-template-areas 一致，旧三列与旧 0fr 四列已退役")
+    : bad("rails", "contract-v2 single-grid layout missing / 两份 grid-template-areas 不一致");
 
   finish();
 }

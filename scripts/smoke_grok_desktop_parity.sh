@@ -5186,27 +5186,39 @@ fi
 #   ⇒ 浏览器不在时是 SKIP(rc=2)，SKIP **不等于 PASS**，本轮不因此把门算绿。
 if timeout 600 node scripts/prove_app_rail.js > /tmp/g147-app-rail.log 2>&1; then
   ok "G-147 prove_app_rail（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g147-app-rail.log | tail -1)）"
+  _g147_ran=1
 else
   _g147_rc=$?
   if [ "$_g147_rc" = "2" ]; then
-    ok "G-147 prove_app_rail SKIP（缺浏览器；SKIP ≠ PASS）"
+    # 【批次 15】CI 上没有 Chromium ⇒ 这道门**根本没跑**。
+    #   以前这里记成 ok（把 SKIP 当绿），可下面的锚点循环照跑 ⇒ 日志里没有 AR-0x ⇒
+    #   **8 条假红**（门红 1 + 负向对照 1 + 锚点 6）。
+    #   那些红说的是「CI 缺浏览器」，不是「产品坏了」⇒ 混进红里就是噪音，
+    #   真正的回归会被淹掉（批次 14 就是这样让 G-46/G-24 的真回归没被一眼看见）。
+    #   现在：诚实地记成 skip（不绿也不红），锚点也不跑 —— 没跑过的锚点不是「缺失」。
+    echo "  · skip：prove_app_rail 需要浏览器，本机没跑（SKIP ≠ PASS；锚点未跑）"
+    GATE_SKIP=$((GATE_SKIP+1))
+    _g147_ran=0
   else
     bad "G-147 prove_app_rail（见 /tmp/g147-app-rail.log；$(grep '✗' /tmp/g147-app-rail.log | head -3 | tr '\n' ' ')）"
+    _g147_ran=1
   fi
 fi
-if grep -q "负向对照有牙" /tmp/g147-app-rail.log 2>/dev/null; then
-  ok "G-147 负向对照在位：删掉一个域 ⇒ 门禁判红"
-else
-  bad "G-147 负向对照缺失：门禁没证明判据有牙"
-fi
-# 编号锚点（AC-02 的「门声明了就得有人锚」）：每个域一条，漏一条当场红。
-for gAR_id in AR-01 AR-02 AR-03 AR-04 AR-05 AR-06; do
-  if grep -q "\[$gAR_id\]" /tmp/g147-app-rail.log 2>/dev/null; then
-    ok "G-147 锚点：$gAR_id"
+if [ "$_g147_ran" = "1" ]; then
+  if grep -q "负向对照有牙" /tmp/g147-app-rail.log 2>/dev/null; then
+    ok "G-147 负向对照在位：删掉一个域 ⇒ 门禁判红"
   else
-    bad "G-147 锚点缺失：$gAR_id"
+    bad "G-147 负向对照缺失：门禁没证明判据有牙"
   fi
-done
+  # 编号锚点（AC-02 的「门声明了就得有人锚」）：每个域一条，漏一条当场红。
+  for gAR_id in AR-01 AR-02 AR-03 AR-04 AR-05 AR-06; do
+    if grep -q "\[$gAR_id\]" /tmp/g147-app-rail.log 2>/dev/null; then
+      ok "G-147 锚点：$gAR_id"
+    else
+      bad "G-147 锚点缺失：$gAR_id"
+    fi
+  done
+fi
 
 # G-148 跨作用域桥接的「声明—引用」对账门（批次 14）
 #   window 桥是**一次性赋值**：window.__bitbotCommand = { open: cmdOpen, … };
@@ -5231,6 +5243,78 @@ for gWB_id in WB-01 WB-02 WB-03 WB-04 WB-05; do
     ok "G-148 锚点：$gWB_id"
   else
     bad "G-148 锚点缺失：$gWB_id"
+  fi
+done
+
+# G-149 「名字不是身份」门（批次 15）
+#   机制层一直用 id 区分 Bot，显示层只印名字 ⇒ 两个同名 bot 在界面上完全一样；
+#   而且真出过 bug：成员区拿**名字**做键去查 **id** ⇒「在跑」状态永远算不出来。
+#   本门钉住：同名 ⇒ 显示名必须不同；不重名 ⇒ 显示名原样（不加多余后缀）；
+#   后缀优先用职责、职责也撞才退到短 id；侧栏/成员区/任务卡**同一个名字**（单一真源）；
+#   成员区「在跑」算得出来；**冗余入口已移除**（侧栏那颗「指挥台」按钮没了，
+#   角标迁到域导航栏的「指挥」上）；带负向对照（抽掉消歧 ⇒ 必须判红）。
+#   ⇒ 浏览器不在时是 SKIP(rc=2)，SKIP **不等于 PASS**，本轮不因此把门算绿。
+if timeout 600 node scripts/prove_bot_identity.js > /tmp/g149-bot-identity.log 2>&1; then
+  ok "G-149 prove_bot_identity（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g149-bot-identity.log | tail -1)）"
+  _g149_ran=1
+else
+  _g149_rc=$?
+  if [ "$_g149_rc" = "2" ]; then
+    # 同 G-147：缺浏览器 ⇒ 门没跑 ⇒ 记 skip，锚点不跑（没跑过的锚点不是「缺失」）。
+    echo "  · skip：prove_bot_identity 需要浏览器，本机没跑（SKIP ≠ PASS；锚点未跑）"
+    GATE_SKIP=$((GATE_SKIP+1))
+    _g149_ran=0
+  else
+    bad "G-149 prove_bot_identity（见 /tmp/g149-bot-identity.log；$(grep '✗' /tmp/g149-bot-identity.log | head -3 | tr '\n' ' ')）"
+    _g149_ran=1
+  fi
+fi
+if [ "$_g149_ran" = "1" ]; then
+  for gBI_id in BI-01 BI-02 BI-03 BI-04 BI-05 BI-06 BI-07 BI-08 BI-09 BI-10; do
+    if grep -q "\[$gBI_id\]" /tmp/g149-bot-identity.log 2>/dev/null; then
+      ok "G-149 锚点：$gBI_id"
+    else
+      bad "G-149 锚点缺失：$gBI_id"
+    fi
+  done
+fi
+
+# G-150 换人歧义门（批次 15）
+#   旧写法 bots.find(b => b.id === toRaw || b.name === toRaw) ⇒ 同名时**静默挑第一个**：
+#   用户看到「已换人」，却不知道换给了谁（下一棒却由那个 bot 去做）。
+#   ⇒ 现在同名命中多个 ⇒ 明确报 ambiguous_bot + 列出候选，让用户指认。
+#   本门跑**真 product_surface**（隔离数据根），纯 Node ⇒ 不需要浏览器。
+if timeout 300 node scripts/prove_swap_disambiguation.js > /tmp/g150-swap-disambiguation.log 2>&1; then
+  ok "G-150 prove_swap_disambiguation（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g150-swap-disambiguation.log | tail -1)）"
+else
+  bad "G-150 prove_swap_disambiguation（见 /tmp/g150-swap-disambiguation.log；$(grep '✗' /tmp/g150-swap-disambiguation.log | head -3 | tr '\n' ' ')）"
+fi
+for gSD_id in SD-01 SD-02 SD-03 SD-04; do
+  if grep -q "\[$gSD_id\]" /tmp/g150-swap-disambiguation.log 2>/dev/null; then
+    ok "G-150 锚点：$gSD_id"
+  else
+    bad "G-150 锚点缺失：$gSD_id"
+  fi
+done
+
+# G-151 @ 点名歧义门（批次 15）
+#   @ 是「让谁干活」最直接的口子。旧写法 bots/members.find(... => name 命中)
+#   ⇒ 群里两个同名 bot 时**静默挑第一个** ⇒ 用户 @ 的是 A，跑出来的是 B 干的。
+#   而且前端更早就坏了：候选列表按**名字**去重 ⇒ 第二个同名 bot 根本不列出来
+#   ⇒ 用户连 @ 都 @ 不到他（前端那半边钉在 G-149 的 BI-10 里）。
+#   ⇒ 现在：同名 ⇒ Host 报歧义（ambiguous_mentions，不假装定向成功）；
+#     带后缀的写法「名字（职责）」/「名字（分组）」⇒ 精确命中那一个。
+#   本门跑**真 product_surface**（隔离数据根），纯 Node ⇒ 不需要浏览器。
+if timeout 300 node scripts/prove_mention_disambiguation.js > /tmp/g151-mention-disambiguation.log 2>&1; then
+  ok "G-151 prove_mention_disambiguation（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g151-mention-disambiguation.log | tail -1)）"
+else
+  bad "G-151 prove_mention_disambiguation（见 /tmp/g151-mention-disambiguation.log；$(grep '✗' /tmp/g151-mention-disambiguation.log | head -3 | tr '\n' ' ')）"
+fi
+for gMD_id in MD-01 MD-02 MD-03 MD-04 MD-05 MD-06; do
+  if grep -q "\[$gMD_id\]" /tmp/g151-mention-disambiguation.log 2>/dev/null; then
+    ok "G-151 锚点：$gMD_id"
+  else
+    bad "G-151 锚点缺失：$gMD_id"
   fi
 done
 
@@ -6594,19 +6678,29 @@ else
   bad "G-129 prove_team_division 计数锚点红（$(tail -1 /tmp/g129-team_division.log)）"
 fi
 timeout 900 node scripts/prove_command_panel.js >/tmp/g129-command_panel.log 2>&1
-if [ $? -eq 2 ]; then g129_check /tmp/g129-command_panel.log command_panel skip; else g129_check /tmp/g129-command_panel.log command_panel; fi
-if grep -q "PASS=23 FAIL=0" /tmp/g129-command_panel.log; then
-  ok "G-129 prove_command_panel 计数锚点：PASS=23 FAIL=0"
+_g129c_rc=$?
+if [ "$_g129c_rc" -eq 2 ]; then g129_check /tmp/g129-command_panel.log command_panel skip; else g129_check /tmp/g129-command_panel.log command_panel; fi
+if [ "$_g129c_rc" -eq 2 ]; then
+  # 【批次 15】没跑 ⇒ 不做计数锚点（对没跑过的门数条数没有意义，
+  # 以前在这里记成红 —— CI 缺浏览器而已，不是产品坏了）。
+  echo "  · skip：prove_command_panel 的计数锚点未跑（门没跑，SKIP ≠ PASS）"
+  GATE_SKIP=$((GATE_SKIP+1))
+elif grep -q "PASS=25 FAIL=0" /tmp/g129-command_panel.log; then
+  ok "G-129 prove_command_panel 计数锚点：PASS=25 FAIL=0（批次 15：CP-14 的负向对照重写成「对照组 + 变异组」两条 ⇒ 23 → 25）"
 else
   bad "G-129 prove_command_panel 计数锚点红（$(tail -1 /tmp/g129-command_panel.log)）"
 fi
 timeout 900 node scripts/prove_command_task_control.js >/tmp/g129-command_task_control.log 2>&1
-if [ $? -eq 2 ]; then g129_check /tmp/g129-command_task_control.log command_task_control skip; else g129_check /tmp/g129-command_task_control.log command_task_control; fi
+_g129t_rc=$?
+if [ "$_g129t_rc" -eq 2 ]; then g129_check /tmp/g129-command_task_control.log command_task_control skip; else g129_check /tmp/g129-command_task_control.log command_task_control; fi
 # 计数锚点（精确值，不是"至少"）：门多一条断言就得**有意**抬一次 ——
 # 静默掉断言才是它要抓的东西。上一批把这个数停在 82，而门早就长到 93
 # （2026-11-22 实测 93）⇒ 锚点自己失修，L3 因此长期红着，没人看见。
 # 2026-11-22：加了 TC-33（指挥台「按钮只在点了能成时才渲染」的双向断言）⇒ 95。
-if grep -q "PASS=95 FAIL=0" /tmp/g129-command_task_control.log; then
+if [ "$_g129t_rc" -eq 2 ]; then
+  echo "  · skip：prove_command_task_control 的计数锚点未跑（门没跑，SKIP ≠ PASS）"
+  GATE_SKIP=$((GATE_SKIP+1))
+elif grep -q "PASS=95 FAIL=0" /tmp/g129-command_task_control.log; then
   ok "G-129 prove_command_task_control 计数锚点：PASS=95 FAIL=0"
 else
   bad "G-129 prove_command_task_control 计数锚点红（$(tail -1 /tmp/g129-command_task_control.log)）"

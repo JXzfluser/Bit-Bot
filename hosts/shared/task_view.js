@@ -76,7 +76,7 @@ function cmdMergeTaskRecords(tasks, records) {
     if (seen) continue;
     tasks.push({
       room_id: String(rec2.room_id || ""), room_title: "",
-      steps: [], members: [], needs_you: null, report: null,
+      steps: [], members: [], member_refs: [], needs_you: null, report: null,
       deliverables: [], task: String(rec2.task || ""),
       task_title: String(rec2.title || rec2.task || ""),
       task_sig: rec2.id, partial: false,
@@ -107,7 +107,7 @@ function aggregateCommandTasks(rooms, taskRecords) {
       return {
         room_id: String((row && row.room_id) || room.id || ""),
         room_title: String(room.title || ""),
-        steps: [], members: [], needs_you: null, report: null,
+        steps: [], members: [], member_refs: [], needs_you: null, report: null,
         deliverables: [], task: "", task_title: "", task_sig: "",
         partial: false, total: 0, returned: 0, at: "",
       };
@@ -151,6 +151,18 @@ function aggregateCommandTasks(rooms, taskRecords) {
           at: String(row.at || ""),
         });
         if (nm && cur.members.indexOf(nm) < 0) cur.members.push(nm);
+        /* 【批次 15】members 只装**名字** ⇒ 名字不是身份：两个同名 bot 会塌成一个，
+           而且下游拿名字当键去查 id 就会查不到（成员区「在跑」状态算不出来）。
+           ⇒ 另存一份带 id 的引用（member_refs），**按 id 去重**（同名不同人算两个人）。
+           members 保持原样（向后兼容：老的消费者 join("、") 还在用）。 */
+        var bid2 = String(row.bot_id || row.speaker || "");
+        if (bid2) {
+          var seenRef = false;
+          for (var mr = 0; mr < cur.member_refs.length; mr++) {
+            if (String(cur.member_refs[mr].id) === bid2) { seenRef = true; break; }
+          }
+          if (!seenRef) cur.member_refs.push({ id: bid2, name: nm || bid2 });
+        }
         if (!cur.at) cur.at = String(row.at || "");
         continue;
       }
@@ -241,6 +253,8 @@ function toTaskListItem(task, opts) {
   var o = opts || {};
   var steps = Array.isArray(t.steps) ? t.steps : [];
   var members = Array.isArray(t.members) ? t.members : [];
+  /* 【批次 15】带 id 的成员引用（同名不同人算两个人）。老字段 members 保留不动。 */
+  var memberRefs = Array.isArray(t.member_refs) ? t.member_refs : [];
   var bucket = String(t.bucket || "");
   var sig = String(t.task_sig || "");
   var firstText = steps.length ? String((steps[0] || {}).text || "") : "";
@@ -265,6 +279,10 @@ function toTaskListItem(task, opts) {
     title: title,
     task: String(t.task || ""),
     members: members.slice(),
+    member_refs: memberRefs.map(function (r) {
+      var row = r || {};
+      return { id: String(row.id || ""), name: String(row.name || "") };
+    }),
     steps: steps.map(function (s) {
       var row = s || {};
       return {

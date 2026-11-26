@@ -94,6 +94,13 @@ function launch() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* 批次 14 域导航栏（#app-rail）是**布局的最左一列**（不是浮层）：
+   宽屏 64px（--appbar-w），窄屏 ≤900 时 48px。
+   ⇒ 「主列还剩多少」的账必须把它算进去，否则尺子会误判成「主列被挤了」。
+   同时它是四个域的入口 ⇒ 宽度与左缘位置也钉住：它不许为了给主列让路而消失/漂走。 */
+const APP_RAIL_W_WIDE = 64;
+const APP_RAIL_W_NARROW = 48;
+
 /* 一次量齐：视口、侧栏是否隐藏、各区域矩形、有没有横向滚动。
    全部用 getBoundingClientRect / computed display —— 用户看到的宽度就是这个数。 */
 const PROBE = () => {
@@ -118,6 +125,7 @@ const PROBE = () => {
     vw: window.innerWidth,
     vh: window.innerHeight,
     sidebar: document.body.dataset.sidebar || "expanded",
+    apprail: rect("app-rail"),
     agents: rect("agents"),
     main: rect("main"),
     header: rect("header"),
@@ -165,19 +173,25 @@ let app = null;
     }
 
     /* ---------- R-02 窄窗 700：不再强制收起（设计已改手动），但主列必须还够用 ----------
-       合同（layout-contract.md §3.1 更正后）：≤900 侧栏收成 200px 紧凑文字侧栏，
+       合同（layout-contract.md §3.1 更正后 + 批次 14 域导航栏）：≤900 侧栏收成 200px
+       紧凑文字侧栏；**域导航栏（#app-rail）是布局的最左一列**，宽 48px；
        主列拿剩下的全部宽度；抽屉是覆盖层不占列。 */
     {
       await setWidth(win, 700, 700);
       const g = await measure(win);
       const agentsW = g.agents && g.agents.display !== "none" ? g.agents.w : 0;
-      const okSum = Math.abs(g.main.w + agentsW - g.vw) <= 2;
+      const railW = g.apprail ? g.apprail.w : 0;
+      /* 域导航栏是**列**，不是浮层 ⇒ 主列的账必须把它算进去。 */
+      const okSum = Math.abs(g.main.w + agentsW + railW - g.vw) <= 2;
       const okAgents = agentsW <= 200.5;
-      const usable = g.main.w >= g.vw - 200.5;
-      if (okSum && okAgents && usable && g.hscroll === 0) {
-        ok(`R-02 窄窗（${g.vw}）主列不被挤没：agents=${agentsW}px + main=${g.main.w}px = 视口宽，无横向滚动（侧栏按设计保持手动态=${g.sidebar}）`);
+      const usable = g.main.w >= g.vw - railW - 200.5;
+      /* 新钉：窄屏域导航栏必须是 48px 且贴住左边缘 ——
+         它不许为了给主列让路而消失或漂走（那等于把四个域藏起来）。 */
+      const okRail = Math.abs(railW - APP_RAIL_W_NARROW) <= 2 && (!g.apprail || g.apprail.x <= 0.5);
+      if (okSum && okAgents && usable && okRail && g.hscroll === 0) {
+        ok(`R-02 窄窗（${g.vw}）主列不被挤没：apprail=${railW}px + agents=${agentsW}px + main=${g.main.w}px = 视口宽，无横向滚动（侧栏按设计保持手动态=${g.sidebar}）`);
       } else {
-        bad("R-02 窄窗下主列被挤了", JSON.stringify({ vw: g.vw, agents: agentsW, main: g.main.w, sum: g.main.w + agentsW, hscroll: g.hscroll }));
+        bad("R-02 窄窗下主列被挤了", JSON.stringify({ vw: g.vw, apprail: railW, agents: agentsW, main: g.main.w, sum: g.main.w + agentsW + railW, okSum, okRail, hscroll: g.hscroll }));
       }
     }
 
@@ -186,14 +200,16 @@ let app = null;
       await setWidth(win, 480, 720);
       const g = await measure(win);
       const agentsW = g.agents && g.agents.display !== "none" ? g.agents.w : 0;
-      const sum = g.main.w + agentsW;
+      const railW = g.apprail ? g.apprail.w : 0;
+      const sum = g.main.w + agentsW + railW;
       const problems = [];
-      if (Math.abs(sum - g.vw) > 2) problems.push(`main ${g.main.w} + agents ${agentsW} ≠ 视口 ${g.vw}`);
+      if (Math.abs(sum - g.vw) > 2) problems.push(`main ${g.main.w} + agents ${agentsW} + apprail ${railW} ≠ 视口 ${g.vw}`);
+      if (Math.abs(railW - APP_RAIL_W_NARROW) > 2) problems.push(`域导航栏宽 ${railW} ≠ ${APP_RAIL_W_NARROW}`);
       if (g.hscroll > 0) problems.push(`横向滚动 ${g.hscroll}px`);
       if (!g.composer || g.composer.bottom > g.vh + 0.5) problems.push(`composer 底 ${g.composer && g.composer.bottom} 越出视口 ${g.vh}`);
       if (g.composer && g.composer.right > g.vw + 0.5) problems.push(`composer 右 ${g.composer.right} 越出视口`);
-      if (problems.length) bad(`R-03 480（产品最小宽）不可用`, JSON.stringify({ vw: g.vw, main: g.main.w, agents: agentsW, problems }));
-      else ok(`R-03 480 档仍然走通：agents=${agentsW}px、main=${g.main.w}px、composer 完整在视口内、无横向滚动`);
+      if (problems.length) bad(`R-03 480（产品最小宽）不可用`, JSON.stringify({ vw: g.vw, main: g.main.w, agents: agentsW, apprail: railW, problems }));
+      else ok(`R-03 480 档仍然走通：apprail=${railW}px、agents=${agentsW}px、main=${g.main.w}px、composer 完整在视口内、无横向滚动`);
     }
 
     /* ---------- R-04 手动收起：用真实按钮，不用内部函数 ---------- */
@@ -205,9 +221,12 @@ let app = null;
       await sleep(400);
       const g = await measure(win);
       const hidden = g.agents && g.agents.display === "none";
-      hidden && g.sidebar === "collapsed" && Math.abs(g.main.w - g.vw) <= 2
-        ? ok(`R-04 手动收起后（点 #sidebar-toggle-btn）#agents 真的没了，主列拿满 ${g.main.w}px（视口 ${g.vw}）`)
-        : bad("R-04 手动收起后主列没拿满视口", JSON.stringify({ sidebar: g.sidebar, agents: g.agents && g.agents.display, main: g.main.w, vw: g.vw }));
+      const railW = g.apprail ? g.apprail.w : 0;
+      /* 收起侧栏 ⇒ 主列拿满**除域导航栏以外**的全部宽度。 */
+      hidden && g.sidebar === "collapsed" && Math.abs(g.main.w - (g.vw - railW)) <= 2 &&
+        Math.abs(railW - APP_RAIL_W_WIDE) <= 2
+        ? ok(`R-04 手动收起后（点 #sidebar-toggle-btn）#agents 真的没了，主列拿满 ${g.main.w}px（视口 ${g.vw} − 域导航栏 ${railW}）`)
+        : bad("R-04 手动收起后主列没拿满视口", JSON.stringify({ sidebar: g.sidebar, agents: g.agents && g.agents.display, main: g.main.w, vw: g.vw, apprail: railW }));
     }
 
     /* ---------- R-05 收起态必须有看得见、点得到的重开入口 ----------

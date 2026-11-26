@@ -126,7 +126,7 @@ try { writeDemoFixture(); } catch (e) { console.log("[演示数据写入失败]"
 
   // 2) 打开指挥台
   await win.evaluate(() => {
-    const b = document.getElementById("cmd-open-btn");
+    const b = document.getElementById("app-rail-command");
     if (b) b.click();
   });
   await win.waitForTimeout(2200);
@@ -140,7 +140,7 @@ try { writeDemoFixture(); } catch (e) { console.log("[演示数据写入失败]"
 
   // 4) 右侧 rail 打开的样子（群资料），用来对比设计语言
   await win.evaluate(() => {
-    const b = document.getElementById("cmd-open-btn");
+    const b = document.getElementById("app-rail-command");
     if (b) b.click();
     const r = document.querySelector('[data-action="open-room"], #room-open-btn, .room-rail-btn');
     if (r) r.click();

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 6,
   "updated": "2026-11-26",
   "owner": "team/t3-gate-tiering",
   "purpose": "门禁分层清单（可执行）：每一层都是 scripts/smoke_grok_desktop_parity.sh 里的一段；门名必须字面出现在矩阵里（AC-07 的接线口径）。",
@@ -2134,6 +2134,33 @@
       "kind": "门",
       "reason": "门：prove_window_bridge.js — 跨作用域桥接的「声明—引用」对账门（批次 14）：window 桥是**一次性赋值**（window.__bitbotCommand = { open: cmdOpen, … }），只要其中任何一个引用在运行时是 undefined，整行就抛 ReferenceError ⇒ **整个桥没了** ⇒ 所有跨作用域功能**同时**静默失效（页面不红不崩，只是「点了没反应」）。真实事故（2026-11-26）：index.html 里一个没闭合的块注释吞掉了 cmdOpen 等**五个函数声明** —— 那**不是语法错误** ⇒ node --check 全绿 ⇒ 任何语法级门禁都看不见。本门在**静态层**钉死：WB-1 桥接引用的标识符必须声明过、WB-2「别处还在用、声明却被注释吞掉」的函数、WB-3 tokenizer 自检（尺子失准就如实报红）、WB-4/WB-5 负向对照（含原事故原样重演）；纯读文件、不起进程、不联网 ⇒ L1 秒级，每次提交都跑；红即阻塞",
       "wired_in": "G-148"
+    },
+    {
+      "file": "prove_bot_identity.js",
+      "layer": "L2",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_bot_identity.js —「名字不是身份」门（批次 15）：机制层一直用 id 区分 Bot，显示层只印名字 ⇒ 两个同名 bot 在界面上完全一样；且真出过 bug（成员区拿名字做键去查 id ⇒「在跑」状态永远算不出来）。本门钉住：同名 ⇒ 显示名必须不同；不重名 ⇒ 显示名原样（不许凭空加后缀）；后缀优先用职责、职责也撞才退到短 id 且必须唯一；侧栏/成员区/任务卡对同一个 bot 显示**同一个名字**（单一真源）；成员区「在跑」算得出来；**冗余入口已移除**（侧栏那颗「指挥台」按钮没了，角标迁到域导航栏的「指挥」）；**点名候选里两个同名 bot 都在**、点进去插入的是「名字（后缀）」（以前按名字去重 ⇒ 第二个被静默吞掉，用户连 @ 都 @ 不到）；自带负向对照（抽掉消歧 ⇒ 必须判红）；L2 真实用户旅程：真浏览器渲染 ⇒ 合并/提频跑；红即阻塞",
+      "wired_in": "G-149"
+    },
+    {
+      "file": "prove_swap_disambiguation.js",
+      "layer": "L1",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_swap_disambiguation.js —「换人」遇到同名 bot 时不许替用户猜（批次 15）：旧写法 bots.find(b => b.id === toRaw || b.name === toRaw) ⇒ 同名时**静默挑第一个**，用户看到「已换人」却不知道换给了谁（下一棒却由那个 bot 去做）⇒ 错了还不吭声。本门跑**真 product_surface**（隔离数据根）：同名 ⇒ 必须报 ambiguous_bot 并列出候选；按 id ⇒ 成功；唯一名字 ⇒ 成功；自带负向对照（换回 find(...) 的旧写法 ⇒ 判红）；纯 Node 不需要浏览器 ⇒ L1 秒级，每次提交都跑；红即阻塞",
+      "wired_in": "G-150"
+    },
+    {
+      "file": "prove_mention_disambiguation.js",
+      "layer": "L1",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_mention_disambiguation.js — @ 点名遇到同名 bot 时不许替用户猜（批次 15）：旧写法 members.find(m => m.name === name || m.id === name) ⇒ 群里两个同名 bot 时**静默挑第一个** ⇒ 用户 @ 的是 A，跑出来的是 B 干的；前端更早就坏了（候选列表按**名字**去重 ⇒ 第二个同名 bot 根本不列出来 ⇒ 连 @ 都 @ 不到）。本门跑**真 product_surface**（隔离数据根）：同名 ⇒ 必须报 ambiguous_mentions（不假装定向成功）；「名字（职责）」/「名字（分组）」的消歧写法 ⇒ 精确命中那一个；唯一名字 ⇒ 不拦；@everyone ⇒ 全员（既有语义没改坏）；自带负向对照（换回 find(...) 的旧写法 ⇒ 判红）；纯 Node 不需要浏览器 ⇒ L1 秒级，每次提交都跑；红即阻塞",
+      "wired_in": "G-151"
     }
   ],
   "frozen": [

@@ -1,25 +1,34 @@
-/* e2e_desktop_layout_target.mjs — Layout Contract v1 real-render gates.
+/* e2e_desktop_layout_target.mjs — Layout Contract v2 real-render gates.
  *
  * Launches the REAL app (hosts/desktop/main.js) through Electron under xvfb
  * at fixed 1440x900 and 1280x800 content-viewport windows, drives the panels
  * through the documented state source (setPanel, typeof-guarded) and the
  * sidebar through REAL USER ACTIONS (clicks on the product's own buttons —
  * see the setSidebar comment below), and asserts:
- *   D-L-xx  geometry vs contract (header 56 / sidebar 280 / rail 340 /
- *           stream column <=760 / main = viewport - sidebar - rail, ±2px),
- *           region-rect non-overlap, no horizontal scroll, <=1 visible rail,
- *           panel=none contributes 0 rail width (no empty rail),
+ *   D-L-xx  geometry vs contract (header 56 / **域导航栏 64** / sidebar 280 /
+ *           rail 340 / stream column <=760 / main = viewport - apprail - sidebar
+ *           - rail, ±2px), region-rect non-overlap, no horizontal scroll, <=1
+ *           visible rail, panel=none contributes 0 rail width (no empty rail),
  *           default state at boot (sidebar expanded, panel none, no modal).
  *   D-L-13  narrow viewports (900 / 700 / 480 — the product minWidth): the
- *           sidebar is a compact 200px rail (index.html:2025-2047), main takes
- *           everything left (main = viewport - min(200, viewport); collapsed =
- *           viewport), composer fully inside the viewport, rails become overlay
+ *           sidebar is a compact 200px rail (index.html:2025-2047), the domain
+ *           rail shrinks to 48px (icons only), main takes everything left
+ *           (main = viewport - 48 - min(200, viewport); collapsed = viewport - 48),
+ *           composer fully inside the viewport, rails become overlay
  *           drawers (never squeeze main), no horizontal scroll, regions still
  *           don't overlap. Caliber change and its evidence: layout-contract.md §3.2.
  *   D-D-xx  debug surfaces absent by default; present with dev-mode.
  *   D-C-xx  visible-copy scan (zh-CN no unlisted English; keys 3-lang parity).
  * Skips honestly (and prints SKIP with the reason) when electron/xvfb are
  * unavailable — a skipped gate is NEVER a PASS.
+ *
+ * 【批次 14 域导航栏之后的口径】四列了：appbar | sidebar | main | rail。
+ * 尺子原来钉的是**退役的 v1 三列**（没有 appbar 那一列）⇒ 域导航栏一落地，
+ * 「main = 视口 − 侧栏 − 右栏」这条不变量算出来就全差一个列宽。
+ * ⚠️ 这里改的是**尺子**，不是产品：产品是四列（index.html:29），域导航栏是
+ * 最左一列（grid-area: appbar，纵跨三行）。口径跟着真源走，但**门槛不降**：
+ * 原来那 5 条判据一条没删，另外加了 5 条更严的（域导航栏宽度、贴左缘、
+ * 不许压住别的区、header 从它右缘开始、侧栏紧贴它右缘）。
  *
  * static prove_*.js regex probes remain LINT ONLY (target-v1.md §5).
  */
@@ -81,6 +90,12 @@ const BAND = 2;
 /* 窄窗侧栏宽度上限（layout-contract.md §3.2）：≤900 时产品把 --sidebar-w 压到 200px
    （index.html:2025 媒体查询、:2040 变量），主列拿剩下的。D-L-13 的成功文案也引用它。 */
 const NARROW_SIDEBAR_MAX = 200;
+/* 【批次 14 域导航栏】#app-rail 是布局的**最左一列**（grid-template-columns:
+   var(--appbar-w) var(--sidebar-w) minmax(0,1fr) var(--panel-w)）：
+   宽屏 64px、窄屏（≤900）48px。它不是浮层 ⇒ 所有「主列还剩多少」的账都要算它。
+   同时它自己也受检：贴左缘、宽度对、不许压住别的区。 */
+const APP_RAIL_W_WIDE = 64;
+const APP_RAIL_W_NARROW = 48;
 const near = (a, b) => Math.abs(a - b) <= BAND;
 
 /* The shell hides to tray on window close (main.js win.on("close")); a bare
@@ -154,6 +169,7 @@ const GEOMETRY_PROBE = `(() => {
   return {
     panel: document.body.dataset.panel || 'none',
     sidebar: document.body.dataset.sidebar || 'expanded',
+    apprail: q('#app-rail') && rect(q('#app-rail')),
     header: q('header') && rect(q('header')),
     agents: q('#agents') && rect(q('#agents')),
     main: rect(q('#main')),
@@ -175,10 +191,27 @@ const rectsOverlap = (a, b) =>
 function checkState(g, vpW, state) {
   const collapsed = g.sidebar === "collapsed";
   const expRail = state === "none" || state === "collapsed" ? 0 : 340;
-  const expMainW = vpW - (collapsed ? 0 : 280) - expRail;
+  /* 【批次 14 域导航栏】它是布局的**最左一列**（宽 64px），不是浮层
+     ⇒ 主列的账要把它算进去：main = 视口 − 域导航栏 − 侧栏 − 右栏。 */
+  const expMainW = vpW - APP_RAIL_W_WIDE - (collapsed ? 0 : 280) - expRail;
   if (!near(g.header.h, 56)) bad(`1440/${state}: header h=${g.header.h} ≠ 56±${BAND}`);
   if (!near(g.agents.w, collapsed ? 0 : 280)) bad(`${state}: agents w=${g.agents.w}`);
   if (!near(g.main.w, expMainW)) bad(`${state}: main w=${g.main.w} ≠ ${expMainW}±${BAND}`);
+  /* 域导航栏自己的钉：贴左缘、宽度对、不许压住别的区。
+     顶栏只压**聊天列**（G-28 #37 对齐真源：侧栏从窗口顶开始）⇒
+     顶栏左缘 = 域导航栏右缘 + 侧栏右缘，顶栏宽 = 视口 − 这两列。 */
+  if (!g.apprail) bad(`${state}: 域导航栏 #app-rail 不在 DOM 里`);
+  else {
+    if (!near(g.apprail.w, APP_RAIL_W_WIDE)) bad(`${state}: app rail w=${g.apprail.w} ≠ ${APP_RAIL_W_WIDE}`);
+    if (g.apprail.x > 0.5) bad(`${state}: app rail 没贴左缘 x=${g.apprail.x}`);
+    if (rectsOverlap(g.apprail, g.header) || rectsOverlap(g.apprail, g.agents) || rectsOverlap(g.apprail, g.main))
+      bad(`${state}: 域导航栏压住了别的区`);
+  }
+  const expSidebar = collapsed ? 0 : 280;
+  const expHeaderX = APP_RAIL_W_WIDE + expSidebar;
+  if (!near(g.header.x, expHeaderX)) bad(`${state}: header x=${g.header.x} ≠ ${expHeaderX}（域导航栏 ${APP_RAIL_W_WIDE} + 侧栏 ${expSidebar}）`);
+  if (!near(g.header.w, vpW - expHeaderX)) bad(`${state}: header w=${g.header.w} ≠ ${vpW - expHeaderX}（视口 ${vpW} − 域导航栏 − 侧栏）`);
+  if (!collapsed && !near(g.agents.y, 0)) bad(`${state}: 侧栏没从窗口顶开始 y=${g.agents.y}（G-28 #37：顶栏只压聊天列）`);
   const visibleRails = g.railEls.filter((r) => r.visible);
   if (visibleRails.length !== (expRail ? 1 : 0)) bad(`${state}: visible rails=${visibleRails.length}`, JSON.stringify(g.railEls));
   if (expRail && !near(visibleRails[0]?.w || -999, 340)) bad(`${state}: rail width=${visibleRails[0]?.w}`);
@@ -204,11 +237,14 @@ function checkNarrowState(g, vpW, state) {
      同一个不变量的另一面：**侧栏最多吃掉 200px，主列必须恰好等于视口减去它**。
      「rail 覆盖而不是挤主列」这句也还在，只是挪到下面的 rail 右缘/宽度断言上。 */
   const expAgents = collapsed ? 0 : Math.min(NARROW_SIDEBAR_MAX, vpW);
-  const expMain = vpW - expAgents;
+  /* 【批次 14 域导航栏】窄屏时它是 48px 的一列（只剩图标）⇒ 账里也要算它。 */
+  const expAppRail = APP_RAIL_W_NARROW;
+  const expMain = vpW - expAppRail - expAgents;
   const tag = `narrow/${state}@${vpW}`;
   if (!near(g.header.h, 56)) bad(`${tag}: header h=${g.header.h} ≠ 56±${BAND}`);
-  if (!near(g.header.w, vpW)) bad(`${tag}: header w=${g.header.w} ≠ viewport ${vpW}`);
-  if (!near(g.main.w, expMain)) bad(`${tag}: main w=${g.main.w} ≠ ${expMain}（视口 ${vpW} − 侧栏 ${expAgents}；rail must overlay, not squeeze）`);
+  if (!near(g.header.w, vpW - expAppRail)) bad(`${tag}: header w=${g.header.w} ≠ 视口 ${vpW} − 域导航栏 ${expAppRail}`);
+  if (!near(g.header.x, expAppRail)) bad(`${tag}: header x=${g.header.x} ≠ 域导航栏右缘 ${expAppRail}`);
+  if (!near(g.main.w, expMain)) bad(`${tag}: main w=${g.main.w} ≠ ${expMain}（视口 ${vpW} − 域导航栏 ${expAppRail} − 侧栏 ${expAgents}；rail must overlay, not squeeze）`);
   if (g.hscroll > 0) bad(`${tag}: horizontal scroll ${g.hscroll}px`);
   /* composer must be fully inside the viewport: no clipping off the bottom or
      right edge (the old implicit-column layout put it at y=654 in a 720 window
@@ -233,8 +269,18 @@ function checkNarrowState(g, vpW, state) {
     if (g.agents.w > 0.5) bad(`${tag}: collapsed sidebar still ${g.agents.w}px wide`);
   } else if (!near(g.agents.w, expAgents)) {
     bad(`${tag}: agents w=${g.agents.w} ≠ ${expAgents}（窄窗紧凑侧栏上限 ${NARROW_SIDEBAR_MAX}px，再多就是在挤主列）`);
-  } else if (g.agents.x > 0.5 || g.agents.x + g.agents.w > expAgents + 0.5) {
-    bad(`${tag}: 紧凑侧栏没贴左边缘`, JSON.stringify({ x: g.agents.x, w: g.agents.w }));
+  } else if (!near(g.agents.x, expAppRail) || !near(g.agents.x + g.agents.w, expAppRail + expAgents)) {
+    /* 紧凑侧栏必须**紧贴域导航栏的右缘**（批次 14 之前是贴窗口左缘 ——
+       现在最左那一列是域导航栏，不许侧栏浮在中间，也不许压在域导航栏上）。 */
+    bad(`${tag}: 紧凑侧栏没贴住域导航栏右缘`, JSON.stringify({ x: g.agents.x, w: g.agents.w, appRail: expAppRail }));
+  }
+  /* 域导航栏自己的钉（窄屏 48px、贴左缘、不许压住别的区）。 */
+  if (!g.apprail) bad(`${tag}: 域导航栏 #app-rail 不在 DOM 里`);
+  else {
+    if (!near(g.apprail.w, expAppRail)) bad(`${tag}: app rail w=${g.apprail.w} ≠ ${expAppRail}`);
+    if (g.apprail.x > 0.5) bad(`${tag}: app rail 没贴左缘 x=${g.apprail.x}`);
+    if (rectsOverlap(g.apprail, g.header) || rectsOverlap(g.apprail, g.agents) || rectsOverlap(g.apprail, g.main))
+      bad(`${tag}: 域导航栏压住了别的区`);
   }
   const visibleRails = g.railEls.filter((r) => r.visible);
   const expectRail = state !== "none" && state !== "collapsed";

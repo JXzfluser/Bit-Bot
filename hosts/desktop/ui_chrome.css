@@ -4241,39 +4241,10 @@ body.cmd-view #cmd-top-title { display: flex !important; }
 body.cmd-view #composer { display: none !important; }
 .cmd-top-name { font-weight: 600; font-size: var(--text-md); }
 
-/* 侧栏入口：一行「指挥台」+ 待办角标。
-   （以前是一颗没有上下文的 ☰，用户看不出那是什么、也不知道有没有事。） */
-.sb-cmd-entry {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 8px;
-  margin-left: 2px;
-  white-space: nowrap;
-  flex: 0 0 auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-.sb-cmd-entry:hover { background: var(--surface-2, var(--input-bg)); }
-.sb-cmd-entry[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
-.sb-cmd-badge {
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--danger);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
-  text-align: center;
-}
-.sb-cmd-badge[hidden] { display: none; }
+/* 【批次 15】侧栏那颗「指挥台」按钮的样式删掉了 ——
+   同一个去处有两个入口（侧栏 + 域导航栏）= 用户要猜该点哪个。
+   ⇒ 入口只留域导航栏那一处，角标也跟着迁到「指挥」这个域上。
+   （下面 .app-rail-badge 是它的新家。） */
 
 /* 「要你拍板」这一段：最要紧的事 ⇒ 标题行带计数，卡片带强调色条。 */
 .cmd-sec-head {
@@ -4396,6 +4367,8 @@ body.cmd-view #composer { display: none !important; }
 .app-rail-item {
   flex: 0 0 auto;
   width: 52px;
+  /* 【批次 15】角标要绝对定位在图标角上。 */
+  position: relative;
   padding: var(--space-2) 0;
   display: inline-flex;
   flex-direction: column;
@@ -4419,10 +4392,33 @@ body.cmd-view #composer { display: none !important; }
 }
 .app-rail-item:disabled { opacity: .38; cursor: not-allowed; }
 @media (max-width: 900px) {
-  /* 窄窗：只留图标，文字收进 title（48px 放不下四个字）。 */
+  /* 窄窗：只留图标，文字收进 title（48px 放不下四个字）。
+     角标**不能**跟着藏 —— 「要你拍板几件」在窄窗下更该看得见。 */
   .app-rail-item { width: 40px; }
-  .app-rail-item span { display: none; }
+  .app-rail-item > span:not(.app-rail-badge) { display: none; }
 }
+
+/* 【批次 15】域导航栏「指挥」上的角标：现在有多少件要你拍板。
+   它以前长在侧栏那颗「指挥台」按钮上；入口删掉后迁到**域**上 ——
+   域导航栏是恒在的全局列 ⇒ 全局提醒放在这里，语义更对。 */
+.app-rail-badge {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  margin-left: var(--space-1);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: var(--bg0);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+.app-rail-badge[hidden] { display: none; }
 
 .cmd-members {
   margin: 10px 0 4px;

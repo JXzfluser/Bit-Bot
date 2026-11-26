@@ -13,7 +13,7 @@
  *   到点执行 —— 改 store 里 next_due（**唯一允许的例外**，见下）→ 等**应用自己的**
  *               唤醒定时器（BITBOT_DESKTOP_SWEEP_MS）到点触发
  *   产出     —— 群转录里的 bot_reply / final_report + 落盘的产物 .md 文件
- *   指挥     —— 团队指挥台（#cmd-open-btn）：看 / 插话 / 改向 / 刹停 / 换人
+ *   指挥     —— 团队指挥台（域导航栏的「指挥」#app-rail-command）：看 / 插话 / 改向 / 刹停 / 换人
  *   复盘     —— 指挥台里的「复盘」段（只列真的收过口的批次）
  *
  * 唯一的例外（题面允许的那一个）：**排程的墙钟不可控**。排程建成的是
@@ -593,7 +593,7 @@ async function shot(name) {
       /* ───────────────────────────────────────────────────────────
        * 步骤 5：指挥（团队指挥台：看 / 插话 / 改向 / 刹停 / 换人）
        * ─────────────────────────────────────────────────────────── */
-      await win.click("#cmd-open-btn").catch(() => {});
+      await win.click("#app-rail-command").catch(() => {});
       await sleep(1200);
       await win.evaluate(() => window.__bitbotCommand && window.__bitbotCommand.refresh()).catch(() => {});
       await sleep(900);

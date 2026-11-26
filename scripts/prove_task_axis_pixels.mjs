@@ -6,7 +6,7 @@
  * 在两档视口下打开指挥台,断言:
  *
  *   TA-01 视口真的到了(量的是**活着的**视口,不是请求值)
- *   TA-02 指挥台能打开(点产品自己的 #cmd-open-btn,不是调内部函数)
+ *   TA-02 指挥台能打开(点产品自己的入口 #app-rail-command 域导航栏的「指挥」,不是调内部函数)
  *   TA-03 行动区第一张卡完全在视口内(不被浮动 composer 遮住、不被裁切)
  *   TA-04 没有待办时 #cmd-active 不出现(第二份夹具:没有 needs_you 任务)
  *   TA-05 四个桶 tab 都在(needs_you/working/waiting/closed)
@@ -474,15 +474,17 @@ async function runViewport(w, h, fixture, port) {
       return;
     }
 
-    /* 打开指挥台:点产品自己的按钮(TA-02)。 */
-    await win.click("#cmd-open-btn", { timeout: 10000 });
+    /* 打开指挥台:点产品自己的入口(TA-02)。
+       【批次 15】入口从侧栏那颗「指挥台」按钮迁到了**域导航栏的「指挥」**
+       ⇒ 门禁跟着走 —— 入口只有一个了(冗余的侧栏入口已删)。 */
+    await win.click("#app-rail-command", { timeout: 10000 });
     await win.waitForTimeout(300);
     const opened = await win.evaluate(() => {
       const p = document.getElementById("command-panel");
-      return { hidden: p.hidden, expanded: document.getElementById("cmd-open-btn").getAttribute("aria-expanded") };
+      return { hidden: p.hidden, expanded: document.getElementById("app-rail-command").getAttribute("aria-expanded") };
     });
     if (!opened.hidden && opened.expanded === "true") {
-      ok("[TA-02] " + tag + " 指挥台能打开（点 #cmd-open-btn ⇒ 面板可见、aria-expanded=true）");
+      ok("[TA-02] " + tag + " 指挥台能打开（点域导航栏的「指挥」⇒ 面板可见、aria-expanded=true）");
     } else {
       bad("TA-02 " + tag + " 指挥台没打开", JSON.stringify(opened));
     }
@@ -777,7 +779,7 @@ async function runNoPending(w, h, port) {
       const vp = await win.evaluate(() => ({ w: document.documentElement.clientWidth, h: document.documentElement.clientHeight }));
       if (vp.w === w && vp.h === h) break;
     }
-    await win.click("#cmd-open-btn", { timeout: 10000 });
+    await win.click("#app-rail-command", { timeout: 10000 });
     await settle(win);
     const g = await win.evaluate(PROBE);
     if (g.activeHidden === true && g.activeCardCount === 0) {

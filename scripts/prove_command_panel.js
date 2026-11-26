@@ -210,7 +210,13 @@ console.log("prove_command_panel — 团队指挥台(聚合 / 分桶 / 真渲染
       }, title);
       if (!entered) return null;
       await page.waitForTimeout(400);
-      await page.evaluate(() => window.__bitbotCommand.refresh());
+      /* 【批次 15】这里原来还有一句 `window.__bitbotCommand.refresh()` ——
+         它**正好把「切群不刷新指挥台」这个 bug 盖住了**：
+         切完群自己再刷一次 ⇒ 无论 openRoomChat 里刷没刷，面板都是对的
+         ⇒ CP-11/CP-12 成了假绿。
+         ⇒ 现在**不额外刷** ⇒ 切群后面板对不对，全看 openRoomChat 自己有没有刷新
+         （真事故 2026-11-26：那一行写的是 typeof cmdRefresh === "function"，
+          而 cmdRefresh 在另一个 IIFE ⇒ 恒为 undefined ⇒ 从来没执行过）。 */
       await page.waitForTimeout(300);
       return await page.evaluate(() => {
         const members = document.getElementById("cmd-members-list");
@@ -332,6 +338,129 @@ console.log("prove_command_panel — 团队指挥台(聚合 / 分桶 / 真渲染
           } finally {
             try { fs.unlinkSync(tmpHtml); } catch (_) { /* ignore */ }
           }
+        }
+      }
+    }
+
+    /* CP-14 / CP-15 负向对照：**掐掉「切群时刷新指挥台」** ⇒ CP-11 的判据必然翻红。
+       真事故（2026-11-26）：那一行写的是 `typeof cmdRefresh === "function"`，
+       而 cmdRefresh 定义在**另一个 IIFE** ⇒ 在本作用域里 typeof 恒为 "undefined"
+       ⇒ 这一行**从来没执行过** ⇒ 指挥台开着的时候切群，看到的还是上一个群的数据。
+       ⇒ 变异只发生在**临时副本**上（源文件一个字节都不动）。
+
+       手法：**同一套操作跑两遍**，两个页面只差那一行 ——
+         · 对照组（真源码）：进「闲聊群」→ 刷一次 → 切「内容团队」⇒ 成员区换成 t1/t2
+           ⇒ CP-11 的判据成立（绿）
+         · 变异组（掐掉刷新）：同样的操作 ⇒ 成员区**还停在闲聊群的人**（Carol/p1）
+           ⇒ CP-11 的判据不成立（红）
+       两组都**先刷一次再切群**（模拟「用户开着指挥台，屏上已经有上一个群的数据」）
+       ⇒ 变异组才是真正的「停在旧数据」；否则它只是「面板从没填过」（空），
+       那是另一种失败，不能拿来当这条负向对照的证据。
+       ⚠️ 门禁纪律：**判据不许只写「不是新的」**（空面板也能满足）⇒ 必须同时钉住
+       「旧数据还在」+「新数据没来」。 */
+    {
+      /* 两组共用的探针：进闲聊群 → 刷一次 → 切内容团队 → 读成员区。 */
+      const probe = async (pg) => await pg.evaluate(async () => {
+        const list = await window.bitbot.rooms.list();
+        const payload = (list && list.rooms) || {};
+        const rows = Array.isArray(payload) ? payload : payload.rooms || [];
+        const go = async (title) => {
+          const hit = rows.find((r) => r && String(r.title || "") === title);
+          if (!hit) return false;
+          await window.__bitbotCommand.enterRoom(hit.id);
+          return true;
+        };
+        const read = () => {
+          const el = document.getElementById("cmd-members-list");
+          return {
+            count: el ? el.querySelectorAll(".cmd-member").length : 0,
+            text: el ? String(el.textContent || "") : "",
+          };
+        };
+        await go("闲聊群");
+        await new Promise((r) => setTimeout(r, 500));
+        /* 面板已经开着、屏上已经有「闲聊群」的人 */
+        await window.__bitbotCommand.refresh();
+        await new Promise((r) => setTimeout(r, 300));
+        const before = read();
+        await go("内容团队");
+        await new Promise((r) => setTimeout(r, 800));
+        const after = read();
+        /* CP-11 的判据，原样搬过来（变异体上它必须不成立）。 */
+        const cp11 =
+          after.count === 2 &&
+          after.text.indexOf("t1") >= 0 &&
+          after.text.indexOf("t2") >= 0 &&
+          after.text.indexOf("p1") < 0;
+        return {
+          beforeCount: before.count,
+          beforeText: before.text.slice(0, 80),
+          count: after.count,
+          text: after.text.slice(0, 120),
+          cp11: cp11,
+          stale: after.text.indexOf("Carol") >= 0 || after.text.indexOf("p1") >= 0,
+        };
+      });
+
+      const src = fs.readFileSync(HTML, "utf8");
+      const target =
+        'var cmdApi = window.__bitbotCommand;\n' +
+        '        if (cmdApi && typeof cmdApi.refresh === "function") await cmdApi.refresh();';
+      if (src.indexOf(target) < 0) {
+        bad("CP-14 负向对照跑不起来（注入点找不到：源码结构变了）");
+      } else {
+        const mutated = src.replace(
+          target,
+          'var cmdApi = window.__bitbotCommand;\n' +
+            '        /* 变异：切群时不刷新指挥台 */'
+        );
+        if (mutated === src) {
+          bad("CP-14 负向对照跑不起来（替换没命中：源码形态变了）");
+        } else {
+          /* 变异副本必须放**同目录**：index.html 里的 CSS/JS 都是相对引用
+             ⇒ 放 /tmp 会全部加载不到 ⇒ 页面只剩壳，功能全失（实测踩到）。 */
+          const tmpHtml = path.join(path.dirname(HTML), ".negative_control_cmd_panel_roomswitch.html");
+          fs.writeFileSync(tmpHtml, mutated, "utf8");
+          let ctlRes = null, mutRes = null;
+          try {
+            /* 对照组：真源码，同一套操作。 */
+            const cPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+            await cPage.addInitScript((rooms) => {
+              window.bitbot = Object.assign(window.bitbot || {}, { rooms: { list: async () => rooms } });
+            }, fakeRooms());
+            await cPage.goto("file://" + HTML, { waitUntil: "load" });
+            await cPage.waitForTimeout(900);
+            ctlRes = await probe(cPage);
+            await cPage.close();
+
+            /* 变异组：只差那一句刷新。 */
+            const mPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+            await mPage.addInitScript((rooms) => {
+              window.bitbot = Object.assign(window.bitbot || {}, { rooms: { list: async () => rooms } });
+            }, fakeRooms());
+            await mPage.goto("file://" + tmpHtml, { waitUntil: "load" });
+            await mPage.waitForTimeout(900);
+            mutRes = await probe(mPage);
+            await mPage.close();
+          } catch (e) {
+            bad("CP-14 负向对照跑不起来", String((e && e.message) || e).slice(0, 200));
+          } finally {
+            try { fs.unlinkSync(tmpHtml); } catch (_) { /* ignore */ }
+          }
+
+          /* 对照组：真源码 ⇒ 切群后确实换成内容团队的人（CP-11 判据成立）。
+             这一条同时证明**探针本身是有效的**（不是恒假、也不是恒真）。 */
+          check(
+            ctlRes && ctlRes.cp11 === true,
+            "CP-14 对照组（真源码）：切群后成员区换成内容团队的人 ⇒ 探针有效",
+            ctlRes ? JSON.stringify(ctlRes) : "(对照组没跑起来)"
+          );
+          /* 变异组：判据不成立 **且** 旧数据还在（不是空面板糊弄过去）。 */
+          check(
+            mutRes && mutRes.cp11 === false && mutRes.stale === true,
+            "CP-15 变异组有牙：掐掉切群时的刷新 ⇒ 成员区停在上一个群 ⇒ CP-11 的判据确实会红",
+            mutRes ? JSON.stringify(mutRes) : "(变异组没跑起来)"
+          );
         }
       }
     }
