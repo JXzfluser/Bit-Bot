@@ -1135,9 +1135,9 @@ body.grok-ui #turn-progress .tp-dot { background: var(--ink) !important; }
    改为 agents 占满首列三行、header 只压 main+rail，侧栏即从 y=0 起，对齐真源。 */
 body.grok-ui {
   grid-template-areas:
-    "agents header header"
-    "agents main   rail"
-    "agents composer rail";
+    "appbar agents header header"
+    "appbar agents main   rail"
+    "appbar agents composer rail";
 }
 body.grok-ui header button,
 body.grok-ui header a,
@@ -4357,6 +4357,73 @@ body.cmd-view #composer { display: none !important; }
    这一块不是装饰 —— 它回答的是「这个团队里现在有谁、谁在忙、谁卡在等我」，
    是「可指挥」的落点。⇒ 视觉上要比任务卡更安静但更可扫：
    头像 + 名字 + 职责 一行，状态在右端。 */
+/* ===== 批次 14：域导航栏（最左窄栏）=====================================
+   参考图那支的关键：最左一条窄栏列的是**领域**，不是三十个功能按钮。
+   我们的侧栏顶部那一排图标装着切布局/搜索/创建/跳视图四种不同性质的入口
+   ⇒ 用户看到的是「四个按钮」，不是「四个去处」。
+
+   这一栏的设计取舍：
+   · 64px 宽（窄窗 48px），图标在上、文字在下 —— 参考图里「创作/设计/工程」
+     就是这个形状：图标 + 文字，让人一眼知道那是**去哪**，不是按一下做什么。
+   · 选中态 = 浅底 + 左侧一道强调条（和指挥台卡片左边的色条同一套语言）。
+   · 「自动化」没有所在群时**禁用**并说清原因 —— 不放假入口。 */
+#app-rail {
+  grid-area: appbar;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) 0 var(--space-5);
+  background: var(--bg1);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.app-rail-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--bg0);
+  background: var(--ink);
+  margin-bottom: var(--space-3);
+  flex: 0 0 auto;
+}
+.app-rail-item {
+  flex: 0 0 auto;
+  width: 52px;
+  padding: var(--space-2) 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background .14s var(--ease), color .14s var(--ease);
+}
+.app-rail-item:hover:not(:disabled) { background: var(--fill); color: var(--ink); }
+.app-rail-item[aria-current="page"] {
+  background: var(--fill);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.app-rail-item:disabled { opacity: .38; cursor: not-allowed; }
+@media (max-width: 900px) {
+  /* 窄窗：只留图标，文字收进 title（48px 放不下四个字）。 */
+  .app-rail-item { width: 40px; }
+  .app-rail-item span { display: none; }
+}
+
 .cmd-members {
   margin: 10px 0 4px;
 }

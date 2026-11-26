@@ -1155,7 +1155,7 @@ if [ $? -eq 0 ]; then
 else
   bad "G-136 prove_task_axis_pixels（见 /tmp/g136-task-axis-pixels.log；$(grep '✗' /tmp/g136-task-axis-pixels.log | head -2 | tr '\n' ' ')）"
 fi
-for gTA_id in TA-01 TA-02 TA-03 TA-04 TA-05 TA-06 TA-07 TA-08 TA-09 TA-10 TA-11 TA-12 TA-13 TA-14 TA-15 TA-16; do
+for gTA_id in TA-01 TA-02 TA-03 TA-04 TA-05 TA-06 TA-07 TA-08 TA-09 TA-10 TA-11 TA-12 TA-13 TA-14 TA-15 TA-16 TA-17 TA-18; do
   if grep -q "\[$gTA_id\]" /tmp/g136-task-axis-pixels.log; then
     ok "G-136 锚点：$gTA_id"
   elif grep -q "· $gTA_id SKIP" /tmp/g136-task-axis-pixels.log; then
@@ -5178,6 +5178,62 @@ else
   bad "G-146 负向对照缺失：门禁没证明判据有牙"
 fi
 
+# G-147 域导航栏门（批次 14）
+#   域导航栏把「一堆功能」变成「四个域」：对话 / 指挥 / 自动化 / 设置。
+#   本门钉住：四个域顺序固定、每个域都有**可见文字标签**、每个域都有**真实去处**
+#   （点了真的有反应，不是摆设）、「自动化」没有所在群时**禁用**并说清原因
+#   （定时任务是逐群的 ⇒ 宁可禁用，也不放假入口）、同一时刻只有一个域选中。
+#   ⇒ 浏览器不在时是 SKIP(rc=2)，SKIP **不等于 PASS**，本轮不因此把门算绿。
+if timeout 600 node scripts/prove_app_rail.js > /tmp/g147-app-rail.log 2>&1; then
+  ok "G-147 prove_app_rail（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g147-app-rail.log | tail -1)）"
+else
+  _g147_rc=$?
+  if [ "$_g147_rc" = "2" ]; then
+    ok "G-147 prove_app_rail SKIP（缺浏览器；SKIP ≠ PASS）"
+  else
+    bad "G-147 prove_app_rail（见 /tmp/g147-app-rail.log；$(grep '✗' /tmp/g147-app-rail.log | head -3 | tr '\n' ' ')）"
+  fi
+fi
+if grep -q "负向对照有牙" /tmp/g147-app-rail.log 2>/dev/null; then
+  ok "G-147 负向对照在位：删掉一个域 ⇒ 门禁判红"
+else
+  bad "G-147 负向对照缺失：门禁没证明判据有牙"
+fi
+# 编号锚点（AC-02 的「门声明了就得有人锚」）：每个域一条，漏一条当场红。
+for gAR_id in AR-01 AR-02 AR-03 AR-04 AR-05 AR-06; do
+  if grep -q "\[$gAR_id\]" /tmp/g147-app-rail.log 2>/dev/null; then
+    ok "G-147 锚点：$gAR_id"
+  else
+    bad "G-147 锚点缺失：$gAR_id"
+  fi
+done
+
+# G-148 跨作用域桥接的「声明—引用」对账门（批次 14）
+#   window 桥是**一次性赋值**：window.__bitbotCommand = { open: cmdOpen, … };
+#   只要其中一个引用在运行时是 undefined，整行就抛 ReferenceError ⇒ **整个桥没了**
+#   ⇒ 所有跨作用域功能同时静默失效（页面不红不崩，只是「点了没反应」）。
+#   真实事故（2026-11-26）：index.html 里一个没闭合的块注释吞掉了 cmdOpen 等
+#   **五个函数声明** —— 那不是语法错误 ⇒ node --check 全绿 ⇒ 语法级门禁全看不见。
+#   本门在**静态层**把这件事钉死：纯读文件，不起进程、不联网 ⇒ 秒级。
+if timeout 180 node scripts/prove_window_bridge.js > /tmp/g148-window-bridge.log 2>&1; then
+  ok "G-148 prove_window_bridge（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g148-window-bridge.log | tail -1)）"
+else
+  bad "G-148 prove_window_bridge（见 /tmp/g148-window-bridge.log；$(grep '✗' /tmp/g148-window-bridge.log | head -3 | tr '\n' ' ')）"
+fi
+if grep -q "负向对照有牙" /tmp/g148-window-bridge.log 2>/dev/null; then
+  ok "G-148 负向对照在位：把被引用的函数声明吞进注释 ⇒ 门禁判红"
+else
+  bad "G-148 负向对照缺失：门禁没证明判据有牙"
+fi
+# 编号锚点（AC-02 的「门声明了就得有人锚」）：每条判据一根钉，漏一条当场红。
+for gWB_id in WB-01 WB-02 WB-03 WB-04 WB-05; do
+  if grep -q "\[$gWB_id\]" /tmp/g148-window-bridge.log 2>/dev/null; then
+    ok "G-148 锚点：$gWB_id"
+  else
+    bad "G-148 锚点缺失：$gWB_id"
+  fi
+done
+
 # G-145 流水线下一棒由契约 order 决定（真 provider 第十四轮抓到的真 bug：
 #   第一棒一句「【交给】内容主笔」⇒ 选题策划师整棒被跳过 ⇒ 主笔没 brief ⇒ 交空壳）
 if timeout 180 node scripts/prove_pipeline_handoff_order.js > /tmp/g145-handoff-order.log 2>&1; then
@@ -6539,8 +6595,8 @@ else
 fi
 timeout 900 node scripts/prove_command_panel.js >/tmp/g129-command_panel.log 2>&1
 if [ $? -eq 2 ]; then g129_check /tmp/g129-command_panel.log command_panel skip; else g129_check /tmp/g129-command_panel.log command_panel; fi
-if grep -q "PASS=16 FAIL=0" /tmp/g129-command_panel.log; then
-  ok "G-129 prove_command_panel 计数锚点：PASS=16 FAIL=0"
+if grep -q "PASS=23 FAIL=0" /tmp/g129-command_panel.log; then
+  ok "G-129 prove_command_panel 计数锚点：PASS=23 FAIL=0"
 else
   bad "G-129 prove_command_panel 计数锚点红（$(tail -1 /tmp/g129-command_panel.log)）"
 fi

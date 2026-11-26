@@ -22,6 +22,8 @@
  *   TA-15 几何判据有牙:把卡片推出视口 ⇒ TA-03 必须翻红
  *   TA-16 已知残留如实记录:#cmd-active 与 needs_you 分区重复渲染同一张卡
  *   TA-17 变异对照:TA-10 改判据后必须有牙(把聊天输入框强行变回浮层 ⇒ 必须判红)
+ *   TA-18 页面零未捕获异常 —— 坏的是逻辑不是布局,截图上看不出来;
+ *        页面带异常 ⇒ 判红 ⇒ **基线不许刷新**(坏状态不许烤进基线)
  *
  * 基线口径(R-5,照抄 e2e_desktop_layout_target.mjs:39-47 的做法与它写的理由):
  *   默认**只读** reference/ 下的基线做比对,产物写 artifacts/task-axis-pixels/;
@@ -66,7 +68,7 @@ const BASELINES = { "1440x900": "task-axis-1440x900.png", "480x720": "task-axis-
 /* 方案 §4 批 2:差异像素占比 ≤ 0.5%。 */
 const PIXEL_TOLERANCE = 0.005;
 /* 这一档里会跑的判据编号(视口给不出时逐条报 SKIP,不许悄悄不吭声)。 */
-const VIEWPORT_CLAIMS = ["TA-01", "TA-02", "TA-03", "TA-05", "TA-06", "TA-07", "TA-08", "TA-09", "TA-10", "TA-11", "TA-14", "TA-15", "TA-16", "TA-17"];
+const VIEWPORT_CLAIMS = ["TA-01", "TA-02", "TA-03", "TA-05", "TA-06", "TA-07", "TA-08", "TA-09", "TA-10", "TA-11", "TA-14", "TA-15", "TA-16", "TA-17", "TA-18"];
 
 /* 计数用对象:一档视口中途挂了要能**回滚**这一档的计数(否则重试会把
  * 数字算重 —— 实测 Electron 在 Xvfb 下偶尔中途死一次,重试是必要的)。 */
@@ -403,6 +405,20 @@ async function launchWith(w, h, fixture, port, tag) {
     env,
   });
   const win = await app.firstWindow();
+  /* 【批次 14 补】页面里任何**未捕获异常**都要被看见。
+   *
+   * 为什么像素门要管这个：基线是「照着现在的样子拍的」。
+   * 如果页面带着 ReferenceError（脚本中途炸了、某个功能是死的），
+   * 那张图**看起来仍然正常**（坏的是逻辑，不是布局）⇒ 基线照样能刷新、
+   * 照样能「通过」⇒ 一个死掉的功能就这样被烤进了基线。
+   *
+   * 真实事故（2026-11-26 批次 14）：index.html 里一个没闭合的块注释吞掉了
+   * cmdOpen / cmdClose 等五个函数声明 ⇒ window.__bitbotCommand 整个桥赋值
+   * 抛 ReferenceError ⇒ 指挥台是死的 ⇒ 但截图里看不出任何异常。
+   *
+   * ⇒ 页面有未捕获异常 ⇒ 本档判红 ⇒ **基线也不许刷新**（坏状态不许入仓）。 */
+  const pageErrors = [];
+  win.on("pageerror", (e) => pageErrors.push(String((e && e.message) || e).split("\n")[0]));
   await app.evaluate(({ BrowserWindow }) => {
     for (const w of BrowserWindow.getAllWindows()) { w.setAutoHideMenuBar(true); w.setMenuBarVisibility(false); }
   }).catch(() => {});
@@ -410,7 +426,7 @@ async function launchWith(w, h, fixture, port, tag) {
   /* 记下**实际交给 app 的**数据根(env 里那个),不是我们自己想的那个 ——
      变异对照证明:如果 env 指的是真目录,这一条必须能抓到。 */
   if (iso) ISO_ROOTS.push({ root: path.join(iso, "data"), used: DATA_ROOT_USED, files: 0 });
-  return { app, win, iso };
+  return { app, win, iso, pageErrors };
 }
 
 async function shutdown(app) {
@@ -424,9 +440,9 @@ async function shutdown(app) {
 /* 一档视口跑完:开面板 → 稳定 → 量 → 断言 → 截图 → 比基线。 */
 async function runViewport(w, h, fixture, port) {
   const tag = w + "x" + h;
-  let app = null, win = null, iso = null;
+  let app = null, win = null, iso = null, pageErrors = [];
   try {
-    ({ app, win, iso } = await launchWith(w, h, fixture, port, tag));
+    ({ app, win, iso, pageErrors } = await launchWith(w, h, fixture, port, tag));
   } catch (e) {
     bad("TA-02 指挥台能打开（" + tag + " 起真 Electron 失败）", (e && e.message) || String(e));
     return;
@@ -589,6 +605,16 @@ async function runViewport(w, h, fixture, port) {
       await win.waitForTimeout(200);
     }
 
+    /* 【批次 14 补】TA-18 页面零未捕获异常。
+     * 坏的是逻辑不是布局 ⇒ 截图上看不出来 ⇒ 必须单独钉住。
+     * 判红 ⇒ 基线**不许**刷新（坏状态不许入仓）。 */
+    const errsNow = Array.isArray(pageErrors) ? pageErrors.slice() : [];
+    if (errsNow.length === 0) {
+      ok("[TA-18] " + tag + " 页面零未捕获异常（坏状态不许烤进基线）");
+    } else {
+      bad("[TA-18] " + tag + " 页面有未捕获异常：" + errsNow.slice(0, 3).join(" | "));
+    }
+
     /* 截图(默认态:默认桶「在跑」、面板没滚动)⇒ 拿去跟基线比。 */
     const shot = await win.screenshot({ type: "png" });
     const shotPath = path.join(OUT_DIR, "task-axis-" + tag + ".png");
@@ -601,7 +627,10 @@ async function runViewport(w, h, fixture, port) {
       try { base0 = decodePng(fs.readFileSync(baselinePath)); }
       catch (e) { bad("TA-11 " + tag + " 基线不是合法 PNG（reference/" + BASELINES[tag] + "）", (e && e.message) || String(e)); }
     }
-    if (COMMIT) {
+    if (COMMIT && errsNow.length > 0) {
+      /* 坏状态不许入仓：页面带着未捕获异常时,基线**不刷新**（宁可基线过期,也不烤进一张死页面）。 */
+      skip("TA-11", tag + " 基线刷新", "页面有未捕获异常（TA-18 判红）⇒ 拒绝把坏状态烤进基线");
+    } else if (COMMIT) {
       fs.mkdirSync(REFERENCE_DIR, { recursive: true });
       fs.writeFileSync(baselinePath, shot);
       ok("[TA-11] " + tag + " 基线已刷新（显式动作 BITBOT_TASK_AXIS_SHOT_COMMIT=1 ⇒ 写入 " + BASELINES[tag] + "）");

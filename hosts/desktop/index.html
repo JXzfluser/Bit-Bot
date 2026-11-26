@@ -26,18 +26,18 @@
        matrix. The legacy *-open body classes are kept ONLY as JS state mirrors
        for the existing e2e GP-* gates and are removed once those read
        data-panel. */
-    grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--panel-w);
+    grid-template-columns: var(--appbar-w) var(--sidebar-w) minmax(0, 1fr) var(--panel-w);
     grid-template-rows: var(--header-h) minmax(0, 1fr) auto;
     grid-template-areas:
-      "header header header"
-      "agents main   rail"
-      "agents composer rail";
+      "appbar header header header"
+      "appbar agents main   rail"
+      "appbar agents composer rail";
     transition: grid-template-columns 0.2s ease;
   }
   /* Contract sizes: sidebar 280, rail 340, header 56, stream column 760. */
   /* --room-w 是「群资料」浮层的宽度单源：#room-rail 的 width 和主列的
      margin-right 都读它，两边一旦各写一个字面量就会错位半个字。 */
-  body { --panel-w: 0px; --room-w: 460px; }
+  body { --panel-w: 0px; --room-w: 460px; --appbar-w: 64px; }
   body[data-panel="bot"],
   body[data-panel="conv"],
   body[data-panel="computer"],
@@ -80,7 +80,7 @@
   /* Sidebar collapse is orthogonal to the panel state: same grid, first
      column goes to 0. No !important needed — the attribute selector is as
      specific as the base rule and wins by source order. */
-  body[data-sidebar="collapsed"] { grid-template-columns: 0px minmax(0, 1fr) var(--panel-w); }
+  body[data-sidebar="collapsed"] { grid-template-columns: var(--appbar-w) 0px minmax(0, 1fr) var(--panel-w); }
   body[data-sidebar="collapsed"] #agents { display: none; }
   /* Collapsed (fully hidden) state. The sidebar is display:none (see the
      body[data-sidebar="collapsed"] rules above); a slim vertical tab floats on
@@ -2263,15 +2263,16 @@
     body,
     body.grok-ui {
       --sidebar-w: 200px;
-      grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+      --appbar-w: 48px;
+      grid-template-columns: var(--appbar-w) var(--sidebar-w) minmax(0, 1fr);
       grid-template-rows: var(--header-h) minmax(0, 1fr) auto;
       grid-template-areas:
-        "header header"
-        "agents main"
-        "agents composer";
+        "appbar header header"
+        "appbar agents main"
+        "appbar agents composer";
     }
     body[data-sidebar="collapsed"],
-    body.grok-ui[data-sidebar="collapsed"] { grid-template-columns: 0px minmax(0, 1fr); }
+    body.grok-ui[data-sidebar="collapsed"] { grid-template-columns: var(--appbar-w) 0px minmax(0, 1fr); }
     /* 弹层 fixed，不被侧栏 overflow 裁切；锚在左下、向上开，浮在账户条上方 */
     #account-popup,
     #sessions-popup {
@@ -2536,6 +2537,38 @@
 </style>
 </head>
 <body class="grok-ui">
+  <!-- 【批次 14】域导航栏（最左一条窄栏）。
+       为什么要有它：侧栏顶部那一排图标装着四种**不同性质**的东西
+       （切布局 / 搜索 / 创建 / 跳指挥台）⇒ 用户看到的是「四个按钮」，
+       不是「四个去处」⇒ 这就是「堆了一堆功能」的视觉来源。
+       ⇒ 这一栏只回答「我在哪 / 我要去哪」：**域**，不是动作。
+       动作（搜索 / 新建 / 刷新）不占它的位置 ——
+       搜索归对象列表栏顶部，新建归底部，刷新归主区顶栏。
+
+       每个域都有**真实去处**（没有去处的不放进来 —— 不加「不知道干嘛」的功能）：
+         对话   → 回到聊天（默认）
+         指挥   → 团队指挥台
+         自动化 → 当前群的定时任务（没进群时禁用并说清原因）
+         设置   → 设置面板 -->
+  <nav id="app-rail" aria-label="主导航" data-i18n-aria="appRailAria">
+    <div class="app-rail-mark" aria-hidden="true">B</div>
+    <button type="button" class="app-rail-item" data-app-domain="chat" aria-current="page">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-3.9-.9L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>
+      <span data-i18n="appDomainChat">对话</span>
+    </button>
+    <button type="button" class="app-rail-item" data-app-domain="command">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10h6M7 14h4"/></svg>
+      <span data-i18n="appDomainCommand">指挥</span>
+    </button>
+    <button type="button" class="app-rail-item" data-app-domain="automation">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span data-i18n="appDomainAutomation">自动化</span>
+    </button>
+    <button type="button" class="app-rail-item" data-app-domain="settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <span data-i18n="appDomainSettings">设置</span>
+    </button>
+  </nav>
   <header style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px">
     <div id="brand-block">
       <span class="brand">Bit Bot</span>
@@ -8878,6 +8911,12 @@
         var cp = document.getElementById("command-panel");
         if (cp && !cp.hidden && typeof cmdRefresh === "function") await cmdRefresh();
       } catch (_) { /* 刷新不了就留着旧内容，不报错打断切群 */ }
+      /* 批次 14：换群 ⇒ 「自动化」域的可不可用变了（定时任务是逐群的）。
+         appRailRender 在另一个 IIFE ⇒ 走 window.__bitbotCommand。 */
+      try {
+        var arc = window.__bitbotCommand;
+        if (arc && typeof arc.appRailRender === "function") arc.appRailRender();
+      } catch (_) { /* ignore */ }
     }
     /* ---- GP-154「定时任务在群内部」（对标 Grok 群资料面板）----
        成员 → 「群聊最多可有 6 位成员。」→ 定时任务 → 「暂无定时任务」+
@@ -14161,6 +14200,20 @@
       }
     }
 
+    /* 【批次 14】跨作用域桥。
+     * index.html 里有**嵌套的 IIFE**：4475 那个装着 openRoomChat / openRoomRail /
+     * runUserTurn，26630 那个装着 cmdOpen / cmdClose。
+     * ⇒ 同文件不同作用域的函数**互相看不见**（第一版把域切换放进 26630，
+     *   结果 cmdOpen is not defined；而 DOMContentLoaded 里的 try/catch 又把
+     *   异常吞掉 ⇒ 点「指挥」毫无反应、页面也不报错）。
+     * ⇒ 跨作用域的动作一律走 window 桥，**不靠作用域内的直接引用**。 */
+    window.__appRailCtx = {
+      room: function () { return composerRoom; },
+      setRoomRailTab: setRoomRailTab,
+      openRoomRail: openRoomRail,
+      runUserTurn: runUserTurn,
+    };
+
     approveBtn.addEventListener("click", () => {
       if (!pendingApprovalText) return;
       const t = pendingApprovalText;
@@ -19316,6 +19369,13 @@
         cmdRunningTitle: "在跑的",
         cmdDoneTitle: "已完成",
         cmdMoreCount: "还有 {n} 件",
+        appRailAria: "主导航",
+        appDomainChat: "对话",
+        appDomainCommand: "指挥",
+        appDomainAutomation: "自动化",
+        appDomainSettings: "设置",
+        appAutoTitle: "当前群的定时任务",
+        appAutoNeedRoom: "先进一个群，才能看它的定时任务",
         cmdTitleOf: "{r} · 指挥台",
         cmdMembersTitle: "团队成员",
         cmdMemberWorking: "在跑",
@@ -20860,6 +20920,13 @@
         cmdRunningTitle: "在跑的",
         cmdDoneTitle: "已完成",
         cmdMoreCount: "還有 {n} 件",
+        appRailAria: "主導航",
+        appDomainChat: "對話",
+        appDomainCommand: "指揮",
+        appDomainAutomation: "自動化",
+        appDomainSettings: "設定",
+        appAutoTitle: "當前群的定時任務",
+        appAutoNeedRoom: "先進一個群，才能看它的定時任務",
         cmdTitleOf: "{r} · 指揮台",
         cmdMembersTitle: "團隊成員",
         cmdMemberWorking: "在跑",
@@ -22404,6 +22471,13 @@
         cmdRunningTitle: "Running",
         cmdDoneTitle: "Completed",
         cmdMoreCount: "{n} more",
+        appRailAria: "Main navigation",
+        appDomainChat: "Chat",
+        appDomainCommand: "Command",
+        appDomainAutomation: "Automation",
+        appDomainSettings: "Settings",
+        appAutoTitle: "This group's scheduled tasks",
+        appAutoNeedRoom: "Open a group first to see its scheduled tasks",
         cmdTitleOf: "{r} · Command",
         cmdMembersTitle: "Team members",
         cmdMemberWorking: "Working",
@@ -27407,6 +27481,92 @@
       cmdRender();
     }
 
+    /* ===== 批次 14：域导航栏 ==============================================
+     * 这一栏只回答「我在哪 / 我要去哪」。四个域都有**真实去处** ——
+     * 没有去处的不放进来（不加「不知道干嘛」的功能）。
+     *
+     *   对话   → 回到聊天（默认视图）
+     *   指挥   → 团队指挥台
+     *   自动化 → 当前群的定时任务（没有群 ⇒ 禁用并说清原因）
+     *   设置   → 设置面板
+     *
+     * 注意：这三个函数必须和 cmdOpen/cmdClose **在同一个作用域** ——
+     * index.html 里有嵌套的 IIFE，函数声明只在**本作用域**提升。
+     * （第一版把它放在 openRoomChat 附近 ⇒ cmdOpen is not defined ⇒
+     *   而且那个大 try/catch 把异常吞了 ⇒ 点「指挥」毫无反应却看不出错。）
+     * ⇒ 指挥台一律走 window.__bitbotCommand（那边是公开入口）。 */
+    var APP_RAIL_DOMAINS = ["chat", "command", "automation", "settings"];
+
+    /** 自动化域能不能去：定时任务是**逐群**的（群资料面板那一段）⇒ 没群就没得看。 */
+    function appRailAutomationReady() {
+      var ctx = window.__appRailCtx;
+      var rm = ctx && typeof ctx.room === "function" ? ctx.room() : null;
+      return !!(rm && rm.id);
+    }
+
+    function appRailRender() {
+      var rail = document.getElementById("app-rail");
+      if (!rail) return;
+      if (!rail.getAttribute("data-app-domain")) rail.setAttribute("data-app-domain", "chat");
+      var cur = String(rail.getAttribute("data-app-domain") || "chat");
+      var autoReady = appRailAutomationReady();
+      var items = rail.querySelectorAll(".app-rail-item");
+      for (var i = 0; i < items.length; i++) {
+        var b = items[i];
+        var d = String(b.getAttribute("data-app-domain") || "");
+        if (d === cur) b.setAttribute("aria-current", "page");
+        else b.removeAttribute("aria-current");
+        if (d === "automation") {
+          b.disabled = !autoReady;
+          var k = autoReady ? "appAutoTitle" : "appAutoNeedRoom";
+          b.setAttribute("data-i18n-title", k);
+          try { b.setAttribute("title", wavegT(k)); } catch (e) { b.setAttribute("title", ""); }
+        }
+      }
+    }
+
+    /** 切域。每个域各自处理 —— **不共用一个大 try/catch**：
+     *  一个域打不开不该把其它域也拖下水，更不该把错误吞成「点了没反应」。 */
+    function appRailGo(domain) {
+      var rail = document.getElementById("app-rail");
+      if (!rail) return;
+      var d = String(domain || "chat");
+      if (d === "automation" && !appRailAutomationReady()) return;
+      rail.setAttribute("data-app-domain", d);
+      try { document.body.setAttribute("data-app-domain", d); } catch (e) { /* ignore */ }
+      appRailRender();
+      if (d === "command") {
+        var cmd = window.__bitbotCommand;
+        if (cmd && typeof cmd.open === "function") cmd.open();
+      } else if (d === "automation") {
+        var ctx = window.__appRailCtx;
+        if (ctx && typeof ctx.setRoomRailTab === "function") ctx.setRoomRailTab("routines");
+        if (ctx && typeof ctx.openRoomRail === "function") ctx.openRoomRail();
+      } else if (d === "settings") {
+        var ctx2 = window.__appRailCtx;
+        if (ctx2 && typeof ctx2.runUserTurn === "function") {
+          ctx2.runUserTurn("open settings", { skipSession: true, silentUser: true });
+        }
+      } else {
+        var cmd2 = window.__bitbotCommand;
+        if (cmd2 && typeof cmd2.close === "function") cmd2.close();
+      }
+    }
+
+    /** 域导航栏的点击绑定（批次 14）。 */
+    function appRailBind() {
+      var rail = document.getElementById("app-rail");
+      if (!rail) return;
+      rail.addEventListener("click", function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var btn = t.closest(".app-rail-item");
+        if (!btn || btn.disabled) return;
+        appRailGo(btn.getAttribute("data-app-domain") || "chat");
+      });
+      appRailRender();
+    }
+
     /* 指挥台视图的开关（批次 11）。
      *
      * 缘起：指挥台以前是 #main 里的一个 flex 项 ⇒ 开着的时候，聊天流被挤到
@@ -27456,6 +27616,15 @@
     }
 
     document.addEventListener("DOMContentLoaded", function () {
+      /* 批次 14：域导航栏先绑上（它决定当前在哪个域）。
+         走 window.__bitbotCommand —— appRailBind 与本 handler 虽在同一作用域，
+         但用公开入口更稳；catch 里**留一句说明**，别再静默吞错。 */
+      try {
+        var railApi = window.__bitbotCommand;
+        if (railApi && typeof railApi.appRailBind === "function") railApi.appRailBind();
+      } catch (e) {
+        console.error("[app-rail] 绑定失败", e);
+      }
       var open = document.getElementById("cmd-open-btn");
       if (open) open.addEventListener("click", function () { cmdOpen(); });
       var close = document.getElementById("cmd-panel-close");
@@ -27635,6 +27804,10 @@
         return { ok: false, error: "room_not_found", room_id: rid };
       },
       scope: function () { return CMD_STATE.scope; },
+      /* 批次 14：域导航栏的入口（跨作用域 ⇒ 挂 window）。 */
+      appRailGo: appRailGo,
+      appRailRender: appRailRender,
+      appRailBind: appRailBind,
       // P1 批 1 D-15:暴露 render —— 换语言时要把已渲染的面板重画,
       // 否则屏幕上会留着上一种语言(wavegLangApply 里那条注释记过这个病)。
       render: cmdRender,

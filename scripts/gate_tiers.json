@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "updated": "2026-11-25",
+  "version": 4,
+  "updated": "2026-11-26",
   "owner": "team/t3-gate-tiering",
   "purpose": "门禁分层清单（可执行）：每一层都是 scripts/smoke_grok_desktop_parity.sh 里的一段；门名必须字面出现在矩阵里（AC-07 的接线口径）。",
   "how_to_run": {
@@ -2116,6 +2116,24 @@
       "frozen": false,
       "kind": "门",
       "reason": "门：prove_design_language.js — 设计语言门（批次 13）：「堆了功能反而看着很丑、很 AI 味」的根因是**名义上有设计系统、实际每个功能各写各的**（行内样式 158 处 / 硬编码颜色 186 / 硬编码字号 10 / 硬编码间距 203 / 硬编码圆角 15 / emoji 当图标 44，存量合计 616 处）。本门按**增量**守：R1 行内样式、R2 硬编码颜色、R3 硬编码字号、R4 硬编码间距、R5 硬编码圆角、R6 emoji 当图标；存量登记在 scripts/design_debt.json（按指纹、不含行号）里不判红，**新增的判红**（ratchet）；自带变异对照：注入一条违规 ⇒ 必须判红 ⇒ 判据有牙。配套：docs/design/design-language.md（规范）+ .skills/bitbot-design-language（skill）"
+    },
+    {
+      "file": "prove_app_rail.js",
+      "layer": "L2",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_app_rail.js — 域导航栏门（批次 14）：把「一堆功能」变成「四个域」（对话/指挥/自动化/设置）。本门钉住：四个域顺序固定、每个域都有**可见文字标签**（不只是图标）、每个域都有**真实去处**（点了真的有反应，不是摆设）、「自动化」没有所在群时**禁用**并说清原因（定时任务是逐群的 ⇒ 宁可禁用，也不放假入口）、同一时刻只有一个域选中；自带负向对照（删掉一个域 ⇒ 必须判红 ⇒ 判据有牙）；L2 真实用户旅程：真浏览器渲染 ⇒ 合并/提频跑；红即阻塞",
+      "wired_in": "G-147"
+    },
+    {
+      "file": "prove_window_bridge.js",
+      "layer": "L1",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_window_bridge.js — 跨作用域桥接的「声明—引用」对账门（批次 14）：window 桥是**一次性赋值**（window.__bitbotCommand = { open: cmdOpen, … }），只要其中任何一个引用在运行时是 undefined，整行就抛 ReferenceError ⇒ **整个桥没了** ⇒ 所有跨作用域功能**同时**静默失效（页面不红不崩，只是「点了没反应」）。真实事故（2026-11-26）：index.html 里一个没闭合的块注释吞掉了 cmdOpen 等**五个函数声明** —— 那**不是语法错误** ⇒ node --check 全绿 ⇒ 任何语法级门禁都看不见。本门在**静态层**钉死：WB-1 桥接引用的标识符必须声明过、WB-2「别处还在用、声明却被注释吞掉」的函数、WB-3 tokenizer 自检（尺子失准就如实报红）、WB-4/WB-5 负向对照（含原事故原样重演）；纯读文件、不起进程、不联网 ⇒ L1 秒级，每次提交都跑；红即阻塞",
+      "wired_in": "G-148"
     }
   ],
   "frozen": [
