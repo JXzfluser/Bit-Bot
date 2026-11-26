@@ -5155,6 +5155,29 @@ for g142_id in HM-01 HM-02 HM-03 HM-10 HM-11 HM-12 HM-13 HM-14 HM-15 HM-16 HM-20
   fi
 done
 
+# G-146 设计语言门禁（批次 13）
+#   「堆了功能反而看着很丑、很 AI 味」的根因是**名义上有设计系统、实际每个功能各写各的**：
+#   行内样式、硬编码颜色/字号/间距/圆角、emoji 当图标（存量实测 616 处）。
+#   ⇒ 本门按**增量**守：台账里的存量不判红，**新增的判红**。
+#   ⇒ 变异对照：注入一条违规 ⇒ 必须判红（连台账都绕不过去）。
+if timeout 180 node scripts/prove_design_language.js > /tmp/g146-design-language.log 2>&1; then
+  ok "G-146 prove_design_language（$(grep -oE 'PASS=[0-9]+ FAIL=[0-9]+' /tmp/g146-design-language.log | tail -1)）"
+else
+  bad "G-146 prove_design_language（见 /tmp/g146-design-language.log；$(grep '✗' /tmp/g146-design-language.log | head -3 | tr '\n' ' ')）"
+fi
+for g146_id in 行内样式 硬编码颜色 硬编码字号 硬编码间距 硬编码圆角 emoji; do
+  if grep -q "$g146_id" scripts/prove_design_language.js 2>/dev/null; then
+    ok "G-146 锚点：$g146_id"
+  else
+    bad "G-146 锚点缺失：$g146_id"
+  fi
+done
+if grep -q '负向对照有牙' /tmp/g146-design-language.log 2>/dev/null; then
+  ok "G-146 负向对照在位：注入违规 ⇒ 门禁判红"
+else
+  bad "G-146 负向对照缺失：门禁没证明判据有牙"
+fi
+
 # G-145 流水线下一棒由契约 order 决定（真 provider 第十四轮抓到的真 bug：
 #   第一棒一句「【交给】内容主笔」⇒ 选题策划师整棒被跳过 ⇒ 主笔没 brief ⇒ 交空壳）
 if timeout 180 node scripts/prove_pipeline_handoff_order.js > /tmp/g145-handoff-order.log 2>&1; then

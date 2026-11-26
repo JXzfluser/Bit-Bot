@@ -26814,6 +26814,17 @@
      * 变的只是外壳:卡片根从 div.frame-box 变成 article.cmd-card,
      * 标题走类型阶 class(去掉行内 font-weight),多一个状态徽标。
      */
+    /* 【批次 13】指挥动作的线性图标（和全局图标同一套语言：
+       24 视窗、stroke 1.8、无填充）。 */
+    var CMD_ICON_STEER =
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-3.9-.9L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>';
+    var CMD_ICON_REPLAN =
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>';
+
     function cmdCardHtml(task) {
       var t = task;
       var title = t.task_title || t.task || (t.steps[0] && t.steps[0].text) || t.room_title || "";
@@ -26886,10 +26897,18 @@
           ? '<div class="cmd-command">' +
               '<input class="cmd-input" type="text" data-i18n-placeholder="cmdCmdPlaceholder" placeholder="' +
                 cmdEsc(cmdT("cmdCmdPlaceholder")) + '">' +
-              '<button type="button" class="bb-btn bb-btn-sm" data-cmd-steer="' + cmdEsc(t.task_sig) +
-                '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdSteer">' + cmdEsc(cmdT("cmdSteer")) + "</button>" +
-              '<button type="button" class="bb-btn bb-btn-sm" data-cmd-replan="' + cmdEsc(t.task_sig) +
-                '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdReplan">' + cmdEsc(cmdT("cmdReplan")) + "</button>" +
+              /* 【批次 13】动作按钮改成**框内图标**（参考图那个输入区：
+                 左边输入、右边图标动作）。
+                 文字不能删 —— 无障碍与 copy contract 都要它 ⇒
+                 可见文字换成 SVG，可见性靠 sr-only 保留在 DOM 里。 */
+              '<button type="button" class="bb-btn bb-btn-sm cmd-act" data-cmd-steer="' + cmdEsc(t.task_sig) +
+                '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n-title="cmdSteer" data-i18n-aria="cmdSteer" ' +
+                'aria-label="' + cmdEsc(cmdT("cmdSteer")) + '">' + CMD_ICON_STEER +
+                '<span class="cmd-sr" data-i18n="cmdSteer">' + cmdEsc(cmdT("cmdSteer")) + "</span></button>" +
+              '<button type="button" class="bb-btn bb-btn-sm cmd-act" data-cmd-replan="' + cmdEsc(t.task_sig) +
+                '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n-title="cmdReplan" data-i18n-aria="cmdReplan" ' +
+                'aria-label="' + cmdEsc(cmdT("cmdReplan")) + '">' + CMD_ICON_REPLAN +
+                '<span class="cmd-sr" data-i18n="cmdReplan">' + cmdEsc(cmdT("cmdReplan")) + "</span></button>" +
               // 插话的诚实边界常驻小字(product_surface.js:2756 scope:"next_hop"):
               // 下一棒看得见,**当前这一轮看不见** —— 不许让用户以为插话能打断这一轮。
               '<span class="cmd-note cmd-steer-hint" data-i18n="cmdSteerScopeHint">' + cmdEsc(cmdT("cmdSteerScopeHint")) + "</span>" +

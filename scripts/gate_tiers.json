@@ -2108,6 +2108,14 @@
       "kind": "门",
       "reason": "门：prove_host_research_materials.js — Host 找料门（批次 10）：真 provider 实测 13 轮、五棒一次没跑完、**零产物**，根因是「找料 + 逐条核验」全压在成员身上（降级搜索给的候选一半以上是登录墙 ⇒ 模型换着试 ⇒ 一棒 web_fetch 165~322 次 ⇒ 撞 900 秒闸）。本门钉住：找料**真的能产出材料**（真实网络）、材料里的链接**逐条实测可达**（死链在交给成员之前就剔掉）、死链被认出、**找料模式下 web_fetch 被直接拒**（确定性约束，不靠 prompt 求模型自觉）、恢复默认后又能抓（额度不是永久焊死）、每棒额度生效、候选不相关时**如实标注**（不假装相关）；隔离（门禁只读网络、用户真数据 0 字节被改）",
       "wired_in": "G-142"
+    },
+    {
+      "file": "prove_design_language.js",
+      "layer": "L2",
+      "blocking": true,
+      "frozen": false,
+      "kind": "门",
+      "reason": "门：prove_design_language.js — 设计语言门（批次 13）：「堆了功能反而看着很丑、很 AI 味」的根因是**名义上有设计系统、实际每个功能各写各的**（行内样式 158 处 / 硬编码颜色 186 / 硬编码字号 10 / 硬编码间距 203 / 硬编码圆角 15 / emoji 当图标 44，存量合计 616 处）。本门按**增量**守：R1 行内样式、R2 硬编码颜色、R3 硬编码字号、R4 硬编码间距、R5 硬编码圆角、R6 emoji 当图标；存量登记在 scripts/design_debt.json（按指纹、不含行号）里不判红，**新增的判红**（ratchet）；自带变异对照：注入一条违规 ⇒ 必须判红 ⇒ 判据有牙。配套：docs/design/design-language.md（规范）+ .skills/bitbot-design-language（skill）"
     }
   ],
   "frozen": [

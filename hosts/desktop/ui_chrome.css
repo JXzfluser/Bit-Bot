@@ -4082,8 +4082,82 @@ body.grok-ui .cn-hint {
 .cmd-actions { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* B-8 批 3 续:指挥区(一句输入 + 插话 / 改向)。 */
-.cmd-command { margin-top: 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.cmd-input { flex: 1 1 220px; min-width: 140px; }
+/* 【批次 13】指挥行改成**一个胶囊输入框 + 框内图标按钮**。
+   原来是「输入框 + 插话(文字按钮) + 改向(文字按钮) + 一行提示」四件挤在一行
+   ⇒ 一张卡被这行撑得很高，而且视觉上像「四个控件」而不是「一件事」。
+   参考图里输入区就是一个 pill：左边 + 号，右边发送箭头，其余都藏在里面。
+   ⇒ 现在：框内左侧输入、右侧两个图标动作、提示移到 hover 时的 title。 */
+.cmd-command {
+  margin-top: var(--space-3);
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: nowrap;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
+  transition: border-color .14s var(--ease), background .14s var(--ease);
+}
+.cmd-command:focus-within {
+  border-color: color-mix(in srgb, var(--ink) 22%, transparent);
+  background: var(--surface);
+}
+.cmd-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  padding: var(--space-2) 0;
+  height: auto;
+}
+/* 按钮里的文字：给读屏器和 copy contract 留一份，视觉上收起。 */
+.cmd-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  /* 不写 margin:-1px —— 设计门禁 R4 不许出现不在 --space-* 值域里的间距。
+     absolute + 1px + clip 已经足够藏住它，不需要负边距。 */
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.cmd-command .bb-btn {
+  flex: 0 0 auto;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.cmd-command .bb-btn:hover { background: var(--fill); color: var(--ink); }
+/* 提示文字不再占一行 ⇒ 默认收起，鼠标停在指挥行上才出现。 */
+.cmd-steer-hint {
+  flex: 0 0 100%;
+  order: 9;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height .16s var(--ease), opacity .16s var(--ease);
+}
+.cmd-command:hover .cmd-steer-hint,
+.cmd-command:focus-within .cmd-steer-hint {
+  max-height: 20px;
+  opacity: 1;
+  padding-top: var(--space-1);
+}
 
 /* B-8:指挥台的提示条 —— 浮在列表上方,不再把任务挤没。 */
 .cmd-note-box { margin-bottom: 8px; }
@@ -4291,16 +4365,27 @@ body.cmd-view #composer { display: none !important; }
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 6px;
 }
+/* 【批次 13】成员卡：**白底、无边框**，靠留白和分隔线分组。
+   原来是「灰底 + 边框 + 10px 圆角」⇒ 一排下来像一堆小盒子。
+   参考图里成员是「头像 + 名字 + 状态点」，靠**间距**分组，不靠盒子。 */
 .cmd-member {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
   min-width: 0;
-  padding: 7px 10px;
-  background: var(--bg1);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  padding: var(--space-3) var(--space-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  transition: background .14s var(--ease);
 }
+.cmd-member:hover { background: var(--fill); }
+/* 一排成员之间用竖细线分组（而不是给每张卡描边）。 */
+.cmd-members-list {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-2);
+}
+.cmd-member + .cmd-member { box-shadow: inset 1px 0 0 var(--line); }
 .cmd-member-av {
   flex: 0 0 auto;
   width: 22px;
@@ -4425,7 +4510,7 @@ body.cmd-view #composer { display: none !important; }
 .cmd-card-room { margin-top: 2px; }
 
 /* 插话旁常驻的小字:下一棒看得见,当前这一轮看不见(诚实边界)。 */
-.cmd-steer-hint { flex: 1 1 100%; }
+.cmd-steer-hint { /* 旧规则已被上面的胶囊版取代（批次 13） */ }
 
 /* 折叠区(已完成 / 值班):默认收起,标题行带计数。 */
 .cmd-fold { margin-top: var(--space-6); }
