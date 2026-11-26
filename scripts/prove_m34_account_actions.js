@@ -8,7 +8,7 @@
  *   1) ap-usage / ap-add-account 通过 open settings anchor=... 短语进入对应的
  *      设置 tab（usage / profile 锚点在 SETTINGS_ANCHOR_TAB 里已注册）；
  *   1b) 手机这件事只有一个入口：账户弹层里没有 ap-mobile（获取移动版），
- *       移动版的现状与下一步写在 ap-remote 打开的「移动端远程控制」弹窗里，
+ *       移动版的现状与下一步写在「移动端远程控制」弹窗里（入口在设置 → 电脑与权限），
  *       和配对码放在一起；anchor=pairing / tab=Phone 这类旧深链必须被那个弹窗
  *       接住 —— 它们指向的「设置 → 手机」页签已经不存在，静默落到「常规」
  *       等于点了没反应；
@@ -63,7 +63,12 @@ if (/SETTINGS_ANCHOR_TAB = \{[\s\S]*?"update-status":\s*"updates"/.test(html)
    c) anchor=pairing / tab=Phone 这些旧深链被弹窗接住，而不是落到「常规」。
    有界窗口 [\s\S]{0,400} 是必须的：不封顶的正则会越过对象末尾撞上别处同名短语，
    断言就恒真了。 */
-const noMobileRow = !/id="ap-mobile"/.test(html) && /id="ap-remote"/.test(html);
+/* a) 账户弹层不再单列「获取移动版」，也不再有 ap-remote（远程控制已搬到设置页）；
+   a2) 那个入口真的落在设置页 #gp-remote-open —— 只是删掉会丢功能。 */
+const noMobileRow = !/id="ap-mobile"/.test(html)
+  && !/id="ap-remote"/.test(html)
+  && /id="gp-remote-open"/.test(html)
+  && /id="st-computer"/.test(html);
 
 /* 文案断言必须锚定「元素内文」，不能锚定 mcAppNote 这个键名：
    键名在三语字典里各出现一次（zh / zh-TW / en），裸键名 + 有界窗口会撞到

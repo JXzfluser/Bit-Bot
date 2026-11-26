@@ -2729,18 +2729,10 @@
         </div>
         <div id="account-popup" hidden role="menu">
           <!-- 行序与真源基本一致：每周用量 → 移动端远程控制 → 支持 → 设置 ── 0.5px 分隔 ──
-               添加账户 → 退出登录。连接应用 / 模板市场是我方增量功能，放在段一末尾。
-               两处有意偏离真源，都是为了「一件事只留一个入口」：
-                 · 首行不再是「发现新版本（安装）」—— 版本更新只在「设置 → 更新」；
-                 · 「获取移动版 Bit Bot」并进了「移动端远程控制」。手机这件事本来就是
-                   一句话：装哪份、怎么连。分成两行时，前一行只能打印一段说明再去打开
-                   后一行，中间还隔着一个并不存在的「设置 → 手机」页签。 -->
+                "我在哪 / 要去哪"由最左域栏负责，连接应用 / 模板市场在侧栏底部，
+               设置与移动端远程控制在设置页 —— 这里只留账号相关，不重复一遍去处。 -->
           <button type="button" class="ap-item" id="ap-usage"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7.1 2.5a5.6 5.6 0 1 1-4.6 4.4"/><path d="M8 8.4 5.3 5.2"/></svg></span><span class="ap-tx" data-i18n="apUsage">每周用量</span><span class="ap-sub" id="ap-usage-sub" hidden></span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
-          <button type="button" class="ap-item" id="ap-remote"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="1.5" width="6" height="10.5" rx="1.6"/><path d="M6 10.6h1"/><path d="M11.5 6.2a3 3 0 0 1 0 5.1"/><path d="M13 4.2a5.4 5.4 0 0 1 0 9"/></svg></span><span class="ap-tx" data-i18n="apRemote">移动端远程控制</span></button>
           <button type="button" class="ap-item" id="ap-support"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.6"/><path d="M6.2 2v12"/><path d="M3.6 10.9h9.4"/></svg></span><span class="ap-tx" data-i18n="apSupport">支持</span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
-          <button type="button" class="ap-item" id="ap-settings"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg></span><span class="ap-tx" data-i18n="settings">设置</span></button>
-          <button type="button" class="ap-item" id="ap-connect"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.6 9.4a2.8 2.8 0 0 0 4 0l2-2a2.8 2.8 0 1 0-4-4l-1 1"/><path d="M9.4 6.6a2.8 2.8 0 0 0-4 0l-2 2a2.8 2.8 0 1 0 4 4l1-1"/></svg></span><span class="ap-tx" data-i18n="connectApps">连接应用</span></button>
-          <button type="button" class="ap-item" id="ap-market"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></span><span class="ap-tx" data-i18n="marketplace">模板市场</span></button>
           <div class="ap-sep"></div>
           <button type="button" class="ap-item" id="ap-add-account"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><path d="M1.8 14v-.6A3.6 3.6 0 0 1 5.4 9.8h1.2a3.6 3.6 0 0 1 3.4 2.2"/><path d="M12.2 9.2v4M10.2 11.2h4"/></svg></span><span class="ap-tx" data-i18n="apAddAccount">添加账户</span></button>
           <button type="button" class="ap-item ap-danger" id="ap-signout"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.5 14H3.2A1.2 1.2 0 0 1 2 12.8V3.2A1.2 1.2 0 0 1 3.2 2h3.3"/><path d="M10.5 11 14 8l-3.5-3"/><path d="M6 8h8"/></svg></span><span class="ap-tx" data-i18n="apSignOut">退出登录</span></button>
@@ -2984,6 +2976,11 @@
       </div>
       <div id="st-computer" class="settings-tab" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         <div class="st-title" data-i18n="tabComputer">电脑与权限</div>
+        <!-- 移动端远程控制 = 这台电脑的配对/被控入口，属于"电脑"这一域。
+             原来只在账户弹层里，跟"设置"域和侧栏入口重叠；挪到这里后
+             账户弹层只管账号，"我去哪"只有域栏和设置页两个出口。 -->
+        <div class="gp-label"><span data-i18n="apRemote">移动端远程控制</span><span class="gp-hint" data-i18n="apRemoteHint">配对手机后，在路上也能发消息、看任务</span></div>
+        <div class="gp-row"><button type="button" id="gp-remote-open" class="bb-btn bb-btn-sm bb-btn-primary" data-i18n="apRemoteOpen">打开配对面板</button></div>
         <div class="gp-label"><span data-i18n="locExec">本地执行（电脑权限）</span><span class="gp-hint" data-i18n="locExecHint">总开关 · 管「执行命令」和「操作电脑」</span></div>
         <div class="gp-row" id="gp-locexec-row">
           <button type="button" class="gp-chip" data-locexec="ask" data-i18n="askEveryTime">每次询问</button>
@@ -4480,32 +4477,6 @@
     if (!window.__bitbotUntrusted) {
       document.write('<script src="./shared/untrusted_fence.js"><\/script>');
     }
-  </script>
-  <script>
-    /* Grok-parity round 5: 设置/连接/模板 collapsed into the account popup.
-       Forward clicks to the (visually hidden) sidebar controls so the engine
-       keeps a single binding source.
-       §4.5 6a③：「管理 Bot / 应用」已退役（死控件，无真实落点）。 */
-    (function () {
-      var apSettings = document.getElementById("ap-settings");
-      if (apSettings) apSettings.addEventListener("click", function () {
-        var b = document.getElementById("sidebar-settings-btn");
-        if (b) b.click();
-      });
-      var apConnect = document.getElementById("ap-connect");
-      if (apConnect) apConnect.addEventListener("click", function () {
-        var b = document.getElementById("connect-apps-btn");
-        if (b) b.click();
-      });
-      var apMarket = document.getElementById("ap-market");
-      if (apMarket) apMarket.addEventListener("click", function () {
-        var b = document.getElementById("marketplace-btn");
-        if (b) b.click();
-      });
-      /* Round 10b 曾把钉钉/飞书/企微凭证塞进「连接应用」的通信分类；2026-11-07
-         搬回 设置 → 凭证（#ca-cn-channels 现在是凭证页里的一个分组）。
-         字段 id 全程没改，引擎绑定与保存链路不受影响。 */
-    })();
   </script>
   <script>
     /* WAVEG_I18N 是本文件后半段才初始化的 const（脚本求值阶段调 wavegT() 会撞
@@ -15152,7 +15123,8 @@
       pairingCopyTokenBtn.addEventListener("click", () => pairingCopy("token"));
     }
 
-    // 配对码入口只有一个：账户 → 移动端远程控制里的 #mc-gen-btn（见 openMobileControl 那段）。
+    // 配对码入口只有一个：设置 → 电脑与权限 → 移动端远程控制（#gp-remote-open），
+    // 它打开同一个 openMobileControl 面板，里面的 #mc-gen-btn 才生成配对码。
     // 2026-11 删掉了凭证卡里的第二颗 #pairing-gen-btn —— 两处能开同一个码，
     // 用户得先判断"这两颗有什么区别"，而答案是没有。
     const pairingRevokeBtn = document.getElementById("pairing-revoke-btn");
@@ -16024,11 +15996,13 @@
       });
     }
 
-    const apRemote = document.getElementById("ap-remote");
+    // 配对入口只在「设置 → 电脑与权限」这一处（见 #gp-remote-open）。
+    // 已从账户弹层移除：账户只管账号，设备/被控属于"电脑"这个域。
+    const apRemote = document.getElementById("gp-remote-open");
     if (apRemote) {
       apRemote.addEventListener("click", () => {
-        setAccountPopup(false);
-        openMobileControl(document.getElementById("account-avatar-btn"));
+        closeSettingsPanel();
+        openMobileControl(document.getElementById("gp-remote-open"));
       });
     }
 

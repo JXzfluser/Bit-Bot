@@ -55,18 +55,24 @@ if (/<div id="account-bar">/.test(html)
   && /id="account-name-label"/.test(html)
   && /id="account-popup"/.test(html)
   && /id="ap-usage"/.test(html)
-  /* ap-mobile（获取移动版）并入了 ap-remote 打开的「移动端远程控制」弹窗：
-     手机这件事只有一个入口，弹层里不再单列一行。 */
-  && /id="ap-remote"/.test(html)
-  && !/id="ap-mobile"/.test(html)
   && /id="ap-support"/.test(html)
+  /* 去处类入口已从账户弹层移除，避免和最左域栏/侧栏重复：
+     设置 → 域栏 data-app-domain="settings"；远程控制 → 设置页 #gp-remote-open；
+     连接应用 / 模板市场 → 侧栏 #connect-apps-btn / #marketplace-btn。
+     账户弹层只留账号相关（用量 / 支持 / 加账户 / 登出）。 */
+  && !/id="ap-remote"/.test(html)
+  && !/id="ap-settings"/.test(html)
+  && !/id="ap-connect"/.test(html)
+  && !/id="ap-market"/.test(html)
+  && /id="gp-remote-open"/.test(html)
+  && /data-app-domain="settings"/.test(html)
   && /id="sidebar-settings-btn"/.test(html)
   && /id="ap-add-account"/.test(html)
   && /id="ap-signout"/.test(html)
   && !/id="ap-update"/.test(html)
   && /#account-bar \{/.test(html)
   && /#account-popup \{/.test(html)) {
-  ok("账户条包含 8 项弹层（用量 / 移动端远程控制 / 支持 / 设置 / 连接应用 / 模板市场 / 加账户 / 登出 + 分割线），版本更新只在设置里、移动版并进远程控制");
+  ok("账户弹层只留账号相关（用量 / 支持 / 加账户 / 登出），去处类入口不重复：设置归域栏、远程控制归设置页、连接应用与模板市场归侧栏");
 } else {
   bad("account-bar", "Grok-style footer popup missing");
 }
