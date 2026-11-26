@@ -2805,15 +2805,32 @@
             <button type="button" id="cmd-panel-close" class="bb-btn bb-btn-sm" data-i18n="cmdClose">关闭</button>
           </div>
         </div>
-        <div id="cmd-hint" class="cmd-note cmd-hint" data-i18n="cmdHint">任务来自各群的真实执行记录。</div>
-        <!-- 第一层：要你拍板（最要紧的事，永远在最上面）
-             第二层：四个状态桶（分段控件）
-             第三层：按桶分栏
-             第四层：已完成（折叠）
-             第五层：值班（折叠） -->
-        <!-- 分段控件：**提到顶部**（批次 11）。
-             它原来夹在「要你拍板」列表和按桶分栏之间 ⇒ 用户要滚到底才发现这屏能切。
-             而它是这屏**唯一的导航** ⇒ 必须第一眼就看见。 -->
+        <!-- 【批次 12】指挥台**绑定当前会话**。
+             以前它是「所有群混在一起」的一张大表 ⇒ 不同群的人和事挤在一处，
+             根本看不出哪个团队在忙什么 ⇒ 用户问「这玩意到底干嘛的」也答不上来。
+             ⇒ 现在它服务于**你正在看的那个群**（或那个单聊）：
+               成员区 = 这个团队的**人**（谁在干什么、谁卡在等你）
+               任务区 = 这个团队的**事**
+             ⇒ 换一群 ⇒ 换一套人和事（这才是「不同群成员不一样」的落点）。 -->
+        <div id="cmd-hint" class="cmd-note cmd-hint" data-i18n="cmdHint">这里显示你当前所在群的团队状态。</div>
+
+        <!-- 跨群提醒：**只提醒，不做仪表盘**（批次 12）。
+             别的群有要你拍板的事 ⇒ 顶上一条细条告诉你有几个、点一下切过去。
+             它不是第二套视图 —— 它只负责「别忘了那边也在等你」。 -->
+        <div id="cmd-other-rooms" class="cmd-other-rooms" hidden></div>
+
+        <!-- 成员区：**这个团队的人**（批次 12）。
+             指挥台原来只有「事」没有「人」⇒ 不知道谁在干什么、该指挥谁。
+             ⇒ 这一块是「随时可指挥的团队」真正落地的地方。 -->
+        <section id="cmd-members" class="cmd-members" hidden>
+          <div class="cmd-sec-head">
+            <span class="cmd-sec-title" data-i18n="cmdMembersTitle">团队成员</span>
+            <span class="cmd-sec-count" id="cmd-members-count"></span>
+          </div>
+          <div id="cmd-members-list" class="cmd-members-list"></div>
+        </section>
+
+        <!-- 分段控件：任务桶的切换（这屏唯一的导航）。 -->
         <div id="cmd-buckets" class="cmd-tabs" role="tablist"></div>
         <section id="cmd-active" class="cmd-active" hidden>
           <div class="cmd-sec-head">
@@ -2823,6 +2840,10 @@
           <div id="cmd-active-list" class="cmd-list"></div>
           <div id="cmd-active-more" class="cmd-note" hidden></div>
         </section>
+        <!-- 整会话空态：**一个任务都没有**时才出现（批次 12）。
+             分桶空态是「这个桶没东西」，整会话空态是「这个团队还没开工」——
+             两件事对用户意义不同 ⇒ 分开说。 -->
+        <div id="cmd-scope-empty" class="frame-box cmd-empty-scope" hidden data-i18n="cmdEmptyScope">这个团队还没有任务。</div>
         <div id="cmd-detail" class="cmd-sections"></div>
         <details id="cmd-done" class="cmd-fold">
           <summary class="cmd-fold-summary"><span data-i18n="cmdDoneTitle">已完成</span><span class="cmd-fold-count" id="cmd-done-count"></span></summary>
@@ -8851,6 +8872,12 @@
       await loadRoomBotNames();
       await renderRoomTranscript(rm.id);
       if (panelValue() === "room") refreshRoomRail().catch(() => {});
+      /* 【批次 12】指挥台的作用域就是**当前会话** ⇒ 换了群，它的内容必须跟着换。
+         指挥台开着的时候才刷新（没开就不做无用功）。 */
+      try {
+        var cp = document.getElementById("command-panel");
+        if (cp && !cp.hidden && typeof cmdRefresh === "function") await cmdRefresh();
+      } catch (_) { /* 刷新不了就留着旧内容，不报错打断切群 */ }
     }
     /* ---- GP-154「定时任务在群内部」（对标 Grok 群资料面板）----
        成员 → 「群聊最多可有 6 位成员。」→ 定时任务 → 「暂无定时任务」+
@@ -19282,14 +19309,25 @@
         cmdOpenRoom: "打开群",
         cmdClose: "关闭",
         cmdRefresh: "刷新",
-        cmdHint: "任务来自各群的真实执行记录。",
+        cmdHint: "这里显示你当前所在群的团队状态。",
         cmdNavLabel: "指挥台",
-        cmdScope: "{r} 个群 · {t} 件事 · {n} 件等你拍板",
         cmdUnavailable: "拿不到群列表(rooms.list 不可用)。",
         cmdActiveTitle: "要你拍板",
         cmdRunningTitle: "在跑的",
         cmdDoneTitle: "已完成",
         cmdMoreCount: "还有 {n} 件",
+        cmdTitleOf: "{r} · 指挥台",
+        cmdMembersTitle: "团队成员",
+        cmdMemberWorking: "在跑",
+        cmdMemberNeedsYou: "等你拍板",
+        cmdMemberIdle: "空闲",
+        cmdOtherRooms: "另有 {n} 件事在别的群等你拍板",
+        cmdGoToRoom: "切到这个群",
+        cmdEmptyScope: "这个团队还没有任务。",
+        cmdScope: "{r} 位成员 · {t} 件事 · {n} 件等你拍板",
+        cmdExpand: "展开",
+        cmdUnnamedRoom: "未命名群",
+        cmdScopeAll: "{r} 个群 · {t} 件事 · {n} 件等你拍板",
         cmdEmptyWorking: "没有在跑的任务。",
         cmdEmptyWaiting: "没有在等排期的任务。",
         cmdEmptyNeedsYou: "没有等你拍板的事。",
@@ -20815,14 +20853,25 @@
         cmdOpenRoom: "開啟群",
         cmdClose: "關閉",
         cmdRefresh: "重新整理",
-        cmdHint: "任務來自各群的真實執行記錄。",
+        cmdHint: "這裡顯示你當前所在群的團隊狀態。",
         cmdNavLabel: "指揮台",
-        cmdScope: "{r} 個群 · {t} 件事 · {n} 件等你拍板",
         cmdUnavailable: "拿不到群清單(rooms.list 不可用)。",
         cmdActiveTitle: "要你拍板",
         cmdRunningTitle: "在跑的",
         cmdDoneTitle: "已完成",
         cmdMoreCount: "還有 {n} 件",
+        cmdTitleOf: "{r} · 指揮台",
+        cmdMembersTitle: "團隊成員",
+        cmdMemberWorking: "在跑",
+        cmdMemberNeedsYou: "等你拍板",
+        cmdMemberIdle: "空閒",
+        cmdOtherRooms: "另有 {n} 件事在别的群等你拍板",
+        cmdGoToRoom: "切到這個群",
+        cmdEmptyScope: "這個團隊還沒有任務。",
+        cmdScope: "{r} 位成員 · {t} 件事 · {n} 件等你拍板",
+        cmdExpand: "展開",
+        cmdUnnamedRoom: "未命名群",
+        cmdScopeAll: "{r} 個群 · {t} 件事 · {n} 件等你拍板",
         cmdEmptyWorking: "沒有在跑的任務。",
         cmdEmptyWaiting: "沒有在等排期的任務。",
         cmdEmptyNeedsYou: "沒有等你拍板的事。",
@@ -22348,14 +22397,25 @@
         cmdOpenRoom: "Open room",
         cmdClose: "Close",
         cmdRefresh: "Refresh",
-        cmdHint: "Tasks are rebuilt from each group's real run records.",
+        cmdHint: "Your current group's team, live.",
         cmdNavLabel: "Command",
-        cmdScope: "{r} groups · {t} tasks · {n} need you",
         cmdUnavailable: "Group list unavailable (rooms.list missing).",
         cmdActiveTitle: "Needs you",
         cmdRunningTitle: "Running",
         cmdDoneTitle: "Completed",
         cmdMoreCount: "{n} more",
+        cmdTitleOf: "{r} · Command",
+        cmdMembersTitle: "Team members",
+        cmdMemberWorking: "Working",
+        cmdMemberNeedsYou: "Needs you",
+        cmdMemberIdle: "Idle",
+        cmdOtherRooms: "{n} more tasks are waiting for you in other groups",
+        cmdGoToRoom: "Switch to this group",
+        cmdEmptyScope: "This team has no tasks yet.",
+        cmdScope: "{r} members · {t} tasks · {n} need you",
+        cmdExpand: "Expand",
+        cmdUnnamedRoom: "Unnamed group",
+        cmdScopeAll: "{r} groups · {t} tasks · {n} need you",
         cmdEmptyWorking: "Nothing running right now.",
         cmdEmptyWaiting: "Nothing waiting to be scheduled.",
         cmdEmptyNeedsYou: "Nothing needs your call.",
@@ -26537,7 +26597,15 @@
          像素门 TA-06 结尾「回到默认桶(在跑)」就钉住了这个默认。
          「在跑常常是空的」是真的 —— 但那是**数据状态**，不是 UI 该替用户决定的；
          解决办法是空态说人话（见 cmdEmptyFor），不是偷偷换默认视图。 */
-      tab: "working", activeExpanded: false };
+      tab: "working", activeExpanded: false,
+      /* 【批次 12】指挥台的作用域 = **你当前所在的那个会话**。
+         kind: "room"（在群里）/ "dm"（在跟某个 Bot 单聊）/ "none"（没有会话）。
+         ⇒ 换群就换一套成员、换一批任务 —— 这是「不同群指挥台成员不一样」的落点。 */
+      scope: { kind: "none", id: "", title: "", memberIds: [] },
+      /* 当前作用域里的团队成员（含职责与当前状态）。 */
+      members: [],
+      /* 其它群的「要你拍板」计数 —— 只做提醒，不做第二套仪表盘。 */
+      otherRooms: [], otherExpanded: false, orphanNeeds: 0 };
 
     function cmdEsc(s) {
       return String(s == null ? "" : s)
@@ -26613,8 +26681,11 @@
       var host = document.getElementById("cmd-duty-list");
       if (!host) return;
       var rows = [];
+      var scD = CMD_STATE.scope || { kind: "none" };
       for (var roomId in byRoom) {
         if (!Object.prototype.hasOwnProperty.call(byRoom, roomId)) continue;
+        /* 【批次 12】值班只显示**当前群**的排班（值班本来就是逐房的）。 */
+        if (scD.kind === "room" && String(roomId) !== scD.id) continue;
         var list = byRoom[roomId] || [];
         for (var i = 0; i < list.length; i++) {
           var r = list[i] || {};
@@ -26666,8 +26737,13 @@
     function cmdRenderDone(records) {
       var host = document.getElementById("cmd-done-list");
       if (!host) return;
+      var sc = CMD_STATE.scope || { kind: "none" };
       var list = (Array.isArray(records) ? records : []).filter(function (x) {
-        return x && x.state === "done";
+        if (!x || x.state !== "done") return false;
+        /* 【批次 12】只显示**当前作用域**的已完任务。
+           以前是全量（真数据上「已完 54」全挤在这个折叠区里）⇒ 又是跨群混排。 */
+        if (sc.kind !== "room") return true;
+        return String(x.room_id || "") === sc.id;
       });
       var cnt = document.getElementById("cmd-done-count");
       if (cnt) cnt.textContent = String(list.length);
@@ -26877,6 +26953,16 @@
     function cmdRenderList() {
       var host = document.getElementById("cmd-detail");
       if (!host) return;
+      /* 【批次 12】整会话空态：这个团队**一件任务都没有**。
+         分桶空态是「这个桶没东西」，整会话空态是「这个团队还没开工」——
+         两件事对用户意义不同 ⇒ 分开说。
+         （CP-5 门禁钉的就是整会话空态的那句「还没有任务」。） */
+      var scopeEmpty = document.getElementById("cmd-scope-empty");
+      if (scopeEmpty) {
+        var noTasks = !CMD_STATE.tasks.length;
+        scopeEmpty.hidden = !noTasks;
+        if (noTasks) scopeEmpty.textContent = cmdT("cmdEmptyScope");
+      }
       // 提示**不替换**列表 —— 以前 note 一有值就整个 return,
       // 用户看到的是"我的任务全没了",只留一句报错。列表必须在。
       var html = "";
@@ -26979,13 +27065,108 @@
     }
 
     function cmdRender() {
-      // P1 批 1 的渲染顺序:桶 tab → 一级「要你拍板」→ 按桶分栏的列表 →
-      // 「已完成」折叠(原复盘区)→ 「值班」折叠。
+      /* 【批次 12】渲染顺序改了：
+           跨群提醒 → 团队成员（人）→ 桶 tab → 一级「要你拍板」→ 按桶分栏 →
+           「已完成」折叠 → 「值班」折叠。
+         为什么成员排在任务前面：指挥台的**用途**是「看清这个团队谁在干什么、
+         哪些卡在等我，然后指挥他们」⇒ 人是主语，任务是宾语。
+         以前只有任务没有成员 ⇒ 用户根本不知道该指挥谁。 */
+      cmdRenderScopeTitle();
+      cmdRenderOtherRooms();
+      cmdRenderMembers();
       cmdRenderBuckets();
       cmdRenderActive();
       cmdRenderList();
       cmdRenderDone(CMD_STATE.records || []);
       cmdRenderDuty(CMD_STATE.duty || {});
+    }
+
+    /** 顶栏标题：**谁的指挥台**（批次 12）。 */
+    function cmdRenderScopeTitle() {
+      try {
+        var titleEl = document.getElementById("cmd-top-title");
+        if (!titleEl) return;
+        var sc = CMD_STATE.scope || { kind: "none" };
+        if (sc.kind === "none") {
+          titleEl.textContent = cmdT("cmdTitle");
+          return;
+        }
+        titleEl.textContent = cmdTp("cmdTitleOf", { r: String(sc.title || sc.id) });
+      } catch (e) { /* 标题拿不到就不改 */ }
+    }
+
+    /** 跨群提醒条（批次 12）：别的群有要你拍板的事 ⇒ 顶上一条细条。
+        只提醒，不做第二套仪表盘 ⇒ 点了直接切到那个群。 */
+    function cmdRenderOtherRooms() {
+      var host = document.getElementById("cmd-other-rooms");
+      if (!host) return;
+      var others = CMD_STATE.otherRooms || [];
+      if (!others.length) { host.hidden = true; host.innerHTML = ""; return; }
+      var total = 0;
+      for (var i = 0; i < others.length; i++) total += Number(others[i].n || 0);
+
+      /* 【批次 12 修】以前这一条把**所有**别的群一个不漏地列出来（真数据上就是 10 个）⇒
+         一条提醒吃掉半屏，把成员区和任务区全挤下去。
+         而且很多列出来的是 room-xxx 这种**已删群的历史残留**（任务还在、群没了）⇒
+         根本没有群名可显示。
+         ⇒ 现在：默认只说**总数**（「另有 N 件事在别的群等你拍板」），
+           展开后最多列 3 个；群名取不到就写「未命名群」，不把内部 id 甩给用户。 */
+      var expanded = !!CMD_STATE.otherExpanded;
+      var html = '<div class="cmd-other-row">';
+      html += '<span class="cmd-other-text">' + cmdEsc(cmdTp("cmdOtherRooms", { n: String(total) })) + "</span>";
+      var shown = expanded ? others.slice(0, 3) : [];
+      for (var j = 0; j < shown.length; j++) {
+        var nm = String(shown[j].title || "").trim();
+        if (!nm || nm === shown[j].id) nm = cmdT("cmdUnnamedRoom");
+        html += '<button type="button" class="cmd-other-chip" data-cmd-goto-room="' + cmdEsc(shown[j].id) + '" ' +
+          'data-i18n-title="cmdGoToRoom">' + cmdEsc(nm) + " · " + Number(shown[j].n || 0) + "</button>";
+      }
+      if (others.length > shown.length) {
+        html += '<span class="cmd-other-more">+ ' + (others.length - shown.length) + "</span>";
+      }
+      /* data-i18n 必须写**字面量**（copy contract CC-05 扫源码里的字面量，
+         拼出来的键名它看不见 ⇒ 哪天漏了词条也没人发现）。
+         ⇒ 展开/收起两个分支各写各的字面量。 */
+      html += expanded
+        ? '<button type="button" class="cmd-link-btn" data-cmd-toggle-other="1" data-i18n="cmdCollapse">' + cmdEsc(cmdT("cmdCollapse")) + "</button>"
+        : '<button type="button" class="cmd-link-btn" data-cmd-toggle-other="1" data-i18n="cmdExpand">' + cmdEsc(cmdT("cmdExpand")) + "</button>";
+      html += "</div>";
+      host.innerHTML = html;
+      host.hidden = false;
+    }
+
+    /** 成员区：这个团队的**人**（批次 12）。
+        每人：名字 + 职责 + 当前状态（在跑 / 等你拍板 / 空闲）。 */
+    function cmdRenderMembers() {
+      var sec = document.getElementById("cmd-members");
+      var list = document.getElementById("cmd-members-list");
+      var count = document.getElementById("cmd-members-count");
+      if (!sec || !list) return;
+      var ms = CMD_STATE.members || [];
+      if (!ms.length) {
+        sec.hidden = true;
+        list.innerHTML = "";
+        if (count) count.textContent = "";
+        return;
+      }
+      sec.hidden = false;
+      if (count) count.textContent = String(ms.length);
+      var html = "";
+      for (var i = 0; i < ms.length; i++) {
+        var m = ms[i];
+        var st = m.status || "idle";
+        html += '<div class="cmd-member" data-cmd-member="' + cmdEsc(m.id) + '" data-cmd-member-status="' + cmdEsc(st) + '">';
+        html += '<span class="cmd-member-av" aria-hidden="true">' + cmdEsc(String(m.name || "?").slice(0, 1)) + "</span>";
+        html += '<span class="cmd-member-main">';
+        html += '<span class="cmd-member-name">' + cmdEsc(m.name) + "</span>";
+        if (m.job) html += '<span class="cmd-member-job">' + cmdEsc(m.job) + "</span>";
+        html += "</span>";
+        html += '<span class="cmd-member-state" data-cmd-state="' + cmdEsc(st) + '">' +
+          cmdEsc(cmdT(st === "working" ? "cmdMemberWorking" : st === "needs_you" ? "cmdMemberNeedsYou" : "cmdMemberIdle")) +
+          "</span>";
+        html += "</div>";
+      }
+      list.innerHTML = html;
     }
 
     async function cmdRefresh() {
@@ -27009,23 +27190,175 @@
             records = (tres && tres.tasks) || [];
           }
         } catch (_) { records = []; }
-        CMD_STATE.tasks = aggregateCommandTasks(rooms, records);
+        var allTasks = aggregateCommandTasks(rooms, records);
         CMD_STATE.note = "";
-        /* 侧栏角标：现在有多少件要你拍板（不用点进来才知道有事）。 */
-        cmdUpdateBadge(CMD_STATE.tasks);
-        /* 顶栏副标题：这个视图到底跨了多少东西（批次 11）。
-           指挥台是**全局**视图 ⇒ 必须说清楚它聚合的是几���群、几件事，
-           否则用户会以为「我只有一个群，怎么冒出这么多任务」。 */
+
+        /* 【批次 12】定作用域：**你当前所在的那个会话**。
+           群 ⇒ composerRoom（跟聊天输入框瞄准的是同一个群）；
+           单聊 ⇒ activeBotId（你正在跟哪个 Bot 说话）。
+           ⇒ 指挥台服务于这个团队，而不是所有群混在一起。 */
+        var scope = { kind: "none", id: "", title: "", memberIds: [] };
+        try {
+          if (composerRoom && composerRoom.id) {
+            var rm = null;
+            for (var ri2 = 0; ri2 < rooms.length; ri2++) {
+              if (rooms[ri2] && rooms[ri2].id === composerRoom.id) { rm = rooms[ri2]; break; }
+            }
+            scope = {
+              kind: "room",
+              id: composerRoom.id,
+              title: String((rm && rm.title) || composerRoom.title || composerRoom.id),
+              memberIds: Array.isArray(rm && rm.members) ? rm.members.slice() : [],
+            };
+          }
+          /* 【批次 12】**没有在群里**（还在单聊、或还没进任何群）⇒ **不收窄**。
+             为什么不在单聊里收窄到那个 Bot：指挥台是**团队**的指挥台 ——
+             单聊里没有「被指挥的团队」⇒ 硬收窄只会得到一个空面板（实测：
+             门禁环境没进群，面板直接空了 ⇒ 「还没有任务」）。
+             ⇒ 没进群时它退回「全局概览」，并照常提醒别处的待办。 */
+        } catch (_) { scope = { kind: "none", id: "", title: "", memberIds: [] }; }
+        CMD_STATE.scope = scope;
+
+        /* 只保留**这个作用域**的任务。别的群的事不混进来。
+           （没进群 ⇒ 保留全部，此时它就是全局概览。） */
+        CMD_STATE.tasks = scope.kind === "room"
+          ? allTasks.filter(function (t) {
+              return t && String(t.room_id || "") === scope.id;
+            })
+          : allTasks;
+
+        /* 真实存在的群 id 集合（批次 12）。
+           **必须定义在使用它之前** —— 上一版定义在后面 ⇒ var 提升但值为 undefined
+           ⇒ 取属性抛错 ⇒ 被外层 catch 吞掉 ⇒ 整个刷新静默失败
+           （症状：成员区空、作用域没设对，而页面不报任何错）。 */
+        var liveRoomIds = {};
+        for (var lri = 0; lri < rooms.length; lri++) {
+          if (rooms[lri] && rooms[lri].id) liveRoomIds[String(rooms[lri].id)] = 1;
+        }
+
+        /* 侧栏角标：**全局**提醒（所有群要你拍板的总和）——
+           它是「别忘了那边也在等你」，所以必须是全局的；
+           而面板内部是当前作用域 ⇒ 两者语义不同、位置不同。 */
+        cmdUpdateBadge(allTasks.filter(function (t) {
+          /* 角标是「点了就能处理」的数字 ⇒ 已删群的不算（那个群根本进不去）。 */
+          var rid = String((t && t.room_id) || "");
+          return !rid || liveRoomIds[rid];
+        }));
+
+        /* 其它群的要你拍板（只提醒，不做第二套仪表盘）。
+         *
+         * 【批次 12 修】只提醒**真实存在**的群。
+         * 为什么：tasks.json 里留着**已删群**的历史任务（真数据上 72 条里有 60+ 条
+         * 属于 room-xxx 这种已经不存在的群）⇒ 之前这一条把它们一个个列出来，
+         * 而用户**点不过去**（群没了）⇒ 纯误导，还吃掉半屏。
+         * ⇒ 只统计 rooms 里还在的群。 */
+        var other = [];
+        var seenOther = {};
+        var orphanNeeds = 0;
+        for (var oi = 0; oi < allTasks.length; oi++) {
+          var ot = allTasks[oi];
+          if (!ot || ot.bucket !== "needs_you") continue;
+          var oid = String(ot.room_id || "");
+          if (!oid || oid === scope.id) continue;
+          if (!liveRoomIds[oid]) { orphanNeeds += 1; continue; }
+          if (!seenOther[oid]) {
+            seenOther[oid] = { id: oid, title: String(ot.room_title || ""), n: 0 };
+            other.push(seenOther[oid]);
+          }
+          seenOther[oid].n += 1;
+        }
+        CMD_STATE.otherRooms = other;
+        CMD_STATE.orphanNeeds = orphanNeeds;
+
+        /* 成员区：这个团队的**人** + 职责 + 当前状态。
+           状态从**已有的任务数据**推（不新增数据源）：
+             在跑     = 出现在 working 桶任务里的成员
+             等你拍板 = 出现在 needs_you 桶任务里的成员
+             空闲     = 群成员里其余的 */
+        var memberIds = scope.kind === "room" ? scope.memberIds.slice() : [];
+        var byId = {};
+        for (var mi = 0; mi < memberIds.length; mi++) byId[memberIds[mi]] = null;
+        try {
+          var bApi2 = window.bitbot && window.bitbot.bots && window.bitbot.bots.list;
+          if (typeof bApi2 === "function") {
+            var bv2 = await bApi2();
+            var bl2 = (bv2 && (bv2.bots || bv2.views || bv2)) || [];
+            if (Array.isArray(bl2)) {
+              for (var bj = 0; bj < bl2.length; bj++) {
+                if (bl2[bj] && byId[bl2[bj].id] !== undefined) byId[bl2[bj].id] = bl2[bj];
+              }
+            }
+          }
+        } catch (_) { /* 读不到成员资料就只显示 id，不编造 */ }
+        var workingNames = {};
+        var needNames = {};
+        for (var ti = 0; ti < CMD_STATE.tasks.length; ti++) {
+          var tt = CMD_STATE.tasks[ti];
+          if (!tt) continue;
+          var ms = Array.isArray(tt.members) ? tt.members : [];
+          if (tt.bucket === "working") {
+            for (var wi = 0; wi < ms.length; wi++) workingNames[ms[wi]] = 1;
+          } else if (tt.bucket === "needs_you") {
+            for (var ni = 0; ni < ms.length; ni++) needNames[ms[ni]] = 1;
+            /* 等你拍板的人**不一定在 members 里** ——
+               confirm_request 把候选人放在 needs_you.candidates（要用户点名谁来做），
+               那个人才是真正卡住的人 ⇒ 也要算成「等你拍板」。 */
+            try {
+              var cands = (tt.needs_you && tt.needs_you.candidates) || [];
+              if (Array.isArray(cands)) {
+                for (var ci = 0; ci < cands.length; ci++) {
+                  var cd = cands[ci] || {};
+                  var cid = String(cd.id || cd.name || "");
+                  if (cid) needNames[cid] = 1;
+                }
+              }
+            } catch (_) { /* 没有候选就按 members 算 */ }
+          }
+        }
+        var members = [];
+        for (var mk = 0; mk < memberIds.length; mk++) {
+          var mid = String(memberIds[mk] || "");
+          if (!mid) continue;
+          var info = byId[mid] || {};
+          var status = workingNames[mid] ? "working" : (needNames[mid] ? "needs_you" : "idle");
+          members.push({
+            id: mid,
+            name: String(info.name || mid),
+            job: String(info.job || info.description || ""),
+            status: status,
+          });
+        }
+        CMD_STATE.members = members;
+
+        /* 顶栏副标题：**说清楚这是谁的指挥台**（批次 12）。
+           以前写「10 个群 · 72 件事」⇒ 跨群混排，用户不知道在看谁；
+           现在写当前团队的范围（成员数 · 任务数 · 等你拍板数）。 */
         try {
           var sub = document.getElementById("cmd-top-sub");
           if (sub) {
-            var roomN = 0, needN = 0;
-            var seenRooms = {};
-            (CMD_STATE.tasks || []).forEach(function (t) {
-              if (t && t.room_id && !seenRooms[t.room_id]) { seenRooms[t.room_id] = 1; roomN += 1; }
-              if (t && t.bucket === "needs_you") needN += 1;
-            });
-            sub.textContent = cmdTp("cmdScope", { r: roomN, t: (CMD_STATE.tasks || []).length, n: needN });
+            var needN = 0;
+            for (var q = 0; q < CMD_STATE.tasks.length; q++) {
+              if (CMD_STATE.tasks[q] && CMD_STATE.tasks[q].bucket === "needs_you") needN += 1;
+            }
+            if (scope.kind === "room") {
+              sub.textContent = cmdTp("cmdScope", {
+                r: members.length,
+                t: CMD_STATE.tasks.length,
+                n: needN,
+              });
+            } else {
+              /* 全局概览：说清是「几个群」而不是「几位成员」—— 一个数字都不许含糊。 */
+              var roomN2 = 0, seen2 = {};
+              for (var z = 0; z < CMD_STATE.tasks.length; z++) {
+                var zr = String((CMD_STATE.tasks[z] && CMD_STATE.tasks[z].room_id) || "");
+                if (zr && !seen2[zr]) { seen2[zr] = 1; roomN2 += 1; }
+              }
+              sub.textContent = cmdTp("cmdScopeAll", {
+                r: roomN2,
+                t: CMD_STATE.tasks.length,
+                n: needN,
+              });
+            }
           }
         } catch (e) { /* 副标题拿不到就不写 */ }
 
@@ -27110,7 +27443,8 @@
       if (close) close.addEventListener("click", function () { cmdClose(); });
       var refresh = document.getElementById("cmd-refresh-btn");
       if (refresh) refresh.addEventListener("click", function () { cmdRefresh(); });
-      document.addEventListener("click", function (ev) {
+      /* 批次 12：这里变成 async —— 「点其它群 ⇒ 切过去」要 await 房间列表。 */
+      document.addEventListener("click", async function (ev) {
         var t = ev.target;
         if (!t || !t.getAttribute) return;
         // P1 批 1 D-2:桶 tab —— 点一下就切到那个桶,只看那个桶的卡。
@@ -27122,6 +27456,33 @@
         /* 批次 11：「还有 N 件」/「收起」。
            以前「还有 N 件」是纯文本 ⇒ 看不到全量只能去下面按桶分栏找。
            ⇒ 现在点了就展开/收起（全量仍来自同一份 CMD_STATE.tasks）。 */
+        /* 批次 12：点「其它群」⇒ 切到那个群。指挥台随即跟着换内容
+           （因为它的作用域就是当前会话）。 */
+        var gotoEl = t.closest ? t.closest("[data-cmd-goto-room]") : null;
+        if (gotoEl) {
+          var gotoId = gotoEl.getAttribute("data-cmd-goto-room");
+          if (gotoId && typeof openRoomChat === "function") {
+            var roomsNow = [];
+            try {
+              var lres = await window.bitbot.rooms.list();
+              var lp = (lres && lres.rooms) || {};
+              roomsNow = Array.isArray(lp) ? lp : lp.rooms || [];
+            } catch (_) { roomsNow = []; }
+            for (var gi = 0; gi < roomsNow.length; gi++) {
+              if (roomsNow[gi] && roomsNow[gi].id === gotoId) {
+                openRoomChat(roomsNow[gi]);
+                break;
+              }
+            }
+            await cmdRefresh();
+          }
+          return;
+        }
+        if (t.closest && t.closest("[data-cmd-toggle-other]")) {
+          CMD_STATE.otherExpanded = !CMD_STATE.otherExpanded;
+          cmdRender();
+          return;
+        }
         if (t.closest && t.closest("[data-cmd-expand]")) {
           CMD_STATE.activeExpanded = true;
           cmdRender();
@@ -27233,6 +27594,28 @@
     window.__bitbotCommand = {
       aggregate: aggregateCommandTasks,
       open: cmdOpen, close: cmdClose, refresh: cmdRefresh,
+      /* 【批次 12】指挥台绑定**当前会话** ⇒ 它需要一个「切到这个群」的入口。
+         面板里的跨群提醒条会调它；门禁也靠它模拟「用户切了群」。
+         （它做的是真事：openRoomChat + 刷新面板 ⇒ 不是为测试开后门。） */
+      enterRoom: async function (roomId) {
+        var rid = String(roomId || "").trim();
+        if (!rid) return { ok: false, error: "empty_room_id" };
+        var list = [];
+        try {
+          var lres = await window.bitbot.rooms.list();
+          var lp = (lres && lres.rooms) || {};
+          list = Array.isArray(lp) ? lp : lp.rooms || [];
+        } catch (_) { list = []; }
+        for (var i = 0; i < list.length; i++) {
+          if (list[i] && list[i].id === rid) {
+            if (typeof openRoomChat === "function") openRoomChat(list[i]);
+            await cmdRefresh();
+            return { ok: true, room_id: rid, title: String(list[i].title || rid) };
+          }
+        }
+        return { ok: false, error: "room_not_found", room_id: rid };
+      },
+      scope: function () { return CMD_STATE.scope; },
       // P1 批 1 D-15:暴露 render —— 换语言时要把已渲染的面板重画,
       // 否则屏幕上会留着上一种语言(wavegLangApply 里那条注释记过这个病)。
       render: cmdRender,

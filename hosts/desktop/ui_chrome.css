@@ -4279,6 +4279,118 @@ body.cmd-view #composer { display: none !important; }
 /* meta 一行：状态 · 群 · 成员 */
 /* 「还有 N 件」/「收起」—— 文字按钮，不做成实心按钮：
    它是**导航**（去哪儿看全量），不是主操作 ⇒ 别跟「插话/改向」抢视觉权重。 */
+/* 【批次 12】成员区：指挥台的**主语**。
+   这一块不是装饰 —— 它回答的是「这个团队里现在有谁、谁在忙、谁卡在等我」，
+   是「可指挥」的落点。⇒ 视觉上要比任务卡更安静但更可扫：
+   头像 + 名字 + 职责 一行，状态在右端。 */
+.cmd-members {
+  margin: 10px 0 4px;
+}
+.cmd-members-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px;
+}
+.cmd-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 10px;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.cmd-member-av {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--bg0);
+  background: var(--muted);
+}
+.cmd-member-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cmd-member-name {
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-member-job {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-member-state {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--bg2);
+}
+.cmd-member-state[data-cmd-state="working"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.cmd-member-state[data-cmd-state="needs_you"] {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+/* 跨群提醒条：细长一行，只说明「那边也在等你」，不做第二套仪表盘。 */
+.cmd-other-rooms {
+  margin: 8px 0 2px;
+}
+.cmd-other-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--line));
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}
+.cmd-other-text {
+  font-size: 12px;
+  color: var(--danger);
+}
+.cmd-other-chip {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg1);
+  color: var(--fg);
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-other-chip:hover { border-color: var(--accent); }
+
+.cmd-empty-scope {
+  margin: 12px 0;
+}
+
 .cmd-link-btn {
   background: none;
   border: 0;

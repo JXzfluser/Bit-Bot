@@ -22,6 +22,8 @@
  */
 
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
 const { resolveBrowser } = require("./lib/browser_env");
 
 
@@ -185,7 +187,158 @@ console.log("prove_command_panel — 团队指挥台(聚合 / 分桶 / 真渲染
   check(dom.detailText.indexOf("Alice") >= 0 && dom.detailText.indexOf("Bob") >= 0,
     "CP-4 成员名字在 DOM 里(看得见谁干了)", dom.detailText.slice(0, 160));
 
-  // ── 4. 负向:没有数据 ⇒ 「还没有任务」,不编 ───────────────────────────
+  check(errs.length === 0, "CP-6 页面没有 pageerror", JSON.stringify(errs.slice(0, 3)));
+
+  // ── 5. 【批次 12】指挥台**绑定当前会话**：切群 ⇒ 换一套成员、换一批任务 ──
+  //
+  // 这是这次改动的**核心**：以前指挥台把所有群混在一张表里 ⇒
+  // 不同群的人和事挤在一处，用户根本不知道这个面板是给谁看的。
+  // ⇒ 现在进哪个群，指挥台就服务哪个群（成员名单不同、任务不同）。
+  {
+    /** 点侧栏里的某个群（走真实路径 openRoomChat），再读指挥台当前显示了什么。 */
+    const enterRoomAndRead = async (title) => {
+      /* 用产品自己的「切到这个群」入口（window.__bitbotCommand.enterRoom）——
+         它做的是真事：openRoomChat + 刷新面板。 */
+      const entered = await page.evaluate(async (t) => {
+        const list = await window.bitbot.rooms.list();
+        const payload = (list && list.rooms) || {};
+        const rows = Array.isArray(payload) ? payload : payload.rooms || [];
+        const hit = rows.find((r) => r && String(r.title || "") === t);
+        if (!hit) return null;
+        const res = await window.__bitbotCommand.enterRoom(hit.id);
+        return res && res.ok ? res : null;
+      }, title);
+      if (!entered) return null;
+      await page.waitForTimeout(400);
+      await page.evaluate(() => window.__bitbotCommand.refresh());
+      await page.waitForTimeout(300);
+      return await page.evaluate(() => {
+        const members = document.getElementById("cmd-members-list");
+        const titleEl = document.getElementById("cmd-top-title");
+        const detail = document.getElementById("cmd-detail");
+        return {
+          memberText: members ? members.textContent || "" : "",
+          memberCount: members ? members.querySelectorAll(".cmd-member").length : 0,
+          title: titleEl ? String(titleEl.textContent || "") : "",
+          detailText: detail ? String(detail.textContent || "") : "",
+          otherText: (() => {
+            const o = document.getElementById("cmd-other-rooms");
+            return o && !o.hidden ? String(o.textContent || "") : "";
+          })(),
+        };
+      });
+    };
+
+    const rWait = await enterRoomAndRead("闲聊群");
+    check(
+      rWait && rWait.title.indexOf("闲聊群") >= 0,
+      "CP-7 指挥台标题写明是**哪个群**的指挥台", rWait ? rWait.title : "(没进群)"
+    );
+    check(
+      rWait && rWait.memberCount === 1 && rWait.memberText.indexOf("p1") >= 0 &&
+        rWait.memberText.indexOf("t1") < 0 && rWait.memberText.indexOf("t2") < 0,
+      "CP-8 成员区只显示**这个群**的人（闲聊群只有 Carol，不含内容团队的 Alice/Bob）",
+      rWait ? JSON.stringify({ n: rWait.memberCount, text: rWait.memberText.slice(0, 120) }) : "(没进群)"
+    );
+    check(
+      rWait && rWait.detailText.indexOf("今天天气如何") >= 0 &&
+        rWait.detailText.indexOf("整理热点稿") < 0,
+      "CP-9 任务区只显示**这个群**的事（闲聊群的事在，内容团队的事不在）",
+      rWait ? rWait.detailText.slice(0, 160) : "(没进群)"
+    );
+    check(
+      rWait && rWait.otherText.indexOf("整理热点稿") < 0 && rWait.otherText.indexOf("今天天气如何") < 0,
+      "CP-10 跨群提醒**只做提醒**（提醒条里是群名+数量，不是别的群的任务标题）",
+      rWait ? rWait.otherText.slice(0, 160) : "(没进群)"
+    );
+
+    // 切到另一个群 ⇒ 成员必须换掉
+    const rDone = await enterRoomAndRead("内容团队");
+    check(
+      rDone && rDone.memberCount === 2 && rDone.memberText.indexOf("t1") >= 0 &&
+        rDone.memberText.indexOf("t2") >= 0 && rDone.memberText.indexOf("p1") < 0,
+      "CP-11 切到另一个群 ⇒ 成员区**换了一整套人**（内容团队是 t1+t2，不含闲聊群的 p1）",
+      rDone ? JSON.stringify({ n: rDone.memberCount, text: rDone.memberText.slice(0, 120) }) : "(没进群)"
+    );
+    check(
+      rDone && rDone.detailText.indexOf("整理热点稿") >= 0 &&
+        rDone.detailText.indexOf("今天天气如何") < 0,
+      "CP-12 切到另一个群 ⇒ 任务区也跟着换",
+      rDone ? rDone.detailText.slice(0, 160) : "(没进群)"
+    );
+
+    /* CP-13 负向对照：**变异掉作用域过滤** ⇒ 成员区必然混进别的群
+       ⇒ CP-8 那条判据必须翻红。
+       变异只发生在**临时副本**上（源文件一个字节都不动）。 */
+    {
+      const src = fs.readFileSync(HTML, "utf8");
+      const marker = 'CMD_STATE.tasks = scope.kind === "room"';
+      const at = src.indexOf(marker);
+      if (at < 0) {
+        bad("CP-13 负向对照跑不起来（注入点找不到：源码结构变了）");
+      } else {
+        // 把「按作用域过滤」改成「不过滤」⇒ 别的群的任务会混进来。
+        const mutated = src.replace(
+          'CMD_STATE.tasks = scope.kind === "room"\n          ? allTasks.filter(function (t) {\n              return t && String(t.room_id || "") === scope.id;\n            })\n          : allTasks;',
+          "CMD_STATE.tasks = allTasks;",
+        );
+        if (mutated === src) {
+          bad("CP-13 负向对照跑不起来（替换没命中：源码形态变了）");
+        } else {
+          /* 变异副本必须放**同目录**：index.html 里的 CSS/JS 都是相对引用
+             ⇒ 放 /tmp 会全部加载不到 ⇒ 页面只剩壳，功能全失（实测踩到）。
+             同目录 + 用完删除 ⇒ 源文件一个字节不动。 */
+          const tmpHtml = path.join(path.dirname(HTML), ".negative_control_cmd_panel.html");
+          fs.writeFileSync(tmpHtml, mutated, "utf8");
+          try {
+            const mPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+            const mErrs = [];
+            mPage.on("pageerror", (e) => mErrs.push(String((e && e.message) || "").split("\n")[0]));
+            await mPage.addInitScript((rooms) => {
+              window.bitbot = Object.assign(window.bitbot || {}, { rooms: { list: async () => rooms } });
+            }, fakeRooms());
+            await mPage.goto("file://" + tmpHtml, { waitUntil: "load" });
+            await mPage.waitForTimeout(900);
+            const mRes = await mPage.evaluate(async () => {
+              const list = await window.bitbot.rooms.list();
+              const payload = (list && list.rooms) || {};
+              const rows = Array.isArray(payload) ? payload : payload.rooms || [];
+              const hit = rows.find((r) => r && r.title === "闲聊群");
+              if (!hit) return { ok: false };
+              await window.__bitbotCommand.enterRoom(hit.id);
+              await window.__bitbotCommand.refresh();
+              await new Promise((r) => setTimeout(r, 400));
+              const members = document.getElementById("cmd-members-list");
+              const detail = document.getElementById("cmd-detail");
+              return {
+                ok: true,
+                memberText: members ? members.textContent || "" : "",
+                detailText: detail ? String(detail.textContent || "") : "",
+              };
+            });
+            // 变异后：别的群（内容团队）的事会混进「闲聊群」的指挥台 ⇒ 判红。
+            const leaked =
+              (mRes.detailText || "").indexOf("整理热点稿") >= 0 ||
+              (mRes.memberText || "").indexOf("t1") >= 0 ||
+              (mRes.memberText || "").indexOf("t2") >= 0;
+            check(
+              mRes.ok === true && leaked,
+              "CP-13 负向对照有牙：掐掉作用域过滤 ⇒ 别的群混进来 ⇒ CP-8/CP-9 的判据确实会红",
+              JSON.stringify({ ok: mRes.ok, leaked, member: (mRes.memberText || "").slice(0, 80) })
+            );
+            await mPage.close();
+          } catch (e) {
+            bad("CP-13 负向对照跑不起来", String((e && e.message) || e).slice(0, 200));
+          } finally {
+            try { fs.unlinkSync(tmpHtml); } catch (_) { /* ignore */ }
+          }
+        }
+      }
+    }
+  }
+
+  // ── 6. 负向:没有数据 ⇒ 「还没有任务」,不编 ───────────────────────────
+  // （放在最后：它会把 rooms.list 换成空的 ⇒ 前面那些断言要先跑完。）
   await page.evaluate(() => {
     window.bitbot.rooms.list = async () => ({ rooms: { version: 1, rooms: [] } });
   });
@@ -196,12 +349,11 @@ console.log("prove_command_panel — 团队指挥台(聚合 / 分桶 / 真渲染
     return d ? d.textContent : "";
   });
   check(
-    empty.indexOf("还没有任务") >= 0 || empty.indexOf("No tasks yet") >= 0,
-    "CP-5 没有任务时显示「还没有任务」,**不编**",
+    empty.indexOf("还没有任务") >= 0 || empty.indexOf("No tasks yet") >= 0 ||
+      empty.indexOf("这个团队还没有任务") >= 0 || empty.indexOf("This team has no tasks yet") >= 0,
+    "CP-5 没有任务时显示空态,**不编**",
     empty.slice(0, 120)
   );
-
-  check(errs.length === 0, "CP-6 页面没有 pageerror", JSON.stringify(errs.slice(0, 3)));
 
   await browser.close();
   console.log("\nprove_command_panel: PASS=" + pass + " FAIL=" + fail);
