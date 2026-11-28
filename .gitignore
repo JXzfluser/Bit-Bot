@@ -43,6 +43,8 @@ agent-tools/
 # The same context lands in ./agent-context/ whenever DATA_ROOT is unset
 # (dev mode from the repo root) — same rule, both locations.
 /agent-context/
+# …and a third time under the Electron host when it is launched from there.
+/hosts/desktop/agent-context/
 /data/traces/
 /data/desktop/frames/
 !/data/**/.gitkeep

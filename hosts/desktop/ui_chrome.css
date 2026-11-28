@@ -132,11 +132,24 @@
   --lightbox-btn: rgba(255, 255, 255, 0.12);
   --lightbox-line: rgba(255, 255, 255, 0.25);
 
-  /* spec §2.1 shell widths */
+  /* spec §2.1 shell widths.
+     并栏后不再有第三条图标列 ⇒ --fnrail-w 已下线（网格四列：appbar|sidebar|main|panel）。
+     谁要用"那条栏的宽度"，用 --appbar-w。 */
   --sidebar-w: 280px;
   --tools-w: 280px;
   --rail-w: 340px;
   --content-max: 760px;
+  /* 输入条自己的上限，和阅读列**解耦**（以前两者共用 --content-max）。
+     为什么要解耦：760 是给**文字**用的（气泡 558.4 = 行的 76.7%，一行 40 来个
+     汉字，再宽眼睛就要横着扫），它同时又被当成输入条的宽度，于是窗口一拉宽，
+     正文列合理地停在 760，输入框也跟着停在 728 —— 在 1440 的窗口里，
+     1108 的面板中间只摆着一条 728 的胶囊，两侧各留 190px，读起来就是"窄"。
+     真源不是这么收的：v15 的 .cbox 贴着面板走（1440 窗口实测 1004px，
+     两侧只剩 22），输入框**比正文列宽**是它的常态。
+     所以：正文列继续 760，输入条单独封顶 1000。面板窄于这个数时（≤1100 的窗口
+     面板只有 768）输入条自然被面板夹住，两侧各 16 —— 也就是真源那档
+     frameWidthVsPane = 0.958 的构图。 */
+  --composer-max: 1000px;
   /* Layout contract v1: fixed header row height (±2px band). */
   --header-h: 56px;
   --sheet-w: 560px;
@@ -999,8 +1012,11 @@ body.grok-ui #vc-sb-indicator { display: none !important; }
    block below (P2: removed this fully-shadowed duplicate height/background/
    border-bottom block — behaviour unchanged, -3 !important). */
 body.grok-ui #header-actions { gap: 4px !important; }
-body.grok-ui #header-actions > button,
-body.grok-ui #model-entry {
+/* #model-entry 已随并栏搬到左栏，是颗 36×36 的纯图标钮（text label 隐藏）。
+   所以下面两段里针对 `header #model-entry` 的那一半是**死选择器** —— 顶栏里
+   再没有这个元素，留着只会多占 15 个 !important 的预算（T-1 一直在红线上方）。
+   顶栏那半（#header-actions > button）继续留着：它管的是顶栏自己的按钮。 */
+body.grok-ui #header-actions > button {
   background: transparent !important;
   border: 1px solid transparent !important;
   color: var(--muted) !important;
@@ -1009,8 +1025,7 @@ body.grok-ui #model-entry {
   font-size: var(--text-sm) !important;
   font-weight: 500 !important;
 }
-body.grok-ui #header-actions > button:hover,
-body.grok-ui #model-entry:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
+body.grok-ui #header-actions > button:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
 
 /* sidebar → clean flat list.  The sidebar's own padding / row shape / section
    labels are declared ONCE in the sidebar parity block at the end of this
@@ -1054,17 +1069,14 @@ body.grok-ui #log { max-width: 760px; margin: 0 auto !important; padding: 28px 1
    The single source now lives in index.html (`#sidebar-toolbar` base rules)
    plus ONE parity block at the end of this file. Do not patch it here. */
 
-/* Header: keep only a quiet model chip; drop the dev panel buttons (电脑 / 能力). */
-body.grok-ui #gp-panel-btn,
+/* Header: 顶栏现在只剩「域标题 + 动作」。能力（#tools-toggle-btn）与电脑
+   （#gp-panel-btn）都搬进了左栏 #app-rail，在那边是正式成员 ⇒ 这里只保留
+   「非 devmode 时不显示能力」这一条门控（devmode 下由下面的 rail 规则解封）。
+   `header #model-entry` 那两段已随模型入口搬走而失效，整段删除 ——
+   死选择器留着只会占 T-1 的 !important 预算。 */
 body.grok-ui #tools-toggle-btn { display: none !important; }
 /* (header height consolidated once at the top; no per-round override) */
 body.grok-ui #header-actions { gap: 4px !important; }
-body.grok-ui #model-entry {
-  background: transparent !important; border: 1px solid transparent !important;
-  color: var(--muted) !important; font-size: var(--text-sm) !important;
-  padding: 6px 10px !important; border-radius: 8px !important;
-}
-body.grok-ui #model-entry:hover { background: var(--accent-soft) !important; color: var(--ink) !important; }
 
 /* "管理 Bot / 应用" reveal control: quiet text link, no dashed box. */
 body.grok-ui .grok-adv-label {
@@ -1132,11 +1144,14 @@ body.grok-ui #turn-progress .tp-dot { background: var(--ink) !important; }
 }
 /* G-28 #37 · grok-ui 首行 header 结构对齐：真源侧栏从窗口顶开始，顶栏只压聊天列
    上方。默认网格 header 占满全宽一行，把侧栏下推了 56px（firstRowTop=143，真源约 95）。
-   改为 agents 占满首列三行、header 只压 main+rail，侧栏即从 y=0 起，对齐真源。 */
+   改为 agents 占满首列三行、header 只压 main+rail，侧栏即从 y=0 起，对齐真源。
+   并栏后只有一条图标列（appbar）⇒ 四列，右侧不再有 fnav。 */
 body.grok-ui {
+  grid-template-columns:
+    var(--appbar-w) var(--sidebar-w) minmax(0, 1fr) var(--panel-w);
   grid-template-areas:
-    "appbar agents header header"
-    "appbar agents main   rail"
+    "appbar agents header   header"
+    "appbar agents main     rail"
     "appbar agents composer rail";
 }
 body.grok-ui header button,
@@ -1144,13 +1159,17 @@ body.grok-ui header a,
 body.grok-ui header input { -webkit-app-region: no-drag; }
 /* 顶栏唯一的内容：当前对话对象（DM 是 Bot 名，群聊是群名）。
    刻意做成「无边框、无阴影、灰色小字」——它只是给这 56px 一个交代，
-   不该抢对话的注意力。头像 22px、字 13px，居中，最长 60% 宽。
+   不该抢对话的注意力。头像 22px、字 13px，最长 60% 宽。
+   【布局 v15】改为**左对齐**：v15 的 .talk-top 是「头像+名字 …… 右侧动作」，
+   身份贴着内容列左缘；居中的话它悬在对话区正中，而下面的消息全都左起，
+   标题和它统领的内容不在同一条光学竖线上 —— 这正是"顶栏像视频会议标题栏"
+   的来源。右端留给 #header-actions（现在恒空，devmode 时才挂徽章）。
    颜色仍然只走根上的 --bot-avatar（见 updateBotPill 的注释），
    元素级不写字面色值，token-parity 的运行时预算不会被打穿。 */
 body.grok-ui #bot-pill {
   align-items: center;
   gap: 8px;
-  margin: 0 auto;
+  margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1212,8 +1231,10 @@ body.grok-ui #voicechat-btn { display: none !important; }
 /* ===== Round 5: Grok sidebar behavior ===== */
 
 /* Model chip leaves the header — model/credential config lives in
-   Settings → 凭证. Header becomes a pure drag strip. */
-body.grok-ui #model-picker { display: none !important; }
+   Settings → 凭证, and the composer's #model-switch-chip is the quick switch.
+   布局 v15：这颗「模型与凭证」入口搬到右侧功能栏 #fn-rail，
+   所以只对 header 里的实例隐藏，不再一刀切掉整个 id。 */
+body.grok-ui header #model-picker { display: none !important; }
 
 /* 管理 Bot / 应用 + 设置 collapse into the account popup (click avatar). */
 body.grok-ui .grok-adv-label,
@@ -1629,8 +1650,12 @@ body.grok-ui .bf-label > span {
   color: var(--g-ink) !important;
 }
 
-/* text controls: every input/select/control class shares one skin */
-body.grok-ui .bb-field,
+/* text controls: every input/select/control class shares one skin.
+   #sb-search 除外：侧栏顶部那条检索入口是「灰底 ghost 条」（v15 .search：
+   30 高、无描边、--accent-soft 底、12px），不是一块白底描边的表单控件。
+   它在这套 !important 皮肤里没有位置，用 :not() 让出去，而不是在别处
+   再加一条 !important 反过来压 —— 那只会让 T-1 预算继续涨。 */
+body.grok-ui .bb-field:not(#sb-search),
 body.grok-ui .bb-control,
 body.grok-ui .bf-input,
 body.grok-ui .gp-select {
@@ -1642,7 +1667,7 @@ body.grok-ui .gp-select {
   color: var(--g-ink) !important;
   box-shadow: none !important;
 }
-body.grok-ui .bb-field:focus,
+body.grok-ui .bb-field:not(#sb-search):focus,
 body.grok-ui .bb-control:focus,
 body.grok-ui .bf-input:focus,
 body.grok-ui .gp-select:focus {
@@ -2244,107 +2269,93 @@ body.grok-ui .bb-cite-item:hover { background: var(--fill); }
    靠后的轮次若再想改这三处，请改这里，不要在中间插新的覆盖层。
    ========================================================================== */
 
-/* --- 侧栏顶部：两个 32px 圆形幽灵按钮，右对齐 ---------------------------- */
-body.grok-ui #sidebar-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-1);
-  padding: 6px 2px 8px 76px; /* 左边 76px 让开内嵌的红黄绿交通灯 */
-  background: transparent;
-  -webkit-app-region: drag;
-}
-body.grok-ui #sidebar-toolbar > button {
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  max-width: 32px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  -webkit-app-region: no-drag;
-}
-body.grok-ui #sidebar-toolbar > button:hover { background: var(--accent-soft); }
+/* --- 侧栏顶部：#sidebar-toolbar 的形状在文件末尾的 parity 块里声明一次。
+     这里原来是一份「34px 白底圆钮 + 76px 左内边距」的旧规格，而 parity 块里
+     还有一份，两份同时命中 ⇒ 后一份赢。布局 v15 换成「标题在左 + 26px 幽灵钮」
+     时只改了这里、被后面的覆盖掉了一次，所以这里只留这条指针。 ------------ */
 /* 搜索图标按下时下方才出现真正的输入行（#session-search），按钮自身给一个激活态 */
 body.grok-ui.session-search-open #sidebar-toolbar #sidebar-search-toggle {
   background: var(--accent-soft);
   border-color: var(--accent);
 }
 
-/* --- §4.3 输入框：白 pill 728 × 44 ---------------------------------------
+/* --- §4.3 输入条：白 pill ×42，宽度跟面板不跟正文列 -----------------------
    真源构造：容器 padding 0，三枚 28px 圆钮**绝对定位**浮在胶囊内侧
    （＋ left 12、麦 right 40、发送 right 8），输入区从 44.5 起。
-   所以先清 padding，按钮尺寸才有意义；#composer 自身左右各 16 让 row 落在 728。 */
+   所以先清 padding，按钮尺寸才有意义；#composer 自身左右各 16。
+   宽度上限是 --composer-max（1000），**不是** --content-max —— 理由写在
+   令牌区那条注释里：正文列要窄（一行别太长），输入条要宽（贴着面板走）。 */
 body.grok-ui #composer {
   /* 注意：grid item 上写 `margin: 0 auto` 会让 justify-self:stretch 失效，
      盒子退化成 fit-content（实测宽度只剩 499px）。用 width:100% + center。 */
   width: 100%;
-  max-width: var(--content-max);
+  max-width: var(--composer-max);
   justify-self: center;
   margin: 0;
-  padding: 0 16px 16px;
+  padding: 0 16px var(--space-6);
   background: transparent;
   border: 0;
   box-shadow: none;
   gap: 6px;
 }
+/* 【布局 v15】输入条的形制按 .cbox 重排：42 高、1px 描边、**零投影**、
+   两侧动作是裸图标（不是灰底圆钮）。
+   原来照的是 Grok：44 高 + 0.5px 描边 + **三层投影** + 两枚「浅灰底 + 内描边」
+   圆钮。三层投影让这条输入框浮起来像一张面板卡；灰底圆钮又把两个次要动作
+   （＋ / 麦）画成了和发送键同级的实心钮 ⇒ 一行里三个"按钮"，只有一个该被看见。 */
 body.grok-ui #composer .row {
   position: relative;
   flex-wrap: nowrap;
   align-items: center;
   gap: 0;
-  min-height: 44px;
-  /* 左 44 = ＋ 12 + 28 + 4（真源 fieldLeftInset 44.5）；
-     右 76 = 发送 8 + 28 + 4 + 麦 28 + 8，文字不会钻到按钮底下。 */
-  padding: 0 76px 0 44px;
+  min-height: 42px;
+  /* 左 40 = ＋ 10 + 26 + 4；右 104 = 发送 6 + 28 + 8 + 麦 26 + 8 + 截图 26 + 8，
+     文字不会钻到按钮底下（三个右侧动作都是绝对定位，不占行流）。
+     两个数都由 --space-* 推出来（R4），不写裸值。
+     纵向 10 是"一行呼吸"：42 的胶囊里 1+10+18+10+1 = 40 < 42，min-height 兜住，
+     文字靠 align-items 居中，一行时看不出差别；但输入框被拖高之后，文字不会
+     贴着上边框发糊。（12 会把胶囊撑到 44 —— §4.3 钉的是 42，差 2px 也是差。） */
+  padding: var(--space-4) calc(var(--space-9) * 4 + var(--space-3)) var(--space-4) calc(var(--space-9) + var(--space-7));
   background: var(--surface);
-  border: 0.5px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  /* 22 而不是 --radius-pill(999)：42 高时浏览器按"半径不得超过半高"把它钳到 21，
+     **像素上和 999 完全一样**（两端半圆）；但输入框拖高到 170 时，999 会把两头
+     拉成两个大圆，＋ / 麦 / 发送 全落在弧线上（截图里就是"＋ 卡在圆角上"）。
+     22 在那种高度下是个正常的圆角矩形。 */
   border-radius: var(--radius-composer);
-  box-shadow:
-    0 2px 8px -1px rgba(0, 0, 0, 0.05),
-    0 1px 2px rgba(0, 0, 0, 0.03),
-    0 0 0 1px rgba(228, 228, 228, 0.04);
+  box-shadow: none;
 }
+/* 聚焦要有反馈：v15 是描边从 .12 加深到 .24。原来这条把 border-color 写成
+   和静止态一模一样的值，等于聚焦时屏幕上什么都没发生。 */
 body.grok-ui #composer .row:focus-within {
-  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
-  box-shadow:
-    0 2px 8px -1px rgba(0, 0, 0, 0.05),
-    0 1px 2px rgba(0, 0, 0, 0.03),
-    0 0 0 1px rgba(228, 228, 228, 0.04);
+  border-color: color-mix(in srgb, var(--ink) 24%, transparent);
+  box-shadow: none;
 }
 body.grok-ui #composer .row textarea,
 body.grok-ui #composer .row input {
   flex: 1 1 auto;
   min-width: 0;
-  height: 20px;
-  min-height: 20px;
+  height: 18px;
+  min-height: 18px;
   max-height: 168px;
   padding: 0;
-  font-size: var(--text-title);
+  /* v15 的输入文字是 13px（.cbox input）。14 在这个行长下偏大，
+     和侧栏 13/12 的两行也差一档。 */
+  font-size: var(--text-md);
   font-weight: 420;
-  line-height: 20px;
+  line-height: 18px;
   color: var(--ink);
 }
-/* 三枚圆钮都脱离行流：28×28、顶上 8（(44-28)/2）。 */
+/* 四枚钮都脱离行流：42 高的行里，26 的侧键贴底 8、28 的发送贴底 7。
+   ⚠️ 是 `bottom` 不是 `top`：输入框被拖高、或长文本 autoGrow 到 160 之后，
+   `top` 会把四枚钮全黏在**上沿**，下面留一整块空白（用户截图里那个"空到底"
+   的胶囊就是这么来的）。贴底之后 42 高时位置一模一样（42−8−26=8、42−7−28=7），
+   变高时四枚钮跟着往下走，和 ChatGPT/Claude 那类多行输入框的手感一致。 */
 body.grok-ui #composer #attach-btn,
+body.grok-ui #composer #shot-btn,
 body.grok-ui #composer #voice-btn,
 body.grok-ui #composer #send {
   position: absolute;
-  top: 8px;
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
@@ -2353,19 +2364,32 @@ body.grok-ui #composer #send {
   justify-content: center;
 }
 body.grok-ui #composer #attach-btn,
+body.grok-ui #composer #shot-btn,
 body.grok-ui #composer #voice-btn {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: color-mix(in srgb, var(--ink) 56%, transparent);
-  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 8%, transparent) inset;
+  bottom: 8px;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  /* 裸图标：v15 的 ＋ / 麦 都没有底色（.cbox .plus 是 transparent + --faint）。
+     我们原来是灰底 + 内描边，三枚"按钮"在一行里互相抢。 */
+  background: transparent;
+  color: var(--nav-label);
+  box-shadow: none;
   font-size: var(--text-lg);
 }
-body.grok-ui #composer #attach-btn { left: 12px; }
+body.grok-ui #composer #attach-btn { left: 10px; }
 body.grok-ui #composer #voice-btn { right: 40px; }
+body.grok-ui #composer #shot-btn { right: 72px; }
 body.grok-ui #composer #attach-btn:hover,
+body.grok-ui #composer #shot-btn:hover,
 body.grok-ui #composer #voice-btn:hover { background: var(--accent-soft); color: var(--ink); }
 body.grok-ui #composer .row svg { width: 16px; height: 16px; }
 body.grok-ui #composer #send {
-  right: 8px;
+  bottom: 7px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
   background: var(--accent);
   color: var(--accent-ink);
   font-size: 16px;
@@ -2684,18 +2708,54 @@ body.grok-ui #agents {
   padding: 0 12px;
   gap: 0;
 }
-/* G-28 实测：顶部两个圆形按钮 34px、白底无描边（靠 1px 阴影浮起）、
-   间距 10、距右缘 18（容器 12 + 工具栏 6）、距顶 13。 */
-body.grok-ui #sidebar-toolbar { padding: 6px 6px 8px 64px; gap: 10px; }
+/* --- 侧栏顶部：标题在左 + 动作在右（v15 .list-top 规格）------------------
+   v15 的侧栏顶行是「会话 12/650 .......... ⊞ +」：一处路牌，两个动作。
+   旧规格是「34px 白底圆钮右对齐、左边 64/76px 全空」—— 空出来的那块既不是
+   标题也不是拖拽区，只是把动作推到右边、把身份位置浪费掉了。那个左内边距
+   是给 macOS 交通灯让位的（那时侧栏是第一列）；现在最左是 52px 的域导航栏，
+   交通灯压在栏上，侧栏只需让开被它盖住的那 ~18px。 */
+body.grok-ui #sidebar-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: var(--space-2);
+  height: 44px;
+  padding: 0 10px 0 24px;
+  background: transparent;
+  -webkit-app-region: drag;
+}
+/* 路牌：v15 .list-title 是 12px / 650。占满中间，把动作按钮顶到右缘。 */
+body.grok-ui #sidebar-toolbar > .sb-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 body.grok-ui #sidebar-toolbar > button {
-  flex: 0 0 34px;
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
-  max-width: 34px;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  max-width: 26px;
+  padding: 0;
+  /* v15 .icon-btn：无描边、无投影的幽灵钮，hover 才浮出底色。
+     这排动作是常驻的，给它们描边+阴影会让侧栏顶比内容本身更抢眼。 */
   border: 0;
-  font-size: 17px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-lg);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  -webkit-app-region: no-drag;
 }
 
 /* --- 区块标题：Bot 列表 / 群组 / 会话 一种待遇 --------------------------- */
@@ -2754,6 +2814,24 @@ body.grok-ui #sb-bots-rooms > summary {
 }
 body.grok-ui #sb-bots-rooms > summary:hover { color: var(--nav-label); }
 
+/* --- 侧栏分段路牌：v15 的 .grp 是 11px 静音小字 + 10/8/4 内边距 ------------
+   上面那两处 13/600 是**设置面板的标题**规格（.panel-title 全站共用），
+   放进侧栏就把「BitBot / 群组」做成了标题：两段路牌各自跟下面的列表抢注意力，
+   而它们要说的只是"下一段是什么"。这里在 #agents 范围内单独降一档。
+   覆盖对象写全是因为 `#agents .panel-title > span:first-child` 那条更深的
+   选择器会把字号再顶回 13px。 */
+body.grok-ui #agents .panel-title,
+body.grok-ui #agents .panel-title > span:first-child,
+body.grok-ui #agents .sb-adv-sum,
+body.grok-ui #agents #sb-bots-rooms > summary {
+  margin: 0;
+  padding: 10px 8px 4px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--nav-label);
+  letter-spacing: 0.01em;
+}
+
 /* --- 行：形状与状态都由 index.html 的 .sess-row 一处声明 --------------- */
 /* 这里只清掉列表容器自身的 margin/padding，避免基类把行挤离边缘。 */
 body.grok-ui #bot-list,
@@ -2799,26 +2877,12 @@ body.grok-ui .sess-group {
 }
 body.grok-ui .bot-group-head .cnt { flex: 0 0 auto; opacity: 0.85; }
 
-/* --- §4.2 行内几何（行高 54 = padding 8+8 + 标题 20 + 预览 18）------------
-   容器 #agents 已有 12px 内边距：12 + 行左 8 + 头像 36 + gap 8 = 文字左缘 64。 */
-body.grok-ui .sess-row {
-  padding: 8px;
-  gap: 8px;
-  border-radius: var(--radius-lg);
-}
-/* 行间距 4 只加在相邻行之间：日期/组标题本身已有 6px 下留白，不再叠一层。 */
+/* --- §4.2 行内几何：形状、状态、字号都在 index.html 的 .sess-row 一处声明。
+   这里原来又把 padding / gap / radius 和 name / meta 的字号重写了一遍
+   （16/420/lh20 + 13/lh18 ⇒ 行高 54），跟上面那句"一处声明"自相矛盾，
+   而实际生效的是这一份。布局 v15 把两行字号降到 13 / 12 之后，只改
+   .sess-row 会被这里整个盖回去，所以这份删掉，只留"相邻行之间留 4px"。 */
 body.grok-ui .sess-row + .sess-row { margin-top: 4px; }
-/* 标题 16/420/lh20，预览 13/420/lh18 —— 两行 38 + 上下 16 = 54。 */
-body.grok-ui .sess-row .sess-main .name { font-size: 16px; font-weight: 420; line-height: 20px; }
-body.grok-ui .sess-row .sess-main .meta { font-size: 13px; font-weight: 420; line-height: 18px; margin-top: 0; color: var(--muted); }
-
-/* --- 头像：统一正圆。
-   这里原来是「不规则有机圆团」+ 五组按 id 哈希的圆角变体（.blob-1..4），
-   想复刻截图里「每只 Bot 形状略不同」的手感。代价是一排头像变成六个不同
-   形状，配上六种高饱和底色，读起来像占位图；而设计稿
-   （docs/design/desktop-target/prototype.html）写的是单字头像 + 正圆。
-   形状不再随机：正圆 + 单字，只有颜色随身份变（avatar_palette.js）。 */
-body.grok-ui .sess-avatar { border-radius: 50%; }
 
 /* --- 底部：账户是一枚胶囊，不是一条裸文字 ------------------------------- */
 /* 真源实测：footer 280×52，无分隔线、无阴影，padding `0 16 16`；
@@ -2930,7 +2994,11 @@ body.grok-ui .msg.assistant .body {
   padding: 7px 12px;
   border-radius: var(--radius-bubble);
   background: var(--bot-bubble);
-  font-size: 14px;
+  /* 13px = --text-md，和 composer 输入框、侧栏 Bot 名字同一档；
+     原来是 14px，比 composing 的 13px 大一号 —— 打进去是一号字、bot 回过来
+     变成另一号字，读起来像两套界面。参考图那 14px 是当时的读数，这里按
+     "对话内容跟整体一致"的用户口径收一档，字重/行高/颜色都不动。 */
+  font-size: var(--text-md);
   font-weight: 420;
   line-height: 20px;
 }
@@ -2952,7 +3020,7 @@ body.grok-ui .msg.user {
   border-radius: var(--radius-user);
   background: var(--user-bubble);
   color: var(--on-fill);
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 420;
   line-height: 20px;
   box-shadow:
@@ -2964,7 +3032,7 @@ body.grok-ui .msg.user .body {
   color: var(--on-fill);
   background: transparent;
   padding: 0;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 420;
   line-height: 20px;
 }
@@ -4224,11 +4292,12 @@ body.grok-ui .cn-hint {
 }
 .cmd-top-actions { display: flex; gap: var(--space-2); flex: 0 0 auto; }
 
-/* 顶栏中间：指挥台视图时替换聊天对象 pill（见 index.html 的 cmd-top-title）。 */
+/* 顶栏：指挥台视图时替换聊天对象 pill（见 index.html 的 cmd-top-title）。
+   和 #bot-pill 一样左对齐 —— 两个视图切换时标题不该左右跳。 */
 #cmd-top-title {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 0;
 }
 body.cmd-view #bot-pill { display: none; }
@@ -4340,20 +4409,51 @@ body.cmd-view #composer { display: none !important; }
    · 「自动化」没有所在群时**禁用**并说清原因 —— 不放假入口。 */
 #app-rail {
   grid-area: appbar;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-4) 0 var(--space-5);
+  /* 【布局 v15】按 .dom 的节奏重排：容器 8/10 内边距、按钮间距 2（token 档 4）、
+     每格 36×36。原来是 gap 6 + 36 题格 ⇒ 一列 4 颗从头排到 200px 就断了，
+     上下都空。收间距这 2px 不是为了抠像素，是为了让"一组"读起来是一组。 */
+  gap: var(--space-1);
+  /* 顶部安全带：macOS 交通灯（红/黄/绿）浮在这条栏的上方。
+     灯组由 main.js 的 trafficLightPosition {x:20,y:15} 定死 ⇒ 占 y 15..29（钮径 ~14），
+     垂直上正好落在 44px 的顶栏带里（灯心 22 = 带心 22）。
+     品牌块必须整体落到灯组**下面并留出呼吸**（48 = 29 + 19）。
+     第一版只留到 36（= 灯底 + 4），screencapture 抓真窗口一看，品牌块顶边
+     和红/黄两颗只差 2px，读起来还是"贴在一起"——所以按 16 的间距重给。 */
+  padding: calc(var(--space-9) + var(--space-9)) 0 var(--space-4);
   background: var(--bg1);
-  border-right: 1px solid var(--line);
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* 分隔线**不是** border-right：那会从 y=0 一路画到窗口底，正好从三颗交通灯
+     中间穿过去（用户口径"这两次也太丑了吧"里第一处就是它）。现在把最顶上
+     44px 让给"窗口控制带"（灯组 + 侧栏标题同行），线从带子下沿才开始画 ——
+     左上角是一块干净的带子，而不是"一个被竖线切开的空方块"。 */
+  border-right: 0;
+  /* 并栏后这一列还挂着账户/会话两个弹层（228/280 宽，向右展开）。
+     祖先只要还有 overflow:hidden|auto，它们就会被裁成 52px 的一条 ——
+     所以外层**必须** visible，可滚的区间交给内部 .rail-scroll（见 index.html）。 */
+  overflow: visible;
 }
+/* 顶栏带的下沿（44）＝ 侧栏标题行的高度，两边共一条基准线。 */
+#app-rail::after {
+  content: "";
+  position: absolute;
+  top: 44px;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  background: var(--line);
+  pointer-events: none;
+}
+/* 品牌：v15 是 36×36 圆角方（radius 10）+ 深底白字，下面留 6。
+   原先是 30px 正圆 —— 正圆在 52px 的窄栏里显得比按钮小一圈，
+   看上去像"头像"而不是"这个应用的标记"。 */
 .app-rail-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4364,38 +4464,78 @@ body.cmd-view #composer { display: none !important; }
   margin-bottom: var(--space-3);
   flex: 0 0 auto;
 }
-.app-rail-item {
+/* 【布局 v15 · 并栏】这一列现在住着三种按钮：
+     .app-rail-item —— 域（aria-current 表达"我在哪"）
+     .fn-item      —— 面板开关 / 资源入口（aria-pressed 表达"开没开"）
+     .mp-btn       —— 模型与凭证入口
+   三者的**几何与静音档必须一模一样**，否则同一列里会读出"两种按钮"。
+   所以几何只写这一处，用 :is() 把三个类名并列 —— 不是各写一份再对齐。 */
+#app-rail :is(.app-rail-item, .fn-item, .mp-btn) {
   flex: 0 0 auto;
-  width: 52px;
+  width: 36px;
+  height: 36px;
   /* 【批次 15】角标要绝对定位在图标角上。 */
   position: relative;
-  padding: var(--space-2) 0;
+  padding: 0;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: transparent;
-  color: var(--muted);
+  /* v15 的静音档是 ink .42；--nav-label 是同一档（muted 与底色混出来的），
+     不新造色值。原来用 --muted(.68) 偏重，一列黑图标看着比内容还抢眼。 */
+  color: var(--nav-label);
   font-size: var(--text-2xs);
   line-height: 1.2;
   cursor: pointer;
+  box-shadow: none;
   transition: background .14s var(--ease), color .14s var(--ease);
 }
-.app-rail-item:hover:not(:disabled) { background: var(--fill); color: var(--ink); }
-.app-rail-item[aria-current="page"] {
-  background: var(--fill);
+#app-rail :is(.app-rail-item, .fn-item, .mp-btn) svg { width: 18px; height: 18px; }
+/* 【布局 v15】收成纯图标：36px 一颗按钮，文字标签不进像素（52px 放不下两字），
+   改由 title / aria-label 承载 —— 见 index.html 里每颗按钮上的 data-i18n-title。 */
+#app-rail .app-rail-item > span:not(.app-rail-badge) { display: none; }
+#app-rail :is(.app-rail-item, .fn-item, .mp-btn):hover:not(:disabled) { background: var(--nav-row-hover); color: var(--ink); }
+/* 当前项：v15 是「整格浅底 + 贴在**栏左缘**的 2×16 竖条」（.rbtn.on::before
+   left:-8px，按钮 36 居中在 52 里 ⇒ 竖条正好落在 x=0..2）。
+   并栏前右栏贴的是 right:-8px（它右边就是窗口边）；现在整列只有左缘，
+   所以全部统一贴左 —— "这一侧的边"才有语义。 */
+#app-rail :is(.app-rail-item[aria-current="page"], .fn-item.active, .mp-btn.active) {
+  background: var(--nav-row-hover);
   color: var(--ink);
   font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--accent);
+}
+#app-rail :is(.app-rail-item[aria-current="page"], .fn-item.active, .mp-btn.active)::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  /* 2px 宽的条，--radius-sm(6) 会被浏览器钳到 1px —— 和参考的 2px 圆头一样。 */
+  border-radius: var(--radius-sm);
+  background: var(--ink);
 }
 .app-rail-item:disabled { opacity: .38; cursor: not-allowed; }
+/* 【布局 v15 · 并栏】分隔线不再承担 `margin-top:auto`：
+   并栏后"顶到底"是 .rail-scroll（flex:1）+ .fn-end（flex:0）的分工，
+   线只负责"分开两组"。这里现在有两处用它 —— 域组与工具组之间、
+   设置与账户之间 —— 两处都必须是同一条 20×1 短线。 */
+#app-rail .app-rail-sep {
+  width: 20px;
+  height: 1px;
+  flex: 0 0 1px;
+  margin: var(--space-1) 0;
+  background: var(--line);
+}
 @media (max-width: 900px) {
-  /* 窄窗：只留图标，文字收进 title（48px 放不下四个字）。
+  /* 窄窗：栏宽 48 → 44，按钮跟着小一档。
      角标**不能**跟着藏 —— 「要你拍板几件」在窄窗下更该看得见。 */
-  .app-rail-item { width: 40px; }
-  .app-rail-item > span:not(.app-rail-badge) { display: none; }
+  #app-rail :is(.app-rail-item, .fn-item, .mp-btn) { width: 32px; height: 32px; }
 }
 
 /* 【批次 15】域导航栏「指挥」上的角标：现在有多少件要你拍板。

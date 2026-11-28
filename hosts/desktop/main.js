@@ -1602,6 +1602,19 @@ function createWindow() {
     // Grok-parity chrome: no native title bar; traffic lights float inset over
     // the top strip (the in-app header stays as the drag region).
     titleBarStyle: "hiddenInset",
+    /* 交通灯的位置显式给定，不再吃系统默认值。
+       为什么必须钉：并栏后左上角是 52px 的导航栏，第一格就是品牌块。
+       实测（screencapture 抓真窗口）：默认 inset 下灯组落在 y≈14..26，
+       而品牌块在 y=8..44 —— 红/黄两颗直接压在品牌块上。
+       y=15 是"垂直居中于 44px 顶栏带"的值（灯径 14 ⇒ 灯心 22 = 带心 22），
+       和侧栏那行标题（也是 44 高）同一条基准线。
+       CSS 那边按这里的数值预留 `#app-rail` 的顶部安全带（见 ui_chrome.css），
+       两边任一处改了另一个就得跟着改，所以数值只写这里 + 那条 padding。 */
+    /* x=12：用户口径「顶部那三个按钮应该更靠左」。系统默认 inset 是 20，
+       灯组落在 x=20..72，其中 20px 压在 52px 的导航栏上、还越过栏边界 20；
+       收到 12 之后整组左移 8，和窗口圆角的留白只剩 12，视觉上归到左上角，
+       也让侧栏标题（x=88）与最后一颗灯之间留出 24px 的空气。 */
+    trafficLightPosition: { x: 12, y: 15 },
     show: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
