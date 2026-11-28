@@ -95,11 +95,14 @@ function launch() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* 批次 14 域导航栏（#app-rail）是**布局的最左一列**（不是浮层）：
-   宽屏 64px（--appbar-w），窄屏 ≤900 时 48px。
+   宽屏 52px（--appbar-w），窄屏 ≤900 时 44px。
    ⇒ 「主列还剩多少」的账必须把它算进去，否则尺子会误判成「主列被挤了」。
    同时它是四个域的入口 ⇒ 宽度与左缘位置也钉住：它不许为了给主列让路而消失/漂走。 */
-const APP_RAIL_W_WIDE = 64;
-const APP_RAIL_W_NARROW = 48;
+const APP_RAIL_W_WIDE = 52;
+const APP_RAIL_W_NARROW = 44;
+/* 布局 v15 起，网格是五列：域导航栏 | 侧栏 | 主列 | 右栏 | 右侧功能栏。
+   导航栏（#app-rail，并栏后右侧已无图标列）是**列**，不是浮层 ⇒ 主列的宽度账必须把它算进去，
+   否则"main + agents + apprail = 视口"永远差一栏。 */
 
 /* 一次量齐：视口、侧栏是否隐藏、各区域矩形、有没有横向滚动。
    全部用 getBoundingClientRect / computed display —— 用户看到的宽度就是这个数。 */
@@ -181,17 +184,20 @@ let app = null;
       const g = await measure(win);
       const agentsW = g.agents && g.agents.display !== "none" ? g.agents.w : 0;
       const railW = g.apprail ? g.apprail.w : 0;
-      /* 域导航栏是**列**，不是浮层 ⇒ 主列的账必须把它算进去。 */
+      /* 并栏后只有一条导航栏（#app-rail）是**列**，右栏已并入它 ⇒
+         主列的账只算 apprail + agents。 */
       const okSum = Math.abs(g.main.w + agentsW + railW - g.vw) <= 2;
       const okAgents = agentsW <= 200.5;
       const usable = g.main.w >= g.vw - railW - 200.5;
-      /* 新钉：窄屏域导航栏必须是 48px 且贴住左边缘 ——
-         它不许为了给主列让路而消失或漂走（那等于把四个域藏起来）。 */
+      /* 新钉：窄屏导航栏必须是 44px 且贴住左边缘 ——
+         它不许为了给主列让路而消失或漂走（那等于把整条导航藏起来）。 */
       const okRail = Math.abs(railW - APP_RAIL_W_NARROW) <= 2 && (!g.apprail || g.apprail.x <= 0.5);
-      if (okSum && okAgents && usable && okRail && g.hscroll === 0) {
-        ok(`R-02 窄窗（${g.vw}）主列不被挤没：apprail=${railW}px + agents=${agentsW}px + main=${g.main.w}px = 视口宽，无横向滚动（侧栏按设计保持手动态=${g.sidebar}）`);
+      /* 并栏的实证：右侧不再有恒在的图标列，主列右侧必须直抵视口右缘。 */
+      const okNoRightRail = Math.abs(g.main.x + g.main.w - g.vw) <= 2;
+      if (okSum && okAgents && usable && okRail && okNoRightRail && g.hscroll === 0) {
+        ok(`R-02 窄窗（${g.vw}）主列不被挤没：apprail=${railW}px + agents=${agentsW}px + main=${g.main.w}px = 视口宽（右侧无图标列），无横向滚动（侧栏按设计保持手动态=${g.sidebar}）`);
       } else {
-        bad("R-02 窄窗下主列被挤了", JSON.stringify({ vw: g.vw, apprail: railW, agents: agentsW, main: g.main.w, sum: g.main.w + agentsW + railW, okSum, okRail, hscroll: g.hscroll }));
+        bad("R-02 窄窗下主列被挤了", JSON.stringify({ vw: g.vw, apprail: railW, agents: agentsW, main: g.main.w, sum: g.main.w + agentsW + railW, okSum, okRail, okNoRightRail, hscroll: g.hscroll }));
       }
     }
 
@@ -204,7 +210,8 @@ let app = null;
       const sum = g.main.w + agentsW + railW;
       const problems = [];
       if (Math.abs(sum - g.vw) > 2) problems.push(`main ${g.main.w} + agents ${agentsW} + apprail ${railW} ≠ 视口 ${g.vw}`);
-      if (Math.abs(railW - APP_RAIL_W_NARROW) > 2) problems.push(`域导航栏宽 ${railW} ≠ ${APP_RAIL_W_NARROW}`);
+      if (Math.abs(railW - APP_RAIL_W_NARROW) > 2) problems.push(`导航栏宽 ${railW} ≠ ${APP_RAIL_W_NARROW}`);
+      if (Math.abs(g.main.x + g.main.w - g.vw) > 2) problems.push(`主列右缘 ${g.main.x + g.main.w} ≠ 视口 ${g.vw}（右侧不该再有图标列）`);
       if (g.hscroll > 0) problems.push(`横向滚动 ${g.hscroll}px`);
       if (!g.composer || g.composer.bottom > g.vh + 0.5) problems.push(`composer 底 ${g.composer && g.composer.bottom} 越出视口 ${g.vh}`);
       if (g.composer && g.composer.right > g.vw + 0.5) problems.push(`composer 右 ${g.composer.right} 越出视口`);
@@ -222,10 +229,10 @@ let app = null;
       const g = await measure(win);
       const hidden = g.agents && g.agents.display === "none";
       const railW = g.apprail ? g.apprail.w : 0;
-      /* 收起侧栏 ⇒ 主列拿满**除域导航栏以外**的全部宽度。 */
+      /* 收起侧栏 ⇒ 主列拿满**除那条导航栏以外**的全部宽度（右侧已无图标列）。 */
       hidden && g.sidebar === "collapsed" && Math.abs(g.main.w - (g.vw - railW)) <= 2 &&
         Math.abs(railW - APP_RAIL_W_WIDE) <= 2
-        ? ok(`R-04 手动收起后（点 #sidebar-toggle-btn）#agents 真的没了，主列拿满 ${g.main.w}px（视口 ${g.vw} − 域导航栏 ${railW}）`)
+        ? ok(`R-04 手动收起后（点 #sidebar-toggle-btn）#agents 真的没了，主列拿满 ${g.main.w}px（视口 ${g.vw} − 导航栏 ${railW}）`)
         : bad("R-04 手动收起后主列没拿满视口", JSON.stringify({ sidebar: g.sidebar, agents: g.agents && g.agents.display, main: g.main.w, vw: g.vw, apprail: railW }));
     }
 
@@ -263,6 +270,46 @@ let app = null;
         // 收尾：恢复展开，避免遗留折叠态（本门跑在隔离根目录，不碰用户 settings）
         await win.click("#sidebar-reopen-tab", { timeout: 8000 }).catch(() => {});
         await sleep(300);
+      }
+    }
+
+    /* ---------- R-07 交通灯安全带：红/黄/绿不许压在导航栏的图标上 ----------
+       用户报的原现象：「顶部的关闭窗口按钮和图标有重叠」。
+       成因不是猜的：titleBarStyle:"hiddenInset" 让交通灯浮在内容上方，
+       而并栏后左上角第一格就是品牌块 —— 系统默认 inset 正好穿过它
+       （实测品牌 [8,8,36,36]，灯组落在 y≈14..26 / x≈20..72）。
+       修法是两处配一对：main.js 的 trafficLightPosition 定死灯组位置，
+       ui_chrome 的 #app-rail 顶部留出安全带。
+       这里同时量两边 —— 只量 CSS 的话，把 main.js 那段删掉这条会照绿。 */
+    {
+      const btn = await app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows()[0];
+        return typeof w.getWindowButtonPosition === "function" ? w.getWindowButtonPosition() : null;
+      });
+      if (process.platform !== "darwin") {
+        skip("R-07 交通灯安全带", "非 macOS，没有交通灯");
+      } else if (!btn) {
+        /* 没显式设 trafficLightPosition 时 Electron 返回 null，灯组位置就是系统默认值，
+           无从测量 ⇒ 这条必须红：说明 main.js 里的钉子被删了。 */
+        bad("R-07 交通灯安全带", "getWindowButtonPosition() 为 null —— main.js 的 trafficLightPosition 不见了，灯组位置又变回系统默认（会压住品牌块）");
+      } else {
+        const g = await win.evaluate(() => {
+          const r = (s) => {
+            const e = document.querySelector(s);
+            if (!e) return null;
+            const b = e.getBoundingClientRect();
+            return { top: Math.round(b.top), left: Math.round(b.left), w: Math.round(b.width), h: Math.round(b.height) };
+          };
+          return { mark: r(".app-rail-mark"), chat: r('#app-rail .app-rail-item[data-app-domain="chat"]') };
+        });
+        /* 灯组高度按 14（macOS 圆钮实际直径，screencapture 抓真窗口量的），
+           且**必须再留 8px 空气**：第一版只留 4px（品牌顶 36 / 灯底 34），
+           用户看到的仍然是"贴在一起"。零重叠不等于看得过去。 */
+        const lightBottom = btn.y + 14;
+        const GAP = 8;
+        g.mark && g.mark.top >= lightBottom + GAP
+          ? ok(`R-07 交通灯安全带：灯组 y=${btn.y}..${lightBottom}，品牌块顶 ${g.mark.top}（间距 ${g.mark.top - lightBottom}px）`)
+          : bad("R-07 交通灯挤压导航栏图标", JSON.stringify({ btn, lightBottom, need: lightBottom + GAP, mark: g.mark }));
       }
     }
 

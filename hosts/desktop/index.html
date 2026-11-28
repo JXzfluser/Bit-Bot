@@ -7,2545 +7,7 @@
 <link rel="icon" type="image/png" href="./build/icon.png"/>
 <link rel="stylesheet" href="./ui_chrome.css"/>
 <link rel="stylesheet" href="./vendor/highlight-theme.css"/>
-<style>
-  /* Color, space, radius, type, and shell widths live in ui_chrome.css.
-     This block is component layout only. Do not add new hex values here. */
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    height: 100vh;
-    overflow: hidden;
-    font: var(--text-base)/var(--leading) var(--font-ui);
-    color: var(--ink);
-    background-color: var(--page-bg);
-    display: grid;
-    /* Layout contract v2 (§1/§2): ONE grid — appbar | sidebar | main | optional rail.
-       The right panel has a single state source: body[data-panel] =
-       none | bot | conv | computer | tools. --panel-w switches with it, so
-       there is no 4th column, no 0fr placeholder, and no class-combination
-       matrix. The legacy *-open body classes are kept ONLY as JS state mirrors
-       for the existing e2e GP-* gates and are removed once those read
-       data-panel. */
-    grid-template-columns: var(--appbar-w) var(--sidebar-w) minmax(0, 1fr) var(--panel-w);
-    grid-template-rows: var(--header-h) minmax(0, 1fr) auto;
-    /* 单一真源：body 上永远带 .grok-ui（index.html:2539），而
-       `body.grok-ui`（ui_chrome.css:1136）会覆盖这里的 grid-template-areas
-       （G-28 #37：侧栏从窗口顶开始、顶栏只压聊天列）。
-       ⇒ **这里必须与那份一字不差**，否则就是「两处真相互相打架」：
-       批次 15 就撞上过 —— 这份还写着旧的三列写法，而真正生效的那份是四列，
-       布局门照着这份量 ⇒ 量出来的全是错的。
-       窄屏（≤900）另有一份，见下面 @media 块。 */
-    grid-template-areas:
-      "appbar agents header header"
-      "appbar agents main   rail"
-      "appbar agents composer rail";
-    transition: grid-template-columns 0.2s ease;
-  }
-  /* Contract sizes: sidebar 280, rail 340, header 56, stream column 760. */
-  /* --room-w 是「群资料」浮层的宽度单源：#room-rail 的 width 和主列的
-     margin-right 都读它，两边一旦各写一个字面量就会错位半个字。 */
-  body { --panel-w: 0px; --room-w: 460px; --appbar-w: 64px; }
-  body[data-panel="bot"],
-  body[data-panel="conv"],
-  body[data-panel="computer"],
-  body[data-panel="tools"] { --panel-w: var(--rail-w); }
-  /* G-28 #4：团队详情不再是第三列，而是 460 浮层 —— 打开它时主列不缩宽，
-     抽屉从 header 下沿贴右边滑出，盖住 stream 的右半边。 */
-  body[data-panel="room"] { --panel-w: 0px; }
-  /* All four rail surfaces share grid-area "rail"; exactly one is displayed.
-     #machines (tools) joins the same column — the old 280px 4th column is
-     retired; --tools-w is no longer referenced by the shell. */
-  #bot-rail,
-  #conv-rail,
-  #computer-rail,
-  #room-rail,
-  #machines {
-    grid-area: rail;
-    border-left: 1px solid var(--line);
-    background: var(--surface);
-    color: var(--text);
-  }
-  body[data-panel="none"] #bot-rail,
-  body[data-panel="none"] #conv-rail,
-  body[data-panel="none"] #computer-rail,
-  body[data-panel="none"] #room-rail,
-  body[data-panel="none"] #machines { border-left: 0; }
-  #bot-rail {
-    padding: var(--space-6);
-    overflow: auto;
-    display: none;
-  }
-  body[data-panel="bot"] #bot-rail { display: block; }
-  /* G-23: conversation details — third optional right-panel content, same
-     column; mutual exclusion is inherent: data-panel holds one value. */
-  #conv-rail {
-    padding: var(--space-6);
-    overflow: auto;
-    display: none;
-  }
-  body[data-panel="conv"] #conv-rail { display: block; }
-  /* Sidebar collapse is orthogonal to the panel state: same grid, first
-     column goes to 0. No !important needed — the attribute selector is as
-     specific as the base rule and wins by source order. */
-  body[data-sidebar="collapsed"] { grid-template-columns: var(--appbar-w) 0px minmax(0, 1fr) var(--panel-w); }
-  body[data-sidebar="collapsed"] #agents { display: none; }
-  /* Collapsed (fully hidden) state. The sidebar is display:none (see the
-     body[data-sidebar="collapsed"] rules above); a slim vertical tab floats on
-     the left edge so it can be reopened without an in-sidebar control. */
-  #sidebar-reopen-tab {
-    position: fixed;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 70;
-    width: 24px;
-    height: 64px;
-    border: 1px solid var(--line);
-    border-left: 0;
-    border-radius: 0 12px 12px 0;
-    background: var(--surface);
-    color: var(--muted);
-    cursor: pointer;
-    pointer-events: auto;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
-  }
-  body[data-sidebar="collapsed"] #sidebar-reopen-tab { display: flex; }
-  /* 只写 hover。原来把 :focus-visible 并进这条规则、再 outline:none，等于给
-     一个 tab 可达的按钮摘掉焦点环——M40 门禁的负向对照还会因为「文件里
-     第一处 :focus-visible 不是末尾那条全局规则」而翻假。 */
-  #sidebar-reopen-tab:hover {
-    background: var(--accent-soft);
-    color: var(--ink);
-  }
-  #sidebar-reopen-tab svg { width: 16px; height: 16px; }
-  #computer-rail {
-    display: none;
-    padding: var(--space-6);
-    overflow: auto;
-  }
-  body[data-panel="computer"] #computer-rail { display: block; }
-  /* GP-154「定时任务在群内部」/ G-28 #4：群资料面板 = 460 浮层抽屉。
-     它不占网格列（--panel-w 归零），position:fixed 贴右，从 header 下沿到底部；
-     其余 rail（bot/conv/computer）仍走第三列，两者互斥由 data-panel 保证。 */
-  #room-rail {
-    display: none;
-    position: fixed;
-    top: var(--header-h);
-    right: 0;
-    /* 抽屉的**下沿停在 composer 上边框**，不再一路铺到窗口底部。
-       原来 bottom:0 + padding-bottom:96px：composer 是 58 层、整块铺了
-       page-bg 底色，于是抽屉右下方被切出一块空白，最后一条内容在 composer
-       后面凭空消失 —— 看上去就是「浮层坏了」。--composer-h 由脚本量出
-       （见 index.html 的 watchComposerHeight），这里的 132px 只是首帧兜底。 */
-    bottom: var(--composer-h, 132px);
-    width: var(--room-w, 460px);
-    max-width: 92vw;
-    /* 57 < composer 58 < modal 60：抽屉可以在 composer 下面穿过，
-       但不能压过任何弹层（--z-modal 就是 60）。 */
-    z-index: 57;
-    padding: var(--space-6);
-    overflow: auto;
-    background: var(--surface);
-    /* 左边一条实边 + 一层向右收的阴影：浮层边界必须看得见，
-       否则它读起来就只是「对话被截断」而不是「另有一层」。 */
-    box-shadow: -18px 0 40px rgba(0, 0, 0, 0.10);
-  }
-  body[data-panel="room"] #room-rail {
-    display: block;
-    animation: roomRailIn 0.18s ease-out;
-  }
-  @keyframes roomRailIn {
-    from { transform: translateX(18px); opacity: 0; }
-    to { transform: none; opacity: 1; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    body[data-panel="room"] #room-rail { animation: none; }
-  }
-  /* 群资料抽屉开在右侧时，transcript 仍按 760 居中排版，右半边被浮层整块盖住
-     —— 截图里就是「一句话被切在半个字上」。这里让主列整体让出抽屉宽度，
-     文字重新排版进可见区，而不是继续在抽屉底下流。
-     用 margin 不用 padding：ui_chrome.css 里有
-     `body.grok-ui #main { padding: 0 !important }`（主区与输入区同一张纸），
-     padding 会被那条 !important 清掉。 */
-  #main { transition: margin-right 0.2s ease; }
-  body[data-panel="room"] #main { margin-right: var(--room-w, 460px); }
-  @media (max-width: 900px) {
-    /* 窄窗口下 200 侧栏 + 460 抽屉就只剩一条缝：退回「浮层盖住主列」，
-       让主列保住全部宽度（此时抽屉是刻意压在内容上的）。 */
-    body[data-panel="room"] #main { margin-right: 0; }
-  }
-  .ri-limit {
-    color: var(--muted);
-    font-size: var(--text-sm);
-    margin: 0 0 var(--space-4);
-  }
-  .ri-empty {
-    color: var(--muted);
-    font-size: var(--text-sm);
-    padding: var(--space-3) 0;
-  }
-  .mention-pop {
-    position: fixed;
-    z-index: 60;
-    min-width: 200px;
-    max-width: 320px;
-    /* 滚动交给里面的 .mention-list：底部提示行必须始终完整可见，
-       不能像之前那样 sticky 盖住最后一行（看起来像列表被切断了）。 */
-    max-height: 300px;
-    overflow: hidden;
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    padding: var(--space-2);
-    display: none;
-  }
-  .mention-list { max-height: 252px; overflow-y: auto; overflow-x: hidden; }
-  .mention-item {
-    display: flex; align-items: center; gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-radius: 6px;
-    cursor: pointer; font-size: var(--text-sm);
-  }
-  .mention-item.active, .mention-item:hover { background: var(--accent-soft); }
-  .mention-item .m-at { color: var(--accent); font-weight: 700; }
-  /* 候选行带身份：认人靠头像，不靠读一遍名字（名字前面那个 @ 又抢注意力）。
-     尺寸压到 18px —— 这是列表里的第二等元素，不该比正文醒目。 */
-  .mention-item .mention-av {
-    width: 18px; height: 18px; font-size: 10px; font-weight: 700;
-  }
-  .mention-item .mention-av svg { width: 11px; height: 11px; }
-  .mention-item .m-name {
-    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    color: var(--ink);
-  }
-  .mention-item .m-meta {
-    margin-left: auto; padding-left: 8px; flex: 0 0 auto;
-    font-size: var(--text-2xs); color: var(--muted);
-  }
-  /* 键盘提示常驻：上下键到底能不能用，用户不该靠猜。它在滚动区之外，
-     候选再多也不会被滚走、也不会盖住最后一行。 */
-  .mention-hint {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    margin: var(--space-2) calc(-1 * var(--space-2)) calc(-1 * var(--space-2));
-    padding: 5px var(--space-3);
-    border-top: 1px solid var(--line);
-    background: var(--surface);
-    font-size: var(--text-2xs); color: var(--muted);
-  }
-  .mention-hint kbd {
-    font: inherit; padding: 0 3px; border: 1px solid var(--line);
-    border-radius: 3px; background: var(--surface-2, transparent);
-  }
-  .ri-item {
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
-    margin-bottom: var(--space-3);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .ri-item-off { opacity: 0.55; }
-  /* M52 归档区：一段折叠。summary 是「已归档 · n」这一行本身，收起时不占高度。
-     归档行整体压淡（它是历史，不是待办），但动作按钮保持正常对比度。 */
-  .ri-arch-fold { margin: var(--space-2) 0 var(--space-3); border-top: 1px solid var(--line); padding-top: var(--space-2); }
-  .ri-arch-fold > summary {
-    cursor: pointer;
-    color: var(--muted);
-    font-size: var(--text-sm);
-    list-style: none;
-    padding: 2px 0;
-  }
-  .ri-arch-fold > summary::-webkit-details-marker { display: none; }
-  .ri-arch-fold > summary::before { content: "▸ "; }
-  .ri-arch-fold[open] > summary::before { content: "▾ "; }
-  .ri-arch-fold > summary:hover { color: var(--ink); }
-  .ri-item-archived { border-style: dashed; margin-top: var(--space-3); }
-  .ri-item-archived .ri-prompt { color: var(--muted); }
-  .ri-prompt { font-size: var(--text-sm); word-break: break-word; }
-  .ri-meta { color: var(--muted); font-size: var(--text-sm); }
-  .ri-err { color: var(--warn); font-size: var(--text-sm); word-break: break-word; }
-  .ri-row { display: flex; align-items: center; gap: var(--space-2); }
-  .ri-form { display: none; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
-  body[data-room-form="open"] .ri-form { display: flex; }
-  .ri-form textarea { min-height: 64px; resize: vertical; font-family: inherit; }
-  .ri-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
-  /* 侧栏群名就地改名：双击名字，那一行变成输入框，Enter/失焦保存，Esc 放弃。
-     不再开抽屉、不再有第二个表单 —— 改名就是改这一行的字。 */
-  .sess-row .sess-name-input {
-    width: 100%; min-width: 0; font: inherit; font-size: var(--text-sm);
-    color: var(--ink); background: var(--fill); border: 1px solid var(--accent);
-    border-radius: var(--radius-sm, 6px); padding: 1px 6px; outline: none;
-  }
-  /* 群资料分段 tab（照团队详情抽屉设计稿：灰轨 + 白色 active 胶囊，radius 999）。
-     轨道色不引入新字面量——--user-bubble 本就是同款灰值，与稿子的灰轨同值。 */
-  .ri-tabs { display: flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 999px; margin: 0 0 var(--space-4); }
-  .ri-tab { flex: 1; border: 0; background: transparent; border-radius: 999px; padding: 5px 8px; font: inherit; font-size: var(--text-sm); color: var(--muted); cursor: pointer; white-space: nowrap; }
-  .ri-tab[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
-  .ri-member { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-3); padding: 8px 0; border-bottom: 1px solid var(--line); }
-  .ri-member:last-child { border-bottom: 0; }
-  .ri-name { font-size: var(--text-sm); word-break: break-word; }
-  .ri-job { color: var(--muted); font-size: var(--text-sm); text-align: right; word-break: break-word; }
-  /* G-28 #4：成员行 —— 头像 / 名字+职责 / 移除；底部「添加成员」展开 Bot 库。
-     行内不再用 justify-content:space-between 靠两端对齐，改成三段 flex，
-     否则头像和移除按钮会把中间的姓名挤成一条窄缝。 */
-  .ri-member .ri-av {
-    flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center;
-    color: var(--accent-ink); border-radius: 40% 60% 58% 42% / 52% 44% 56% 48%;
-  }
-  .ri-member .ri-av svg { width: 16px; height: 16px; }
-  .ri-member .ri-main { flex: 1 1 auto; min-width: 0; }
-  .ri-member .ri-main .ri-name { font-weight: 500; }
-  .ri-member .ri-main .ri-job { text-align: left; font-size: var(--text-xs); }
-  .ri-member-del {
-    flex: 0 0 auto; border: 0; background: transparent; color: var(--muted); cursor: pointer;
-    font: 400 15px/1 var(--font-ui, inherit); border-radius: 6px;
-    /* 28px 见方的点击区：原来的 4/6px 内边距 + 0.5 透明度，在 460 宽的抽屉里
-       离正文 300 多像素，看起来像渲染残留而不是按钮。 */
-    width: 28px; height: 28px; padding: 0; display: grid; place-items: center; opacity: 0.75;
-  }
-  .ri-member-del:hover:not([disabled]) { background: var(--fill); color: var(--danger); opacity: 1; }
-  .ri-member-del[disabled] { opacity: 0.25; cursor: not-allowed; }
-  .ri-add-member {
-    width: 100%; margin-top: var(--space-3); padding: 8px; border: 1px dashed var(--line);
-    border-radius: var(--radius-md, 10px); background: transparent; color: var(--muted);
-    font: inherit; font-size: var(--text-sm); cursor: pointer; text-align: center;
-  }
-  .ri-add-member:hover { border-color: var(--accent); color: var(--ink); background: var(--fill); }
-  .ri-add-member[disabled] { opacity: 0.45; cursor: not-allowed; border-style: solid; }
-  .ri-picker { margin-top: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-md, 10px); overflow: hidden; }
-  .ri-picker[hidden] { display: none; }
-  .ri-picker .ri-pick {
-    display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: 7px 8px;
-    border: 0; border-bottom: 1px solid var(--line); background: transparent;
-    font: inherit; font-size: var(--text-sm); color: var(--ink); text-align: left; cursor: pointer;
-  }
-  .ri-picker .ri-pick:last-child { border-bottom: 0; }
-  .ri-picker .ri-pick:hover { background: var(--fill); }
-  .ri-picker .ri-pick .ri-av { width: 24px; height: 24px; }
-  .ri-picker .ri-pick .ri-av svg { width: 13px; height: 13px; }
-  .ri-picker .ri-pick small { color: var(--muted); font-size: var(--text-xs); margin-left: auto; }
-  .cv-title { font-weight: 700; font-size: var(--text-title); word-break: break-word; }
-  .cv-kv {
-    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: var(--text-sm);
-  }
-  .cv-kv:last-of-type { border-bottom: 0; }
-  .cv-kv .cv-v { color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); text-align: right; word-break: break-all; }
-  .cv-preview {
-    margin-top: 6px; font-size: var(--text-sm); line-height: 1.5; color: var(--text);
-    max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-word;
-  }
-  .br-head { display: flex; align-items: flex-start; gap: 10px; }
-  .br-avatar {
-    width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-weight: 700; overflow: hidden; background: var(--bg1); border: 1px solid var(--line);
-  }
-  .br-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .br-name { font-weight: 700; font-size: var(--text-title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .br-meta { color: var(--muted); font-size: var(--text-sm); margin-top: 2px; }
-  .br-desc {
-    margin-top: 6px; font-size: var(--text-sm); line-height: 1.5; color: var(--text);
-    white-space: pre-wrap; word-break: break-word;
-    max-height: 180px; overflow: auto;
-  }
-  .br-row {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: var(--text-sm);
-  }
-  .br-row:last-of-type { border-bottom: 0; }
-  .br-stat { color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); }
-  header {
-    grid-area: header;
-    /* Contract §3: header row is exactly --header-h (56px). Brand and the
-       hotkey hint sit on one baseline so the row fits without growing. */
-    padding: 0 20px;
-    border-bottom: 1px solid var(--line);
-    position: relative;
-    align-items: center;
-    background: var(--surface);
-  }
-  header .brand {
-    font: 600 var(--text-lg)/1.2 var(--font-display);
-    letter-spacing: 0;
-  }
-  #brand-block { display: flex; align-items: baseline; gap: 8px; }
-  header .sub {
-    color: var(--muted);
-    font-size: var(--text-sm);
-  }
-  /* Grok-parity: bot identity pill centered in the title bar. It is a normal
-     flex child (brand | pill | actions) instead of an absolutely positioned
-     element so it can never overlap the model picker / header buttons. */
-  #bot-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 16px 8px 10px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-pill);
-    background: var(--surface);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    font-size: var(--text-md);
-    font-weight: 500;
-    color: var(--ink);
-    max-width: 40vw;
-    margin: 0 auto;
-    min-width: 0;
-    justify-self: center;
-  }
-  #bot-pill .bot-pill-name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  #bot-pill .bot-pill-avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: var(--bot-avatar);
-    flex: 0 0 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    color: var(--on-fill);
-    font-size: var(--text-sm);
-    font-weight: 700;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-  }
-  #bot-pill .bot-pill-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  #header-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-    justify-content: flex-end;
-    white-space: nowrap;
-  }
-  #header-actions button {
-    background: transparent;
-    color: var(--muted);
-    border: 0;
-    border-radius: var(--radius-md);
-    padding: 6px 10px;
-    font-weight: 500;
-    font-size: var(--text-md);
-    cursor: pointer;
-  }
-  #header-actions button:hover { background: var(--accent-soft); color: var(--ink); }
-  #header-actions button:active { transform: scale(0.96); }
-  #header-actions button {
-    transition: background 0.12s ease, color 0.12s ease, transform 0.06s ease;
-  }
-  /* Wave M44: button has border:0, so the old `border-color` active rule was
-     dead — the open panel had no highlighted toggle. Give active a real fill. */
-  #header-actions button.active {
-    background: var(--accent);
-    color: var(--accent-ink);
-    font-weight: 600;
-  }
-  #header-actions button.active:hover { background: #333; }
-  #model-picker {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-    min-width: 0;
-    overflow: hidden;
-  }
-  #model-picker .mp-btn {
-    background: var(--surface);
-    color: var(--muted);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    padding: 6px 12px;
-    font-size: var(--text-sm);
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  }
-  #model-picker .mp-btn:hover { background: var(--accent-soft); }
-  #model-picker .mp-btn.active {
-    border-color: var(--accent);
-    color: var(--ink);
-    background: var(--accent-soft);
-  }
-  #model-picker .mp-btn.nokey {
-    opacity: 0.72;
-  }
-  #model-picker .mp-label {
-    color: var(--muted);
-    font-size: var(--text-xs);
-    margin-right: 2px;
-  }
-  #agents details.lab {
-    margin-top: 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    padding: 10px 12px;
-    background: var(--surface);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  }
-  #agents details.lab > summary {
-    cursor: pointer;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    list-style: none;
-  }
-  #agents details.lab > summary::-webkit-details-marker { display: none; }
-  #welcome {
-    margin: auto;
-    max-width: 420px;
-    text-align: center;
-    padding: 48px 20px;
-    color: var(--muted);
-  }
-  #welcome .w-brand {
-    font: 700 var(--text-display)/1.1 var(--font-display);
-    color: var(--ink);
-    letter-spacing: -0.03em;
-    background: linear-gradient(135deg, #111 0%, #4a4a4a 55%, #111 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
-  }
-  #welcome .w-line {
-    margin-top: 12px;
-    font-size: var(--text-base);
-    line-height: 1.5;
-    color: var(--ink);
-  }
-  #welcome .w-hint {
-    margin-top: 18px;
-    font-size: var(--text-sm);
-    opacity: 0.72;
-    line-height: 1.55;
-  }
-  /* GP-02: suggested Bot templates in the empty state */
-  #welcome .wt-wrap { margin-top: 22px; text-align: center; }
-  #welcome .wt-title {
-    font-size: var(--text-sm);
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-  #welcome .wt-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    justify-content: center;
-  }
-  #welcome .wt-btn {
-    background: var(--surface);
-    color: var(--ink);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-pill);
-    padding: 6px 14px;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  }
-  #welcome .wt-btn:hover { border-color: var(--muted); background: var(--accent-soft); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
-  #welcome .wt-btn:disabled { opacity: 0.6; cursor: default; }
-  #bc-tpl-btns .bc-tpl-btn {
-    background: var(--surface);
-    color: var(--ink);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-pill);
-    padding: 5px 11px;
-    /* P2: obey the 13px sheet type scale so the legacy
-       `body.grok-ui .bb-sheet button` override no longer needs !important. */
-    font-size: 13px;
-    cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  #bc-tpl-btns .bc-tpl-btn:hover { border-color: var(--muted); background: var(--accent-soft); }
-  #machines {
-    overflow: hidden;
-    opacity: 0;
-    pointer-events: none;
-    display: none;
-    transition: opacity 0.2s ease;
-  }
-  body[data-panel="tools"] #machines {
-    display: block;
-    opacity: 1;
-    pointer-events: auto;
-    padding: 16px 14px;
-    overflow: auto;
-  }
-  #banner.collapsed {
-    max-height: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    overflow: hidden;
-    opacity: 0;
-  }
-  #agents {
-    grid-area: agents;
-    border-right: 1px solid var(--line);
-    background: var(--side);
-    padding: 0 14px;
-    /* GP-123: one scrolling column (like the reference sidebar). Lists keep
-       their natural height, so a sidebar with 3 Bots shows 3 rows instead of
-       reserving empty scroll space; the footer and the New-chat button are
-       sticky so both stay reachable while the body scrolls. */
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-  #agents > #bot-list,
-  #agents > #room-list,
-  #agents > #session-list {
-    min-height: 0;
-    overflow: visible;
-  }
-  /* Grok-style icon toolbar: compact icon-only buttons for search + new chat */
-  #sidebar-toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 3;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    padding: 10px 0 6px;
-    background: var(--side);
-  }
-  #sidebar-toolbar button {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    border: 1px solid var(--line);
-    background: var(--surface);
-    color: var(--muted);
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-    transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
-    line-height: 1;
-    padding: 0;
-  }
-  #sidebar-toolbar button:hover {
-    background: var(--accent-soft);
-    border-color: var(--muted);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-    color: var(--ink);
-  }
-  #sidebar-toolbar #sess-new {
-    font-size: 18px;
-    color: var(--ink);
-  }
-  #machines {
-    /* visual skin only; grid-area / display / padding come from the
-       contract-v1 rail rules at the top of this block */
-    border-left: 1px solid var(--line);
-    background: var(--surface);
-  }
-  /* GP-116: the Bot / group lists can get long (dozens of Bots, many rooms), so
-     they scroll in place instead of pushing the rest of the sidebar away. */
-  /* GP-118: the footer is a distinct bottom block, visually separated from the
-     lists above it (Grok puts Hidden / Connect apps / Marketplace / Settings
-     at the very bottom rather than mixed into the lists). */
-  #sidebar-footer {
-    /* GP-123: sticky bottom — the body scrolls behind it, the six-entry footer
-       (Hidden Bots / Connect apps / Marketplace / Settings) never leaves view. */
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
-    margin-top: 14px;
-    border-top: 1px solid var(--line);
-    padding: 12px 0 10px;
-    background: var(--side);
-  }
-  /* Grok-style account bar: user avatar + popup menu at sidebar bottom */
-  #account-bar {
-    position: relative;
-    margin-top: 10px;
-  }
-  #account-avatar-btn {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border: 1px solid transparent;
-    border-radius: var(--radius-lg);
-    background: transparent;
-    cursor: pointer;
-    width: 100%;
-    text-align: left;
-    transition: background 0.12s ease, border-color 0.12s ease;
-  }
-  #account-avatar-btn:hover { background: var(--accent-soft); border-color: var(--line); }
-  #account-avatar-btn[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--line); }
-  #account-avatar-circle {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    /* §4.5：渐变终点原来是硬编码中灰 —— 暗色下 accent 变纸白、字变近黑，
-       中灰渐变会让对比度掉到不足。改用主题内的 accent/ink 混合，两端都跟主题。 */
-    background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, var(--ink)) 100%);
-    color: var(--accent-ink);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-    flex-shrink: 0;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
-    letter-spacing: 0.02em;
-  }
-  #account-name-label {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: var(--text-md);
-    font-weight: 600;
-    color: var(--ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  #account-popup {
-    /* §4.5 6b：Grok 弹层是 228 宽、锚在触发元素上方的 absolute 面板；
-       12 圆角 + 白底浮在侧栏灰面上，**没有描边、没有阴影**。 */
-    position: absolute;
-    left: 0;
-    right: auto;
-    top: auto;
-    width: 228px;
-    max-width: 228px;
-    /* 真源实测：弹层底边在 footer 顶边上方 2px（菜单 228 宽，左缘与胶囊齐平）。 */
-    bottom: calc(100% + 2px);
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-xl);
-    padding: 6px;
-    /* 无阴影时白菜单贴在同为浅色的侧栏上，看起来像"列表被菜单替换了"。
-       一层很轻的浮起阴影就够了 —— 不破坏 Grok 的克制，但层级读得出来。 */
-    box-shadow: var(--shadow-pop);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    z-index: 45;
-    opacity: 0;
-    transform: translateY(6px) scale(0.98);
-    pointer-events: none;
-    transition:
-      opacity 0.1s cubic-bezier(0.165, 0.84, 0.44, 1),
-      transform 0.1s cubic-bezier(0.165, 0.84, 0.44, 1);
-  }
-  /* `hidden` 属性优先级：显式规则覆盖 display:flex，弹层默认收起，点击才展开。 */
-  #account-popup[hidden] { display: none !important; opacity: 0; pointer-events: none; }
-  #account-popup:not([hidden]) { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-  #account-popup .ap-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    width: 100%;
-    height: 30px;
-    text-align: left;
-    border: 0;
-    background: transparent;
-    padding: 6px 8px;
-    border-radius: var(--radius-sm);
-    font-size: var(--text-md);
-    font-weight: 420;
-    line-height: 18px;
-    color: var(--ink);
-    cursor: pointer;
-    transition: background 0.1s ease, color 0.1s ease;
-  }
-  /* 图标槽 18×18、字形 14×14 居中、墨色 66%（真源实测）；SVG 走 currentColor。
-     槽宽 18 + 行内 gap 4 → 文案左缘落在行左 30px，与真源一致。 */
-  #account-popup .ap-item .ap-ic {
-    flex: 0 0 18px;
-    width: 18px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: color-mix(in srgb, var(--ink) 66%, transparent);
-  }
-  #account-popup .ap-item .ap-ic svg { width: 14px; height: 14px; }
-  #account-popup .ap-item .ap-tx {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  /* 用量行右侧的实时小字（真源是「44% 已用」，我们是真实请求数）。 */
-  #account-popup .ap-sub {
-    flex: 0 0 auto;
-    color: color-mix(in srgb, var(--ink) 56%, transparent);
-    font-size: var(--text-md);
-    font-weight: 420;
-    line-height: 18px;
-  }
-  /* 子菜单右向 chevron：14×14 字形、墨色 52%（真源实测）。 */
-  #account-popup .ap-chev {
-    flex: 0 0 14px;
-    width: 14px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: color-mix(in srgb, var(--ink) 52%, transparent);
-  }
-  /* 账户弹层里原有「发现新版本 + 安装」块；版本更新已收敛到设置，块与样式一并下线。 */
-  #account-popup .ap-pill {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 26px;
-    padding: 4px 8px;
-    border-radius: var(--radius-pill);
-    background: var(--accent);
-    color: var(--accent-ink);
-    font-size: var(--text-md);
-    font-weight: 420;
-    line-height: 18px;
-  }
-  #account-popup .ap-pill[hidden] { display: none; }
-  #account-popup .ap-item:hover { background: var(--accent-soft); }
-  #account-popup .ap-item:hover .ap-ic { color: var(--ink); }
-  #account-popup .ap-danger { color: var(--danger); }
-  #account-popup .ap-danger .ap-ic { color: var(--danger); }
-  #account-popup .ap-danger:hover { background: var(--danger-bg); color: var(--danger-ink); }
-  #account-popup .ap-danger:hover .ap-ic { color: var(--danger-ink); }
-  #account-popup .ap-sep {
-    height: 0.5px;
-    background: color-mix(in srgb, var(--ink) 12%, transparent);
-    margin: 4px 8px;
-  }
-  .panel-title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--text-xs);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-    margin-bottom: 6px;
-    margin-top: 16px;
-    padding: 0 6px;
-    text-transform: none;
-  }
-  .panel-title.panel-head { justify-content: space-between; }
-  .panel-title.spaced { margin-top: 22px; }
-  /* 侧栏三个区块标题（Bot 列表 / 群组 / 会话）必须是同一种弱化小标题。
-     这里曾经单独把第一个 span 提成 ink + 更大字号，导致「Bot 列表 / 会话」
-     是深色 12px、「群组」是灰色 11px —— 三个标题三种待遇。
-     单一真源：ui_chrome.css 末尾的侧栏 parity 块（body.grok-ui .panel-title）。 */
-  .agent-item, .machine-item {
-    padding: 10px 12px;
-    margin-bottom: 8px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    background: var(--surface);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  }
-  .agent-item:hover, .machine-item:hover { border-color: var(--muted); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
-  .agent-item.active { border-color: var(--line); }
-  /* Grok-parity sidebar row: an inset rounded band, not a bordered card.
-     Pixel-measured off replica/screens/grok-composer.png (2x DPR, so all
-     numbers below are device px / 2):
-       · 行高 58、行间距 0 —— 行与行之间**没有分隔线**，靠留白分开
-       · 选中行是内缩 12px 的圆角色带（半径 ≈12px、亮度 ≈90%），不是通栏
-       · 图标 32px 左右、左缘 x≈24；标题左缘 x≈66 → 行内 padding 12 + gap 10
-     前几轮把它做成了 12px 圆角白卡 + 1px 描边 + 投影 + 通栏选中条，
-     这正是左侧一直"不像 Grok"的直接原因。 */
-  .sess-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    border: 0;
-    background: transparent;
-    border-radius: var(--radius-xl);
-    /* 头像 36 + 上下 11 = 58，对齐 Grok 实测行高 58 */
-    padding: 11px 12px;
-    margin: 0;
-    box-shadow: none;
-    cursor: pointer;
-    transition: background 0.12s ease;
-  }
-  .sess-row:hover { background: var(--nav-row-hover); }
-  .sess-row.active { background: var(--nav-row-active); }
-  /* 图标是浅底 + 饱和字形：参考图用的是插画图标（彩色实心块），
-     我们没有人手一张的插画，用"同色系浅底 + 同色字形"近似，
-     比原来的白字实心圆更接近参考图的明度。 */
-  .sess-avatar {
-    flex: 0 0 36px;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* G-28 像素实测（replica/screens/grok-composer.png 2080x1520=1040x760）：
-       Grok 的 Bot 头像是**饱和彩色实心底 + 内部白色图形**（绿/橙/紫/棕/粉，
-       具体色值见下方 AVATAR_PALETTE），不是浅色底 + 彩色字母。
-       之前用 14% 透明度的浅底，观感是"淡色圆环里一个彩色字"，和 Grok 的
-       实心彩色圆差一整个档次。 */
-    background: var(--av, var(--muted));
-    color: var(--accent-ink);
-    font-weight: 600;
-    font-size: 15px;
-    user-select: none;
-    overflow: hidden; /* GP-120: uploaded avatars are real images */
-    box-shadow: none;
-  }
-  .sess-main { min-width: 0; flex: 1 1 auto; }
-  .sess-row .sess-main .name {
-    font-weight: 600;
-    font-size: var(--text-base);
-    color: var(--ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.35;
-  }
-  .sess-row .sess-main .meta {
-    font-size: var(--text-md);
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.4;
-    margin-top: 1px;
-  }
-  /* GP-120: Bot avatars are real images (data URL from the Host store). */
-  .sess-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  /* 列表空状态 / 读失败提示：跟行同样的左边距，不能贴着侧栏边缘被切掉 */
-  .sess-empty {
-    color: var(--muted);
-    font-size: var(--text-md);
-    line-height: 1.45;
-    padding: 8px 12px;
-  }
-  /* GP-123: session list date groups (今天 / 昨天 / 更早). 参考图里分组标签
-     与图标左缘对齐、比标题更淡，不吃行高。 */
-  .sess-group {
-    font-size: var(--text-md);
-    font-weight: 500;
-    letter-spacing: 0.01em;
-    color: var(--nav-label, var(--muted));
-    padding: 12px 12px 2px;
-    text-transform: none;
-  }
-  /* GP-120: shared form styling for the Edit Profile / rename dialogs. */
-  .bf-label {
-    display: block;
-    margin-bottom: 8px;
-    font-size: var(--text-xs);
-    color: var(--muted);
-  }
-  .bf-label > span {
-    display: block;
-    font-weight: 700;
-    margin-bottom: 3px;
-  }
-  .bf-input {
-    width: 100%;
-    box-sizing: border-box;
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    padding: 8px 12px;
-    font: inherit;
-    font-size: var(--text-md);
-    line-height: 1.4;
-    resize: vertical;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .bf-input:focus {
-    border-color: var(--muted);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-    outline: none;
-  }
-  .bf-avatar {
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    margin: 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    background: var(--accent-soft);
-    color: var(--on-fill);
-    font-weight: 700;
-    font-size: 30px;
-  }
-  .bf-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  /* ── 新建 / 编辑 Bot：分区表单 ───────────────────────────────────────────
-     原来是一列没有分组的输入框，头像列和字段混在一行里，描述框只有 5 行、
-     底部按钮跟着内容漂。现在：头部说明 + 可滚动的分区正文 + 固定底栏。 */
-  .bf-sheet {
-    display: flex;
-    flex-direction: column;
-    max-height: min(88vh, 760px);
-    width: min(680px, 94vw);
-  }
-  .bf-head { align-items: flex-start; }
-  .bf-head-text { min-width: 0; }
-  .bf-sub {
-    margin-top: 4px;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-  }
-  .bf-body {
-    display: flex;
-    gap: 18px;
-    align-items: flex-start;
-    margin-top: 14px;
-    overflow: auto;
-    min-height: 0;
-    padding-right: 2px;
-  }
-  .bf-avatar-col {
-    flex: 0 0 104px;
-    text-align: center;
-    position: sticky;
-    top: 0;
-  }
-  .bf-avatar-cap {
-    color: var(--muted);
-    font-size: var(--text-2xs);
-    margin-top: 6px;
-  }
-  .bf-avatar-hint {
-    color: var(--muted);
-    font-size: var(--text-2xs);
-    line-height: 1.4;
-    margin-top: 6px;
-  }
-  .bf-fields { flex: 1 1 auto; min-width: 0; }
-  .bf-section + .bf-section {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid var(--line);
-  }
-  .bf-section-title {
-    color: var(--muted);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    margin-bottom: 6px;
-  }
-  .bf-section-title-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .bf-count {
-    color: var(--muted);
-    font-size: var(--text-2xs);
-    font-variant-numeric: tabular-nums;
-  }
-  .bf-textarea { min-height: 132px; resize: vertical; }
-  .bf-hint {
-    color: var(--muted);
-    font-size: var(--text-2xs);
-    line-height: 1.5;
-    margin-top: 4px;
-  }
-  .bf-tpl-row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .bf-hint-tight { margin: -2px 0 8px; }
-  /* 底栏固定在 sheet 底部：正文再长也不把「创建」推走 */
-  .bf-foot {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid var(--line);
-  }
-  .bf-status {
-    color: var(--muted);
-    font-size: var(--text-xs);
-    line-height: 1.4;
-    min-height: 16px;
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .bf-foot-actions { display: flex; gap: 8px; flex: 0 0 auto; }
-  .bf-foot-actions .bb-btn { min-width: 76px; }
-  @media (max-width: 720px) {
-    .bf-body { flex-direction: column; gap: 12px; }
-    .bf-avatar-col {
-      position: static;
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      text-align: left;
-      flex-wrap: wrap;
-    }
-    .bf-avatar { margin: 0; width: 56px; height: 56px; font-size: 22px; }
-    .bf-avatar-hint { flex: 1 1 100%; }
-  }
-  /* GP-A2/A3 Grok-parity: plugin cards in a two-column grid */
-  .ca-cats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-  }
-  .ca-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 6px;
-  }
-  .ca-icon {
-    flex: 0 0 36px;
-    width: 36px;
-    height: 36px;
-    border-radius: 11px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--on-fill);
-    font-weight: 700;
-    font-size: var(--text-lg);
-    user-select: none;
-  }
-  /* GP-80 Grok-parity: blue unread dot on the row's right edge (reference: 9px) */
-  .unread-dot {
-    flex: 0 0 9px;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: #2f7cf6;
-    align-self: center;
-    margin-left: 4px;
-  }
-  /* P1-6：会话列表顶部（G-28 之后 = #sessions-popup 顶部）的未读汇总条。
-     只有文字 + 复用 .unread-dot，颜色全部走 token，这里不引入新字面色值。 */
-  .unread-summary {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    padding: 8px 10px;
-    margin: 0 0 4px;
-    border: 0;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--muted);
-    font-family: inherit;
-    font-size: var(--text-sm);
-    line-height: 1.4;
-    text-align: left;
-    cursor: pointer;
-  }
-  .unread-summary:hover { background: var(--accent-soft); color: var(--ink); }
-  .unread-summary .unread-summary-tx { flex: 1 1 auto; }
-  .unread-summary .unread-dot { margin-left: 0; }
-  .agent-item .name, .machine-item .name {
-    font-weight: 600;
-    font-size: var(--text-md);
-  }
-  .agent-item .meta, .machine-item .meta {
-    font-size: var(--text-xs);
-    color: var(--muted);
-    margin-top: 2px;
-  }
-  .kind-pill {
-    display: inline-block;
-    font-size: var(--text-2xs);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--ink);
-    margin-right: 4px;
-  }
-  #main {
-    grid-area: main;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-  }
-  #banner {
-    margin: 12px 16px 0;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    background: var(--surface);
-    font: var(--text-sm)/1.4 var(--font-mono);
-    white-space: pre-wrap;
-    color: var(--muted);
-    max-height: 100px;
-    overflow: auto;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  }
-  #banner.ok { border-color: var(--line); color: var(--ink); }
-  #banner.err { border-color: var(--danger); color: var(--danger-ink); }
-  #log {
-    flex: 1;
-    overflow: auto;
-    padding: 20px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    /* Layout contract v1 §3: one centered --content-max (760px) column for
-       the whole stream — user pill (right) and assistant card (left) align to
-       the same edges. (Was 820px pre-contract.) */
-    max-width: var(--content-max);
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .msg {
-    max-width: 760px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    border-radius: 0;
-  }
-  /* Grok parity (replica/screens/grok-composer.png): BOTH roles are flat,
-     borderless blocks — no stroke, no drop shadow. Colour is the only
-     separator between a turn and the page. */
-  .msg.user {
-    align-self: flex-end;
-    background: var(--user-bubble);
-    color: var(--ink);
-    border-radius: var(--radius-user);
-    padding: 12px 18px;
-    position: relative;
-    /* §4.4: 真源用户气泡四角同值 18，没有朝向发送者的尾巴。 */
-  }
-  .msg-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    font-size: 11px;
-    margin-top: 4px;
-    color: var(--muted);
-    justify-content: flex-end;
-  }
-  .msg-status .ms-check {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    line-height: 14px;
-    text-align: center;
-    border-radius: 50%;
-    font-size: 10px;
-    color: #aaa;
-  }
-  .msg-status .ms-check.read { color: #22c55e; font-weight: 700; }
-  /* KP-08 T3-04：这一行的勾是「回执换来的」，不是「流程走完换来的」。被拒绝那几条
-     必须在气泡下方留下一行人话 + KP-03 的码，只把勾变色用户看不出为什么没发出去。 */
-  .msg-status .ms-check.failed { color: var(--danger); font-weight: 700; }
-  .msg.user.msg-send-failed { box-shadow: inset 0 0 0 1px var(--danger); }
-  .msg.user.msg-send-failed .body { color: var(--danger-ink); }
-  .msg.user.msg-send-unknown .msg-status .ms-check { color: #f59e0b; }
-  .msg .msg-send-note {
-    font-size: var(--text-sm);
-    line-height: 1.45;
-    margin-top: 4px;
-    text-align: right;
-    color: var(--danger-ink);
-  }
-  .msg.user.msg-send-unknown .msg-send-note { color: var(--muted); }
-  /* Layout contract §3: the stream column is capped at --content-max, so the
-     85% bubble must not outgrow it on wide windows (was 1047px at 1440). */
-  /* Grok parity (G-28): an assistant turn is a flat block that fills the
-     whole 760px column. The previous version painted it as a "card" — a 32px
-     avatar dot, a 1px stroke, a 4px drop shadow, an 85% width cap and one
-     flattened corner. None of those exist in the reference
-     (replica/screens/grok-composer.png: flat near-white block, full column).
-     G-28 adds a Grok-style circular avatar + sender name above DM bot replies,
-     matching replica/screens/grok-team-conv.png (the sender name is the
-     pink/magenta --accent). Room replies keep their own roomSpeakerRow, so
-     this head is added only on the DM streaming + history paths. */
-  .msg.assistant {
-    align-self: stretch;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-    width: 100%;
-    max-width: 100%;
-  }
-  #log { row-gap: 16px; }
-  .msg.assistant + .msg.assistant { margin-top: -6px; }
-  .msg.assistant .body {
-    background: var(--bot-bubble);
-    border: 0;
-    /* G-28: 用专用的气泡圆角 token（16px，对齐 replica/screens/OBSERVATIONS.md
-       实测的「圆角 ~16」），而不是通用 --radius-xl(12) —— 12px 在 700px+ 宽的
-       整列气泡上显得偏方，和 Grok 的观感差一档。 */
-    border-radius: var(--radius-bubble);
-    padding: 14px 18px;
-    box-shadow: none;
-    flex: 1 1 100%;
-    min-width: 0;
-  }
-  /* G-28: Grok-style DM bot identity header (avatar left, sender name right).
-     Only attached on the DM streaming + history reply paths; room replies use
-     roomSpeakerRow inside .body and never get this head. */
-  .msg-grok-head { display: flex; align-items: center; gap: 8px; order: 0; }
-  .msg-grok-avatar {
-    width: 28px; height: 28px; border-radius: 50%;
-    display: inline-flex; align-items: center; justify-content: center;
-    overflow: hidden; flex: 0 0 auto;
-    background: color-mix(in srgb, var(--av, var(--bot-avatar, var(--muted))) 16%, transparent);
-    color: var(--av, var(--bot-avatar, var(--ink)));
-    font-weight: 700; font-size: 13px; line-height: 1;
-  }
-  .msg-grok-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .msg-grok-name { color: var(--accent); font-weight: 600; font-size: var(--text-sm); }
-  .msg .role { display: none; }
-  /* GP-146: 群 transcript 按条目渲染。说话人行 / 失败态 / 运行中 / 协作汇总卡
-     都长在既有 .msg 气泡上，因此布局合同（§3 列宽）继续成立，不新增消息面。 */
-  .room-speaker {
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    margin: 0 0 6px; font-size: var(--text-xs); color: var(--muted);
-  }
-  .room-speaker .rs-name { color: var(--ink); font-weight: 600; font-size: var(--text-sm); }
-  .room-speaker .rs-time { font-variant-numeric: tabular-nums; }
-  .room-speaker .rs-policy { font-size: var(--text-xs); }
-  /* 失败是"这次没成"，不是危险操作：红边框 + 红色状态字在安静的对话流里
-     像一张警报，读起来比实际严重。改成与正文同级的中性卡片，内容仍然如实。 */
-  .msg.room-error .body { border-color: var(--line); }
-  .msg.room-error .room-speaker .rs-state { color: var(--muted); font-weight: 500; }
-  .msg.room-working .body { color: var(--muted); }
-  /* 幂等提示与「提及未命中」说明都是次要信息：同一 muted 层级，不抢正文视觉。 */
-  .msg.room-deduped .body, .room-mention-note, .room-thread-readfail, .room-list-readfail { color: var(--muted); }
-  .msg.room-working .rw-dot {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-    background: var(--warn); margin-right: 6px; vertical-align: middle;
-  }
-  .room-report .rr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-  .room-report .rr-title { font-weight: 600; color: var(--ink); }
-  .room-report .rr-count {
-    font-size: var(--text-xs); border: 1px solid var(--line);
-    border-radius: var(--radius-pill); padding: 2px 8px; color: var(--muted);
-  }
-  .room-report.room-partial .rr-count { border-color: var(--warn-line); color: var(--warn-ink); font-weight: 600; }
-  .room-report .rr-task { color: var(--muted); font-size: var(--text-sm); margin-bottom: 6px; }
-  .room-report .rr-sec {
-    display: flex; gap: 6px; align-items: baseline;
-    padding: 4px 0; border-top: 1px dashed var(--line); font-size: var(--text-sm);
-  }
-  .room-report .rr-sec-name { font-weight: 600; color: var(--ink); flex: 0 0 auto; }
-  .room-report .rr-sec-text { color: var(--muted); word-break: break-word; }
-  .room-report .rr-arts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .room-report .rr-art {
-    font-size: var(--text-xs); border: 1px solid var(--line);
-    border-radius: var(--radius-pill); padding: 2px 8px; color: var(--muted);
-  }
-  .room-report .rr-arts-label { font-size: var(--text-xs); color: var(--muted); margin-top: 8px; }
-  /* 接力链：第 1 棒 → 第 2 棒。谁交给谁必须看得见，否则「一步一步协作」等于没发生。 */
-  .room-report .rr-relay { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; }
-  .room-report .rr-hop {
-    font-size: var(--text-xs); border: 1px solid var(--line); border-radius: var(--radius-pill);
-    padding: 2px 8px; color: var(--ink); display: inline-flex; align-items: center; gap: 4px;
-  }
-  .room-report .rr-hop.bad { border-color: var(--warn-line); color: var(--warn-ink); }
-  .room-report .rr-hop-n { color: var(--muted); }
-  .room-report .rr-hop-arrow { color: var(--muted); font-size: var(--text-xs); }
-  /* 产物：这是用户真正要的东西，给它一条独立的、可点开的行（不是灰色小字）。 */
-  .room-report .rr-deliverable {
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    margin-top: 10px; padding: 8px 10px; border: 1px solid var(--line);
-    border-radius: var(--radius-sm, 8px); background: var(--surface, transparent);
-  }
-  .room-report .rr-deliverable-label { font-size: var(--text-xs); color: var(--muted); }
-  .room-report .rr-deliverable-name { font-weight: 600; color: var(--ink); word-break: break-all; }
-  .room-report .rr-deliverable-open {
-    margin-left: auto; font-size: var(--text-xs); cursor: pointer;
-    border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 10px;
-    background: transparent; color: var(--ink);
-  }
-  .room-report .rr-deliverable-open:hover { border-color: var(--ink); }
-  .room-report .rr-deliverable-meta { font-size: var(--text-xs); color: var(--muted); }
-  /* 单人成功：这张卡只剩产物行（正文已经在上面那张成员气泡里）。
-     去掉产物行自带的边框/底色与上间距，否则会变成「一张卡里再套一个小卡片」。 */
-  .room-report.room-solo .rr-deliverable {
-    margin-top: 0; padding: 0; border: 0; background: transparent;
-  }
-  /* 「等你确认」卡：群里真正会打断流程的一步，视觉上要压过普通回执。 */
-  .msg.room-confirm { border-left: 3px solid var(--warn-line); padding-left: 10px; }
-  .room-confirm .rc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-  .room-confirm .rc-title { font-weight: 600; color: var(--ink); }
-  .room-confirm .rc-who { font-size: var(--text-xs); color: var(--muted); }
-  .room-confirm .rc-q { color: var(--ink); font-size: var(--text-sm); line-height: 1.6; white-space: pre-wrap; }
-  .room-confirm .rc-hint { color: var(--muted); font-size: var(--text-xs); margin-top: 6px; }
-  .room-confirm .rc-cands { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .room-confirm .rc-cand {
-    font-size: var(--text-xs); border: 1px solid var(--line); border-radius: var(--radius-pill);
-    padding: 2px 10px; color: var(--ink); cursor: pointer; background: transparent;
-  }
-  .room-confirm .rc-cand:hover { border-color: var(--ink); }
-  .room-confirm .rc-done { font-size: var(--text-xs); color: var(--muted); margin-top: 6px; }
-  /* 执行回执折叠（未配模型时内核会把 Host 干了什么原样贴回来）：
-     首屏只留人话，回执默认收起 —— 一进群不再是一屏 JSON 和绝对路径。 */
-  .rr-fold { margin-top: 8px; }
-  .rr-fold > .rr-fold-sum {
-    cursor: pointer; color: var(--muted); font-size: var(--text-xs);
-    list-style: none; display: inline-flex; align-items: center; gap: 4px;
-    border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 8px;
-  }
-  .rr-fold > .rr-fold-sum::-webkit-details-marker { display: none; }
-  .rr-fold > .rr-fold-sum::before { content: "▸"; font-size: 10px; }
-  .rr-fold[open] > .rr-fold-sum::before { content: "▾"; }
-  .rr-fold > .rr-fold-body {
-    margin: 6px 0 0; padding: 8px 10px; max-height: 240px; overflow: auto;
-    background: var(--code-bg); color: var(--ink);
-    border-radius: var(--radius-sm, 6px);
-    font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-  }
-  /* GP-103/104/105: §8.4 untrusted data marker — shown above the bubble body so
-     external text can never read as the Bot speaking in its own voice. */
-  .untrusted-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    margin: 0 0 6px; padding: 4px 10px;
-    border: 1px dashed var(--line); border-radius: var(--radius-pill);
-    background: #f8f9fa; color: var(--muted);
-    font-size: var(--text-xs); font-weight: 600; line-height: 1.4;
-    align-self: flex-start; max-width: 100%;
-  }
-  .msg.assistant .untrusted-badge { order: -1; }
-  .untrusted-badge .ub-mark { font-size: var(--text-sm); opacity: 0.8; }
-  .msg.has-untrusted .body { border-left: 3px solid var(--line); }
-  /* GP-99..102: §8.3 secure secret card. The input is a real password field;
-     the value never reaches the transcript, only `[REDACTED]`. */
-  .secret-card {
-    align-self: flex-start; display: flex; flex-direction: column; gap: 8px;
-    max-width: 82%; padding: 14px 16px; border: 1px solid var(--line);
-    border-radius: var(--radius-2xl); background: var(--surface);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  }
-  .secret-card .sc-title { font-weight: 700; font-size: var(--text-md); }
-  .secret-card .sc-note { color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
-  .secret-card .sc-row { display: flex; gap: 6px; align-items: center; }
-  .secret-card input[type="password"], .secret-card input[type="text"] {
-    flex: 1; min-width: 0; background: var(--surface); color: var(--text);
-    border: 1px solid var(--line); border-radius: var(--radius-md); padding: 8px 12px;
-    font: var(--text-md)/1.4 var(--font-mono);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .secret-card input[type="password"]:focus, .secret-card input[type="text"]:focus {
-    border-color: var(--muted); box-shadow: 0 2px 4px rgba(0,0,0,0.08); outline: none;
-  }
-  .secret-card .sc-btn {
-    border: 0; border-radius: var(--radius-md); padding: 8px 14px; cursor: pointer;
-    font-weight: 600; font-size: var(--text-sm);
-  }
-  .secret-card .sc-submit { background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 4px rgba(0,0,0,0.12); }
-  .secret-card .sc-submit:hover { background: #333; box-shadow: 0 3px 6px rgba(0,0,0,0.18); }
-  .secret-card .sc-reveal { background: var(--surface); color: var(--muted); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-  .secret-card .sc-reveal:hover { background: var(--accent-soft); }
-  .secret-card .sc-reveal[aria-pressed="true"] { color: var(--text); background: var(--accent-soft); }
-  .secret-card .sc-cancel { background: var(--surface); color: var(--muted); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-  .secret-card .sc-status { font: var(--text-xs)/1.5 var(--font-mono); color: var(--muted); }
-  .redacted-pill {
-    display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm);
-    background: #f8f9fa; color: var(--muted);
-    font: var(--text-sm)/1.5 var(--font-mono);
-    border: 1px solid var(--line);
-  }
-  /* Grok-parity typing indicator while the model is thinking */
-  .msg .typing { display: inline-flex; gap: 4px; align-items: center; height: 18px; }
-  .msg .typing i {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--muted);
-    animation: typingPulse 1.2s infinite ease-in-out;
-  }
-  .msg .typing i:nth-child(2) { animation-delay: 0.15s; }
-  .msg .typing i:nth-child(3) { animation-delay: 0.3s; }
-  @keyframes typingPulse {
-    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
-    30% { opacity: 1; transform: translateY(-2px); }
-  }
-  .msg .body { margin-top: 0; white-space: pre-wrap; word-break: break-word; color: var(--ink); line-height: 1.6; font-size: var(--text-base); }
-  /* Debug-only bubbles (kernel/ADR/effects/delivery) hidden unless Alt+D */
-  .msg.debug-only { display: none; }
-  body.debug-json .msg.debug-only { display: block; }
-  body.debug-json .msg.debug-only .role { display: block; }
-  .msg.debug-only {
-    align-self: stretch;
-    max-width: 100%;
-    border: 1px dashed var(--line);
-    border-radius: var(--radius-md);
-    background: transparent;
-    padding: 8px 10px;
-    font-size: var(--text-sm);
-    color: var(--muted);
-  }
-  .msg.debug-only.assistant { display: none; }
-  body.debug-json .msg.debug-only.assistant { display: block; }
-  .msg.tool-run { font-size: var(--text-md); color: var(--muted); }
-  .msg.tool-run .body { color: var(--muted); }
-  .msg.media .body { white-space: normal; }
-  .msg.media .media-label {
-    font: var(--text-sm)/1.4 var(--font-mono);
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-  .msg.media img.delivery-media {
-    display: block;
-    max-width: min(100%, 520px);
-    max-height: 360px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--line);
-    background: var(--surface);
-    cursor: zoom-in;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  }
-  /* GP-92: fullscreen artifact viewer */
-  #gp92-lightbox img { max-width: 92vw; max-height: 82vh; object-fit: contain; background: var(--surface); border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
-  #gp92-lightbox video { max-width: 92vw; max-height: 82vh; background: #000; border-radius: var(--radius-lg); }
-  #gp92-lightbox audio { width: min(80vw, 720px); }
-  #gp92-lightbox pre.lb-text {
-    max-width: 92vw;
-    max-height: 82vh;
-    overflow: auto;
-    margin: 0;
-    padding: 20px;
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    font: var(--text-sm)/1.5 var(--font-mono);
-    white-space: pre-wrap;
-    word-break: break-word;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-  }
-  /* GP-90: text-family file card */
-  .file-card pre.fc-snippet {
-    margin: 4px 0 0;
-    padding: 8px;
-    max-height: 140px;
-    overflow: hidden;
-    background: var(--bg0);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    color: var(--muted);
-    font: var(--text-xs)/1.45 var(--font-mono);
-    white-space: pre-wrap;
-    word-break: break-word;
-    cursor: zoom-in;
-  }
-  .fc-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
-  .fc-actions button {
-    background: var(--accent-soft);
-    color: var(--ink);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    padding: 4px 8px;
-    cursor: pointer;
-    font-size: var(--text-xs);
-  }
-  .msg.media audio.delivery-media,
-  .msg.media video.delivery-media {
-    display: block;
-    width: min(100%, 480px);
-    margin-top: 4px;
-  }
-  .msg.media iframe.delivery-html {
-    display: block;
-    width: min(100%, 560px);
-    height: 280px;
-    margin-top: 4px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    background: var(--bg0);
-  }
-  .msg.media button.open-artifact {
-    margin-top: 6px;
-    background: var(--accent-soft);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    padding: 6px 10px;
-    cursor: pointer;
-    font: var(--text-sm)/1.3 var(--font-ui);
-  }
-  .msg.media button.open-artifact:hover {
-    border-color: var(--accent, var(--line));
-  }
-  #composer {
-    grid-area: composer;
-    padding: 8px 16px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    background: transparent;
-  }
-  #composer .row {
-    display: flex;
-    gap: 6px;
-    align-items: flex-end;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-composer);
-    padding: 8px 8px 8px 16px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 6px 20px rgba(0,0,0,0.06);
-    transition: box-shadow 0.15s ease, border-color 0.15s ease;
-  }
-  #composer .row:focus-within {
-    border-color: var(--muted);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 10px 30px rgba(0,0,0,0.10);
-  }
-  /* 回到底部：贴在输入卡上沿的圆形 ghost 钮。用 .row 当定位上下文（它在两张
-     屏幕上都是「输入框本体」），底边超出去 10px，浮在对话与输入框之间。 */
-  #composer .row { position: relative; }
-  #to-bottom {
-    position: absolute;
-    left: 50%;
-    bottom: calc(100% + 10px);
-    transform: translateX(-50%);
-    width: 30px;
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    border: 0.5px solid var(--line);
-    background: var(--surface);
-    color: var(--muted);
-    box-shadow: 0 4px 14px var(--fill);
-    cursor: pointer;
-    z-index: 30;
-  }
-  #to-bottom:hover { color: var(--ink); border-color: var(--ink); }
-  #to-bottom:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
-  #to-bottom[hidden] { display: none; }
-  /* M52b：库里记着、磁盘上已经没有的产物。如实写一行灰字，不画点开是空的破卡。 */
-  .artifact-gone { color: var(--muted); font-size: var(--text-sm); }
-  /* 画布：产物墙。三列网格，卡片高度由缩略图定（图是主角），
-     非图片类的产物用「种类 + 名字 + 字节」占位，不假装有预览。 */
-  .cv-sheet { --sheet-w: 900px; }
-  .cv-count { color: var(--muted); font-size: var(--text-sm); margin-left: 8px; }
-  .cv-note { color: var(--muted); font-size: var(--text-sm); margin: 4px 0 12px; }
-  .cv-empty { color: var(--muted); font-size: var(--text-base); padding: 28px 0; text-align: center; }
-  .cv-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: stretch; grid-auto-rows: 1fr; }
-  @media (max-width: 780px) { .cv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  .cv-card {
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    background: var(--surface);
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    height: 100%;
-  }
-  .cv-thumb {
-    height: 132px;
-    background: var(--fill);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  .cv-thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .cv-thumb .cv-kind { color: var(--muted); font: var(--text-sm)/1.3 var(--font-mono); }
-  .cv-meta { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
-  .cv-name { font-size: var(--text-sm); font-weight: 600; word-break: break-all; }
-  .cv-sub { color: var(--muted); font-size: var(--text-xs); }
-  .cv-card .cv-open { align-self: flex-start; }
-  .cv-card.cv-gone { opacity: 0.6; border-style: dashed; }
-  #composer input, #composer textarea {
-    flex: 1;
-    background: transparent;
-    color: var(--ink);
-    border: 0;
-    padding: 8px 0;
-    font: inherit;
-    font-size: var(--text-base);
-    resize: none;
-    max-height: 160px;
-  }
-  #composer input:focus, #composer textarea:focus { outline: none; }
-  #composer #attach-btn, #composer #voice-btn, #composer #shot-btn {
-    background: transparent; color: var(--muted); border: 0;
-    width: 28px; height: 28px; border-radius: var(--radius-pill); font-size: var(--text-lg);
-    display: flex; align-items: center; justify-content: center;
-  }
-  #composer #attach-btn:hover, #composer #voice-btn:hover, #composer #shot-btn:hover { background: var(--accent-soft); color: var(--ink); }
-  #composer #voicechat-btn {
-    background: var(--surface); color: var(--ink); border: 1px solid var(--line);
-    height: 36px; border-radius: var(--radius-pill); padding: 0 14px; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  }
-  #composer #voicechat-btn:hover { background: var(--accent-soft); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
-  #composer #voicechat-btn:disabled { opacity: 0.35; cursor: default; }
-  .settings-tab-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px 12px; cursor: pointer; font-size: var(--text-sm); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-  .settings-tab-btn:hover { background: var(--accent-soft); }
-  .settings-tab-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-  #composer #voicechat-btn.on { opacity: 1; background: var(--danger); color: var(--on-fill); border-color: var(--danger); }
-  #composer #voice-btn.recording { background: var(--danger); color: var(--on-fill); }
-  .vc-pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: vc-pulse 1.2s infinite; display: inline-block; }
-  @keyframes vc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
-  .voice-memo-card { border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); padding: 10px 12px; margin-top: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-  .voice-memo-card .vm-row { display: flex; align-items: center; gap: 8px; }
-  .voice-memo-card .vm-toggle { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 4px 10px; font-size: var(--text-xs); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-  .voice-memo-card .vm-transcript { margin-top: 6px; color: var(--muted); font-size: var(--text-sm); white-space: pre-wrap; }
-  #composer #send {
-    background: var(--accent); color: var(--accent-ink); border: 0;
-    width: 28px; height: 28px; border-radius: var(--radius-pill); padding: 0;
-    font-weight: 500; font-size: 16px; line-height: 1; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center;
-    box-shadow: none;
-    transition: all 0.15s ease;
-  }
-  #composer #send:hover { background: #333; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
-  #composer #send:active { transform: scale(0.94); box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
-  #composer #send:disabled { opacity: 0.4; box-shadow: none; }
-  #composer #attach-btn:active, #composer #voice-btn:active, #composer #shot-btn:active { transform: scale(0.94); }
-  /* 截图进行中：主进程正等着用户框选，按钮要说是「在等你」而不是「坏了」。 */
-  #composer #shot-btn.is-busy { color: var(--muted); cursor: progress; opacity: 0.6; }
-  #composer #shot-btn.is-busy svg { animation: shotPulse 1.1s ease-in-out infinite; }
-  @keyframes shotPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
-  @media (prefers-reduced-motion: reduce) {
-    #composer #shot-btn.is-busy svg { animation: none; }
-  }
-  .attach-strip { display: flex; flex-wrap: wrap; gap: 8px; }
-  .attach-strip .attach-chip {
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
-    padding: 4px 10px; font-size: var(--text-xs); color: var(--muted); display: inline-flex; gap: 6px; align-items: center;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  }
-  .attach-strip .attach-chip button { background: none; border: 0; color: var(--danger); cursor: pointer; padding: 0; font-weight: 700; }
-  /* GP-M30 (§5.1 附件在发送前可预览): image chips show the real bytes as a
-     thumbnail; other kinds show an honest kind/size badge. */
-  .attach-strip .attach-chip img.attach-thumb {
-    width: 36px; height: 36px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--line); display: block;
-  }
-  .attach-strip .attach-chip .attach-kind {
-    background: #f8f9fa; border: 1px solid var(--line); border-radius: var(--radius-sm);
-    padding: 2px 6px; font-size: var(--text-2xs); color: var(--muted); text-transform: uppercase; font-weight: 600;
-  }
-  .composer-menu {
-    position: absolute; bottom: 72px; left: 20px; z-index: 40;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
-    padding: 8px; max-height: 280px; overflow: auto; min-width: 260px;
-    display: flex; flex-direction: column; gap: 4px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  }
-  .composer-menu button {
-    background: none; color: var(--ink); border: 0; text-align: left;
-    padding: 8px 12px; border-radius: var(--radius-md); cursor: pointer; font: inherit; font-size: var(--text-md);
-  }
-  .composer-menu button:hover { background: var(--accent-soft); }
-  /* G-28：分组在菜单里就地展开，不再弹第二个浮层。层级靠缩进与字号表达，
-     不再用「三颗等宽按钮」把一次选择拆成三步。 */
-  .composer-menu .menu-group {
-    display: flex; flex-direction: column;
-    margin: 2px 0 2px;
-  }
-  /* 右键菜单：宽度跟着视口走（窄窗口不顶出右边缘），分区靠细线而不是间距猜。 */
-  .composer-menu.bot-menu {
-    min-width: 0;
-    width: min(240px, calc(100vw - 16px));
-    max-width: calc(100vw - 16px);
-    padding: 6px;
-    gap: 1px;
-  }
-  .composer-menu .menu-sep {
-    height: 1px; margin: 5px 2px;
-    background: var(--line);
-  }
-  .composer-menu button.menu-danger { color: var(--danger); }
-  .composer-menu button.menu-danger:hover { background: var(--accent-soft); }
-  .composer-menu .menu-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .composer-menu .menu-group-head .menu-caret {
-    font-size: 12px; line-height: 1; opacity: 0.55;
-    transition: transform 0.14s ease;
-  }
-  .composer-menu .menu-group-head[aria-expanded="true"] .menu-caret { transform: rotate(90deg); }
-  .composer-menu .menu-sub {
-    display: flex; flex-direction: column; gap: 2px;
-    margin: 2px 0 2px 10px; padding-left: 6px; border-left: 1px solid var(--line);
-  }
-  .composer-menu .menu-sub[hidden] { display: none; }
-  .composer-menu .menu-sub button {
-    padding: 6px 10px; font-size: var(--text-sm); color: var(--muted);
-    display: flex; align-items: center; gap: 6px;
-  }
-  .composer-menu .menu-sub button:hover { color: var(--ink); }
-  .composer-menu .menu-sub button[aria-current="true"] { color: var(--ink); font-weight: 600; }
-  .composer-menu .menu-sub button[aria-current="true"]::before { content: "✓"; font-size: 11px; }
-  .composer-menu .menu-sub .menu-sub-off { color: var(--muted); }
-  .composer-menu .menu-sub input {
-    margin: 4px 0 2px; padding: 6px 8px; min-width: 0;
-    border: 1px solid var(--line); border-radius: var(--radius-md);
-    background: var(--surface); color: var(--ink); font: inherit; font-size: var(--text-sm);
-  }
-  .composer-menu .menu-sub input::placeholder { color: var(--muted); }
-  .composer-menu .menu-sub input:focus { outline: none; border-color: var(--accent); }
-  /* 没有弹框之后，唯一的反馈就是侧栏本身：目标分组和目标行各闪一下再落回常态，
-     否则「点了没反应」和「真的挪过去了」在视觉上分不出来。 */
-  .bot-group-head.just-moved,
-  #bot-list .agent-item.just-moved {
-    border-radius: var(--radius-md);
-    animation: groupFlash 0.9s ease-out;
-  }
-  @keyframes groupFlash {
-    0% { background: var(--accent-soft); }
-    100% { background: transparent; }
-  }
-  #composer {
-    position: relative;
-    /* 群资料 / 窄屏右栏都是 position:fixed 的抽屉（z-index 57），一路铺到
-       窗口底部。composer 不抬高就会被盖住发送键——面板打开时消息发不出去。
-       抬到 58 层并铺同色底，抽屉从 composer 下方穿过；modal 在 60 层，
-       所以不能抬到 61（会反过来盖住弹层底部的按钮，G-51 在 CI 抓到过）。
-       （群资料抽屉现在停在 composer 上沿，不再需要从它底下穿过，但其它
-       窄屏抽屉仍走这条路径，层级不动。） */
-    z-index: 58;
-    background: var(--page-bg);
-  }
-  /* 输入框拖拽调高：composer 顶沿一条 10px 的抓取带，中间一颗 36×4 的药丸。
-     不用 textarea 原生的 resize 把手 —— 它长在右下角，正好压在发送键底下，
-     而且和 autoGrow 抢高度（原生把手改的是同一套 inline 高度）。 */
-  #composer-grip {
-    flex: 0 0 auto;
-    width: 100%;
-    height: 10px;
-    margin: -6px 0 -2px;
-    display: flex; align-items: center; justify-content: center;
-    cursor: ns-resize;
-    touch-action: none;
-    background: transparent;
-  }
-  #composer-grip::after {
-    content: "";
-    width: 36px; height: 4px; border-radius: 999px;
-    background: var(--line);
-    transition: background 0.12s ease, width 0.12s ease;
-  }
-  #composer-grip:hover::after,
-  #composer-grip:focus-visible::after { background: var(--muted); width: 48px; }
-  /* 刻意不写 outline:none —— 抓取带是 tab 可达的，全站焦点环必须留着
-     （prove_m40_a11y 的负向对照会抹掉文件里第一处 focus-visible 规则块
-     来验证断言非恒真，所以这里也不留同样的选择器文本）。 */
-  body.composer-resizing { cursor: ns-resize; user-select: none; }
-  body.composer-resizing #composer-grip::after { background: var(--accent); width: 48px; }
-  /* 群身份的「输入卡表头」。
-     结构上它排在 #composer-grip 与 .row 之间（见 index.html 的注释），
-     视觉上和下面的输入卡是同一张纸：同宽、同边框、只留上圆角，中间一条
-     细线分界。这样「群资料 / 退出群聊」永远贴着输入框，不会被进度行 /
-     回复条挤到对话中间去。 */
-  #room-banner {
-    flex-wrap: wrap;
-    row-gap: 4px;
-    /* gap 是 8px，负 margin 抵消掉，让表头与输入卡真正贴合 */
-    margin: 0 0 -8px;
-    /* 左内边距对齐输入卡的内容边（.row 的 padding 左 16px），标题和「＋」
-       才不会一个缩进 14 一个缩进 16。 */
-    padding: 6px 8px 6px 16px;
-    border-radius: var(--radius-composer) var(--radius-composer) 0 0;
-    border-bottom: 0;
-    box-shadow: none;
-  }
-  #room-banner .bb-btn { padding: 4px 10px; font-size: var(--text-sm); }
-  #room-banner #room-banner-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  #composer.has-room .row { border-top-left-radius: 0; border-top-right-radius: 0; }
-  #composer #send:disabled { cursor: wait; }
-  #json-out {
-    padding: 8px 10px;
-    border: 1px dashed var(--line);
-    border-radius: var(--radius-md);
-    font: var(--text-xs)/1.35 var(--font-mono);
-    color: var(--warn);
-    white-space: pre-wrap;
-    max-height: 120px;
-    overflow: auto;
-    display: none;
-  }
-  body.debug-json #json-out { display: block; }
-  #approval {
-    display: none;
-    margin: 0 16px 8px;
-    padding: 14px 16px;
-    border: 1px solid var(--warn-line);
-    border-radius: var(--radius-lg);
-    background: var(--warn-bg);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  }
-  #approval.visible { display: block; }
-  #approval .title { font-weight: 700; color: var(--warn); margin-bottom: 8px; }
-  #approval .detail { font-size: var(--text-sm); color: var(--muted); white-space: pre-wrap; }
-  #approval .actions { margin-top: 12px; display: flex; gap: 8px; }
-  #approval .kv { margin: 2px 0; color: var(--muted); font: var(--text-xs)/1.5 var(--font-mono); }
-  #approval .kv b { color: var(--ink); }
-  #approval .secret-hint { margin-top: 8px; color: var(--warn); font-size: var(--text-sm); }
-  #loop-approval[hidden] { display: none !important; }
-  #loop-approval {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin: 0 0 8px;
-    padding: 8px 10px;
-    border: 1px solid var(--warn-line);
-    border-radius: var(--radius-md);
-    background: var(--warn-bg);
-  }
-  #loop-approval-detail {
-    flex: 1;
-    min-width: 0;
-    color: var(--ink);
-    font: var(--text-xs)/1.4 var(--font-mono);
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-  /* Grok Parity Panel (Wave G) */
-  #computer-panel .frame-box { margin-top: 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--input-bg); padding: 8px; color: var(--muted); font: var(--text-sm)/1.4 var(--font-mono); }
-  #computer-panel .frame-box img { max-width: 100%; border-radius: var(--radius-sm); display: block; }
-  .gp-label { font-size: var(--text-sm); color: var(--muted); margin: 10px 0 4px; }
-  .gp-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .gp-select { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 6px 10px; font-size: var(--text-sm); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-  /* Take over banner (GP-33/34) */
-  #takeover-banner {
-    display: none;
-    margin: 0 16px 8px;
-    padding: 10px 12px;
-    border: 1px solid var(--muted);
-    border-radius: var(--radius-md);
-    background: var(--bg1);
-  }
-  #takeover-banner.visible { display: block; }
-  #takeover-banner .row1 { font-weight: 700; color: var(--ink); }
-  #takeover-banner .hint { margin-top: 4px; font-size: var(--text-sm); color: var(--warn); }
-  #takeover-banner .actions { margin-top: 8px; display: flex; gap: 8px; }
-  /* Approval queue (GP-23) */
-  #approval-queue { margin-top: 8px; }
-  #approval-queue .q-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--input-bg); color: var(--muted); font: var(--text-xs)/1.4 var(--font-mono); margin-bottom: 4px; flex-wrap: wrap; }
-  #approval-queue .q-expired { border-color: var(--warn-line); }
-  /* GP-162：来源定时任务已被删除的批准行。只是描边 + 加一句来路说明，
-     行仍然显示、仍然可批准 / 拒绝 —— 不藏、不替用户决定。 */
-  #approval-queue .q-orphan { border-color: var(--danger); }
-  #approval-queue .q-empty { color: var(--muted); font: var(--text-xs)/1.4 var(--font-sans); }
-  #approval-queue button { background: var(--accent-soft); color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px 8px; cursor: pointer; font-size: var(--text-xs); }
-  /* Pending approvals bar (GP-23) */
-  #pending-bar { display: none; margin: 0 16px 8px; padding: 8px 12px; border: 1px dashed var(--warn); border-radius: var(--radius-md); background: var(--warn-bg); color: var(--muted); font-size: var(--text-sm); }
-  #pending-bar.visible { display: block; }
-  /* Draft cards (GP-40/41) */
-  .draft-card { border: 1px solid var(--muted); border-radius: var(--radius-md); background: var(--bg1); padding: 10px 12px; margin-top: 8px; }
-  .draft-card .role { color: var(--ink); font-weight: 700; font-size: var(--text-sm); }
-  .draft-card label { display: block; font-size: var(--text-xs); color: var(--muted); margin-top: 6px; }
-  .draft-card input, .draft-card textarea { width: 100%; margin-top: 2px; background: var(--input-bg); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 8px; font: var(--text-md)/1.4 inherit; }
-  .draft-card .actions { margin-top: 8px; display: flex; gap: 8px; }
-  .draft-card .send-btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: var(--radius-sm); padding: 7px 12px; font-weight: 700; cursor: pointer; }
-  .draft-card .discard-btn { background: var(--danger-bg); color: var(--danger-ink); border: 0; border-radius: var(--radius-sm); padding: 7px 12px; cursor: pointer; }
-  .draft-card .draft-status { font-size: var(--text-xs); color: var(--muted); align-self: center; }
-  /* GP-108: prepared routine output — visually a draft, not a done action. */
-  .routine-draft { border-style: dashed; }
-  .routine-draft .rd-prompt { margin-top: 6px; font: var(--text-md)/1.5 var(--font-mono); white-space: pre-wrap; }
-  .routine-draft .rd-boundary { margin-top: 6px; font-size: var(--text-xs); color: var(--muted); }
-  .effect-chip {
-    display: inline-block;
-    margin: 2px 4px 0 0;
-    padding: 2px 8px;
-    border-radius: var(--radius-xs);
-    border: 1px solid var(--line);
-    font: var(--text-2xs)/1.4 var(--font-mono);
-    color: var(--ink);
-  }
-  .reaction-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    padding: 6px 12px;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--line);
-    background: linear-gradient(180deg, var(--accent-soft), var(--bg1));
-    font: var(--text-title)/1 var(--font-ui);
-    color: var(--ink);
-    animation: reaction-pop 280ms ease-out;
-  }
-  .reaction-pill .emoji { font-size: var(--text-lg); line-height: 1; }
-  .reaction-pill .tag {
-    font: var(--text-2xs)/1 var(--font-mono);
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  @keyframes reaction-pop {
-    from { transform: scale(0.85); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-  }
-  #reaction-tray {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
-    min-height: 28px;
-  }
-  /* GP-14: Reply affordance + quote chip (hover actions on each message). */
-  .msg { position: relative; }
-  .msg .msg-actions {
-    position: absolute;
-    top: 4px;
-    right: 6px;
-    display: inline-flex;
-    gap: 4px;
-    z-index: 2;
-    padding: 3px;
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    backdrop-filter: blur(4px);
-    /* Wave M39: opacity-based fade so transitions actually fire. */
-    opacity: 0;
-    transform: translateY(-2px);
-    pointer-events: none;
-    transition: opacity 0.14s ease, transform 0.14s ease;
-  }
-  .msg:hover .msg-actions, .msg .msg-actions:focus-within { opacity: 1; transform: translateY(0); pointer-events: auto; }
-  .msg .msg-actions button {
-    border: 0;
-    background: transparent;
-    color: var(--muted);
-    border-radius: 999px;
-    padding: 3px 10px;
-    font-size: var(--text-xs);
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease, transform 0.06s ease;
-  }
-  .msg .msg-actions button:hover { color: var(--ink); background: var(--accent-soft); }
-  .msg .msg-actions button:active { transform: scale(0.96); }
-  /* GP-M31 (§5.1 消息反应): chips under the bubble come from the store row;
-     the picker is a fixed 6-emoji set (no emoji-picker dependency). */
-  .msg .msg-reactions {
-    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
-  }
-  .msg .reaction-chip {
-    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-    border-radius: var(--radius-pill); padding: 2px 10px; font-size: var(--text-sm); cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-  }
-  .msg .reaction-chip:hover { border-color: var(--muted); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-  .msg .reaction-picker {
-    display: inline-flex; gap: 4px; margin-top: 6px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 6px 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-  }
-  .msg .reaction-picker button {
-    border: 0; background: none; font-size: var(--text-lg); cursor: pointer; padding: 4px 6px; border-radius: var(--radius-md);
-  }
-  .msg .reaction-picker button:hover { background: var(--accent-soft); }
-  /* ── Find in chat（Grok 真机 Cmd/Ctrl+F）：消息流右上角的浮条 ────────────
-     不加 !important、不引新色值：底色/描边/正文全走既有 token，命中色用
-     color-mix 从 --accent 派生（T-2 的硬编码 hex 计数不动）。 */
-  #main { position: relative; }
-  #find-bar {
-    position: absolute;
-    top: 8px;
-    right: 16px;
-    z-index: 40;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 6px 5px 10px;
-    background: var(--surface);
-    border: 0.5px solid var(--line);
-    border-radius: 10px;
-    box-shadow: 0 6px 20px var(--fill);
-  }
-  #find-bar[hidden] { display: none; }
-  #find-input {
-    width: 170px;
-    border: 0;
-    background: transparent;
-    color: var(--ink);
-    font-size: 13px;
-    outline: none;
-  }
-  .find-count {
-    color: var(--muted);
-    font-size: 11px;
-    min-width: 34px;
-    text-align: right;
-  }
-  .find-btn {
-    border: 0;
-    background: transparent;
-    color: var(--muted);
-    border-radius: 6px;
-    width: 24px;
-    height: 24px;
-    font-size: 13px;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .find-btn:hover { background: var(--fill); color: var(--ink); }
-  mark.find-hit {
-    /* 18% 的中性灰在白底上几乎看不见，黑气泡里更是没有对比 —— 用 warn 色系
-       做真高亮，并强制深字：无论落在白底还是黑气泡上都读得出来。 */
-    background: color-mix(in srgb, var(--warn) 62%, transparent);
-    color: var(--ink);
-    border-radius: 2px;
-  }
-  mark.find-hit.on {
-    /* 当前命中要能在「白底灰气泡」和「纯黑用户气泡」上都看得出来：实心
-       警示色 + 描边，而不是把底色换成 accent（黑底上等于没高亮）。 */
-    background: var(--warn);
-    color: var(--ink);
-    outline: 2px solid var(--warn-ink);
-    outline-offset: 1px;
-  }
-  /* 日期分隔行：Grok 真机是居中的灰小字（「今天」「10月17日周六」） */
-  .msg-day-sep {
-    align-self: center;
-    margin: 6px 0 2px;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 16px;
-    text-align: center;
-  }
-  .msg-reply-quote {
-    border-left: 3px solid var(--accent);
-    background: #f8f9fa;
-    border-radius: 0 var(--radius-md) var(--radius-md) 0;
-    margin: 0 0 6px;
-    padding: 4px 10px;
-    font-size: var(--text-sm);
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-  }
-  /* GP-93/95: clickable links in message bodies + hover preview card
-     (official Grok spec §5.6 — 链接可点击打开 / 悬停链接卡片显示预览). */
-  .msg .body a.msg-link {
-    color: var(--accent);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    cursor: pointer;
-    word-break: break-all;
-  }
-  #link-preview {
-    position: fixed;
-    z-index: 60;
-    max-width: 380px;
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    border-left: 3px solid var(--accent);
-    border-radius: var(--radius-md);
-    background: var(--bg1);
-    color: var(--ink);
-    box-shadow: var(--shadow-pop);
-    font-size: var(--text-sm);
-    line-height: 1.45;
-    pointer-events: none;
-    display: none;
-  }
-  #link-preview[data-show="1"] { display: block; }
-  #link-preview .lp-host {
-    font-weight: 600;
-    letter-spacing: 0.2px;
-    margin-bottom: 2px;
-  }
-  #link-preview .lp-url {
-    color: var(--muted);
-    word-break: break-all;
-  }
-  #link-preview .lp-hint {
-    margin-top: 4px;
-    color: var(--muted);
-  }
-  .reply-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0 16px 6px;
-    padding: 6px 10px;
-    border: 1px solid var(--line);
-    border-left: 3px solid var(--accent);
-    background: var(--bg1);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    flex-shrink: 0;
-  }
-  /* GP-96/97: live progress row (official §5.7 实时显示 Bot 工作进度). */
-  .turn-progress {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0 16px 6px;
-    padding: 5px 10px;
-    border: 1px dashed var(--line);
-    border-radius: var(--radius-sm);
-    background: var(--bg1);
-    color: var(--muted);
-    font-size: var(--text-sm);
-    min-height: 26px;
-  }
-  .turn-progress .tp-step {
-    margin-left: auto;
-    font: var(--text-xs)/1.4 var(--font-mono);
-    color: var(--muted);
-    white-space: nowrap;
-  }
-  .turn-progress[data-state="running"] .tp-dot,
-  .turn-progress[data-state="awaiting"] .tp-dot {
-    background: var(--accent);
-    animation: tpPulse 1s ease-in-out infinite;
-  }
-  .turn-progress[data-state="failed"] .tp-dot { background: var(--danger); }
-  .turn-progress[data-state="done"] .tp-dot { background: var(--accent); }
-  .turn-progress .tp-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--line); flex-shrink: 0;
-  }
-  @keyframes tpPulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
-  .reply-bar .rb-text {
-    flex: 1;
-    color: var(--muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .reply-bar .rb-x {
-    border: 1px solid var(--line);
-    background: transparent;
-    color: var(--muted);
-    border-radius: var(--radius-sm);
-    padding: 0 8px;
-    cursor: pointer;
-  }
-  #reaction-tray .tray-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--line);
-    background: var(--bg1);
-    font-size: var(--text-md);
-  }
-  @media (max-width: 900px) {
-    /* The app window can be as narrow as 480px (main.js minWidth). Below 900
-       the shell must stop being a 3-column grid.
-       `body.grok-ui` (ui_chrome.css) sets its own grid-template-areas with
-       higher specificity than a bare `body` selector, so it silently defeated
-       the single-column layout: the grid kept only 1 explicit column while the
-       areas still named 3, producing implicit auto columns (measured at 480:
-       rail squeezed to 74px, main to 380px, header to 455px). Both selectors
-       are restated here so the narrow layout actually applies. */
-    /* GP-?: 窄窗不再把侧栏甩到顶部横条——改为「左侧紧凑文字侧栏」：
-       ≤900 时侧栏收到 200px（图标+名字都显示，能看清谁是谁），主区与 composer 在右列，
-       rails 仍是下方浮层抽屉（见后）。账户/会话弹层改成 fixed 浮在左下，
-       逃出 #agents 的 overflow-x:hidden 裁切（侧栏仅 200px，228px 弹层原会被砍）。 */
-    body,
-    body.grok-ui {
-      --sidebar-w: 200px;
-      --appbar-w: 48px;
-      grid-template-columns: var(--appbar-w) var(--sidebar-w) minmax(0, 1fr);
-      grid-template-rows: var(--header-h) minmax(0, 1fr) auto;
-      grid-template-areas:
-        "appbar header header"
-        "appbar agents main"
-        "appbar agents composer";
-    }
-    body[data-sidebar="collapsed"],
-    body.grok-ui[data-sidebar="collapsed"] { grid-template-columns: var(--appbar-w) 0px minmax(0, 1fr); }
-    /* 弹层 fixed，不被侧栏 overflow 裁切；锚在左下、向上开，浮在账户条上方 */
-    #account-popup,
-    #sessions-popup {
-      position: fixed;
-      left: 8px;
-      bottom: 56px;
-      top: auto;
-      max-height: calc(100vh - 64px);
-      overflow-y: auto;
-      z-index: 60;
-    }
-    /* Rails stop being a grid column and become overlay drawers under the
-       header. A 340px third column at 480px would leave a 140px chat column;
-       as an overlay the open panel never squeezes or displaces the composer,
-       and every rail already ships a visible close button. */
-    #bot-rail,
-    #conv-rail,
-    #computer-rail,
-    #machines {
-      position: fixed;
-      top: var(--header-h);
-      right: 0;
-      bottom: 0;
-      width: min(var(--rail-w), 100vw);
-      max-width: 100vw;
-      z-index: 57;
-      /* composer 抬到 58 层后仍要从抽屉前面穿过；给它留出单行高度，
-         抽屉最后一条内容才滚得到，而不是停在 composer 背后。 */
-      padding-bottom: 96px;
-      box-shadow: -20px 0 48px rgba(0, 0, 0, 0.12);
-    }
-  }
-  /* Layout contract v1 §6 — debug-surface governance.
-     [data-lab] surfaces are absent from the product UI by default and only
-     reveal under body[data-devmode="on"] (settings.dev_mode or the
-     --bitbot-devmode launch flag). Kept above the a11y block on purpose:
-     Wave M40 must stay the final override layer. */
-  body:not([data-devmode="on"]) [data-lab] { display: none; }
-  #devmode-badge {
-    align-self: center; justify-self: center;
-    display: inline-flex; align-items: center; gap: 4px;
-    background: var(--warn-bg); color: var(--warn-ink);
-    border: 1px solid var(--warn-line); border-radius: var(--radius-pill);
-    padding: 2px 10px; font-size: var(--text-xs); font-weight: 600;
-  }
-  #devmode-badge[hidden] { display: none; }
-
-  /* Wave M40 — accessibility: keyboard focus rings only for keyboard users
-     (:focus-visible), and honor prefers-reduced-motion by stripping the M39
-     fades / presses. Placed last so it overrides component rules without
-     shadowing their primary selectors. */
-  :focus { outline: none; }
-  :focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    border-radius: var(--radius-sm);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-      animation-duration: 0.001ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.001ms !important;
-      scroll-behavior: auto !important;
-    }
-    .msg .msg-actions,
-    .msg:hover .msg-actions,
-    .msg .msg-actions:focus-within { transform: none; }
-    .msg .msg-actions button:active,
-    #composer #send:active,
-    #composer #attach-btn:active,
-    #composer #voice-btn:active,
-    #header-actions button:active { transform: none; }
-    /* 列表行不做位移（参考图只有背景色带），减弱动效时连色带渐变也去掉 */
-    .sess-row { transition: none; }
-  }
-
-  /* ===== 用量与账单：图示化面板 =====
-     三张 KPI 卡 + 一条 token 构成分解条 + 按型号的横向条形榜。
-     所有长度都由真实数字算出来，没有数据就不画（空态只有文字 + 图标）。 */
-  #gp-usage { color: var(--ink); }
-  .usage-skeleton {
-    padding: 18px 0;
-    color: var(--muted);
-    font: var(--text-xs) / 1.5 var(--font-mono);
-  }
-  .usage-panel { display: flex; flex-direction: column; gap: 12px; }
-
-  .usage-head {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; flex-wrap: wrap;
-  }
-  .usage-week-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px;
-    border-radius: var(--radius-pill);
-    background: var(--accent-soft);
-    color: var(--ink);
-    font: 600 var(--text-xs) / 1 var(--font-mono);
-    letter-spacing: 0.02em;
-  }
-  .usage-week-chip::before {
-    content: ""; width: 6px; height: 6px; border-radius: 50%;
-    background: var(--accent);
-  }
-  .usage-src { color: var(--muted); font: var(--text-2xs) / 1.4 var(--font-mono); }
-
-  .usage-kpis {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-    gap: 8px;
-  }
-  .usage-kpi {
-    display: flex; flex-direction: column; gap: 7px;
-    padding: 11px 12px 10px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-  }
-  .usage-kpi-top {
-    display: flex; align-items: center; gap: 6px;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    line-height: 1.2;
-  }
-  .usage-kpi-ic { display: inline-flex; flex: none; }
-  .usage-kpi-ic svg { width: 14px; height: 14px; display: block; }
-  .usage-kpi-val {
-    color: var(--ink);
-    font: 600 21px / 1.1 var(--font-display);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.01em;
-  }
-  .usage-kpi-unit {
-    margin-left: 4px;
-    color: var(--muted);
-    font: 400 var(--text-2xs) / 1 var(--font-ui);
-    letter-spacing: 0;
-  }
-
-  .usage-card {
-    padding: 12px 12px 10px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-  }
-  .usage-card-head {
-    display: flex; align-items: baseline; justify-content: space-between;
-    gap: 8px; margin-bottom: 9px;
-  }
-  .usage-card-title { color: var(--ink); font-size: var(--text-sm); font-weight: 600; }
-  .usage-card-sub {
-    color: var(--muted);
-    font: var(--text-2xs) / 1.3 var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .usage-mix-bar {
-    display: flex; height: 10px;
-    border-radius: var(--radius-pill);
-    overflow: hidden;
-    background: var(--fill);
-  }
-  .usage-mix-in  { background: #4c8dff; }
-  .usage-mix-out { background: #22a06b; }
-  .usage-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 9px; }
-  .usage-legend-item {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: var(--muted);
-    font-size: var(--text-xs);
-  }
-  .usage-legend-item b {
-    color: var(--ink); font-weight: 600;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-  .usage-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-
-  .usage-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-  .usage-group:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
-  .usage-group-head { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; }
-  .usage-group-name {
-    color: var(--ink);
-    font: 600 var(--text-xs) / 1.2 var(--font-mono);
-    letter-spacing: 0.01em;
-  }
-  .usage-group-stat {
-    margin-left: auto;
-    color: var(--muted);
-    font: var(--text-2xs) / 1.2 var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .usage-model-row {
-    display: flex; flex-direction: column; gap: 5px;
-    padding: 6px 0;
-  }
-  .usage-model-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .usage-model-name {
-    flex: 1 1 auto; min-width: 0;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    color: var(--ink);
-    font: var(--text-md) / 1.3 var(--font-mono);
-  }
-  .usage-model-count {
-    flex: none;
-    color: var(--ink);
-    font: 600 var(--text-xs) / 1 var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-  .usage-model-count em {
-    margin-left: 3px;
-    color: var(--muted);
-    font-style: normal;
-    font-weight: 400;
-  }
-  .usage-track {
-    height: 6px;
-    border-radius: var(--radius-pill);
-    background: var(--fill);
-    overflow: hidden;
-  }
-  .usage-fill {
-    height: 100%;
-    border-radius: var(--radius-pill);
-    transition: width 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
-  }
-  .usage-model-meta {
-    color: var(--muted);
-    font: var(--text-2xs) / 1.4 var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .usage-note {
-    margin-top: 2px;
-    color: var(--muted);
-    font: var(--text-2xs) / 1.5 var(--font-ui);
-  }
-
-  .usage-empty {
-    display: flex; flex-direction: column; align-items: center; gap: 9px;
-    padding: 28px 14px;
-    text-align: center;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    line-height: 1.6;
-    background: var(--surface);
-    border: 1px dashed var(--line);
-    border-radius: var(--radius-lg);
-  }
-  .usage-empty svg { width: 28px; height: 28px; opacity: 0.6; }
-
-  /* ===== 侧栏搜索（Bot / 群组） ===== */
-  #sb-search-row { padding: 0 12px 8px; }
-  #sb-search-row .bb-field { width: 100%; box-sizing: border-box; }
-  #sb-search-row #sb-search-empty { padding: 6px 2px 0; }
-  /* 侧栏收起时没有可过滤的行，搜索框跟着收起，不留半截输入框 */
-  body[data-sidebar="collapsed"] #sb-search-row { display: none; }
-  body.grok-ui.sb-search-open #sidebar-toolbar #sidebar-search-toggle {
-    background: var(--accent-soft);
-    color: var(--ink);
-  }
-</style>
+  <link rel="stylesheet" href="./ui_components.css"/>
 </head>
 <body class="grok-ui">
   <!-- 【批次 14】域导航栏（最左一条窄栏）。
@@ -2561,30 +23,145 @@
          指挥   → 团队指挥台
          自动化 → 当前群的定时任务（没进群时禁用并说清原因）
          设置   → 设置面板 -->
+  <!-- 【布局 v15 · 并栏】整条侧栏导航：一条 52px 图标列，三组，两条细线。
+       并栏前这里是「左 = 去哪」，右侧另有一条「对这屏做什么」——
+       两条栏加起来 104px 只为放 12 颗图标，中间还各自留一大片空白。
+       现在合成一条，按功能分组（分组依据不是"原来在哪"，是"它是谁"）：
+
+         域组（上）   对话 / 指挥 / 自动化        —— 你要去的地方
+         工具组（中） 模型 / 会话详情 / 群资料 / 电脑 / 能力 / 市场 / 连接
+                                                 —— 对当前这屏能做什么
+         底部          设置 · 会话 · 账户        —— 恒在的收尾，身份在最后一格
+
+       每个条目都有**真实去处**（没有去处的不放进来 —— 不加「不知道干嘛」的功能）：
+         对话   → 回到聊天（默认）            指挥   → 团队指挥台
+         自动化 → 当前群的定时任务（没进群时禁用并说清原因）
+         设置   → 设置面板
+         模型   → 模型与凭证面板              会话详情 → openConvRail(当前会话)
+         群资料 → openRoomRail()（没进群时不出现）
+         电脑   → setPanel("computer")        能力   → setPanel("tools")，仅 devmode
+         市场   → 模板市场                    连接   → 连接应用（插件）
+         会话   → 会话弹层                    账户   → 账户弹层 -->
   <nav id="app-rail" aria-label="主导航" data-i18n-aria="appRailAria">
+  <div class="rail-scroll">
     <div class="app-rail-mark" aria-hidden="true">B</div>
-    <button type="button" class="app-rail-item" data-app-domain="chat" aria-current="page">
+    <button type="button" class="app-rail-item" data-app-domain="chat" aria-current="page" title="对话" aria-label="对话" data-i18n-title="appDomainChat" data-i18n-aria="appDomainChat">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-3.9-.9L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>
       <span data-i18n="appDomainChat">对话</span>
     </button>
-    <button type="button" class="app-rail-item" id="app-rail-command" data-app-domain="command" aria-expanded="false">
+    <button type="button" class="app-rail-item" id="app-rail-command" data-app-domain="command" aria-expanded="false" title="指挥" aria-label="指挥" data-i18n-title="appDomainCommand" data-i18n-aria="appDomainCommand">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10h6M7 14h4"/></svg>
       <span data-i18n="appDomainCommand">指挥</span>
       <!-- 【批次 15】角标从侧栏迁到这里。
-           以前「指挥台」按钮在侧栏顶排，角标（要你拍板几件）跟着它；
-           现在指挥台归「指挥」这个**域**，域导航栏是恒在的全局列
-           ⇒ 全局提醒放在这里更对，也不用再在侧栏开第二个入口。 -->
+      以前「指挥台」按钮在侧栏顶排，角标（要你拍板几件）跟着它；
+      现在指挥台归「指挥」这个**域**，域导航栏是恒在的全局列
+      ⇒ 全局提醒放在这里更对，也不用再在侧栏开第二个入口。 -->
       <span class="app-rail-badge" id="cmd-nav-badge" hidden></span>
     </button>
-    <button type="button" class="app-rail-item" data-app-domain="automation">
+    <button type="button" class="app-rail-item" data-app-domain="automation" title="自动化" aria-label="自动化" data-i18n-title="appDomainAutomation" data-i18n-aria="appDomainAutomation">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       <span data-i18n="appDomainAutomation">自动化</span>
     </button>
-    <button type="button" class="app-rail-item" data-app-domain="settings">
+    <!-- v15 的 .dom .sep：域组和工具组之间一条 20×1 的细线。
+    没有它，下面那 7 颗工具就是"一长串挂在导航下面的图标"。 -->
+    <div class="app-rail-sep" aria-hidden="true"></div>
+    <!-- 工具组：原右侧功能栏的全部条目，按"模型 → 会话 → 设备 → 资源"排。
+    一个功能都没新增，全是原样搬家：
+    电脑     → #gp-panel-btn（原顶栏），行为仍是 setPanel("computer") 开合
+    能力     → #tools-toggle-btn（原顶栏），仍受 devmode 门控
+    会话详情 → 复用既有 openConvRail(activeSessionId)
+    群资料   → 复用既有 openRoomRail()（没进群时按钮不出现）
+    市场/连接 → 原 #sb-more 折叠块里默认不可见的两个真功能 -->
+    <!-- 「当前对象」先于「能力」：群资料只看当前群，只有进群时才出现；
+         排在模型/电脑/市场/连接前面，才不会和全局能力混成同一串。 -->
+    <button type="button" id="fn-room" class="fn-item" title="群资料" aria-label="群资料" data-i18n-title="roomInfo" aria-pressed="false" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19.5v-1.2a4.3 4.3 0 0 1 4.3-4.3h2.4a4.3 4.3 0 0 1 4.3 4.3v1.2"/><path d="M16.5 6.2a3 3 0 0 1 0 5.6M17.5 14.4a4.3 4.3 0 0 1 3 4.1v1"/></svg>
+    </button>
+    <!-- 会话详情已从这条栏里撤掉：同一个 #conv-rail 由**会话行右键菜单**的
+         「对话详情」打开（见会话行 context menu），两处入口是重复的。
+         面板本身、openConvRail/closeConvRail、门里的会话详情场景全部保留；
+         下面 syncFnRailButtons / wireFnRail 对 #fn-conv 取不到节点时会自然跳过。 -->
+    <!-- 【布局 v15】模板市场 / 连接应用原来收在侧栏的 #sb-more 折叠块里，
+    而它默认 display:none —— 两个真功能等于不存在。v15 的右栏上组就是
+    「对这台机器能做什么」（模型 / 能力·插件 / 电脑与权限），
+    所以这两颗归这里，底部那簇只留「会话 + 账户」这种身份级的入口。 -->
+  </div>
+  <!-- 底部这簇不参与滚动：窗口再矮，"设置 / 会话 / 账户"也必须在屏幕上。
+       顶上那条细线是**组界**：弹性节奏下工具组的最后一颗会贴在 fn-end 上沿
+       （实测节距 4px），没有这条线，"连接应用"和"设置"读起来是一颗挨一颗的
+       同一串。线一放回去，节奏就回到「去哪 | 能做什么 | 设置 | 身份」四段。 -->
+  <div class="fn-end">
+    <button type="button" id="rail-more-btn" class="fn-item" title="更多" aria-label="更多" aria-expanded="false" aria-controls="rail-more-popup">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>
+    </button>
+    <div class="app-rail-sep" aria-hidden="true"></div>
+  <div id="rail-more-popup" hidden role="menu" aria-label="更多功能">
+    <div class="rmp-head"><span data-i18n="railMoreTitle">更多</span><span class="rmp-hint" data-i18n="railMoreHint">常用功能在左侧</span></div>
+    <div class="rmp-grid">
+      <div id="model-picker" title="模型与凭证" aria-label="模型" data-i18n-title="railModelsTitle" data-i18n-aria="modelLabel">
+      <button type="button" id="model-entry" class="mp-btn" aria-label="模型">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18"/></svg>
+      <span data-i18n="modelLabel" class="mp-label">模型</span>
+      </button>
+      </div>
+      <button type="button" id="gp-panel-btn" class="fn-item" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n-title="railGpPanelTitle" aria-label="电脑">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20.5h7"/></svg>
+      <span class="fn-tx" data-i18n="gpComputer">电脑</span>
+      </button>
+      <button type="button" id="tools-toggle-btn" class="fn-item" data-lab title="机器 / 渠道 / 能力面板" data-i18n-title="railToolsTitle" aria-label="能力">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5h6v3a2 2 0 1 0 0 4v8H9v-8a2 2 0 1 0 0-4Z"/></svg>
+      <span class="fn-tx" data-i18n="headerSkills">能力</span>
+      </button>
+      <button type="button" id="marketplace-btn" class="fn-item" title="模板市场 · Bot 模板" aria-label="模板市场" data-i18n-aria="marketplace" data-i18n-title="railActionMarketplace">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5V19a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19V9.5"/><path d="M3.2 9.5 5 5.2A1.5 1.5 0 0 1 6.4 4.3h11.2a1.5 1.5 0 0 1 1.4.9l1.8 4.3"/><path d="M8.2 13.4h7.6"/></svg>
+      </button>
+      <button type="button" id="connect-apps-btn" class="fn-item" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" aria-label="连接应用" data-i18n-aria="connectApps" data-i18n-title="railActionConnectApps">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.5v4M14.5 3.5v4"/><path d="M6.5 7.5h11v3.2a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.7v3.8"/></svg>
+      </button>
+      <button type="button" class="app-rail-item" data-app-domain="settings" title="设置" aria-label="设置" data-i18n-title="appDomainSettings" data-i18n-aria="appDomainSettings">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       <span data-i18n="appDomainSettings">设置</span>
-    </button>
-  </nav>
+      </button>
+    </div>
+  </div>
+    <div class="app-rail-sep" aria-hidden="true"></div>
+    <div id="account-bar">
+      <button type="button" id="account-avatar-btn" title="账户" aria-label="Account" data-i18n-aria="accountAria" aria-expanded="false" aria-controls="account-popup" data-i18n-title="headerAccount">
+        <span id="account-avatar-circle">B</span>
+        <span id="account-name-label">Bit Bot</span>
+      </button>
+      <!-- G-28 · 真源底部是「账户胶囊 + 两个 36px 圆钮」。第一颗保留我方的
+      会话入口（Grok 的会话属于 Bot、不占侧栏）；第二颗原来是「更新」，
+      但版本更新只保留「设置 → 更新」这一处入口，所以这里只剩一颗圆钮，
+      不再和设置里的更新重复。 -->
+      <button type="button" id="ab-sessions-btn" class="ab-icon-btn" title="会话" aria-label="会话" aria-expanded="false" aria-controls="sessions-popup" data-i18n-title="chats" data-i18n-aria="chats">
+        <!-- 图标从"聊天气泡"换成"回看历史"：原来它和顶栏第一颗「对话」是同一个
+             气泡轮廓，一列里出现两颗一模一样的图标，读起来像重复入口。
+             这里实际打开的是会话弹层（历史），用回转的钟面把它和「去哪」区分开。 -->
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.4-6"/><path d="M3.5 4.5V9h4.5"/><path d="M12 7.5V12l3 1.8"/></svg>
+      </button>
+      <div id="sessions-popup" hidden>
+        <!-- P1-6：未读汇总。列表本身收在弹层里（G-28），所以「列表顶部」就是
+        弹层顶部；只有存在未读时才出现，点一下跳到最早那条未读会话。 -->
+        <button type="button" id="unread-summary" class="unread-summary" hidden></button>
+        <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden  data-i18n-aria="sessSearchPh"/>
+        <div id="session-list" aria-label="会话列表" data-i18n-aria="railAriaSessionList"></div>
+      </div>
+      <div id="account-popup" hidden role="menu">
+        <!-- 行序与真源基本一致：每周用量 → 移动端远程控制 → 支持 → 设置 ── 0.5px 分隔 ──
+        "我在哪 / 要去哪"由最左域栏负责，连接应用 / 模板市场在侧栏底部，
+        设置与移动端远程控制在设置页 —— 这里只留账号相关，不重复一遍去处。 -->
+        <div class="ap-label" data-i18n="apGroupUsage">用量与支持</div>
+        <button type="button" class="ap-item" id="ap-usage"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7.1 2.5a5.6 5.6 0 1 1-4.6 4.4"/><path d="M8 8.4 5.3 5.2"/></svg></span><span class="ap-tx" data-i18n="apUsage">每周用量</span><span class="ap-sub" id="ap-usage-sub" hidden></span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
+        <button type="button" class="ap-item" id="ap-support"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.6"/><path d="M6.2 2v12"/><path d="M3.6 10.9h9.4"/></svg></span><span class="ap-tx" data-i18n="apSupport">支持</span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
+        <div class="ap-sep"></div>
+        <div class="ap-label" data-i18n="apGroupAccount">账户</div>
+        <button type="button" class="ap-item" id="ap-add-account"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><path d="M1.8 14v-.6A3.6 3.6 0 0 1 5.4 9.8h1.2a3.6 3.6 0 0 1 3.4 2.2"/><path d="M12.2 9.2v4M10.2 11.2h4"/></svg></span><span class="ap-tx" data-i18n="apAddAccount">添加账户</span></button>
+        <button type="button" class="ap-item ap-danger" id="ap-signout"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.5 14H3.2A1.2 1.2 0 0 1 2 12.8V3.2A1.2 1.2 0 0 1 3.2 2h3.3"/><path d="M10.5 11 14 8l-3.5-3"/><path d="M6 8h8"/></svg></span><span class="ap-tx" data-i18n="apSignOut">退出登录</span></button>
+      </div>
+    </div>
+  </div>
+</nav>
   <header style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px">
     <div id="brand-block">
       <span class="brand">Bit Bot</span>
@@ -2601,13 +178,12 @@
       <span class="cmd-top-name" data-i18n="cmdTitle">团队指挥台</span>
     </div>
     <span id="devmode-badge" data-i18n="devBadge">开发模式</span>
-      <div id="header-actions">
-      <div id="model-picker" title="国产多模型配置" aria-label="模型" data-i18n-title="railModelsTitle" data-i18n-aria="modelLabel">
-        <button type="button" id="model-entry" class="mp-btn"><span data-i18n="modelLabel" class="mp-label">模型</span></button>
-      </div>
-      <button type="button" id="tools-toggle-btn" data-lab title="机器 / 渠道 / 能力面板" data-i18n="headerSkills" data-i18n-title="railToolsTitle">能力</button>
-      <button type="button" id="gp-panel-btn" title="电脑预览（右侧面板）/ 群组 / 后台审批" data-i18n="gpComputer" data-i18n-title="railGpPanelTitle">电脑</button>
-    </div>
+    <!-- 【布局 v15】顶栏从此只剩身份（brand + 当前对话对象）。
+         原来挂在这里的 模型 / 能力 / 电脑 三颗按钮已搬到右侧功能栏 #fn-rail ——
+         顶栏是「你现在跟谁说话」，不是工具架；工具架在右边。
+         这个容器保留：M44 的 active 填充/按压反馈规则仍以它为选择器锚点，
+         且 syncHeaderRailButtons() 仍从这里取按钮引用。 -->
+    <div id="header-actions"></div>
   </header>
   <button type="button" id="sidebar-reopen-tab" title="展开侧栏" aria-label="展开侧栏" data-i18n-title="railActionExpand" data-i18n-aria="railActionExpand"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
   <aside id="agents">
@@ -2615,6 +191,10 @@
          an icon, not a full-width field — the real input row (#session-search)
          is revealed below when the icon is pressed. -->
     <div id="sidebar-toolbar">
+      <!-- v15 的侧栏顶行是「路牌 + 动作」：左边一个 12px 的标题，右边两个动作钮。
+           原来这一排只有三颗按钮、左边 76px 全空 —— 顶部既没有身份也没有
+           边界，读起来像"工具栏浮在列表上"。 -->
+      <span class="sb-title" id="sb-title" data-i18n="sbTitleConversations">会话</span>
       <button type="button" id="sidebar-toggle-btn" title="收起侧栏" aria-label="收起或展开侧栏" aria-expanded="true" data-i18n-title="railActionCollapse" data-i18n-aria="railActionToggleSidebar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
       <button type="button" id="sidebar-search-toggle" title="搜索 Bot / 群组 (Ctrl/Cmd+K)" aria-label="搜索 Bot 或群组" data-i18n-aria="searchAria" data-i18n-title="railActionSearch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6L21 21"/></svg></button>
       <button type="button" id="sess-new" title="新对话 (Ctrl/Cmd+N)" aria-label="新对话" data-i18n-title="railActionNewChat" data-i18n-aria="railActionNewChatAria">+</button>
@@ -2627,7 +207,8 @@
     <!-- 侧栏搜索：搜的是「Bot」和「群组」。产品模型就是 Bot + 群 Bot——会话
          属于某个 Bot、收在账户条弹层里，不在这颗放大镜的搜索范围里。
          过滤直接作用在已渲染的行上（不重渲染、不重拉接口），输入即生效。 -->
-    <div id="sb-search-row" hidden>
+    <div id="sb-search-row">
+      <span class="sb-search-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.6 15.6 21 21"/></svg></span>
       <input id="sb-search" class="bb-field" type="search" autocomplete="off"
              placeholder="搜索 Bot / 群组" data-i18n-ph="sbSearchPh"
              aria-label="搜索 Bot 或群组"  data-i18n-aria="searchAria"/>
@@ -2693,13 +274,10 @@
         <summary><span data-i18n="hiddenBots">已隐藏的 Bot</span> (<span id="hidden-bots-count">0</span>)</summary>
         <div id="hidden-bot-list"></div>
       </details>
-      <details class="sb-adv" id="sb-more">
-        <summary class="sb-adv-sum"><span data-i18n="sbMore">更多</span><span class="sb-adv-caret" aria-hidden="true">▸</span></summary>
-        <div class="bb-split" style="margin-top:8px">
-          <button type="button" id="connect-apps-btn" class="bb-btn bb-btn-block" title="连接应用 · 插件（Cmd/Ctrl+Shift+M）" data-i18n="connectApps" data-i18n-title="railActionConnectApps">连接应用</button>
-          <button type="button" id="marketplace-btn" class="bb-btn bb-btn-block" title="模板市场 · Bot 模板" data-i18n="marketplace" data-i18n-title="railActionMarketplace">模板市场</button>
-        </div>
-      </details>
+      <!-- 【布局 v15】「模板市场 / 连接应用」原来收在这个 `#sb-more` 折叠块里，
+           而它默认是 display:none（见 ui_chrome 的隐藏名单）—— 两个真功能等于
+           不存在。它们是**应用级资源**，不是当前对话的面板 ⇒ 按 v15 的
+           .window-rail-end 放进右栏底部资源组，和「会话 / 账户」同一簇。 -->
       <!-- G-28 · 侧栏对齐 Grok Bot：Grok 左侧只有「Bot」和「群 Bot」，
            会话属于某个 Bot、不占侧栏；底部是一条「账户胶囊 + 两个图标」。
            所以会话列表不再占侧栏主体，收进账户条右侧图标弹出的面板
@@ -2708,36 +286,6 @@
         <button type="button" id="sidebar-settings-btn" class="bb-btn bb-btn-block" title="设置" data-i18n="settings" data-i18n-title="settings">设置</button>
       </div>
       <!-- Grok-style user account row with popup menu -->
-      <div id="account-bar">
-        <button type="button" id="account-avatar-btn" title="账户" aria-label="Account" data-i18n-aria="accountAria" aria-expanded="false" aria-controls="account-popup" data-i18n-title="headerAccount">
-          <span id="account-avatar-circle">B</span>
-          <span id="account-name-label">Bit Bot</span>
-        </button>
-        <!-- G-28 · 真源底部是「账户胶囊 + 两个 36px 圆钮」。第一颗保留我方的
-             会话入口（Grok 的会话属于 Bot、不占侧栏）；第二颗原来是「更新」，
-             但版本更新只保留「设置 → 更新」这一处入口，所以这里只剩一颗圆钮，
-             不再和设置里的更新重复。 -->
-        <button type="button" id="ab-sessions-btn" class="ab-icon-btn" title="会话" aria-label="会话" aria-expanded="false" aria-controls="sessions-popup" data-i18n-title="chats" data-i18n-aria="chats">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-8.5 8.5H8L3.5 23l1.3-4.6A8.5 8.5 0 1 1 20.5 12z"/></svg>
-        </button>
-        <div id="sessions-popup" hidden>
-          <!-- P1-6：未读汇总。列表本身收在弹层里（G-28），所以「列表顶部」就是
-               弹层顶部；只有存在未读时才出现，点一下跳到最早那条未读会话。 -->
-          <button type="button" id="unread-summary" class="unread-summary" hidden></button>
-          <input id="session-search" class="bb-field" type="search" autocomplete="off" placeholder="搜索会话" data-i18n-ph="sessSearchPh" aria-label="搜索会话" hidden  data-i18n-aria="sessSearchPh"/>
-          <div id="session-list" aria-label="会话列表" data-i18n-aria="railAriaSessionList"></div>
-        </div>
-        <div id="account-popup" hidden role="menu">
-          <!-- 行序与真源基本一致：每周用量 → 移动端远程控制 → 支持 → 设置 ── 0.5px 分隔 ──
-                "我在哪 / 要去哪"由最左域栏负责，连接应用 / 模板市场在侧栏底部，
-               设置与移动端远程控制在设置页 —— 这里只留账号相关，不重复一遍去处。 -->
-          <button type="button" class="ap-item" id="ap-usage"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7.1 2.5a5.6 5.6 0 1 1-4.6 4.4"/><path d="M8 8.4 5.3 5.2"/></svg></span><span class="ap-tx" data-i18n="apUsage">每周用量</span><span class="ap-sub" id="ap-usage-sub" hidden></span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
-          <button type="button" class="ap-item" id="ap-support"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.6"/><path d="M6.2 2v12"/><path d="M3.6 10.9h9.4"/></svg></span><span class="ap-tx" data-i18n="apSupport">支持</span><span class="ap-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6.2 3.6 4.4 4.4-4.4 4.4"/></svg></span></button>
-          <div class="ap-sep"></div>
-          <button type="button" class="ap-item" id="ap-add-account"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><path d="M1.8 14v-.6A3.6 3.6 0 0 1 5.4 9.8h1.2a3.6 3.6 0 0 1 3.4 2.2"/><path d="M12.2 9.2v4M10.2 11.2h4"/></svg></span><span class="ap-tx" data-i18n="apAddAccount">添加账户</span></button>
-          <button type="button" class="ap-item ap-danger" id="ap-signout"><span class="ap-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.5 14H3.2A1.2 1.2 0 0 1 2 12.8V3.2A1.2 1.2 0 0 1 3.2 2h3.3"/><path d="M10.5 11 14 8l-3.5-3"/><path d="M6 8h8"/></svg></span><span class="ap-tx" data-i18n="apSignOut">退出登录</span></button>
-        </div>
-      </div>
     </div>
   </aside>
   <div id="main">
@@ -4369,9 +1917,10 @@
     <div id="composer-grip" role="separator" aria-orientation="horizontal" tabindex="0"
          title="拖拽调整输入框高度（双击复位）" aria-label="拖拽调整输入框高度：上下拖拽改变高度，双击复位" data-i18n-aria="composerAriaResize" data-i18n-title="composerTitleResizeHint"></div>
     <div id="room-banner" class="bb-banner">
-      <span id="room-banner-title" style="font-weight:700;font-size:var(--text-md)"></span>
+      <!-- 样式全在 CSS（#room-banner 块）：这里不写行内样式，行内样式压过
+           样式表，改一次要动两处 —— 早先标题的 700/13px 就是行内写的。 -->
+      <span id="room-banner-title"></span>
       <span id="room-banner-meta" class="bb-note"></span>
-      <span style="flex:1"></span>
       <button type="button" id="room-banner-info" class="bb-btn" data-i18n="roomInfo">群资料</button>
       <button type="button" id="room-banner-exit" class="bb-btn" data-i18n="roomExit">退出群聊</button>
     </div>
@@ -7775,8 +5324,11 @@
     }
     function setSidebarSearchOpen(open) {
       if (!sbSearchRow) return;
+      /* 【布局 v15】搜索行**常显**，不再靠这个函数开合 —— openbot / v15 的列表列
+         第二行就是一条常驻搜索框，「点放大镜才出现」等于把唯一的检索入口藏起来。
+         这个函数因此只负责两件事：聚焦（放大镜 / Ctrl+Cmd+K 走这里），
+         以及收起时的「清空过滤」——不然按 Escape 后列表会一直停在过滤态。 */
       document.body.classList.toggle("sb-search-open", !!open);
-      sbSearchRow.hidden = !open;
       if (!open) {
         if (sbSearchInput && sbSearchInput.value) {
           sbSearchInput.value = "";
@@ -8046,6 +5598,8 @@
       }
       const comp = document.getElementById("composer");
       if (comp) comp.classList.toggle("has-room", !!open);
+      // 布局 v15：进/退群决定右栏「群资料」这颗按钮出不出现。
+      if (typeof syncFnRailButtons === "function") syncFnRailButtons();
     }
     /* 顶栏那颗 #bot-pill 是「现在在跟谁说话」：DM 时是 Bot，群聊时是群。
        顶栏 56px（--header-h，合同 §3 钉死）原本只剩空白带 —— 这条身份是它
@@ -10770,7 +8324,11 @@
       } else {
         txt = wavegT("modelNone");
       }
-      entry.textContent = txt;
+      // 布局 v15：这颗按钮搬到右侧功能栏后只剩图标（文字由 .mp-label 的
+      // display:none 收掉）。所以只写标签节点，不能再 entry.textContent = txt
+      // —— 那是一次整体覆盖，会把里面的图标 SVG 一起清掉，按钮就变成一行裸字。
+      const lab = entry.querySelector(".mp-label");
+      if (lab) lab.textContent = txt;
       entry.title = txt;
     }
 
@@ -10957,7 +8515,16 @@
       return row;
     }
     function bbReturnFocus(el) {
-      try { if (el && typeof el.focus === "function" && document.contains(el)) el.focus(); } catch (_) {}
+      try {
+        /* 触发点可能已经随「更多」弹层收起而不可见 —— 对着隐藏元素 focus()
+           只会把焦点丢回 body（键盘用户就迷路了）。退回常驻的 #rail-more-btn。 */
+        if (el && typeof el.focus === "function" && document.contains(el) && el.getClientRects().length) {
+          el.focus();
+          return;
+        }
+        const more = document.getElementById("rail-more-btn");
+        if (more && more.getClientRects().length) more.focus();
+      } catch (_) {}
     }
 
     async function refreshSessions() {
@@ -14514,6 +12081,43 @@
         setAccountPopup(false);
       });
     }
+    /* 底部「更多」弹层：低频功能从图标列收进来。按钮本体（id/事件）没变，
+       这里只管开合；点任意一格或点外面、按 Escape 都收起。 */
+    (function wireRailMore() {
+      const btn = document.getElementById("rail-more-btn");
+      const popup = document.getElementById("rail-more-popup");
+      if (!btn || !popup) return;
+      const setOpen = (open) => {
+        popup.hidden = !open;
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      };
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        setOpen(popup.hidden);
+        /* 不和账户/会话弹层叠在一起 —— 一次只开一层。 */
+        if (!popup.hidden) {
+          const ap = document.getElementById("account-popup");
+          const sp = document.getElementById("sessions-popup");
+          if (ap) ap.hidden = true;
+          if (sp) sp.hidden = true;
+        }
+      });
+      popup.addEventListener("click", (ev) => {
+        if (ev.target.closest("button")) {
+          setOpen(false);
+          /* 格子点完弹层就收起，焦点不能掉回 body —— 交给「更多」这颗常驻钮，
+             等模态框 Esc 关掉时也有一个确定的落点。 */
+          btn.focus();
+        }
+      });
+      document.addEventListener("click", (ev) => {
+        if (!popup.hidden && !ev.target.closest("#rail-more-popup") && !ev.target.closest("#rail-more-btn")) setOpen(false);
+      });
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && !popup.hidden) { setOpen(false); btn.focus(); }
+      });
+    })();
+
     /* Grok-style account popup toggle */
     const acctBtn = document.getElementById("account-avatar-btn");
     function setAccountPopup(open) {
@@ -16348,10 +13952,12 @@
         }
         reconcileChildren(strip, chips);
       }
-      // 首次渲染默认折叠；之后保留用户通过折叠按钮切换的状态。
+      // 【布局 v15】首次渲染**默认展开**（有名有姓的行），不再折叠成头像条。
+      // 理由：侧栏是「找人」的地方，一排只有首字的彩色圆点认不出谁是谁；
+      // openbot / v15 的列表列也都是具名行。折叠成头像条仍然保留 ——
+      // 用户点 ▾ 就收起来，之后一直听他的（collapseInit 只标一次）。
       const sec = document.getElementById("sb-bots-rooms");
       if (sec && !sec.dataset.collapseInit) {
-        sec.classList.add("collapsed");
         sec.dataset.collapseInit = "1";
       }
       const caret = document.getElementById("bot-collapse-btn");
@@ -16591,6 +14197,8 @@
         // 颜色不进元素级字面量（见 e2e_desktop_token_parity 的运行时预算）。
         document.documentElement.style.setProperty("--bot-avatar", c);
       }
+      // 布局 v15：对话对象一变，右栏「会话详情」这颗按钮的可用性要跟着变。
+      if (typeof syncFnRailButtons === "function") syncFnRailButtons();
     }
 
     function selectBotForChat(b) {
@@ -16672,7 +14280,51 @@
       if (toolsBtn) toolsBtn.classList.toggle("active", val === "tools");
       const gpBtn = document.getElementById("gp-panel-btn");
       if (gpBtn) gpBtn.classList.toggle("active", val === "computer");
+      syncFnRailButtons(val);
     }
+    /* 【布局 v15】右侧功能栏的按钮回写。
+       仍在 setPanel 的单一写点上被调用 —— 不新开第二处状态源。
+       会话详情 / 群资料 这两颗是既有面板（openConvRail / openRoomRail）的常驻入口，
+       有上下文才可用：没有当前会话就禁用，没进群就不显示。 */
+    function syncFnRailButtons(val) {
+      const on = val || panelValue();
+      const pair = [["fn-conv", "conv"], ["fn-room", "room"]];
+      for (const [id, panel] of pair) {
+        const b = document.getElementById(id);
+        if (!b) continue;
+        const active = on === panel;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      let sessId = "";
+      let roomId = "";
+      try { sessId = activeSessionId || ""; } catch (_) { sessId = ""; }
+      try { roomId = (composerRoom && composerRoom.id) || ""; } catch (_) { roomId = ""; }
+      const convBtn = document.getElementById("fn-conv");
+      if (convBtn) convBtn.disabled = !sessId;
+      const roomBtn = document.getElementById("fn-room");
+      if (roomBtn) roomBtn.hidden = !roomId;
+    }
+    /* 右侧功能栏里那两颗「面板开关」的点击：走的是既有面板、既有开合函数，
+       没写第二条打开逻辑。已经在开的那一面，再点一下收起。 */
+    (function wireFnRail() {
+      const convBtn = document.getElementById("fn-conv");
+      if (convBtn) {
+        convBtn.addEventListener("click", () => {
+          if (panelValue() === "conv") { closeConvRail(); return; }
+          let sid = "";
+          try { sid = activeSessionId || ""; } catch (_) { sid = ""; }
+          if (sid) openConvRail(sid);
+        });
+      }
+      const roomBtn = document.getElementById("fn-room");
+      if (roomBtn) {
+        roomBtn.addEventListener("click", () => {
+          if (panelValue() === "room") { closeRoomRail(); return; }
+          openRoomRail();
+        });
+      }
+    })();
     function setSidebarCollapsed(collapsed) {
       if (collapsed) document.body.dataset.sidebar = "collapsed";
       else document.body.dataset.sidebar = "expanded";
@@ -19299,6 +16951,7 @@
         roomStartFailedHint: "这次群协作没有启动，成员没有收到任务。",
         sessSearchPh: "搜索会话",
         sbSearchPh: "搜索 Bot / 群组",
+        sbTitleConversations: "会话",
         giTitle: "从 Grok 搬过来",
         giSub: "读本机已安装的 Grok Bot，把 Bot、群和对话搬进来。不联网、不登录，数据不出这台机器。",
         giLoading: "正在读本机 Grok Bot 的数据…",
@@ -19911,6 +17564,11 @@
         usageModelsCount: "个型号",
         usageUnreportedRows: "有 {n} 行未上报 tokens，上面的合计不含这些行。",
         booting: "MoonBit 内核启动中…",
+        bootReady: "内核就绪 · {{n}} 个模块",
+        apGroupUsage: "用量与支持",
+        apGroupAccount: "账户",
+        railMoreTitle: "更多",
+        railMoreHint: "低频功能收在这里",
         welcomeHint: "输入消息开始 · 左侧管理会话 · 「能力」打开渠道与机器面板 · 说「组建团队：选题、写作、排版」一次拉起一支队伍",
         welcomeLine: "桌面 AI 助手 · MoonBit 内核 · DeepSeek 大脑",
         hintNoKey: "未配置 BITBOT_LLM_API_KEY — 点「凭证」填写（开放配置，热加载，不写死；默认",
@@ -20857,6 +18515,7 @@
         roomStartFailedHint: "這次群協作沒有啟動，成員沒有收到任務。",
         sessSearchPh: "搜尋會話",
         sbSearchPh: "搜尋 Bot / 群組",
+        sbTitleConversations: "會話",
         giTitle: "從 Grok 搬過來",
         giSub: "讀本機已安裝的 Grok Bot，把 Bot、群組和對話搬進來。不連網、不登入，資料不離開這台機器。",
         giLoading: "正在讀本機 Grok Bot 的資料…",
@@ -21465,6 +19124,11 @@
         usageModelsCount: "個型號",
         usageUnreportedRows: "有 {n} 行未上報 tokens，上面的合計不含這些列。",
         booting: "MoonBit 核心啟動中…",
+        bootReady: "核心就緒 · {{n}} 個模組",
+        apGroupUsage: "用量與支援",
+        apGroupAccount: "帳戶",
+        railMoreTitle: "更多",
+        railMoreHint: "低頻功能收在這裡",
         welcomeHint: "輸入訊息開始 · 左側管理工作 · 「能力」開啟渠道與機器面板 · 說「組建團隊：選題、寫作、排版」一次拉起一支隊伍",
         welcomeLine: "桌面 AI 助手 · MoonBit 核心 · DeepSeek 大腦",
         hintNoKey: "尚未設定 BITBOT_LLM_API_KEY — 點「憑證」填寫（開放設定，熱載入，不寫死；預設",
@@ -22411,6 +20075,7 @@
         roomStartFailedHint: "This group run never started — no member received the task.",
         sessSearchPh: "Search chats",
         sbSearchPh: "Search Bots / groups",
+        sbTitleConversations: "Chats",
         giTitle: "Import from Grok",
         giSub: "Reads the Grok Bot already installed on this machine and brings its Bots, groups and conversations over. No network, no sign-in — nothing leaves this machine.",
         giLoading: "Reading local Grok Bot data…",
@@ -23019,6 +20684,11 @@
         usageModelsCount: "models",
         usageUnreportedRows: "{n} row(s) reported no tokens; the totals above exclude them.",
         booting: "booting MoonBit…",
+        bootReady: "Runtime ready · {{n}} modules",
+        apGroupUsage: "Usage & support",
+        apGroupAccount: "Account",
+        railMoreTitle: "More",
+        railMoreHint: "Occasional tools live here",
         welcomeHint: "Type a message to start · chats on the left · 「Capabilities」 opens channels & machines · say “create team: research, writing, design” to stand one up",
         welcomeLine: "Desktop AI assistant · MoonBit kernel · DeepSeek brain",
         hintNoKey: "BITBOT_LLM_API_KEY not set — open Credentials to configure (hot-reload, never baked in; default",
@@ -25356,9 +23026,19 @@
         } catch (_) {
           /* ignore */
         }
-        banner.textContent = (r.banner || JSON.stringify(r, null, 2)) +
+        const bootFull = (r.banner || JSON.stringify(r, null, 2)) +
           "\n\n[host] target=" + (r.target || "?") + " · " + (r.note || "") +
           "\n[desktop] " + deskExtra;
+        /* 成功态：一行人话，完整诊断进 title；失败态：全文照旧显示（门靠
+           #banner.err 的 textContent 报启动失败，不能把错误也压成一行）。 */
+        if (r.ok) {
+          const mods = /registered modules:\s*(\d+)/i.exec(String(r.banner || ""));
+          banner.textContent = mods ? t("bootReady", { n: mods[1] }) : t("hintReady");
+          banner.title = bootFull;
+        } else {
+          banner.textContent = bootFull;
+          banner.removeAttribute("title");
+        }
         setTimeout(() => banner.classList.add("collapsed"), 2400);
         const lm = await window.bitbot.turn("ListMachines", { skipSession: true });
         if (lm && lm.machines) renderMachines(lm.machines);
@@ -26913,1305 +24593,7 @@
        回执落在这里，一行胶囊，2.6s 自己走（失败 4.6s）。 -->
   <div id="cmd-toast" class="cmd-toast" role="status" aria-live="polite" hidden></div>
 
-  <!-- B-8 团队指挥台 -->
-  <script>
-  (function () {
-    "use strict";
-
-    /* ── 任务是从转录**重建**出来的,不是另一份数据 ──
-       群转录里已经落着三类事实行:
-         · bot_reply / bot_reply_error —— 某个成员真的跑了一轮
-         · confirm_request              —— 停下来了,等人回答
-         · final_report                 —— 这一批收口了(含产物与分段)
-       ⇒ 指挥台 = 这些行的聚合视图。**不新增数据源** ⇒ 不会与真相分叉。
-     * 诚实的边界:批 3 之后 bot_reply 也带 task_sig ⇒ 分组精确到批次;
-       批次边界由 final_report / confirm_request 划定。界面里如实标注。 */
-    var CMD_BUCKETS = [
-      { key: "needs_you", i18n: "cmdNeedsYou", sec: "cmdNeedsYou" },
-      { key: "working", i18n: "cmdWorking", sec: "cmdRunningTitle" },
-      { key: "waiting", i18n: "cmdWaiting", sec: "cmdWaiting" },
-      { key: "closed", i18n: "cmdClosed", sec: "cmdClosed" },
-    ];
-
-    /* P1 批 1:桶从「只计数」变成**可点的 tab** ⇒ 渲染层多一个状态:当前选中哪个桶。
-       默认落在「在跑」—— 一级信息(要你拍板)由 #cmd-active 单独占首屏,
-       二级信息(正在跑的事)才轮到 tab。 */
-    var CMD_STATE = { tasks: [], selected: null, note: "", duty: {}, records: [],
-      /* 默认桶：**「在跑」**（批次 11 想过改成 needs_you ⇒ 又撤回）。
-         像素门 TA-06 结尾「回到默认桶(在跑)」就钉住了这个默认。
-         「在跑常常是空的」是真的 —— 但那是**数据状态**，不是 UI 该替用户决定的；
-         解决办法是空态说人话（见 cmdEmptyFor），不是偷偷换默认视图。 */
-      tab: "working", activeExpanded: false,
-      /* 【批次 12】指挥台的作用域 = **你当前所在的那个会话**。
-         kind: "room"（在群里）/ "dm"（在跟某个 Bot 单聊）/ "none"（没有会话）。
-         ⇒ 换群就换一套成员、换一批任务 —— 这是「不同群指挥台成员不一样」的落点。 */
-      scope: { kind: "none", id: "", title: "", memberIds: [] },
-      /* 当前作用域里的团队成员（含职责与当前状态）。 */
-      members: [],
-      /* 其它群的「要你拍板」计数 —— 只做提醒，不做第二套仪表盘。 */
-      otherRooms: [], otherExpanded: false, orphanNeeds: 0 };
-
-    function cmdEsc(s) {
-      return String(s == null ? "" : s)
-        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-    }
-    function cmdT(key) {
-      try {
-        if (typeof wavegT === "function") return wavegT(key);
-      } catch (e) { /* 字典还没就绪 */ }
-      return key;
-    }
-    /* 带参数的取词(如「还有 {n} 件」)。cmdT 不带参数,带参数的是全局 t(key, params)。
-       **不在顶层调用** —— 顶层求值期调 t() 会撞 TDZ(字典在文件后半段才初始化),
-       这里只在**渲染时**调,天然安全。 */
-    function cmdTp(key, params) {
-      try {
-        if (typeof t === "function") return t(key, params);
-      } catch (e) { /* 字典还没就绪 */ }
-      return key;
-    }
-
-    /* P1 批 3：聚合逻辑**搬走了** —— 唯一一份在 hosts/shared/task_view.js。
-       桌面指挥台与手机的 GET /v1/tasks 必须算出**同一批**任务
-       （方案 docs/design/p1-task-axis-and-mobile-command.md §3.2.2「聚合逻辑只留一份」）。
-       这里**只做委派，不保留第二份实现** ——
-       门禁 scripts/prove_task_view_http.mjs 盯着「index.html 里不再出现
-       aggregateCommandTasks / cmdMergeTaskRecords 的**本地函数定义**」。
-       依赖清单（搬之前逐个查过）：原来这两个函数在渲染层里只依赖**彼此**
-       与 JS 内建（Array/String/Number/localeCompare）——
-       不碰 t() / cmdT() / CMD_STATE / DOM / window.bitbot ⇒ 搬走不丢任何东西。 */
-    var aggregateCommandTasks = function (rooms, taskRecords) {
-      if (!window.__bitbotTaskView || typeof window.__bitbotTaskView.aggregate !== "function") {
-        // 聚合只有那一份。加载不上就是**装坏了** —— 不许悄悄回一份空清单
-        // （空清单 = 界面显示「还没有任务」= 骗用户）。
-        throw new Error("task_view_unavailable: hosts/shared/task_view.js 没加载上");
-      }
-      return window.__bitbotTaskView.aggregate(rooms, taskRecords);
-    };
-
-    /** 每个成员的步骤明细:谁跑了、成没成、说了什么、错在哪。 */
-    function cmdRenderSteps(steps, taskSig, roomId) {
-      if (!Array.isArray(steps) || !steps.length) return "";
-      /* 【批次 15】步骤上的名字也走统一标签（同一个人在哪都是同一个名字）。 */
-      var labels = CMD_STATE.memberLabels || {};
-      var html = '<div class="cmd-steps">';
-      for (var i = 0; i < steps.length; i++) {
-        var st = steps[i] || {};
-        var mark = st.ok ? "✓" : "✗";
-        var body = st.ok
-          ? String(st.text || "").replace(/\s+/g, " ").trim().slice(0, 120)
-          : String(st.error || "").slice(0, 120);
-        var stepLabel = String(st.bot_id || "") ? String(labels[st.bot_id] || st.name || "") : String(st.name || "");
-        html += '<div class="cmd-step' + (st.ok ? "" : " cmd-step-bad") + '" data-cmd-step="' + cmdEsc(st.name || "") + '">' +
-          '<span class="cmd-step-mark">' + mark + "</span>" +
-          '<span class="cmd-step-name">' + cmdEsc(stepLabel) + "</span>" +
-          '<span class="cmd-step-text">' + cmdEsc(body) + "</span>" +
-          // 「换人」:读**同一张任务卡的输入框**当新人选 ⇒ 一步到位,不用中间弹窗。
-          (taskSig && st.bot_id
-            ? '<button type="button" class="bb-btn bb-btn-xs" data-cmd-swap="' + cmdEsc(st.bot_id) +
-              '" data-cmd-swap-task="' + cmdEsc(taskSig) + '" data-cmd-swap-room="' + cmdEsc(roomId || "") +
-                            '" data-i18n="cmdSwap">' + cmdEsc(cmdT("cmdSwap")) + "</button>"
-            : "") +
-          "</div>";
-      }
-      return html + "</div>";
-    }
-
-    /**
-     * 值班区(B-8 批 H):今天该跑什么、上次跑没跑。
-     * 数据来自各群的 routines(routines.list)—— **不另造一份排班**。
-     * P1 批 1:值班是「未来的事」⇒ 降级成面板末尾的**折叠区**(D-6),
-     * 行仍然写进 #cmd-duty-list;折叠区标题与计数在 <summary> 上。
-     */
-    function cmdRenderDuty(byRoom) {
-      var host = document.getElementById("cmd-duty-list");
-      if (!host) return;
-      var rows = [];
-      var scD = CMD_STATE.scope || { kind: "none" };
-      for (var roomId in byRoom) {
-        if (!Object.prototype.hasOwnProperty.call(byRoom, roomId)) continue;
-        /* 【批次 12】值班只显示**当前群**的排班（值班本来就是逐房的）。 */
-        if (scD.kind === "room" && String(roomId) !== scD.id) continue;
-        var list = byRoom[roomId] || [];
-        for (var i = 0; i < list.length; i++) {
-          var r = list[i] || {};
-          if (r.archived === true) continue;
-          rows.push({ room_id: roomId, r: r });
-        }
-      }
-      var cnt = document.getElementById("cmd-duty-count");
-      if (cnt) cnt.textContent = String(rows.length);
-      if (!rows.length) {
-        host.innerHTML = '<div class="frame-box" data-i18n="cmdDutyEmpty">' + cmdEsc(cmdT("cmdDutyEmpty")) + "</div>";
-        return;
-      }
-      var html = "";
-      for (var j = 0; j < rows.length; j++) {
-        var row = rows[j];
-        var r2 = row.r;
-        var meta = "";
-        if (r2.next_due_label) meta = cmdT("cmdDutyNext") + " " + r2.next_due_label;
-        else if (r2.once_done && r2.last_fired_label) meta = cmdT("cmdDutyDone") + " " + r2.last_fired_label;
-        else if (r2.once_done) meta = cmdT("cmdDutyDone") + " " + cmdT("cmdDutyUnknownTime");
-        else meta = cmdT("cmdDutyNever");
-        html += '<div class="frame-box cmd-duty-row">' +
-          '<div class="cmd-line">' + cmdEsc(String(r2.prompt || r2.id || "").slice(0, 120)) + "</div>" +
-          '<div class="cmd-sub">' + cmdEsc(meta) +
-          (r2.enabled === false ? " · " + cmdT("cmdDutyOff") : "") +
-          (r2.cron ? " · " + cmdEsc(r2.cron) : "") + "</div></div>";
-      }
-      host.innerHTML = html;
-    }
-
-    /**
-     * 已完区(P1 批 1,原「复盘区」):做完了什么。
-     * 数据来自 Task 实体(state=done)—— 不编,只列真的收过口的批次。
-     * 复盘 = 已完 = **同一份 Task 实体** ⇒ 原 #cmd-review 容器与 cmdRenderReview
-     * 已删(D-7),行仍然叫 .cmd-review-row(门禁按 class 找,不改名)。
-     */
-    /** 毫秒 → 人话（复盘用）。1.2s / 850ms / 2m05s。 */
-    function cmdFmtDur(ms) {
-      var v = Number(ms || 0);
-      if (!(v > 0)) return "";
-      if (v < 1000) return Math.round(v) + "ms";
-      if (v < 60000) return (v / 1000).toFixed(1) + "s";
-      var m = Math.floor(v / 60000);
-      var sec = Math.floor((v % 60000) / 1000);
-      return m + "m" + (sec < 10 ? "0" : "") + sec + "s";
-    }
-
-    function cmdRenderDone(records) {
-      var host = document.getElementById("cmd-done-list");
-      if (!host) return;
-      var sc = CMD_STATE.scope || { kind: "none" };
-      var list = (Array.isArray(records) ? records : []).filter(function (x) {
-        if (!x || x.state !== "done") return false;
-        /* 【批次 12】只显示**当前作用域**的已完任务。
-           以前是全量（真数据上「已完 54」全挤在这个折叠区里）⇒ 又是跨群混排。 */
-        if (sc.kind !== "room") return true;
-        return String(x.room_id || "") === sc.id;
-      });
-      var cnt = document.getElementById("cmd-done-count");
-      if (cnt) cnt.textContent = String(list.length);
-      if (!list.length) {
-        host.innerHTML = '<div class="frame-box" data-i18n="cmdReviewEmpty">' + cmdEsc(cmdT("cmdReviewEmpty")) + "</div>";
-        return;
-      }
-      list.sort(function (a, b) {
-        return String(b.closed_at || b.updated_at || "").localeCompare(String(a.closed_at || a.updated_at || ""));
-      });
-      var html = "";
-      for (var i = 0; i < list.length; i++) {
-        var rec = list[i] || {};
-        var when = String(rec.closed_at || rec.updated_at || "");
-        /* 复盘三件套（批次 2）：整轮用时 / 返工次数 / 验收通过数 ——
-           数据来自 Task 实体里那几份字段（唯一真源），没有就**不显示**，
-           绝不编一个「0 次返工」出来。 */
-        var sub = cmdEsc(when) +
-          (rec.total ? " · " + cmdEsc(String(rec.returned || 0) + "/" + String(rec.total)) : "") +
-          (rec.partial ? " · " + cmdT("cmdPartial") : "");
-        if (rec.duration_ms) {
-          sub += " · " + cmdT("cmdDuration") + " " + cmdEsc(cmdFmtDur(rec.duration_ms));
-        }
-        if (Number(rec.rework_count || 0) > 0) {
-          sub += " · " + cmdT("cmdRework") + " " + cmdEsc(String(rec.rework_count)) + " " + cmdT("cmdTimes");
-        }
-        var stg = Array.isArray(rec.stages) ? rec.stages : [];
-        if (stg.length) {
-          var passed = 0;
-          for (var si = 0; si < stg.length; si++) if (stg[si] && stg[si].pass) passed++;
-          sub += " · " + cmdT("cmdStagePass") + " " + cmdEsc(String(passed) + "/" + String(stg.length));
-        }
-        /* 每棒一行：谁做的、多久、过没过（不过的带原因）。
-           数据来自实体里的 stages[] —— 看不到的那一段就**不画**，不编。 */
-        var stageLine = "";
-        if (stg.length) {
-          var bits = [];
-          for (var k = 0; k < stg.length; k++) {
-            var x = stg[k] || {};
-            var nm = String(x.name || x.bot_id || "").slice(0, 20);
-            if (!nm) continue;
-            var mark = x.pass === true ? "✓" : "✗";
-            var dur = x.duration_ms ? " " + cmdFmtDur(x.duration_ms) : "";
-            var why = x.pass === true ? "" : "（" + String(x.reason || "").slice(0, 60) + "）";
-            bits.push(nm + " " + mark + dur + why);
-          }
-          if (bits.length) stageLine = '<div class="cmd-sub">' + cmdEsc(bits.join(" · ")) + "</div>";
-        }
-        html += '<div class="frame-box cmd-review-row">' +
-          '<div class="cmd-line">' + cmdEsc(String(rec.title || rec.task || rec.id || "").slice(0, 120)) + "</div>" +
-          '<div class="cmd-sub">' + sub + "</div>" + stageLine + "</div>";
-      }
-      host.innerHTML = html;
-    }
-
-    /** 桶的中文/英文标签(状态徽标用)。取不到就返回空串,不编。 */
-    function cmdBucketLabel(bucket) {
-      for (var i = 0; i < CMD_BUCKETS.length; i++) {
-        if (CMD_BUCKETS[i].key === bucket) return cmdT(CMD_BUCKETS[i].i18n);
-      }
-      return "";
-    }
-
-    /**
-     * 一张任务卡(P1 批 1 D-8..D-13)。
-     * 数据仍然来自同一份聚合结果 —— **不新增数据源**。
-     * 四个动作(插话/改向/刹停/换人)的属性与语义一个字没动(D-11/D-12);
-     * 变的只是外壳:卡片根从 div.frame-box 变成 article.cmd-card,
-     * 标题走类型阶 class(去掉行内 font-weight),多一个状态徽标。
-     */
-    /* 【批次 13】指挥动作的线性图标（和全局图标同一套语言：
-       24 视窗、stroke 1.8、无填充）。 */
-    var CMD_ICON_STEER =
-      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-      'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-3.9-.9L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg>';
-    var CMD_ICON_REPLAN =
-      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-      'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>';
-
-    /** 【批次 15】能换给谁：当前群里的成员（去掉自己），显示名用统一标签。
-     *  用户点「换人」却不知道该填什么名字 —— 这份名单就是答案。 */
-    function cmdSwapCandidates(excludeId) {
-      var ms = Array.isArray(CMD_STATE.members) ? CMD_STATE.members : [];
-      var out = [];
-      for (var i = 0; i < ms.length; i++) {
-        var m = ms[i] || {};
-        if (String(m.id || "") === String(excludeId || "")) continue;
-        out.push(String(m.label || m.name || m.id || ""));
-      }
-      return out;
-    }
-
-    /** 任务卡的「谁」：用**带 id 的引用**查统一标签表。
-     *  【批次 15】原来只 join 名字 ⇒ 两个同名 bot 会印成「助手、助手」，
-     *  用户根本看不出是两个人。⇒ 现在按 id 查标签 ⇒ 「助手 · 销售、助手 · 支持」。 */
-    function cmdTaskWho(t) {
-      var labels = CMD_STATE.memberLabels || {};
-      var refs = Array.isArray(t.member_refs) ? t.member_refs : [];
-      if (refs.length) {
-        var names = [];
-        for (var i = 0; i < refs.length; i++) {
-          var r = refs[i] || {};
-          var id = String(r.id || "");
-          var lb = id ? String(labels[id] || "") : "";
-          names.push(lb || String(r.name || id));
-        }
-        return names.join("、");
-      }
-      var ms = Array.isArray(t.members) ? t.members : [];
-      return ms.join("、");
-    }
-
-    function cmdCardHtml(task) {
-      var t = task;
-      var title = t.task_title || t.task || (t.steps[0] && t.steps[0].text) || t.room_title || "";
-      var who = cmdTaskWho(t);
-      /* 【批次 11 修 bug】line 原来先看 t.needs_you，没有就无条件写「在跑」。
-         但 bucket=needs_you 有**两条来源**：state=waiting（显式等用户）或 needs_you 非空。
-         前一种 needs_you 是 null ⇒ 卡片顶上贴着「需要你拍板」，下面却写着「在跑」——
-         自相矛盾，用户会以为这活儿还轮不到自己 ⇒ **按 bucket 判**，不再按字段猜。 */
-      var line = "";
-      var showLine = true;
-      if (t.bucket === "needs_you") {
-        if (t.needs_you && t.needs_you.question) {
-          line = cmdT("cmdNeedsYou") + "：" + t.needs_you.question;
-        } else {
-          /* 顶上已经有「需要你拍板」的状态徽标了 ⇒ 这里再写一遍就是重复。
-             没有具体问题时**不写这一行**（留着空白更糟）。 */
-          line = "";
-          showLine = false;
-        }
-      } else if (t.bucket === "closed") {
-        line = cmdT("cmdClosed") + " " + t.returned + "/" + t.total;
-      } else if (t.bucket === "waiting") {
-        line = cmdT("cmdWaiting");
-      } else {
-        line = cmdT("cmdWorking");
-      }
-      /* 批次 11：卡片重排 —— 标题一行，meta 一行（状态 · 群 · 成员），
-         下面才是「要你拍板的问题 / 进度」。
-         以前标题、状态标签、成员、群名各占一行 ⇒ 一张卡五行才说完事，
-         一屏放不下几件 ⇒ 跟整个界面的密度对不上。 */
-      var when = "";
-      try {
-        var at = Date.parse(t.at || "");
-        if (isFinite(at)) when = mcRelTime(new Date(at).toISOString());
-      } catch (e) { when = ""; }
-      return '<article class="cmd-card" data-cmd-task="' + cmdEsc(t.task_sig || t.at) +
-        '" data-bucket="' + cmdEsc(t.bucket || "") +
-        '" data-task-sig="' + cmdEsc(t.task_sig || "") + '">' +
-        '<div class="cmd-card-head">' +
-        '<h4 class="cmd-card-title">' + cmdEsc(String(title).slice(0, 120)) + "</h4>" +
-        '<span class="cmd-state" data-cmd-state="' + cmdEsc(t.bucket || "") + '">' +
-        cmdEsc(cmdBucketLabel(t.bucket)) + "</span>" +
-        /* 「打开群」放在标题行右端：跟状态徽标并排 ⇒ 不占额外行高，
-           也不会把 meta 行挤到换行（meta 行本来要放群 · 成员 · 时间）。 */
-        '<button type="button" class="bb-btn bb-btn-sm cmd-card-open" data-cmd-open-room="' +
-          cmdEsc(t.room_id) + '" data-i18n="cmdOpenRoom">' + cmdEsc(cmdT("cmdOpenRoom")) + "</button>" +
-        "</div>" +
-        '<div class="cmd-card-meta">' +
-        '<span class="cmd-card-room">' + cmdEsc(t.room_title || t.room_id) + "</span>" +
-        '<span class="cmd-card-who">' + cmdEsc(who ? who : cmdT("cmdMembers")) + "</span>" +
-        (t.archived ? ' <span class="cmd-tag" data-i18n="cmdArchived">' + cmdEsc(cmdT("cmdArchived")) + "</span>" : "") +
-        (when ? '<span class="cmd-card-when">' + cmdEsc(when) + "</span>" : "") +
-        "</div>" +
-        (showLine ? '<div class="cmd-line">' + cmdEsc(line) + "</div>" : "") +
-        // 批 1 让成员真并行 ⇒ 用户必须看得见**谁干了什么**,
-        // 否则并行只会变成"一堆 bot 同时动但说不清"。
-        cmdRenderSteps(t.steps, t.task_sig, t.room_id) +
-        // 指挥区:一句输入,两个动作 —— 插话(下一棒看见) / 改向(立刻重跑)。
-        //
-        // 【口径(2026-11-22)】**按钮只在点了能成的时候才渲染**。
-        // 这不是新规矩,是把「刹停」的先例补齐到插话/改向上:
-        //   · 刹停早就这么做了 —— `t.bucket === "working" && t.task_sig` 才给按钮
-        //     (下面那段),理由写在注释里:「没有在跑的,按下去只会得到一句 no_running_task」。
-        //   · 服务端同一把尺:can.steer / can.replan = !!task_sig
-        //     (scripts/prove_task_view_http.mjs TV-15);没有 sig 时命令接口回 task_sig_required。
-        //   · 而输入框只被插话/改向用(它取的是 [data-cmd-steer]/[data-cmd-replan] 上的 sig),
-        //     所以没有 sig 时,连输入框一起不渲染 —— 留一个填了也发不出去的口子更糟。
-        // ⇒ 桌面与服务端从此是同一把尺,不再出现「按钮在、点了必失败」。
-        (t.task_sig
-          ? '<div class="cmd-command">' +
-              '<input class="cmd-input" type="text" data-i18n-placeholder="cmdCmdPlaceholder" placeholder="' +
-                cmdEsc(cmdT("cmdCmdPlaceholder")) + '">' +
-              /* 【批次 13】动作按钮改成**框内图标**（参考图那个输入区：
-                 左边输入、右边图标动作）。
-                 文字不能删 —— 无障碍与 copy contract 都要它 ⇒
-                 可见文字换成 SVG，可见性靠 sr-only 保留在 DOM 里。 */
-              '<button type="button" class="bb-btn bb-btn-sm cmd-act" data-cmd-steer="' + cmdEsc(t.task_sig) +
-                '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n-title="cmdSteer" data-i18n-aria="cmdSteer" ' +
-                'aria-label="' + cmdEsc(cmdT("cmdSteer")) + '">' + CMD_ICON_STEER +
-                '<span class="cmd-sr" data-i18n="cmdSteer">' + cmdEsc(cmdT("cmdSteer")) + "</span></button>" +
-              '<button type="button" class="bb-btn bb-btn-sm cmd-act" data-cmd-replan="' + cmdEsc(t.task_sig) +
-                '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n-title="cmdReplan" data-i18n-aria="cmdReplan" ' +
-                'aria-label="' + cmdEsc(cmdT("cmdReplan")) + '">' + CMD_ICON_REPLAN +
-                '<span class="cmd-sr" data-i18n="cmdReplan">' + cmdEsc(cmdT("cmdReplan")) + "</span></button>" +
-              // 插话的诚实边界常驻小字(product_surface.js:2756 scope:"next_hop"):
-              // 下一棒看得见,**当前这一轮看不见** —— 不许让用户以为插话能打断这一轮。
-              '<span class="cmd-note cmd-steer-hint" data-i18n="cmdSteerScopeHint">' + cmdEsc(cmdT("cmdSteerScopeHint")) + "</span>" +
-            "</div>"
-          : "") +
-        /* 「刹停」只在**真在跑**且有 task_sig 时才给 —— 没有在跑的,
-           按下去只会得到一句 "no_running_task",不如不给。
-           （「打开群」已并进 meta 行 ⇒ 这里没有其它按钮时不留空行。） */
-        (t.bucket === "working" && t.task_sig
-          ? '<div class="cmd-actions">' +
-            '<button type="button" class="bb-btn bb-btn-sm bb-btn-danger-soft" data-cmd-cancel="' +
-                        cmdEsc(t.task_sig) + '" data-cmd-room="' + cmdEsc(t.room_id) + '" data-i18n="cmdCancel">' + cmdEsc(cmdT("cmdCancel")) + "</button>" +
-            "</div>"
-          : "") +
-        "</article>";
-    }
-
-    /**
-     * tab 标签的 data-i18n 属性 —— **写字面量,不拼**。
-     * copy contract CC-05 扫的是源码里 data-i18n 属性的取值;拼出来的键名它看不见
-     * ⇒ 拼 = 哪天漏了词条也不会有人发现(界面直接显示键名)。
-     */
-    function cmdTabAttr(bucket) {
-      if (bucket === "needs_you") return 'data-i18n="cmdNeedsYou"';
-      if (bucket === "working") return 'data-i18n="cmdWorking"';
-      if (bucket === "waiting") return 'data-i18n="cmdWaiting"';
-      if (bucket === "closed") return 'data-i18n="cmdClosed"';
-      return "";
-    }
-
-    /**
-     * 四个状态桶 → **可点的 tab**(P1 批 1 D-2)。
-     * 以前这里只画四个数字,用户点不动、数字与列表之间没有映射;
-     * 现在每个桶一个 button,点一下就只看那个桶的卡。
-     */
-    function cmdRenderBuckets() {
-      var host = document.getElementById("cmd-buckets");
-      if (!host) return;
-      var html = "";
-      for (var i = 0; i < CMD_BUCKETS.length; i++) {
-        var b = CMD_BUCKETS[i];
-        var n = 0;
-        for (var j = 0; j < CMD_STATE.tasks.length; j++) {
-          if (CMD_STATE.tasks[j].bucket === b.key) n += 1;
-        }
-        var on = CMD_STATE.tab === b.key;
-        html += '<button type="button" class="cmd-tab' + (on ? " cmd-tab-on" : "") + '" data-cmd-tab="' +
-          b.key + '" role="tab" aria-selected="' + (on ? "true" : "false") + '">' +
-          // 标签文本渲染时取词(cmdT),同时挂 data-i18n ⇒ 换语言时扫描也覆盖得到。
-          '<span class="cmd-tab-label" ' + cmdTabAttr(b.key) + '>' + cmdEsc(cmdT(b.i18n)) + "</span>" +
-          '<span class="cmd-tab-count">' + n + "</span></button>";
-      }
-      host.innerHTML = html;
-    }
-
-    /**
-     * 按桶分栏的列表(P1 批 1 D-4):每个桶一个 section,
-     * 只有 tab 选中的那个可见(其余 hidden,但**仍在 DOM 里** ——
-     * 门禁读 #cmd-detail 的 textContent,读的是真实内容而不是"当前这一屏")。
-     */
-    function cmdRenderList() {
-      var host = document.getElementById("cmd-detail");
-      if (!host) return;
-      /* 【批次 12】整会话空态：这个团队**一件任务都没有**。
-         分桶空态是「这个桶没东西」，整会话空态是「这个团队还没开工」——
-         两件事对用户意义不同 ⇒ 分开说。
-         （CP-5 门禁钉的就是整会话空态的那句「还没有任务」。） */
-      var scopeEmpty = document.getElementById("cmd-scope-empty");
-      if (scopeEmpty) {
-        var noTasks = !CMD_STATE.tasks.length;
-        scopeEmpty.hidden = !noTasks;
-        if (noTasks) scopeEmpty.textContent = cmdT("cmdEmptyScope");
-      }
-      // 提示**不替换**列表 —— 以前 note 一有值就整个 return,
-      // 用户看到的是"我的任务全没了",只留一句报错。列表必须在。
-      var html = "";
-      if (CMD_STATE.note) {
-        html += '<div class="frame-box cmd-note-box">' + cmdEsc(CMD_STATE.note) + "</div>";
-      }
-      if (!CMD_STATE.tasks.length) {
-        host.innerHTML = html + '<div class="frame-box" data-i18n="cmdEmpty">' + cmdEsc(cmdT("cmdEmpty")) + "</div>";
-        return;
-      }
-      var byBucket = {};
-      for (var i = 0; i < CMD_BUCKETS.length; i++) byBucket[CMD_BUCKETS[i].key] = [];
-      for (var j = 0; j < CMD_STATE.tasks.length; j++) {
-        var task = CMD_STATE.tasks[j];
-        var key = task.bucket || "waiting";
-        if (!byBucket[key]) byBucket[key] = [];
-        byBucket[key].push(task);
-      }
-      for (var k = 0; k < CMD_BUCKETS.length; k++) {
-        var b = CMD_BUCKETS[k];
-        var list = byBucket[b.key] || [];
-        var on = b.key === CMD_STATE.tab;
-        /* 【撤回】批次 11 曾经把 needs_you 桶分区藏掉（说"一级区已经渲染过了"）——
-           那**破坏了桶 tab 的语义**：点「需要你拍板」时对应分区必须亮着
-           （像素门 TA-06 就是钉这一条）。一级区和桶分区**都留着**，
-           同一张卡出现两处是已知残留（TA-16 如实记着，不假装它是设计）。 */
-        html += '<section class="cmd-section" data-bucket="' + b.key + '"' + (on ? "" : " hidden") + ">" +
-          '<h4 class="cmd-sec-title">' + cmdEsc(cmdT(b.sec)) + "</h4>" +
-          '<div class="cmd-list">';
-        if (!list.length) {
-          /* 空态**按桶说人话**：「没有在跑的任务」≠「你没有任务」。
-             以前所有空桶都写同一句「还没有任务」⇒ 在「在跑」桶看到这句，
-             用户会以为整个团队没干活（其实有 18 件在等他拍板）。 */
-          /* data-i18n 必须写**字面量**（copy contract CC-05 扫源码里的字面量，
-             拼出来的键名它看不见 ⇒ 哪天漏了词条也没人发现）。
-             ⇒ 四个桶各写各的字面量，不拼。 */
-          if (b.key === "working") {
-            html += '<div class="frame-box cmd-empty" data-i18n="cmdEmptyWorking">' + cmdEsc(cmdT("cmdEmptyWorking")) + "</div>";
-          } else if (b.key === "waiting") {
-            html += '<div class="frame-box cmd-empty" data-i18n="cmdEmptyWaiting">' + cmdEsc(cmdT("cmdEmptyWaiting")) + "</div>";
-          } else if (b.key === "needs_you") {
-            html += '<div class="frame-box cmd-empty" data-i18n="cmdEmptyNeedsYou">' + cmdEsc(cmdT("cmdEmptyNeedsYou")) + "</div>";
-          } else {
-            html += '<div class="frame-box cmd-empty" data-i18n="cmdEmptyClosed">' + cmdEsc(cmdT("cmdEmptyClosed")) + "</div>";
-          }
-        } else {
-          for (var m = 0; m < list.length; m++) html += cmdCardHtml(list[m]);
-        }
-        html += "</div></section>";
-      }
-      host.innerHTML = html;
-    }
-
-    /**
-     * 一级信息(P1 批 1 D-3):**要你拍板**的那件事。
-     * 面板打开后的第一屏就是它;没有待办时整块隐藏(不占屏),
-     * 首屏直接是四个 tab。最多 3 条 + 「还有 N 件」。
-     */
-    function cmdRenderActive() {
-      var sec = document.getElementById("cmd-active");
-      var list = document.getElementById("cmd-active-list");
-      if (!sec || !list) return;
-      var more = document.getElementById("cmd-active-more");
-      var needs = [];
-      for (var i = 0; i < CMD_STATE.tasks.length; i++) {
-        if (CMD_STATE.tasks[i].bucket === "needs_you") needs.push(CMD_STATE.tasks[i]);
-      }
-      if (!needs.length) {
-        sec.hidden = true;
-        list.innerHTML = "";
-        if (more) { more.hidden = true; more.textContent = ""; }
-        return;
-      }
-      sec.hidden = false;
-      /* 批次 11：「还有 N 件」以前是**纯文本** ⇒ 用户只能看到前 3 条，
-         要看全量得去按桶分栏那边找（还要先选中对应的桶）。
-         ⇒ 现在它是一个按钮：点了就在这儿展开全量。
-         （不新增数据源 —— 还是同一份 CMD_STATE.tasks，只是多渲染几张卡。） */
-      var expanded = !!CMD_STATE.activeExpanded;
-      var shown = (!expanded && needs.length > 3) ? needs.slice(0, 3) : needs;
-      var html = "";
-      for (var j = 0; j < shown.length; j++) html += cmdCardHtml(shown[j]);
-      list.innerHTML = html;
-      if (more) {
-        var rest = needs.length - shown.length;
-        if (rest > 0) {
-          more.hidden = false;
-          more.innerHTML = '<button type="button" class="cmd-link-btn" data-cmd-expand="1" data-i18n="cmdMoreCount">' +
-            cmdEsc(cmdTp("cmdMoreCount", { n: String(rest) })) + "</button>";
-        } else if (expanded && needs.length > 3) {
-          /* 展开后变成「收起」—— 否则点开就回不去。 */
-          more.hidden = false;
-          more.innerHTML = '<button type="button" class="cmd-link-btn" data-cmd-collapse="1" data-i18n="cmdCollapse">' +
-            cmdEsc(cmdT("cmdCollapse")) + "</button>";
-        } else {
-          more.hidden = true;
-          more.textContent = "";
-        }
-      }
-    }
-
-    function cmdRender() {
-      /* 【批次 12】渲染顺序改了：
-           跨群提醒 → 团队成员（人）→ 桶 tab → 一级「要你拍板」→ 按桶分栏 →
-           「已完成」折叠 → 「值班」折叠。
-         为什么成员排在任务前面：指挥台的**用途**是「看清这个团队谁在干什么、
-         哪些卡在等我，然后指挥他们」⇒ 人是主语，任务是宾语。
-         以前只有任务没有成员 ⇒ 用户根本不知道该指挥谁。 */
-      cmdRenderScopeTitle();
-      cmdRenderOtherRooms();
-      cmdRenderMembers();
-      cmdRenderBuckets();
-      cmdRenderActive();
-      cmdRenderList();
-      cmdRenderDone(CMD_STATE.records || []);
-      cmdRenderDuty(CMD_STATE.duty || {});
-    }
-
-    /** 顶栏标题：**谁的指挥台**（批次 12）。 */
-    function cmdRenderScopeTitle() {
-      try {
-        var titleEl = document.getElementById("cmd-top-title");
-        if (!titleEl) return;
-        var sc = CMD_STATE.scope || { kind: "none" };
-        if (sc.kind === "none") {
-          titleEl.textContent = cmdT("cmdTitle");
-          return;
-        }
-        titleEl.textContent = cmdTp("cmdTitleOf", { r: String(sc.title || sc.id) });
-      } catch (e) { /* 标题拿不到就不改 */ }
-    }
-
-    /** 跨群提醒条（批次 12）：别的群有要你拍板的事 ⇒ 顶上一条细条。
-        只提醒，不做第二套仪表盘 ⇒ 点了直接切到那个群。 */
-    function cmdRenderOtherRooms() {
-      var host = document.getElementById("cmd-other-rooms");
-      if (!host) return;
-      var others = CMD_STATE.otherRooms || [];
-      if (!others.length) { host.hidden = true; host.innerHTML = ""; return; }
-      var total = 0;
-      for (var i = 0; i < others.length; i++) total += Number(others[i].n || 0);
-
-      /* 【批次 12 修】以前这一条把**所有**别的群一个不漏地列出来（真数据上就是 10 个）⇒
-         一条提醒吃掉半屏，把成员区和任务区全挤下去。
-         而且很多列出来的是 room-xxx 这种**已删群的历史残留**（任务还在、群没了）⇒
-         根本没有群名可显示。
-         ⇒ 现在：默认只说**总数**（「另有 N 件事在别的群等你拍板」），
-           展开后最多列 3 个；群名取不到就写「未命名群」，不把内部 id 甩给用户。 */
-      var expanded = !!CMD_STATE.otherExpanded;
-      var html = '<div class="cmd-other-row">';
-      html += '<span class="cmd-other-text">' + cmdEsc(cmdTp("cmdOtherRooms", { n: String(total) })) + "</span>";
-      var shown = expanded ? others.slice(0, 3) : [];
-      for (var j = 0; j < shown.length; j++) {
-        var nm = String(shown[j].title || "").trim();
-        if (!nm || nm === shown[j].id) nm = cmdT("cmdUnnamedRoom");
-        html += '<button type="button" class="cmd-other-chip" data-cmd-goto-room="' + cmdEsc(shown[j].id) + '" ' +
-          'data-i18n-title="cmdGoToRoom">' + cmdEsc(nm) + " · " + Number(shown[j].n || 0) + "</button>";
-      }
-      if (others.length > shown.length) {
-        html += '<span class="cmd-other-more">+ ' + (others.length - shown.length) + "</span>";
-      }
-      /* data-i18n 必须写**字面量**（copy contract CC-05 扫源码里的字面量，
-         拼出来的键名它看不见 ⇒ 哪天漏了词条也没人发现）。
-         ⇒ 展开/收起两个分支各写各的字面量。 */
-      html += expanded
-        ? '<button type="button" class="cmd-link-btn" data-cmd-toggle-other="1" data-i18n="cmdCollapse">' + cmdEsc(cmdT("cmdCollapse")) + "</button>"
-        : '<button type="button" class="cmd-link-btn" data-cmd-toggle-other="1" data-i18n="cmdExpand">' + cmdEsc(cmdT("cmdExpand")) + "</button>";
-      html += "</div>";
-      host.innerHTML = html;
-      host.hidden = false;
-    }
-
-    /** 成员区：这个团队的**人**（批次 12）。
-        每人：名字 + 职责 + 当前状态（在跑 / 等你拍板 / 空闲）。 */
-    function cmdRenderMembers() {
-      var sec = document.getElementById("cmd-members");
-      var list = document.getElementById("cmd-members-list");
-      var count = document.getElementById("cmd-members-count");
-      if (!sec || !list) return;
-      var ms = CMD_STATE.members || [];
-      if (!ms.length) {
-        sec.hidden = true;
-        list.innerHTML = "";
-        if (count) count.textContent = "";
-        return;
-      }
-      sec.hidden = false;
-      if (count) count.textContent = String(ms.length);
-      var html = "";
-      for (var i = 0; i < ms.length; i++) {
-        var m = ms[i];
-        var st = m.status || "idle";
-        html += '<div class="cmd-member" data-cmd-member="' + cmdEsc(m.id) + '" data-cmd-member-status="' + cmdEsc(st) + '">';
-        html += '<span class="cmd-member-av" aria-hidden="true">' + cmdEsc(String(m.name || "?").slice(0, 1)) + "</span>";
-        html += '<span class="cmd-member-main">';
-        /* 【批次 15】显示名用统一标签（同名 ⇒ 带消歧后缀），不是裸名字。 */
-        html += '<span class="cmd-member-name">' + cmdEsc(m.label || m.name) + "</span>";
-        if (m.job) html += '<span class="cmd-member-job">' + cmdEsc(m.job) + "</span>";
-        html += "</span>";
-        html += '<span class="cmd-member-state" data-cmd-state="' + cmdEsc(st) + '">' +
-          cmdEsc(cmdT(st === "working" ? "cmdMemberWorking" : st === "needs_you" ? "cmdMemberNeedsYou" : "cmdMemberIdle")) +
-          "</span>";
-        html += "</div>";
-      }
-      list.innerHTML = html;
-    }
-
-    async function cmdRefresh() {
-      var api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.list;
-      if (typeof api !== "function") {
-        CMD_STATE.tasks = [];
-        CMD_STATE.note = cmdT("cmdUnavailable");
-        cmdRender();
-        return;
-      }
-      try {
-        var res = await api();
-        var rooms = (res && res.rooms && res.rooms.rooms) || res.rooms || [];
-        // Task 实体(批 4):跨会话的任务状态。拿不到就照旧只用转录,
-        // **不因此报错** —— 老数据没有 tasks.json 是正常的。
-        var records = [];
-        try {
-          var tApi = window.bitbot && window.bitbot.tasks && window.bitbot.tasks.list;
-          if (typeof tApi === "function") {
-            var tres = await tApi();
-            records = (tres && tres.tasks) || [];
-          }
-        } catch (_) { records = []; }
-        var allTasks = aggregateCommandTasks(rooms, records);
-        CMD_STATE.note = "";
-
-        /* 【批次 12】定作用域：**你当前所在的那个会话**。
-           群 ⇒ composerRoom（跟聊天输入框瞄准的是同一个群）；
-           单聊 ⇒ activeBotId（你正在跟哪个 Bot 说话）。
-           ⇒ 指挥台服务于这个团队，而不是所有群混在一起。 */
-        var scope = { kind: "none", id: "", title: "", memberIds: [] };
-        try {
-          if (composerRoom && composerRoom.id) {
-            var rm = null;
-            for (var ri2 = 0; ri2 < rooms.length; ri2++) {
-              if (rooms[ri2] && rooms[ri2].id === composerRoom.id) { rm = rooms[ri2]; break; }
-            }
-            scope = {
-              kind: "room",
-              id: composerRoom.id,
-              title: String((rm && rm.title) || composerRoom.title || composerRoom.id),
-              memberIds: Array.isArray(rm && rm.members) ? rm.members.slice() : [],
-            };
-          }
-          /* 【批次 12】**没有在群里**（还在单聊、或还没进任何群）⇒ **不收窄**。
-             为什么不在单聊里收窄到那个 Bot：指挥台是**团队**的指挥台 ——
-             单聊里没有「被指挥的团队」⇒ 硬收窄只会得到一个空面板（实测：
-             门禁环境没进群，面板直接空了 ⇒ 「还没有任务」）。
-             ⇒ 没进群时它退回「全局概览」，并照常提醒别处的待办。 */
-        } catch (_) { scope = { kind: "none", id: "", title: "", memberIds: [] }; }
-        CMD_STATE.scope = scope;
-
-        /* 只保留**这个作用域**的任务。别的群的事不混进来。
-           （没进群 ⇒ 保留全部，此时它就是全局概览。） */
-        CMD_STATE.tasks = scope.kind === "room"
-          ? allTasks.filter(function (t) {
-              return t && String(t.room_id || "") === scope.id;
-            })
-          : allTasks;
-
-        /* 真实存在的群 id 集合（批次 12）。
-           **必须定义在使用它之前** —— 上一版定义在后面 ⇒ var 提升但值为 undefined
-           ⇒ 取属性抛错 ⇒ 被外层 catch 吞掉 ⇒ 整个刷新静默失败
-           （症状：成员区空、作用域没设对，而页面不报任何错）。 */
-        var liveRoomIds = {};
-        for (var lri = 0; lri < rooms.length; lri++) {
-          if (rooms[lri] && rooms[lri].id) liveRoomIds[String(rooms[lri].id)] = 1;
-        }
-
-        /* 侧栏角标：**全局**提醒（所有群要你拍板的总和）——
-           它是「别忘了那边也在等你」，所以必须是全局的；
-           而面板内部是当前作用域 ⇒ 两者语义不同、位置不同。 */
-        cmdUpdateBadge(allTasks.filter(function (t) {
-          /* 角标是「点了就能处理」的数字 ⇒ 已删群的不算（那个群根本进不去）。 */
-          var rid = String((t && t.room_id) || "");
-          return !rid || liveRoomIds[rid];
-        }));
-
-        /* 其它群的要你拍板（只提醒，不做第二套仪表盘）。
-         *
-         * 【批次 12 修】只提醒**真实存在**的群。
-         * 为什么：tasks.json 里留着**已删群**的历史任务（真数据上 72 条里有 60+ 条
-         * 属于 room-xxx 这种已经不存在的群）⇒ 之前这一条把它们一个个列出来，
-         * 而用户**点不过去**（群没了）⇒ 纯误导，还吃掉半屏。
-         * ⇒ 只统计 rooms 里还在的群。 */
-        var other = [];
-        var seenOther = {};
-        var orphanNeeds = 0;
-        for (var oi = 0; oi < allTasks.length; oi++) {
-          var ot = allTasks[oi];
-          if (!ot || ot.bucket !== "needs_you") continue;
-          var oid = String(ot.room_id || "");
-          if (!oid || oid === scope.id) continue;
-          if (!liveRoomIds[oid]) { orphanNeeds += 1; continue; }
-          if (!seenOther[oid]) {
-            seenOther[oid] = { id: oid, title: String(ot.room_title || ""), n: 0 };
-            other.push(seenOther[oid]);
-          }
-          seenOther[oid].n += 1;
-        }
-        CMD_STATE.otherRooms = other;
-        CMD_STATE.orphanNeeds = orphanNeeds;
-
-        /* 成员区：这个团队的**人** + 职责 + 当前状态。
-           状态从**已有的任务数据**推（不新增数据源）：
-             在跑     = 出现在 working 桶任务里的成员
-             等你拍板 = 出现在 needs_you 桶任务里的成员
-             空闲     = 群成员里其余的 */
-        var memberIds = scope.kind === "room" ? scope.memberIds.slice() : [];
-        var byId = {};
-        for (var mi = 0; mi < memberIds.length; mi++) byId[memberIds[mi]] = null;
-        try {
-          var bApi2 = window.bitbot && window.bitbot.bots && window.bitbot.bots.list;
-          if (typeof bApi2 === "function") {
-            var bv2 = await bApi2();
-            var bl2 = (bv2 && (bv2.bots || bv2.views || bv2)) || [];
-            if (Array.isArray(bl2)) {
-              for (var bj = 0; bj < bl2.length; bj++) {
-                if (bl2[bj] && byId[bl2[bj].id] !== undefined) byId[bl2[bj].id] = bl2[bj];
-              }
-            }
-          }
-        } catch (_) { /* 读不到成员资料就只显示 id，不编造 */ }
-        /* 【批次 15 · 真 bug】原来这里拿 **名字**做键（workingNames[名字]），
-           下面查的却是 **id**（workingNames[mid]）⇒ 名字≠id 时永远查不到
-           ⇒ **「在跑」状态从来算不出来**（截图里只有「等你拍板」是因为
-           那条走的是 confirm_request.candidates，用的是 id）。
-           ⇒ 现在统一用 **id** 作键：优先 member_refs（批次 15 给 task 补的
-           带 id 引用），老数据没有就退到 steps[].bot_id（步骤层一直带着 id）。 */
-        var workingIds = {};
-        var needIds = {};
-        for (var ti = 0; ti < CMD_STATE.tasks.length; ti++) {
-          var tt = CMD_STATE.tasks[ti];
-          if (!tt) continue;
-          var msIds = [];
-          try {
-            var refs = Array.isArray(tt.member_refs) ? tt.member_refs : [];
-            for (var ri = 0; ri < refs.length; ri++) {
-              var rid = String((refs[ri] || {}).id || "");
-              if (rid) msIds.push(rid);
-            }
-            if (!msIds.length) {
-              var stp = Array.isArray(tt.steps) ? tt.steps : [];
-              for (var si = 0; si < stp.length; si++) {
-                var sid = String((stp[si] || {}).bot_id || "");
-                if (sid) msIds.push(sid);
-              }
-            }
-          } catch (_) { /* 取不到就当没人参与 */ }
-          if (tt.bucket === "working") {
-            for (var wi = 0; wi < msIds.length; wi++) workingIds[msIds[wi]] = 1;
-          } else if (tt.bucket === "needs_you") {
-            for (var ni = 0; ni < msIds.length; ni++) needIds[msIds[ni]] = 1;
-            /* 等你拍板的人**不一定在 members 里** ——
-               confirm_request 把候选人放在 needs_you.candidates（要用户点名谁来做），
-               那个人才是真正卡住的人 ⇒ 也要算成「等你拍板」。 */
-            try {
-              var cands = (tt.needs_you && tt.needs_you.candidates) || [];
-              if (Array.isArray(cands)) {
-                for (var ci = 0; ci < cands.length; ci++) {
-                  var cd = cands[ci] || {};
-                  var cid = String(cd.id || cd.name || "");
-                  if (cid) needIds[cid] = 1;
-                }
-              }
-            } catch (_) { /* 没有候选就按成员算 */ }
-          }
-        }
-        /* 成员区的显示名：作用域 = **当前群的成员**（同一群里同名 ⇒ 消歧）。 */
-        var ident15 = window.__botIdentity || {};
-        var peerBots15 = [];
-        for (var pi = 0; pi < memberIds.length; pi++) {
-          var pid = String(memberIds[pi] || "");
-          if (!pid) continue;
-          var pinfo = byId[pid] || {};
-          peerBots15.push({
-            id: pid,
-            name: String(pinfo.name || pid),
-            job: String(pinfo.job || ""),
-            group: String(pinfo.group || ""),
-          });
-        }
-        var labelMap15 = (typeof ident15.labelMap === "function") ? ident15.labelMap(peerBots15) : {};
-        var members = [];
-        for (var mk = 0; mk < memberIds.length; mk++) {
-          var mid = String(memberIds[mk] || "");
-          if (!mid) continue;
-          var info = byId[mid] || {};
-          var status = workingIds[mid] ? "working" : (needIds[mid] ? "needs_you" : "idle");
-          members.push({
-            id: mid,
-            name: String(info.name || mid),
-            /* 显示名：统一标签算出来的（含消歧后缀）。 */
-            label: labelMap15[mid] || String(info.name || mid),
-            job: String(info.job || info.description || ""),
-            status: status,
-          });
-        }
-        CMD_STATE.members = members;
-        /* 任务卡与步骤行也查**同一张表** ⇒ 同一个 bot 在任何地方都是同一个名字。 */
-        CMD_STATE.memberLabels = labelMap15;
-
-        /* 顶栏副标题：**说清楚这是谁的指挥台**（批次 12）。
-           以前写「10 个群 · 72 件事」⇒ 跨群混排，用户不知道在看谁；
-           现在写当前团队的范围（成员数 · 任务数 · 等你拍板数）。 */
-        try {
-          var sub = document.getElementById("cmd-top-sub");
-          if (sub) {
-            var needN = 0;
-            for (var q = 0; q < CMD_STATE.tasks.length; q++) {
-              if (CMD_STATE.tasks[q] && CMD_STATE.tasks[q].bucket === "needs_you") needN += 1;
-            }
-            if (scope.kind === "room") {
-              sub.textContent = cmdTp("cmdScope", {
-                r: members.length,
-                t: CMD_STATE.tasks.length,
-                n: needN,
-              });
-            } else {
-              /* 全局概览：说清是「几个群」而不是「几位成员」—— 一个数字都不许含糊。 */
-              var roomN2 = 0, seen2 = {};
-              for (var z = 0; z < CMD_STATE.tasks.length; z++) {
-                var zr = String((CMD_STATE.tasks[z] && CMD_STATE.tasks[z].room_id) || "");
-                if (zr && !seen2[zr]) { seen2[zr] = 1; roomN2 += 1; }
-              }
-              sub.textContent = cmdTp("cmdScopeAll", {
-                r: roomN2,
-                t: CMD_STATE.tasks.length,
-                n: needN,
-              });
-            }
-          }
-        } catch (e) { /* 副标题拿不到就不写 */ }
-
-        // 值班(批 H):逐房读排班。读不到就当没有 —— **不编排班**。
-        var dutyByRoom = {};
-        try {
-          var rApi = window.bitbot && window.bitbot.routines && window.bitbot.routines.list;
-          if (typeof rApi === "function") {
-            for (var ri = 0; ri < rooms.length; ri++) {
-              var rid2 = String((rooms[ri] && rooms[ri].id) || "");
-              if (!rid2) continue;
-              try {
-                var rres = await rApi({ roomId: rid2 });
-                if (rres && rres.ok !== false && Array.isArray(rres.routines)) {
-                  dutyByRoom[rid2] = rres.routines;
-                }
-              } catch (_) { /* 这个房读不到就跳过,别的房照常 */ }
-            }
-          }
-        } catch (_) { dutyByRoom = {}; }
-        CMD_STATE.duty = dutyByRoom;
-        CMD_STATE.records = records;
-      } catch (e) {
-        CMD_STATE.tasks = [];
-        CMD_STATE.note = String((e && e.message) || e);
-      }
-      cmdRender();
-    }
-
-    /* ===== 批次 14：域导航栏 ==============================================
-     * 这一栏只回答「我在哪 / 我要去哪」。四个域都有**真实去处** ——
-     * 没有去处的不放进来（不加「不知道干嘛」的功能）。
-     *
-     *   对话   → 回到聊天（默认视图）
-     *   指挥   → 团队指挥台
-     *   自动化 → 当前群的定时任务（没有群 ⇒ 禁用并说清原因）
-     *   设置   → 设置面板
-     *
-     * 注意：这三个函数必须和 cmdOpen/cmdClose **在同一个作用域** ——
-     * index.html 里有嵌套的 IIFE，函数声明只在**本作用域**提升。
-     * （第一版把它放在 openRoomChat 附近 ⇒ cmdOpen is not defined ⇒
-     *   而且那个大 try/catch 把异常吞了 ⇒ 点「指挥」毫无反应却看不出错。）
-     * ⇒ 指挥台一律走 window.__bitbotCommand（那边是公开入口）。 */
-    var APP_RAIL_DOMAINS = ["chat", "command", "automation", "settings"];
-
-    /** 自动化域能不能去：定时任务是**逐群**的（群资料面板那一段）⇒ 没群就没得看。 */
-    function appRailAutomationReady() {
-      var ctx = window.__appRailCtx;
-      var rm = ctx && typeof ctx.room === "function" ? ctx.room() : null;
-      return !!(rm && rm.id);
-    }
-
-    function appRailRender() {
-      var rail = document.getElementById("app-rail");
-      if (!rail) return;
-      if (!rail.getAttribute("data-app-domain")) rail.setAttribute("data-app-domain", "chat");
-      var cur = String(rail.getAttribute("data-app-domain") || "chat");
-      var autoReady = appRailAutomationReady();
-      var items = rail.querySelectorAll(".app-rail-item");
-      for (var i = 0; i < items.length; i++) {
-        var b = items[i];
-        var d = String(b.getAttribute("data-app-domain") || "");
-        if (d === cur) b.setAttribute("aria-current", "page");
-        else b.removeAttribute("aria-current");
-        if (d === "automation") {
-          b.disabled = !autoReady;
-          var k = autoReady ? "appAutoTitle" : "appAutoNeedRoom";
-          b.setAttribute("data-i18n-title", k);
-          try { b.setAttribute("title", wavegT(k)); } catch (e) { b.setAttribute("title", ""); }
-        }
-      }
-    }
-
-    /** 切域。每个域各自处理 —— **不共用一个大 try/catch**：
-     *  一个域打不开不该把其它域也拖下水，更不该把错误吞成「点了没反应」。 */
-    function appRailGo(domain) {
-      var rail = document.getElementById("app-rail");
-      if (!rail) return;
-      var d = String(domain || "chat");
-      if (d === "automation" && !appRailAutomationReady()) return;
-      rail.setAttribute("data-app-domain", d);
-      try { document.body.setAttribute("data-app-domain", d); } catch (e) { /* ignore */ }
-      appRailRender();
-      if (d === "command") {
-        var cmd = window.__bitbotCommand;
-        if (cmd && typeof cmd.open === "function") cmd.open();
-      } else if (d === "automation") {
-        /* 【批次 15】切去别的域 ⇒ **先把指挥台收起来**。
-           指挥台是聊天区上的一个视图，和「群资料/排程」同时开着 = 两个视图叠着。
-           keepDomain=true：面板收掉，但当前域留在用户点的这一个上。 */
-        var cmdOff = window.__bitbotCommand;
-        if (cmdOff && typeof cmdOff.close === "function") cmdOff.close(true);
-        var ctx = window.__appRailCtx;
-        if (ctx && typeof ctx.setRoomRailTab === "function") ctx.setRoomRailTab("routines");
-        if (ctx && typeof ctx.openRoomRail === "function") ctx.openRoomRail();
-      } else if (d === "settings") {
-        var cmdOff2 = window.__bitbotCommand;
-        if (cmdOff2 && typeof cmdOff2.close === "function") cmdOff2.close(true);
-        var ctx2 = window.__appRailCtx;
-        if (ctx2 && typeof ctx2.runUserTurn === "function") {
-          ctx2.runUserTurn("open settings", { skipSession: true, silentUser: true });
-        }
-      } else {
-        var cmd2 = window.__bitbotCommand;
-        if (cmd2 && typeof cmd2.close === "function") cmd2.close();
-      }
-    }
-
-    /** 域导航栏的点击绑定（批次 14）。 */
-    function appRailBind() {
-      var rail = document.getElementById("app-rail");
-      if (!rail) return;
-      rail.addEventListener("click", function (ev) {
-        var t = ev.target;
-        if (!t || !t.closest) return;
-        var btn = t.closest(".app-rail-item");
-        if (!btn || btn.disabled) return;
-        appRailGo(btn.getAttribute("data-app-domain") || "chat");
-      });
-      appRailRender();
-    }
-
-    /* 指挥台视图的开关（批次 11）。
-     *
-     * 缘起：指挥台以前是 #main 里的一个 flex 项 ⇒ 开着的时候，聊天流被挤到
-     * 零高度、而**聊天输入框还挂在底下** ⇒ 一个任务视图长在聊天区里，
-     * 顶栏还写着聊天对象「Bit Bot」⇒ 跟整体完全不搭。
-     *
-     * ⇒ 现在指挥台**和聊天互斥**：开它 ⇒ 顶栏换成指挥台自己的标识、
-     *   聊天输入框让位；关它 ⇒ 一切回到聊天。
-     *   （body.cmd-view 是这两个状态的唯一开关，不另起数据源、不另写状态机。）
-     */
-    function cmdSetView(on) {
-      try { document.body.classList.toggle("cmd-view", !!on); } catch (e) { /* 老浏览器没有 classList 就当没这层 */ }
-    }
-
-    /** 侧栏入口的角标：现在有多少件**要你拍板**（用户不用点进去才知道有事）。 */
-    function cmdUpdateBadge(tasks) {
-      var badge = document.getElementById("cmd-nav-badge");
-      if (!badge) return;
-      var n = 0;
-      try {
-        /* 按 bucket 判，不按 t.needs_you 判 ——
-           bucket 才是聚合算好的四桶（needs_you/working/waiting/closed），
-           和卡片上的标签、统计数字必须是**同一把尺**。 */
-        n = (tasks || []).filter(function (t) { return t && t.bucket === "needs_you"; }).length;
-      } catch (e) { n = 0; }
-      badge.textContent = n > 99 ? "99+" : String(n);
-      badge.hidden = n <= 0;
-    }
-
-    /* 【批次 15】指挥台的显隐 ↔ 域导航栏的当前域，**必须同步**。
-       两件事：
-         1) 指挥台开着 ⇒ 域导航栏要指向「指挥」—— 否则用户停在「对话」域里
-            看到一个属于「指挥」域的面板（而且两个域同时标着选中态）。
-         2) 关掉指挥台 ⇒ 回到「对话」域（指挥台是聊天区上的**另一个视图**）。
-       keepDomain = true 时不抢域（切去别的域时用：先把指挥台收起来，
-       但当前域要留在用户点的那一个上）。 */
-    function cmdSyncRailDomain(domain) {
-      try {
-        var rail = document.getElementById("app-rail");
-        if (!rail) return;
-        rail.setAttribute("data-app-domain", domain);
-        document.body.setAttribute("data-app-domain", domain);
-        var api = window.__bitbotCommand;
-        if (api && typeof api.appRailRender === "function") api.appRailRender();
-      } catch (_) { /* ignore */ }
-    }
-
-    async function cmdOpen() {
-      // P1 批 1 D-1:面板的显隐走 **hidden 属性**(不再写行内 style.display)
-      // —— ui_chrome.css 里 [hidden]{display:none!important} 是既有兜底(T-1b)。
-      var el = document.getElementById("command-panel");
-      if (el) el.hidden = false;
-      /* 【批次 15】展开态记在**域导航栏的「指挥」**上（侧栏那个入口已删）。 */
-      var btn = document.getElementById("app-rail-command");
-      if (btn) btn.setAttribute("aria-expanded", "true");
-      cmdSetView(true);
-      cmdSyncRailDomain("command");
-      await cmdRefresh();
-    }
-
-    function cmdClose(keepDomain) {
-      var el = document.getElementById("command-panel");
-      if (el) el.hidden = true;
-      var btn = document.getElementById("app-rail-command");
-      if (btn) btn.setAttribute("aria-expanded", "false");
-      cmdSetView(false);
-      /* 面板关了 ⇒ 回到「对话」域；除非是「切去别的域」顺手收面板（keepDomain）。 */
-      if (!keepDomain) cmdSyncRailDomain("chat");
-    }
-
-    document.addEventListener("DOMContentLoaded", function () {
-      /* 批次 14：域导航栏先绑上（它决定当前在哪个域）。
-         走 window.__bitbotCommand —— appRailBind 与本 handler 虽在同一作用域，
-         但用公开入口更稳；catch 里**留一句说明**，别再静默吞错。 */
-      try {
-        var railApi = window.__bitbotCommand;
-        if (railApi && typeof railApi.appRailBind === "function") railApi.appRailBind();
-      } catch (e) {
-        console.error("[app-rail] 绑定失败", e);
-      }
-      /* 【批次 15】侧栏那颗「指挥台」按钮已删 ⇒ 它的点击绑定也删。
-         进指挥台的入口只剩**域导航栏的「指挥」**（appRailBind 里那一条）。 */
-      var close = document.getElementById("cmd-panel-close");
-      if (close) close.addEventListener("click", function () { cmdClose(); });
-      var refresh = document.getElementById("cmd-refresh-btn");
-      if (refresh) refresh.addEventListener("click", function () { cmdRefresh(); });
-      /* 批次 12：这里变成 async —— 「点其它群 ⇒ 切过去」要 await 房间列表。 */
-      document.addEventListener("click", async function (ev) {
-        var t = ev.target;
-        if (!t || !t.getAttribute) return;
-        // P1 批 1 D-2:桶 tab —— 点一下就切到那个桶,只看那个桶的卡。
-        // P1 批 2 修:tab 按钮里包着两个 span(.cmd-tab-label / .cmd-tab-count),
-        // **点文字时 ev.target 是那个 span**,不是按钮 ⇒ 以前只认
-        // t.getAttribute("data-cmd-tab") ⇒ 点「在跑」两个字没反应、
-        // 点按钮的空白处才切(批 2 的像素门真点 tab 时当场抓到)。
-        // ⇒ 改成 closest() 往上找那个带 data-cmd-tab 的按钮。
-        /* 批次 11：「还有 N 件」/「收起」。
-           以前「还有 N 件」是纯文本 ⇒ 看不到全量只能去下面按桶分栏找。
-           ⇒ 现在点了就展开/收起（全量仍来自同一份 CMD_STATE.tasks）。 */
-        /* 批次 12：点「其它群」⇒ 切到那个群。指挥台随即跟着换内容
-           （因为它的作用域就是当前会话）。 */
-        var gotoEl = t.closest ? t.closest("[data-cmd-goto-room]") : null;
-        if (gotoEl) {
-          var gotoId = gotoEl.getAttribute("data-cmd-goto-room");
-          if (gotoId && typeof openRoomChat === "function") {
-            var roomsNow = [];
-            try {
-              var lres = await window.bitbot.rooms.list();
-              var lp = (lres && lres.rooms) || {};
-              roomsNow = Array.isArray(lp) ? lp : lp.rooms || [];
-            } catch (_) { roomsNow = []; }
-            for (var gi = 0; gi < roomsNow.length; gi++) {
-              if (roomsNow[gi] && roomsNow[gi].id === gotoId) {
-                openRoomChat(roomsNow[gi]);
-                break;
-              }
-            }
-            await cmdRefresh();
-          }
-          return;
-        }
-        if (t.closest && t.closest("[data-cmd-toggle-other]")) {
-          CMD_STATE.otherExpanded = !CMD_STATE.otherExpanded;
-          cmdRender();
-          return;
-        }
-        if (t.closest && t.closest("[data-cmd-expand]")) {
-          CMD_STATE.activeExpanded = true;
-          cmdRender();
-          return;
-        }
-        if (t.closest && t.closest("[data-cmd-collapse]")) {
-          CMD_STATE.activeExpanded = false;
-          cmdRender();
-          return;
-        }
-        var tabEl = t.closest ? t.closest("[data-cmd-tab]") : null;
-        var tabKey = tabEl ? tabEl.getAttribute("data-cmd-tab") : (t.getAttribute("data-cmd-tab") || null);
-        if (tabKey) {
-          CMD_STATE.tab = tabKey;
-          cmdRender();
-          return;
-        }
-        var swapBot = t.getAttribute("data-cmd-swap");
-        if (swapBot) {
-          var swapCard = t.closest ? t.closest("[data-cmd-task]") : null;
-          var swapInp = swapCard ? swapCard.querySelector(".cmd-input") : null;
-          var swapVal = swapInp ? String(swapInp.value || "").trim() : "";
-          /* 【批次 15】空输入点「换人」⇒ 如实告诉用户**能换给谁**。
-             以前只说一句「先说点什么」，用户根本不知道该填什么名字。
-             候选用**统一标签**（同名的人带消歧后缀）。 */
-          if (!swapVal) {
-            var cands = cmdSwapCandidates(swapBot);
-            CMD_STATE.note = cands.length
-              ? cmdT("cmdSwapWho") + "：" + cands.join("、")
-              : cmdT("cmdCmdEmpty");
-            cmdRender();
-            return;
-          }
-          var apiW = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.reassignTask;
-          if (typeof apiW !== "function") return;
-          apiW({
-            task_sig: t.getAttribute("data-cmd-swap-task") || "",
-            room_id: t.getAttribute("data-cmd-swap-room") || "",
-            from_bot: swapBot,
-            to_bot: swapVal,
-          }).then(function (r) {
-            /* 【批次 15】同名歧义：Host 现在**不替用户猜**了 ⇒ 前端要把
-               「有几个、叫什么、可以用哪些 id」讲清楚，不是一句 error code。 */
-            if (r && r.ok) {
-              CMD_STATE.note = cmdT("cmdSwapped");
-            } else if (r && r.error === "ambiguous_bot") {
-              var ids = ((r.candidates || []).map(function (c) { return String((c || {}).id || ""); })).filter(Boolean).join("、");
-              CMD_STATE.note = cmdTp("cmdSwapAmbiguous", { n: String(r.count || (r.candidates || []).length || 2), name: String(r.bot || swapVal), ids: ids });
-            } else {
-              CMD_STATE.note = cmdT("cmdSwapFailed") + ":" + String((r && r.error) || "unknown");
-            }
-            cmdRender();
-          }).catch(function (e) {
-            CMD_STATE.note = cmdT("cmdSwapFailed") + ":" + String((e && e.message) || e);
-            cmdRender();
-          });
-          return;
-        }
-        var steerSig = t.getAttribute("data-cmd-steer");
-        var replanSig = t.getAttribute("data-cmd-replan");
-        if (steerSig || replanSig) {
-          var card = t.closest ? t.closest("[data-cmd-task]") : null;
-          var inp = card ? card.querySelector(".cmd-input") : null;
-          var val = inp ? String(inp.value || "").trim() : "";
-          if (!val) { CMD_STATE.note = cmdT("cmdCmdEmpty"); cmdRender(); return; }
-          var sig = steerSig || replanSig;
-          var roomId2 = t.getAttribute("data-cmd-room") || "";
-          if (steerSig) {
-            var apiS = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.steerTask;
-            if (typeof apiS !== "function") return;
-            apiS({ task_sig: sig, room_id: roomId2, text: val }).then(function (r) {
-              CMD_STATE.note = r && r.ok ? cmdT("cmdSteered") : cmdT("cmdCmdFailed") + ":" + String((r && r.error) || "unknown");
-              cmdRender();
-            }).catch(function (e) {
-              CMD_STATE.note = cmdT("cmdCmdFailed") + ":" + String((e && e.message) || e);
-              cmdRender();
-            });
-            return;
-          }
-          var apiR = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.replanTask;
-          if (typeof apiR !== "function") return;
-          apiR({ task_sig: sig, room_id: roomId2, task: val }).then(function (r) {
-            CMD_STATE.note = r && r.ok ? cmdT("cmdReplanned") : cmdT("cmdCmdFailed") + ":" + String((r && r.error) || "unknown");
-            cmdRender();
-          }).catch(function (e) {
-            CMD_STATE.note = cmdT("cmdCmdFailed") + ":" + String((e && e.message) || e);
-            cmdRender();
-          });
-          return;
-        }
-        var cancelSig = t.getAttribute("data-cmd-cancel");
-        if (cancelSig) {
-          var api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.cancelTask;
-          if (typeof api !== "function") return;
-          api({
-            task_sig: cancelSig,
-            room_id: t.getAttribute("data-cmd-room") || "",
-            reason: "user_stop",
-          }).then(function (r) {
-            CMD_STATE.note = r && r.ok
-              ? cmdT("cmdStopped")
-              : cmdT("cmdStopFailed") + ":" + String((r && r.error) || "unknown");
-            cmdRender();
-          }).catch(function (e) {
-            CMD_STATE.note = cmdT("cmdStopFailed") + ":" + String((e && e.message) || e);
-            cmdRender();
-          });
-          return;
-        }
-        var rid = t.getAttribute("data-cmd-open-room");
-        if (!rid) return;
-        if (typeof openRoomChat === "function") {
-          var rooms = [];
-          try {
-            var api = window.bitbot && window.bitbot.rooms && window.bitbot.rooms.list;
-            if (typeof api === "function") {
-              api().then(function (res) {
-                var rs = (res && res.rooms && res.rooms.rooms) || res.rooms || [];
-                for (var i = 0; i < rs.length; i++) if (rs[i] && rs[i].id === rid) openRoomChat(rs[i]);
-              });
-              return;
-            }
-          } catch (e) { /* 拿不到就如实不跳 */ }
-        }
-      });
-    });
-
-    window.__bitbotCommand = {
-      aggregate: aggregateCommandTasks,
-      open: cmdOpen, close: cmdClose, refresh: cmdRefresh,
-      /* 【批次 12】指挥台绑定**当前会话** ⇒ 它需要一个「切到这个群」的入口。
-         面板里的跨群提醒条会调它；门禁也靠它模拟「用户切了群」。
-         （它做的是真事：openRoomChat + 刷新面板 ⇒ 不是为测试开后门。） */
-      enterRoom: async function (roomId) {
-        var rid = String(roomId || "").trim();
-        if (!rid) return { ok: false, error: "empty_room_id" };
-        var list = [];
-        try {
-          var lres = await window.bitbot.rooms.list();
-          var lp = (lres && lres.rooms) || {};
-          list = Array.isArray(lp) ? lp : lp.rooms || [];
-        } catch (_) { list = []; }
-        for (var i = 0; i < list.length; i++) {
-          if (list[i] && list[i].id === rid) {
-            /* 【批次 15】**await** openRoomChat —— 以前不 await ⇒ 它还在跑，
-               下面那次刷新就先开始了（竞态），而且刷的是**旧作用域**。
-               现在切群由 openRoomChat 自己负责刷新指挥台（作用域就是当前会话），
-               这里**不再**额外刷一次 —— 免得把「切群不刷新」这个 bug 盖住
-               （盖住了，门禁就永远抓不到它）。 */
-            if (typeof openRoomChat === "function") await openRoomChat(list[i]);
-            return { ok: true, room_id: rid, title: String(list[i].title || rid) };
-          }
-        }
-        return { ok: false, error: "room_not_found", room_id: rid };
-      },
-      scope: function () { return CMD_STATE.scope; },
-      /* 批次 14：域导航栏的入口（跨作用域 ⇒ 挂 window）。 */
-      appRailGo: appRailGo,
-      appRailRender: appRailRender,
-      appRailBind: appRailBind,
-      // P1 批 1 D-15:暴露 render —— 换语言时要把已渲染的面板重画,
-      // 否则屏幕上会留着上一种语言(wavegLangApply 里那条注释记过这个病)。
-      render: cmdRender,
-      state: CMD_STATE, buckets: CMD_BUCKETS,
-    };
-  })();
-  </script>
+  <!-- B-8 团队指挥台：脚本已抽到 command_center.js（自包含 IIFE，经 window 通信）。 -->
+  <script src="./command_center.js"></script>
 </body>
 </html>

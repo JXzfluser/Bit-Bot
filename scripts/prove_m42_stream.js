@@ -27,7 +27,7 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 
 console.log("M42 message-stream layout proof");
 
-const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/ui_components.css"), "utf8");
 const chrome = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
 
 /* ---------- 1) #log 居中列 ---------- */

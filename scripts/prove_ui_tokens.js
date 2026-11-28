@@ -35,13 +35,23 @@ const HTML = path.join(REPO, "hosts/desktop/index.html");
 const BASE = {
   /* 2026-11-02 重锚 180 → 178：实测已经降到 178（此前几轮删样式时顺手消掉的
      两处），按棘轮纪律「只许降」，基线跟着落地值走，别留空额度。 */
+  /* 2026-11-26 重锚 178 → 172：并栏后 #model-entry 从顶栏搬进左栏，
+     `header #model-entry` 那两段（基础态 7 处 + hover 2 处，另有一份完全
+     重复的副本 8 处）成了**打不中元素的死选择器**，删掉即降 8+7=15，
+     实测 180 → 172。基线跟着落地值走。 */
+  /* 2026-11-28 P1 拆分重锚 172 → 178：6 处 !important 原来躺在 index.html 的
+     <style> 里、根本没被 T-1 扫到；搬进 ui_components.css 后终于进账。
+     不是新增债，是"以前漏数的现在数上了"。基线按真值落地。 */
   cssImportant: 178,
   /* 2026-10-24 W0 落地后重锚：0a 调色去重 + 0b 折第二套家族，css hex 139 → 57（82 个预算槽供 W1-W5 消费） */
   /* 2026-11-21 下调:原语块里重复的字面量合并成 var() 引用
      (CSS 自定义属性的 var() 运行时解析,顺序无关 ⇒ 像素零变化),
      加上非原语的硬编码 #fff 收进 --p-lt-solid ⇒ 总数 70 → 48。
      基线跟着落地值走(棘轮纪律:只许降)。 */
-  cssHex: 48,
+  /* 2026-11-28 P1 拆分重锚 48 → 65：17 个 hex 原本在 index.html 的 <style>
+     里（归入 htmlHex），搬进 ui_components.css 后改归 cssHex；总数没变，
+     只是分类变了。T-2b 的调色区纪律独立守着，没有松。 */
+  cssHex: 65,
   /* 2026-11-01 重锚 26 → 40，两笔都是「有理由的字面色值」而不是新配色：
      · +8 用量页的图表色板（USAGE_SERIES 六色 + 图例两处直接引用）——与
        AVATAR_PALETTE 同性质：采样来的数据色，不该走 --token；
@@ -51,7 +61,8 @@ const BASE = {
   /* 2026-11-21 下调:index.html 里 43 个 hex 里,块注释里的 1 个 +
      17 个 `var(--token, #fallback)` 兜底(ui_chrome.css 已定义这些 token
      且 index.html 有 <link> 引它 ⇒ 兜底永远走不到)⇒ 43 → 25。 */
-  htmlHex: 25,
+  /* 2026-11-28 P1：上面那 17 个搬去 cssHex 了 ⇒ 25 → 8（棘轮只许降）。 */
+  htmlHex: 8,
   htmlInlineFont: 13,
   cssAttrPatch: 5,
 };
@@ -65,10 +76,18 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 
 console.log("prove_ui_tokens — 桌面 UI 单一源 / 去混乱门禁 (LINT ONLY)");
 
-const css = fs.readFileSync(CSS, "utf8");
-const html = fs.readFileSync(HTML, "utf8");
-/* strip /* … * / comments so prose (e.g. geometry notes) never trips regexes */
-const cssCode = css.replace(/\/\*[\s\S]*?\*\//g, "");
+/* P1/P0 拆分：组件 CSS 从 index.html 的 <style> 搬到了 ui_components.css，
+   指挥台脚本搬到 command_center.js。两处都必须继续进扫描，不然 T-1/T-2/T-4
+   会因为"源变短"而假绿。 */
+const css = fs.readFileSync(CSS, "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/ui_components.css"), "utf8");
+const html = fs.readFileSync(HTML, "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/command_center.js"), "utf8");
+/* strip /* … * / comments so prose (e.g. geometry notes) never trips regexes.
+   ⚠️ 用**等长空白**替换，不是删掉：T-2b 拿 `css.indexOf(标记)` 的下标去 slice
+   这个剥过注释的串，一旦长度变了就是「拿 A 的下标切 B」——
+   标记前多写两行注释，切片边界就会往后滑进 shared chrome 之后，
+   于是 `.bb-btn-primary:hover` 的 #1570d8 被误判成调色区泄漏。
+   （这是执法器自身的老 bug，2026-11-26 被一条两行的注释改动暴露出来。） */
+const cssCode = css.replace(/\/\*[\s\S]*?\*\//g, (m) => " ".repeat(m.length));
 
 const count = (s, re) => (s.match(re) || []).length;
 
@@ -120,8 +139,29 @@ const count = (s, re) => (s.match(re) || []).length;
 
 /* ---------- T-5  几何单一源 + 合同真值 ---------- */
 {
-  const sb = cssCode.match(/--sidebar-w:\s*([^;]+);/g) || [];
-  const hd = cssCode.match(/--header-h:\s*([^;]+);/g) || [];
+  /* "单一源"说的是**基础层**只能定义一次；@media (max-width:900px) 里的
+     --sidebar-w:200px 是窄窗覆盖，本来就该存在。P1 之前那条规则住在
+     index.html 的 <style> 里、T-5 没扫到；搬进 ui_components.css 后它
+     才进账 —— 所以这里剥掉 @media 块再数，不是放宽而是校正口径。 */
+  const cssBase = (() => {
+    let out = "", i = 0;
+    for (;;) {
+      const m = /@media[^{]*\{/.exec(cssCode.slice(i));
+      if (!m) { out += cssCode.slice(i); break; }
+      const at = i + m.index;
+      out += cssCode.slice(i, at);
+      let depth = 1, j = at + m[0].length;
+      while (j < cssCode.length && depth > 0) {
+        if (cssCode[j] === "{") depth++;
+        else if (cssCode[j] === "}") depth--;
+        j++;
+      }
+      i = j;
+    }
+    return out;
+  })();
+  const sb = cssBase.match(/--sidebar-w:\s*([^;]+);/g) || [];
+  const hd = cssBase.match(/--header-h:\s*([^;]+);/g) || [];
   const oneVal = (arr) => arr.length === 1;
   const sbVal = sb[0] && sb[0].replace(/.*--sidebar-w:\s*/, "").replace(/;$/, "").trim();
   const hdVal = hd[0] && hd[0].replace(/.*--header-h:\s*/, "").replace(/;$/, "").trim();

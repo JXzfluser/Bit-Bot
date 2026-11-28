@@ -206,7 +206,7 @@ async function openPage(browser, htmlPath) {
      * 副本必须放**同目录**：index.html 里的 CSS/JS 都是相对引用，
      * 放 /tmp 会全加载不到（实测踩过：页面只剩壳）。 */
     {
-      const src = fs.readFileSync(HTML, "utf8");
+      const src = fs.readFileSync(HTML, "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts", "desktop", "ui_components.css"), "utf8");
       const mutated = src.replace(/\s*<button type="button" class="app-rail-item" data-app-domain="automation">[\s\S]*?<\/button>/, "");
       if (mutated === src) {
         bad("[AR-06] 负向对照跑不起来（注入点找不到：源码结构变了）");

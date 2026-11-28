@@ -35,7 +35,7 @@ const bad = (n, d) => { FAIL++; console.log("  ✗ " + n + (d ? " — " + String
 
 function main() {
   console.log("M20 UI parity proof");
-  const html = fs.readFileSync(HTML, "utf8");
+  const html = fs.readFileSync(HTML, "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/ui_components.css"), "utf8");
   const chrome = fs.readFileSync(CHROME, "utf8");
   const styled = chrome + "\n" + html;
   const sessions = fs.readFileSync(SESSIONS, "utf8");

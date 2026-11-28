@@ -32,7 +32,9 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 
 console.log("M37 layout / CN-EN proof");
 
-const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+/* P1 拆分：内联 <style> 已搬到 ui_components.css，弹层定位规则随之搬家；
+   继续一起扫，免得门禁因为"源变短"假绿。 */
+const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/ui_components.css"), "utf8");
 const css = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
 
 /* ---------- 1) 全局 [hidden] 兜底 ---------- */

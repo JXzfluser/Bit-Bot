@@ -24,7 +24,7 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 
 console.log("M43 settings-panel polish proof");
 
-const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/ui_components.css"), "utf8");
 const css = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
 
 /* ---------- 1) 分段控件容器 ---------- */

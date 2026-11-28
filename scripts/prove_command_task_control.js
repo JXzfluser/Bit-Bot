@@ -41,7 +41,7 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
 // A. 并行过程可见 —— 静态 + 真渲染
 // ══════════════════════════════════════════════════════════════════════
 {
-  const html = fs.readFileSync(HTML, "utf8");
+  const html = fs.readFileSync(HTML, "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts", "desktop", "command_center.js"), "utf8");
   check(/cmdRenderSteps/.test(html), "TC-1 指挥台有步骤明细的渲染函数");
   check(/cmd-step-name/.test(html), "TC-1 步骤明细画出成员名字");
 
@@ -50,6 +50,14 @@ console.log("prove_command_task_control — 指挥台(并行可见 / 刹停)");
   const blocks = html.match(/<script[\s\S]*?<\/script>/g) || [];
   for (const b of blocks) {
     if (b.indexOf("aggregateCommandTasks") >= 0) { m = b.match(/<script[^>]*>([\s\S]*?)<\/script>/); break; }
+  }
+  /* P0 拆分：指挥台 IIFE 已经从 index.html 搬到 command_center.js，
+     外部脚本就是它自己那一个块，不需要再从 HTML 里剥 <script> 标签。 */
+  if (!m) {
+    try {
+      const ext = fs.readFileSync(path.join(REPO, "hosts", "desktop", "command_center.js"), "utf8");
+      if (ext.indexOf("aggregateCommandTasks") >= 0) m = [ext, ext];
+    } catch (_) { /* 文件不在 ⇒ 下面的 check 判红 */ }
   }
   check(!!m, "TC-1 指挥台脚本块可定位");
   if (m) {

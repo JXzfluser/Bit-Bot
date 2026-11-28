@@ -56,17 +56,19 @@ const { _electron } = require("playwright-core");
 
 /* 弹层项按 DOM 顺序；ab-sessions-btn 在账户弹层之外，单独测。
    ap-update 已下线（版本更新只在「设置 → 更新」）；ap-mobile 并进了
-   ap-remote 打开的「移动端远程控制」弹窗 —— 两者都不在清单里。 */
+   ap-remote 打开的「移动端远程控制」弹窗 —— 两者都不在清单里。
+   布局 v15：设置 → 最左域栏（data-app-domain="settings"）、连接应用 / 模板市场 →
+   右侧功能栏底部资源组（#connect-apps-btn / #marketplace-btn）。三者都不在弹层里，
+   弹层只留账号相关。 */
 const ITEMS = [
   { key: "ap-usage", label: "每周用量", inPopup: true },
   { key: "ap-remote", label: "移动端远程控制", inPopup: true },
   { key: "ap-support", label: "支持", inPopup: true },
-  { key: "ap-settings", label: "设置", inPopup: true },
-  { key: "ap-connect", label: "连接应用", inPopup: true },
-  { key: "ap-market", label: "模板市场", inPopup: true },
   { key: "ap-add-account", label: "添加账户", inPopup: true },
   { key: "ap-signout", label: "退出登录", inPopup: true },
   { key: "ab-sessions-btn", label: "账户条·会话图标", inPopup: false },
+  { key: "connect-apps-btn", label: "左栏·连接应用", inPopup: false },
+  { key: "marketplace-btn", label: "左栏·模板市场", inPopup: false },
 ];
 
 const SURFACES = [
@@ -78,7 +80,7 @@ const SURFACES = [
   "account-popup",
   "sessions-popup",
   "sb-bots-rooms",
-  "sb-more",
+  "app-rail",
 ];
 
 const log = (...a) => console.log(...a);
@@ -178,7 +180,7 @@ function probeFn() {
           "account-popup",
           "sessions-popup",
           "sb-bots-rooms",
-          "sb-more",
+          "app-rail",
         ].map((id) => [id, state(id)])
       ),
       advChecked: !!document.getElementById("grok-adv-toggle")?.checked,

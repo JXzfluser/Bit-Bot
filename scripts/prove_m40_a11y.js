@@ -26,7 +26,7 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 
 console.log("M40 accessibility proof");
 
-const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/ui_components.css"), "utf8");
 
 /* ---------- 1) focus-visible ring ---------- */
 if (/:focus\s*\{\s*outline:\s*none\s*;?\s*\}/.test(html)) {

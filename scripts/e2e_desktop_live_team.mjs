@@ -114,9 +114,7 @@ function providerReady() {
 
     /* ---- 点「一键成队」：自媒体内容团队模板 ---- */
     await win.evaluate(() => { const g = document.getElementById("mk-grid"); if (g) g.innerHTML = ""; });
-    await win.click("#account-avatar-btn").catch(() => {});
-    await win.waitForSelector("#ap-market", { state: "visible", timeout: 15000 }).catch(() => {});
-    await win.click("#ap-market").catch(() => {});
+    await win.click("#rail-more-btn").catch(() => {}); await win.evaluate((s)=>document.querySelector(s)?.click(), "#marketplace-btn").catch(() => {});
     const card = await win
       .waitForSelector('#mk-grid .ca-card[data-template-id="media-content-team"] button', { timeout: 30000 })
       .catch(() => null);

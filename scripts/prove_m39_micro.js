@@ -26,7 +26,7 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 
 console.log("M39 microinteraction proof");
 
-const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/ui_components.css"), "utf8");
 
 /* ---------- 1) msg-actions 淡入 ---------- */
 const actionsBlock = html.match(/\.msg \.msg-actions \{([\s\S]*?)\}/);
@@ -61,17 +61,24 @@ if (/\.msg \.msg-actions button \{[^}]*transition:[^}]*transform[^}]*\}/.test(ht
    参考图（replica/screens/grok-composer.png）的行是**内缩圆角色带**：
    行高 58、无描边、**行与行之间没有分隔线**，选中/悬停是 12px 圆角的色带。
    此前这里钉的是 translateX(1px) / scale(0.995) —— 那是在给一个带描边的
-   卡片行做微交互，形状本身是错的，所以断言跟着形状一起改。 */
+   卡片行做微交互，形状本身是错的，所以断言跟着形状一起改。
+
+   布局 v15 换了另一份参考（.row：padding 7/8、radius 9、头像 30、无描边），
+   圆角从 --radius-xl(12) 收到 --radius-lg(10) —— 这是**形状规格的变更**，
+   不是把断言放松：这里除了新的圆角档位，还额外钉住"无描边 / 无投影"，
+   免得以后有人把行又做成带描边的白卡（那才是这套断言真正在防的东西）。 */
 if (/\.sess-row:hover \{[^}]*background:\s*var\(--nav-row-hover\)/.test(html)) {
   ok("sess-row:hover 背景色带（参考图无位移，整行变色）");
 } else {
   bad("sess-row hover", "no hover tint on the list row");
 }
-if (/\.sess-row \{[\s\S]{0,400}?border-radius:\s*var\(--radius-xl\)/.test(html)
+if (/\.sess-row \{[\s\S]{0,600}?border-radius:\s*var\(--radius-lg\)/.test(html)
+  && /\.sess-row \{[\s\S]{0,600}?border:\s*0/.test(html)
+  && /\.sess-row \{[\s\S]{0,600}?box-shadow:\s*none/.test(html)
   && !/\.sess-row \+ \.sess-row/.test(html)) {
-  ok("sess-row 是圆角色带、行间无分隔线（参考图实测：行间距为 0）");
+  ok("sess-row 是圆角色带、无描边无投影、行间无分隔线（v15 .row 规格）");
 } else {
-  bad("sess-row shape", "row is not an inset rounded band without separators");
+  bad("sess-row shape", "row is not a borderless inset rounded band without separators");
 }
 
 /* ---------- 4) composer send press ---------- */

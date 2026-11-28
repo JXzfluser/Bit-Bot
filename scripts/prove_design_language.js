@@ -52,6 +52,11 @@ const FONT_OK = new Set([10, 11, 12, 13, 14, 15, 16, 32]);
 const TARGETS = [
   { file: path.join(DESKTOP, "index.html"), kind: "html" },
   { file: path.join(DESKTOP, "ui_chrome.css"), kind: "css" },
+  /* P0/P1 拆分后新增的两个源必须一起扫 —— 否则代码搬出 index.html 就等于
+     悄悄绕过了 R1/R2/R4/R6（假绿）。command_center.js 是 JS，但这里的
+     "css" kind 只表示按块注释剥注释、且不做行内 style 检查，正好合用。 */
+  { file: path.join(DESKTOP, "ui_components.css"), kind: "css" },
+  { file: path.join(DESKTOP, "command_center.js"), kind: "css" },
 ];
 
 /* 行内样式的白名单：只允许 CSS 变量赋值（--av: 颜色）—— 它是运行时才有的值。 */

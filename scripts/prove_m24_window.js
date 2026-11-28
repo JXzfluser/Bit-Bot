@@ -85,7 +85,7 @@ function turn(text) {
 
 function main() {
   console.log("M24 §2.1 主窗口结构 proof");
-  const html = readText(HTML_PATH);
+  const html = readText(HTML_PATH) + "\n" + readText(path.join(REPO, "hosts/desktop/ui_components.css"));
   if (!html) {
     bad("index.html", "missing");
     return finish();
@@ -99,22 +99,39 @@ function main() {
     : bad("#agents", "aside not found");
   const agents = html.slice(agentsStart, agentsEnd);
 
-  /* GP-116/118 + G-28：Grok 布局把「会话列表」收进账户条的 #sessions-popup
-     （点 #ab-sessions-btn 才展开），侧栏主体只剩 Bot → 群组两块，尾部区块压底。
-     顺序合同因此是 bot → room → footer，且 session-list 必须嵌在 footer 内的
-     sessions-popup 里 —— 不许回到主体里当第三个常驻块。 */
+  /* GP-116/118 + G-28：Grok 布局把「会话列表」收进账户条弹层（点 #ab-sessions-btn 才展开），
+     侧栏主体只剩 Bot → 群组两块，尾部区块压底。顺序合同因此是 bot → room → footer。
+     【布局 v15 · 并栏】账户条（含 #sessions-popup / #account-popup）现在挂在最左那条
+     导航列的底部簇里 ⇒ 它不再属于 #agents。这里拆成两段断言：
+       · #agents 内仍然是 bot → room → footer；
+       · #app-rail 内仍然是 .rail-scroll → account-bar（会话弹层在账户条里、会话列表在弹层里）。
+     两边都不许把会话列表放回侧栏主体当第三个常驻块。 */
   const orderIdx = {
     bot: agents.indexOf('id="bot-list"'),
     room: agents.indexOf('id="room-list"'),
     footer: agents.indexOf('id="sidebar-footer"'),
-    popup: agents.indexOf('id="sessions-popup"'),
-    sessions: agents.indexOf('id="session-list"'),
   };
-  orderIdx.bot >= 0 && orderIdx.room > orderIdx.bot &&
-    orderIdx.footer > orderIdx.room &&
-    orderIdx.popup > orderIdx.footer && orderIdx.sessions > orderIdx.popup
-    ? ok("侧边栏顺序 = Bot 列表 → 群组列表 → 尾部区块（会话列表在账户条弹层内，GP-116/118 + G-28）")
+  orderIdx.bot >= 0 && orderIdx.room > orderIdx.bot && orderIdx.footer > orderIdx.room
+    ? ok("侧边栏顺序 = Bot 列表 → 群组列表 → 尾部区块（会话列表不在主体里常住，GP-116/118）")
     : bad("sidebar order", JSON.stringify(orderIdx));
+
+  /* 并栏后账户/会话都在 #app-rail 的底部簇里：滚动区（.rail-scroll）在前，
+     账户条在后；两个弹层都挂在账户条内部，会话列表又在会话弹层里。 */
+  const fnStart = html.indexOf('<nav id="app-rail"');
+  const fnEnd = html.indexOf("</nav>", fnStart);
+  const fnrail = fnStart >= 0 && fnEnd > fnStart ? html.slice(fnStart, fnEnd) : "";
+  const fnIdx = {
+    scroll: fnrail.indexOf('class="rail-scroll"'),
+    bar: fnrail.indexOf('id="account-bar"'),
+    popup: fnrail.indexOf('id="sessions-popup"'),
+    sessions: fnrail.indexOf('id="session-list"'),
+    acct: fnrail.indexOf('id="account-popup"'),
+  };
+  fnIdx.scroll >= 0 && fnIdx.bar > fnIdx.scroll &&
+    fnIdx.popup > fnIdx.bar && fnIdx.sessions > fnIdx.popup && fnIdx.acct > fnIdx.popup
+    ? ok("侧栏顺序 = 滚动区（域组 + 工具组）→ 账户条（会话弹层、账户弹层都在条内，会话列表在弹层里）—— 布局 v15 并栏")
+    : bad("app-rail order", JSON.stringify(fnIdx));
+
 
   // GP-118: the footer block must be the LAST thing in #agents. Walk the div
   // depth starting *inside* the footer's own opening tag, so inner wrappers
@@ -145,11 +162,28 @@ function main() {
     ? ok("#sidebar-footer 位于侧边栏最末尾（其后没有别的块）")
     : bad("sidebar footer position", "another block follows the footer");
 
-  const footerIds = ["hidden-bots-lab", "connect-apps-btn", "marketplace-btn", "sidebar-settings-btn"];
+  /* 布局 v15：连接应用 / 模板市场 从尾部折叠块搬到右功能栏的底部资源组
+     （它们默认在隐藏名单里，等于不存在）。尾部顺序因此只剩
+     Hidden Bots → Settings；这两颗改为在 #app-rail 里做顺序断言 —— 不是把它们
+     从门禁里删掉，是跟着它们的**新位置**继续钉顺序。 */
+  const footerIds = ["hidden-bots-lab", "sidebar-settings-btn"];
   const fidx = footerIds.map((id) => agents.indexOf('id="' + id + '"'));
   fidx.every((i) => i >= 0) && fidx.every((v, i) => i === 0 || v > fidx[i - 1])
-    ? ok("尾部区块顺序 = Hidden Bots → Connect apps → Marketplace → Settings（账号弹层内）")
+    ? ok("尾部区块顺序 = Hidden Bots → Settings（账号弹层内）")
     : bad("footer order", JSON.stringify(footerIds.map((id, i) => [id, fidx[i]])));
+
+  /* 布局 v15：右栏分成两簇 —— 上组「对这台机器能做什么」（模型 / 会话详情 /
+     电脑 / 能力 / 模板市场 / 连接应用），底部簇只留身份级的「会话 + 账户」。
+     连接应用与模板市场原来是侧栏 #sb-more 里默认不可见的两个真功能，现在归上组。 */
+  const fnResIdx = (id) => {
+    const nav = html.indexOf('id="app-rail"');
+    return nav < 0 ? -1 : html.indexOf('id="' + id + '"', nav);
+  };
+  const fnIds = ["tools-toggle-btn", "marketplace-btn", "connect-apps-btn", "account-bar"];
+  const fnPos = fnIds.map(fnResIdx);
+  fnPos.every((i) => i >= 0) && fnPos.every((v, i) => i === 0 || v > fnPos[i - 1])
+    ? ok("右功能栏分组 = 上组（…能力 → 模板市场 → 连接应用）→ 底部账户簇（v15 .window-rail）")
+    : bad("app-rail resource order", JSON.stringify(fnIds.map((id, i) => [id, fnPos[i]])));
 
   /id="hidden-bots-count"/.test(agents) && /hiddenCount\.textContent = String\(hidden\.length\)/.test(html)
     ? ok("隐藏数量徽标由 bots.list() 的 hidden 长度驱动（不是常量）")
@@ -384,28 +418,40 @@ function main() {
     ? ok("只有一个消息流容器 #log")
     : bad("single stream", (html.match(/id="log"/g) || []).length + " #log containers");
   const chrome = fs.readFileSync(path.join(REPO, "hosts/desktop/ui_chrome.css"), "utf8");
-  // Layout contract v2 (批次 14 域导航栏): 单 grid **四列** appbar|sidebar|main|rail ——
-  // appbar 64px（窄屏 48px）是最左一列、纵跨三行；rail 宽由 body[data-panel]
-  // 单值切换（280/340）。
-  // ⚠️ v1（无 appbar 的三列）与更早的四列（0fr 占位）都必须退役 ——
-  //    它们都还写着就会有人以为域导航栏是浮层，可以随便叠。
-  // ⚠️【批次 15】grid-template-areas 有**两份**：index.html 的 body 规则与
+  // Layout contract v4 (布局 v15 · 并栏): 单 grid **四列**
+  // appbar|sidebar|main|rail —— appbar 52px（窄屏 44px）是最左一列，纵跨三行，
+  // 它现在承载**整条侧栏导航**（域组 + 工具组 + 底部身份簇）；
+  // rail 宽由 body[data-panel] 单值切换（280/340），右侧不再有恒在的图标列。
+  // ⚠️ v1（无 appbar 的三列）、v2（四列无 appbar）、v3（五列带 fnav）都必须退役 ——
+  //    还写着就会有人以为右边还有一条栏可以去挂东西。
+  // ⚠️ grid-template-areas 有**两份**：index.html 的 body 规则与
   //    ui_chrome.css 的 body.grok-ui 规则。body 永远带 .grok-ui ⇒ ui_chrome 那份
-  //    才是真正生效的；两份写着不一样的东西时，门禁照哪份量都会量错
-  //    （批次 15 实测：index.html 那份还写着旧写法，布局门照它量 ⇒ 全线飘红）。
-  //    ⇒ 这里把**两份都要一致**钉住（它们必须同时是「appbar agents header header」）。
+  //    才是真正生效的；两份写着不一样的东西时，门禁照哪份量都会量错。
+  //    ⇒ 这里把**两份都要一致**钉住。
+  const areasOk = (s) =>
+    /"appbar agents header\s+header"/.test(s) &&
+    /"appbar agents main\s+rail"/.test(s) &&
+    /"appbar agents composer\s+rail"/.test(s);
   /--sidebar-w:\s*280px/.test(chrome) &&
   /--rail-w:\s*340px/.test(chrome) &&
-  /--appbar-w:\s*64px/.test(html) &&
+  /* 并栏后这条 token 的**声明**必须消失（注释里提到它可以，那是历史说明）：
+     留着声明就会有人再把右栏拼回来 */
+  !/--fnrail-w\s*:/.test(chrome) &&
+  !/--fnrail-w\s*:/.test(html) &&
+  /--appbar-w:\s*52px/.test(html) &&
   /grid-template-columns:\s*var\(--appbar-w\) var\(--sidebar-w\) minmax\(0, 1fr\) var\(--panel-w\)/.test(html) &&
-  /"appbar agents header header"/.test(html) &&
-  /"appbar agents main\s+rail"/.test(html) &&
-  /"appbar agents header header"/.test(chrome) &&
+  areasOk(html) &&
+  areasOk(chrome) &&
+  /* 并栏的实证：右栏 nav 不存在，工具组搬进了 #app-rail 的 .rail-scroll */
+  !/id="fn-rail"/.test(html) &&
+  /class="rail-scroll"/.test(html) &&
   /body\[data-panel="tools"\]/.test(html) &&
   !/grid-template-columns:\s*var\(--sidebar-w\) minmax\(0, 1fr\) var\(--panel-w\)/.test(html) &&
-  !/grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr 0fr/.test(html)
-    ? ok("右栏开合独立：单 grid appbar|sidebar|main|rail 四列，域导航栏 64px 纵跨三行，rail 宽由 data-panel 单值切换（280/340）；两份 grid-template-areas 一致，旧三列与旧 0fr 四列已退役")
-    : bad("rails", "contract-v2 single-grid layout missing / 两份 grid-template-areas 不一致");
+  !/grid-template-columns:\s*var\(--sidebar-w\) 1fr 0fr 0fr/.test(html) &&
+  !/fnav/.test(html)
+    ? ok("并栏独立：单 grid appbar|sidebar|main|rail 四列，最左 52px 一条栏承载全部导航（域组 + 工具组 + 底部身份簇），rail 宽仍由 data-panel 单值切换（280/340）；两份 grid-template-areas 一致，--fnrail-w 与 fnav 全部退役")
+    : bad("rails", "contract-v4 四列单 grid 缺失 / 两份 grid-template-areas 不一致 / 旧五列未退役");
+
 
   finish();
 }

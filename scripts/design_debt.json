@@ -238,7 +238,7 @@
       "rule": "R1-inline-style",
       "file": "hosts/desktop/index.html",
       "content": "flex:1",
-      "count": 4,
+      "count": 3,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
@@ -270,14 +270,6 @@
       "rule": "R1-inline-style",
       "file": "hosts/desktop/index.html",
       "content": "font-weight:700;color:var(--warn-ink)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R1-inline-style|font-weight:700;font-size:var(--text-md)",
-      "rule": "R1-inline-style",
-      "file": "hosts/desktop/index.html",
-      "content": "font-weight:700;font-size:var(--text-md)",
       "count": 1,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
@@ -422,7 +414,7 @@
       "rule": "R1-inline-style",
       "file": "hosts/desktop/index.html",
       "content": "margin-top:8px",
-      "count": 12,
+      "count": 11,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
@@ -626,51 +618,11 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#000",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#000",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#111",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#111",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
       "fp": "hosts/desktop/index.html|R2-hardcoded-color|#22a06b",
       "rule": "R2-hardcoded-color",
       "file": "hosts/desktop/index.html",
       "content": "#22a06b",
-      "count": 3,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#22c55e",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#22c55e",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#2f7cf6",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#2f7cf6",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#333",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#333",
-      "count": 3,
+      "count": 2,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
@@ -682,27 +634,11 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#4a4a4a",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#4a4a4a",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
       "fp": "hosts/desktop/index.html|R2-hardcoded-color|#4c8dff",
       "rule": "R2-hardcoded-color",
       "file": "hosts/desktop/index.html",
       "content": "#4c8dff",
-      "count": 3,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#aaa",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#aaa",
-      "count": 1,
+      "count": 2,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
@@ -730,54 +666,6 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#f59e0b",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#f59e0b",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|#f8f9fa",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "#f8f9fa",
-      "count": 4,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0, 0, 0, 0.06)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0, 0, 0, 0.06)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0, 0, 0, 0.10)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0, 0, 0, 0.10)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0, 0, 0, 0.12)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0, 0, 0, 0.12)",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0, 0, 0, 0.14)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0, 0, 0, 0.14)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
       "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,.12)",
       "rule": "R2-hardcoded-color",
       "file": "hosts/desktop/index.html",
@@ -794,123 +682,11 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.04)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.04)",
-      "count": 5,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.05)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.05)",
-      "count": 12,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.06)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.06)",
-      "count": 5,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.08)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.08)",
-      "count": 10,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.1)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.1)",
-      "count": 3,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.10)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.10)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.12)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.12)",
-      "count": 4,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.15)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.15)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.18)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.18)",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(0,0,0,0.2)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(0,0,0,0.2)",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(255, 255, 255, 0.92)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/index.html",
-      "content": "rgba(255, 255, 255, 0.92)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
       "fp": "hosts/desktop/index.html|R2-hardcoded-color|rgba(28,28,28,.68)",
       "rule": "R2-hardcoded-color",
       "file": "hosts/desktop/index.html",
       "content": "rgba(28,28,28,.68)",
       "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R3-hardcoded-font-size|font-size: 18px",
-      "rule": "R3-hardcoded-font-size",
-      "file": "hosts/desktop/index.html",
-      "content": "font-size: 18px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R3-hardcoded-font-size|font-size: 22px",
-      "rule": "R3-hardcoded-font-size",
-      "file": "hosts/desktop/index.html",
-      "content": "font-size: 22px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R3-hardcoded-font-size|font-size: 30px",
-      "rule": "R3-hardcoded-font-size",
-      "file": "hosts/desktop/index.html",
-      "content": "font-size: 30px",
-      "count": 1,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
@@ -986,466 +762,10 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|gap: 1px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "gap: 1px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|gap: 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "gap: 2px",
-      "count": 4,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|gap: 5px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "gap: 5px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|gap: 7px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "gap: 7px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|gap: 9px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "gap: 9px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-bottom: 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-bottom: 2px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-bottom: 3px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-bottom: 3px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-bottom: 9px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-bottom: 9px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-left: 3px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-left: 3px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-right: 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-right: 2px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-right: var(--room-w, 460px)",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-right: var(--room-w, 460px)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-top: 1px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-top: 1px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-top: 22px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-top: 22px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-top: 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-top: 2px",
-      "count": 4,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin-top: 9px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin-top: 9px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: -2px 0 8px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: -2px 0 8px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: -6px 0 -2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: -6px 0 -2px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: 2px 0",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: 2px 0",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: 2px 0 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: 2px 0 2px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: 2px 0 2px 10px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: 2px 0 2px 10px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: 2px 4px 0 0",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: 2px 4px 0 0",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: 4px 0 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: 4px 0 2px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: 5px 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: 5px 2px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|margin: 6px 0 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "margin: 6px 0 2px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding-bottom: 96px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding-bottom: 96px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding-bottom:96px：composer 是 58 层、整块铺了",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding-bottom:96px：composer 是 58 层、整块铺了",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding-right: 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding-right: 2px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 0 20px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 0 20px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 0 3px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 0 3px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 11px 12px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 11px 12px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 11px 12px 10px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 11px 12px 10px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 12px 12px 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 12px 12px 2px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 1px 6px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 1px 6px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 20px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 20px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 20px 24px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 20px 24px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 28px 0",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 28px 0",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 28px 14px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 28px 14px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 2px 0",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 2px 0",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 2px 10px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 2px 10px",
-      "count": 4,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 2px 6px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 2px 6px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 2px 8px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 2px 8px",
-      "count": 6,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 3px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 3px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 3px 10px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 3px 10px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 3px 8px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 3px 8px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 48px 20px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 48px 20px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 5px 10px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 5px 10px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 5px 11px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 5px 11px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 5px 6px 5px 10px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 5px 6px 5px 10px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 5px 8px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 5px 8px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 6px 2px 0",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 6px 2px 0",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 7px 0",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 7px 0",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 7px 12px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 7px 12px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R4-hardcoded-space|padding: 7px 8px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/index.html",
-      "content": "padding: 7px 8px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R5-hardcoded-radius|border-radius: 11px",
-      "rule": "R5-hardcoded-radius",
-      "file": "hosts/desktop/index.html",
-      "content": "border-radius: 11px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R5-hardcoded-radius|border-radius: 2px",
-      "rule": "R5-hardcoded-radius",
-      "file": "hosts/desktop/index.html",
-      "content": "border-radius: 2px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R5-hardcoded-radius|border-radius: 3px",
-      "rule": "R5-hardcoded-radius",
-      "file": "hosts/desktop/index.html",
-      "content": "border-radius: 3px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
       "fp": "hosts/desktop/index.html|R6-emoji-icon|★",
       "rule": "R6-emoji-icon",
       "file": "hosts/desktop/index.html",
       "content": "★",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/index.html|R6-emoji-icon|☰",
-      "rule": "R6-emoji-icon",
-      "file": "hosts/desktop/index.html",
-      "content": "☰",
       "count": 1,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
@@ -1886,7 +1206,7 @@
       "rule": "R2-hardcoded-color",
       "file": "hosts/desktop/ui_chrome.css",
       "content": "#fff",
-      "count": 3,
+      "count": 2,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
@@ -1894,38 +1214,6 @@
       "rule": "R2-hardcoded-color",
       "file": "hosts/desktop/ui_chrome.css",
       "content": "#ffffff",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/ui_chrome.css|R2-hardcoded-color|rgba(0, 0, 0, 0.03)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "rgba(0, 0, 0, 0.03)",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/ui_chrome.css|R2-hardcoded-color|rgba(0, 0, 0, 0.04)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "rgba(0, 0, 0, 0.04)",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/ui_chrome.css|R2-hardcoded-color|rgba(0, 0, 0, 0.05)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "rgba(0, 0, 0, 0.05)",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/ui_chrome.css|R2-hardcoded-color|rgba(0, 0, 0, 0.07)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "rgba(0, 0, 0, 0.07)",
       "count": 1,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
@@ -2082,14 +1370,6 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/ui_chrome.css|R2-hardcoded-color|rgba(228, 228, 228, 0.04)",
-      "rule": "R2-hardcoded-color",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "rgba(228, 228, 228, 0.04)",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
       "fp": "hosts/desktop/ui_chrome.css|R2-hardcoded-color|rgba(245, 245, 245, 0.06)",
       "rule": "R2-hardcoded-color",
       "file": "hosts/desktop/ui_chrome.css",
@@ -2182,7 +1462,7 @@
       "rule": "R3-hardcoded-font-size",
       "file": "hosts/desktop/ui_chrome.css",
       "content": "font-size: 17px",
-      "count": 5,
+      "count": 4,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
@@ -2270,14 +1550,6 @@
       "rule": "R4-hardcoded-space",
       "file": "hosts/desktop/ui_chrome.css",
       "content": "margin-bottom: 7px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/ui_chrome.css|R4-hardcoded-space|margin-left: 2px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "margin-left: 2px",
       "count": 1,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
@@ -2450,14 +1722,6 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/ui_chrome.css|R4-hardcoded-space|padding: 0 76px 0 44px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "padding: 0 76px 0 44px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
       "fp": "hosts/desktop/ui_chrome.css|R4-hardcoded-space|padding: 0 9px",
       "rule": "R4-hardcoded-space",
       "file": "hosts/desktop/ui_chrome.css",
@@ -2618,27 +1882,11 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/ui_chrome.css|R4-hardcoded-space|padding: 6px 2px 8px 76px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "padding: 6px 2px 8px 76px",
-      "count": 2,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
-      "fp": "hosts/desktop/ui_chrome.css|R4-hardcoded-space|padding: 6px 6px 8px 64px",
-      "rule": "R4-hardcoded-space",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "padding: 6px 6px 8px 64px",
-      "count": 1,
-      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
-    },
-    {
       "fp": "hosts/desktop/ui_chrome.css|R4-hardcoded-space|padding: 7px 10px",
       "rule": "R4-hardcoded-space",
       "file": "hosts/desktop/ui_chrome.css",
       "content": "padding: 7px 10px",
-      "count": 4,
+      "count": 3,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
@@ -2738,19 +1986,651 @@
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/ui_chrome.css|R6-emoji-icon|☰",
-      "rule": "R6-emoji-icon",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "☰",
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#000",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#000",
       "count": 1,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     },
     {
-      "fp": "hosts/desktop/ui_chrome.css|R6-emoji-icon|😊",
-      "rule": "R6-emoji-icon",
-      "file": "hosts/desktop/ui_chrome.css",
-      "content": "😊",
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#111",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#111",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#22a06b",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#22a06b",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#22c55e",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#22c55e",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#2f7cf6",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#2f7cf6",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#333",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#333",
       "count": 3,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#4a4a4a",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#4a4a4a",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#4c8dff",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#4c8dff",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#aaa",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#aaa",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#f59e0b",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#f59e0b",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|#f8f9fa",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "#f8f9fa",
+      "count": 4,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0, 0, 0, 0.06)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0, 0, 0, 0.06)",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0, 0, 0, 0.10)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0, 0, 0, 0.10)",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0, 0, 0, 0.12)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0, 0, 0, 0.12)",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0, 0, 0, 0.14)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0, 0, 0, 0.14)",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.04)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.04)",
+      "count": 5,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.05)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.05)",
+      "count": 11,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.06)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.06)",
+      "count": 4,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.08)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.08)",
+      "count": 9,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.1)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.1)",
+      "count": 3,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.10)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.10)",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.12)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.12)",
+      "count": 4,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.15)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.15)",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.18)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.18)",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(0,0,0,0.2)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(0,0,0,0.2)",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R2-hardcoded-color|rgba(255, 255, 255, 0.92)",
+      "rule": "R2-hardcoded-color",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "rgba(255, 255, 255, 0.92)",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R3-hardcoded-font-size|font-size: 22px",
+      "rule": "R3-hardcoded-font-size",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "font-size: 22px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R3-hardcoded-font-size|font-size: 30px",
+      "rule": "R3-hardcoded-font-size",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "font-size: 30px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|gap: 1px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "gap: 1px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|gap: 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "gap: 2px",
+      "count": 4,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|gap: 5px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "gap: 5px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|gap: 7px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "gap: 7px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|gap: 9px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "gap: 9px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-bottom: 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-bottom: 2px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-bottom: 3px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-bottom: 3px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-bottom: 9px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-bottom: 9px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-left: 3px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-left: 3px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-right: 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-right: 2px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-right: var(--room-w, 460px)",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-right: var(--room-w, 460px)",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-top: 1px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-top: 1px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-top: 22px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-top: 22px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-top: 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-top: 2px",
+      "count": 4,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin-top: 9px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin-top: 9px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: -2px 0 8px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: -2px 0 8px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: -6px 0 -2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: -6px 0 -2px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: 2px 0",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: 2px 0",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: 2px 0 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: 2px 0 2px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: 2px 0 2px 10px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: 2px 0 2px 10px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: 2px 4px 0 0",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: 2px 4px 0 0",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: 4px 0 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: 4px 0 2px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: 5px 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: 5px 2px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|margin: 6px 0 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "margin: 6px 0 2px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding-bottom: 96px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding-bottom: 96px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding-right: 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding-right: 2px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 0 20px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 0 20px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 0 3px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 0 3px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 11px 12px 10px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 11px 12px 10px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 12px 12px 2px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 12px 12px 2px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 1px 6px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 1px 6px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 20px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 20px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 20px 24px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 20px 24px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 28px 0",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 28px 0",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 28px 14px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 28px 14px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 2px 0",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 2px 0",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 2px 10px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 2px 10px",
+      "count": 4,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 2px 6px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 2px 6px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 2px 8px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 2px 8px",
+      "count": 6,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 3px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 3px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 3px 10px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 3px 10px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 3px 8px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 3px 8px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 5px 10px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 5px 10px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 5px 11px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 5px 11px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 5px 6px 5px 10px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 5px 6px 5px 10px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 5px 8px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 5px 8px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 6px 2px 0",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 6px 2px 0",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 7px 0",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 7px 0",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 7px 12px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 7px 12px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R4-hardcoded-space|padding: 7px 8px",
+      "rule": "R4-hardcoded-space",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "padding: 7px 8px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R5-hardcoded-radius|border-radius: 11px",
+      "rule": "R5-hardcoded-radius",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "border-radius: 11px",
+      "count": 1,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R5-hardcoded-radius|border-radius: 2px",
+      "rule": "R5-hardcoded-radius",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "border-radius: 2px",
+      "count": 2,
+      "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
+    },
+    {
+      "fp": "hosts/desktop/ui_components.css|R5-hardcoded-radius|border-radius: 3px",
+      "rule": "R5-hardcoded-radius",
+      "file": "hosts/desktop/ui_components.css",
+      "content": "border-radius: 3px",
+      "count": 1,
       "note": "存量违规；还掉一条就从台账里删一条（ratchet）"
     }
   ]

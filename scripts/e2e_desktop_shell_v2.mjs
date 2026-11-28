@@ -232,6 +232,16 @@ const TRADITIONAL_ONLY = "隊體內線發與頭點銷調戶聯審絕據篩選證
  * 修法：按产品的方式切（settings.set({language}) + wavegLangApply），
  * 持久化的值和界面一致 ⇒ 之后的任何刷新都切不回去。
  */
+/* 布局 v15：设置入口在最左域导航栏。它是**域切换**，已经停在 settings 域时
+   再点一次不会再开一次面板 —— 所以先回 chat 域再点，才是可重复的真实手顺。 */
+async function openSettingsFromRail(win) {
+  await win.click('#app-rail .app-rail-item[data-app-domain="chat"]').catch(() => {});
+  await win.waitForTimeout(120);
+  if (await win.locator('#rail-more-popup').isHidden()) await win.click('#rail-more-btn');
+      await win.evaluate(()=>document.querySelector('#app-rail .app-rail-item[data-app-domain="settings"]')?.click());
+  await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+}
+
 async function applyLanguage(win, lang) {
   await win.evaluate(async (code) => {
     if (typeof applyDevMode === "function") applyDevMode(false);
@@ -258,9 +268,7 @@ async function marketplacePass(win, tag, lang) {
    * 读到的是简体卡片，英文那一档读到的是简体卡片）。清空后再等 ⇒ 读到的必然
    * 是这一轮新画出来的。 */
   await win.evaluate(() => { const g = document.getElementById("mk-grid"); if (g) g.innerHTML = ""; });
-  await win.click("#account-avatar-btn");
-  await win.waitForSelector("#ap-market", { state: "visible", timeout: 5000 });
-  await win.click("#ap-market");
+  await win.evaluate((s)=>document.querySelector(s)?.click(), '#marketplace-btn');
   await win.waitForSelector("#mk-grid .ca-card", { timeout: 15000 }).catch(() => {});
   await win.waitForTimeout(300);
   const mk = await win.evaluate(() => {
@@ -379,31 +387,30 @@ async function shellPass(win, vp, lang) {
   await applyLanguage(win, lang);
   await win.waitForTimeout(250);
 
-  // ---- S-HEADER: no model chip in the header (Round 5 moved model config
-  // into Settings → 凭证); no stray credential/account header buttons. ----
+  // ---- S-HEADER: no model chip in the header; no stray credential/account
+  // header buttons. 布局 v15 · 并栏：模型入口在左侧导航（#app-rail 的 #model-picker），
+  // 所以这里判的是「头栏里没有它」，同时钉住它的新家 —— 不是放宽成「哪都行」。
   const header = await win.evaluate(() => {
     const picker = document.getElementById("model-picker");
     return {
-      pickerVisible: !!picker && getComputedStyle(picker).display !== "none",
+      pickerInHeader: !!picker && !!picker.closest("header, #header-actions"),
+      pickerInRail: !!picker && !!picker.closest("#app-rail"),
       credBtn: !!document.getElementById("cred-settings-btn"),
       acctBtn: !!document.getElementById("account-settings-btn"),
       bodyClass: document.body.className,
     };
   });
-  !header.pickerVisible
-    ? ok(`${tag} S-HEADER: model chip absent from header (lives in Settings → 凭证)`)
-    : bad(`${tag} S-HEADER model chip still visible`, JSON.stringify(header));
+  (!header.pickerInHeader && header.pickerInRail)
+    ? ok(`${tag} S-HEADER: 头栏没有模型 chip，模型入口在左侧导航 #app-rail`)
+    : bad(`${tag} S-HEADER model chip placement`, JSON.stringify(header));
   (!header.credBtn && !header.acctBtn)
     ? ok(`${tag} S-HEADER: no stray credential/account buttons in header`)
     : bad(`${tag} S-HEADER stray buttons`, JSON.stringify(header));
 
-  // ---- S-MODEL: model configuration is reachable from the account popup's
-  // Settings entry, on the 凭证 tab (key / base URL / model id), and closes
-  // honestly without touching the stored secrets. ----
-  await win.click("#account-avatar-btn");
-  await win.waitForSelector("#ap-settings", { state: "visible", timeout: 5000 });
-  await win.click("#ap-settings");
-  await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+  // ---- S-MODEL: model configuration is reachable from Settings → 凭证
+  // (key / base URL / model id), and closes honestly without touching the
+  // stored secrets. 布局 v15：设置入口在最左域导航栏（账户弹层只留账号相关）。
+  await openSettingsFromRail(win);
   await win.click('.settings-tab-btn[data-stab="credentials"]');
   await win.waitForTimeout(150);
   const credOpen = await win.evaluate(() => {
@@ -427,10 +434,7 @@ async function shellPass(win, vp, lang) {
     ? ok(`${tag} S-MODEL: Esc closes Settings`)
     : bad(`${tag} S-MODEL esc close`, JSON.stringify(settingsClosed));
   // mask close: re-open from the same real entry, click the backdrop
-  await win.click("#account-avatar-btn");
-  await win.waitForSelector("#ap-settings", { state: "visible", timeout: 5000 });
-  await win.click("#ap-settings");
-  await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
+  await openSettingsFromRail(win);
   await win.evaluate(() => document.getElementById("settings-panel").click());
   await win.waitForTimeout(150);
   const settingsMask = await win.evaluate(() => getComputedStyle(document.getElementById("settings-panel")).display);
@@ -438,26 +442,50 @@ async function shellPass(win, vp, lang) {
     ? ok(`${tag} S-MODEL: mask click closes Settings`)
     : bad(`${tag} S-MODEL mask`, settingsMask);
 
-  // ---- S-SIDEBAR: pinned footer order + three click-to-open sheets ----
+  // ---- S-SIDEBAR: pinned footer order + entry-sheet behaviour ----
+  // 布局 v15：模板市场 / 连接应用 已从侧栏尾部搬到右侧功能栏底部资源组
+  // （它们在旧位置时收在 display:none 的 #sb-more 里，等于不可达）。
+  // 尾部因此只剩 Hidden Bots → Settings；工具组顺序改到 #app-rail 里断言。
   const footer = await win.evaluate(() => {
     const a = document.getElementById("agents");
     // true DOM order of every id under #agents (querySelectorAll returns doc order)
     const order = [];
     a.querySelectorAll("[id]").forEach((el) => order.push(el.id));
     const idx = (id) => order.indexOf(id);
-    return {
-      hidden: idx("hidden-bots-lab"), connect: idx("connect-apps-btn"),
-      market: idx("marketplace-btn"), settings: idx("sidebar-settings-btn"),
-      account: idx("account-bar"),
-    };
+    return { hidden: idx("hidden-bots-lab"), settings: idx("sidebar-settings-btn") };
   });
   const present = (v) => v >= 0;
-  const seqNames = ["connect", "market", "settings", "account"];
-  const seq = seqNames.map((k) => footer[k]);
-  const allFound = present(footer.connect) && present(footer.market) && present(footer.settings) && present(footer.account);
-  const increasing = seq.every((v, i) => i === 0 || v > seq[i - 1]);
-  const hiddenFirst = footer.hidden < 0 || footer.hidden < footer.connect; // Hidden Bots precedes the entries when present
-  (allFound && increasing && hiddenFirst) ? ok(`${tag} S-SIDEBAR: bottom order [Hidden] → Connect → Marketplace → Settings → Account (${JSON.stringify(footer)})`) : bad(`${tag} S-SIDEBAR order`, JSON.stringify({ footer, allFound, increasing, hiddenFirst }));
+  present(footer.hidden) && present(footer.settings) && footer.settings > footer.hidden
+    ? ok(`${tag} S-SIDEBAR: 尾部顺序 Hidden Bots → Settings (${JSON.stringify(footer)})`)
+    : bad(`${tag} S-SIDEBAR order`, JSON.stringify(footer));
+
+  // 低频入口已收进底部「更多」弹层：先把弹层展开再量，否则量到的是收起态。
+  await win.click("#rail-more-btn").catch(() => {});
+  await win.waitForTimeout(200);
+  const railRes = await win.evaluate(() => {
+    const nav = document.getElementById("app-rail");
+    const order = [];
+    nav.querySelectorAll("[id]").forEach((el) => order.push(el.id));
+    const idx = (id) => order.indexOf(id);
+    const inTop = (id) => {
+      const el = document.getElementById(id);
+      return !!el && !!el.closest("#rail-more-popup");
+    };
+    return {
+      order,
+      market: idx("marketplace-btn"), connect: idx("connect-apps-btn"),
+      account: idx("account-bar"),
+      topGroup: inTop("tools-toggle-btn") && inTop("marketplace-btn") && inTop("connect-apps-btn"),
+      // 搬到右栏后必须真的可见（旧位置是 display:none 的折叠块）
+      visible: ["marketplace-btn", "connect-apps-btn"].every((id) => {
+        const el = document.getElementById(id);
+        return !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().width > 0;
+      }),
+    };
+  });
+  railRes.market >= 0 && railRes.connect > railRes.market && railRes.account > railRes.connect && railRes.visible && railRes.topGroup
+    ? ok(`${tag} S-SIDEBAR: 左栏工具组含 能力→模板市场→连接应用（真实可见），底部只剩设置+会话+账户`)
+    : bad(`${tag} S-SIDEBAR rail grouping`, JSON.stringify(railRes));
   // the pinned footer entries must be click-to-open only — no inline form in the footer
   // hidden state toggles (e.g. #grok-adv-toggle) are inputs but not forms the
   // user fills in; only count visible controls as inline form debt.
@@ -466,33 +494,31 @@ async function shellPass(win, vp, lang) {
   ));
   !inline ? ok(`${tag} S-SIDEBAR: no inline form controls in the pinned footer`) : bad(`${tag} S-SIDEBAR inline form in footer`);
 
-  // each entry opens a Sheet and closes via Esc with focus return
-  // target-v2: Marketplace/Connect live in the account popup (#sb-more is
-  // display:none under grok-ui), so open them through the popup and expect
-  // focus to return to the popup item.
+  // each entry opens a Sheet straight from its rail button and closes via Esc
+  // (旧版得先点开账户弹层才能摸到它们；现在是常驻按钮，少一层才叫「贴合功能」)
   const entryTests = [
-    { btn: "#ap-market", btnId: "ap-market", modal: "marketplace-modal" },
-    { btn: "#ap-connect", btnId: "ap-connect", modal: "connect-apps-modal" },
+    { btn: "#marketplace-btn", modal: "marketplace-modal" },
+    { btn: "#connect-apps-btn", modal: "connect-apps-modal" },
   ];
   for (const t of entryTests) {
-    await win.click("#account-avatar-btn");
-    await win.waitForSelector(t.btn, { state: "visible", timeout: 5000 });
-    await win.click(t.btn); await win.waitForTimeout(200);
+    /* 低频入口现在收在底部「更多」弹层里：先展开，点完格子弹层会自己收起，
+       焦点回到常驻的 #rail-more-btn（不再是格子本身）。 */
+    if (await win.locator('#rail-more-popup').isHidden()) await win.click('#rail-more-btn');
+    await win.evaluate((s)=>document.querySelector(s)?.click(), t.btn); await win.waitForTimeout(200);
     const st = await win.evaluate((id) => { const m = document.getElementById(id); return { open: !!m && getComputedStyle(m).display !== "none", right: !!m && m.classList.contains("bb-modal--right") }; }, t.modal);
     // Marketplace is a right-Sheet; Connect apps is the large centered sheet
     // (bb-sheet-lg) by design — both must open.
-    st.open ? ok(`${tag} S-SIDEBAR: ${t.modal} opens from the account popup`) : bad(`${tag} S-SIDEBAR ${t.modal} open`, JSON.stringify(st));
+    st.open ? ok(`${tag} S-SIDEBAR: ${t.modal} opens from its rail button`) : bad(`${tag} S-SIDEBAR ${t.modal} open`, JSON.stringify(st));
     await win.keyboard.press("Escape"); await win.waitForTimeout(160);
     const afterEsc = await win.evaluate((mt) => ({
       closed: getComputedStyle(document.getElementById(mt)).display === "none",
       focused: document.activeElement && document.activeElement.id,
     }), t.modal);
-    // The trigger (popup item) is hidden after the popup closes, so focus may
-    // legitimately fall back to body; the gate requires an honest close.
-    afterEsc.closed ? ok(`${tag} S-SIDEBAR: Esc closes ${t.modal}`) : bad(`${tag} S-SIDEBAR ${t.modal} esc-close`, JSON.stringify(afterEsc));
-    await win.click("#account-avatar-btn");
-    await win.waitForSelector(t.btn, { state: "visible", timeout: 5000 });
-    await win.click(t.btn); await win.waitForTimeout(120);
+    // 格子点完弹层就收起、焦点回到常驻的「更多」钮；Esc 后必须停在那里，不能掉回 body。
+    (afterEsc.closed && afterEsc.focused === "rail-more-btn")
+      ? ok(`${tag} S-SIDEBAR: Esc closes ${t.modal} and returns focus to ${t.btn}`)
+      : bad(`${tag} S-SIDEBAR ${t.modal} esc-close`, JSON.stringify(afterEsc));
+    await win.evaluate((s)=>document.querySelector(s)?.click(), t.btn); await win.waitForTimeout(120);
     await win.evaluate((id) => document.getElementById(id).click(), t.modal); await win.waitForTimeout(150);
     const masked = await win.evaluate((id) => getComputedStyle(document.getElementById(id)).display, t.modal);
     masked === "none" ? ok(`${tag} S-SIDEBAR: mask closes ${t.modal}`) : bad(`${tag} S-SIDEBAR ${t.modal} mask`, masked);
@@ -559,9 +585,7 @@ async function shellPass(win, vp, lang) {
   await win.waitForTimeout(300);
   await win.screenshot({ path: path.join(OUT, `shell-v2-${tag}-model-sheet.png`) }).catch(() => {});
   await win.keyboard.press("Escape"); await win.waitForTimeout(150);
-  await win.click("#account-avatar-btn");
-  await win.waitForSelector("#ap-market", { state: "visible", timeout: 5000 });
-  await win.click("#ap-market"); await win.waitForTimeout(500);
+  await win.evaluate((s)=>document.querySelector(s)?.click(), '#marketplace-btn'); await win.waitForTimeout(500);
   await win.screenshot({ path: path.join(OUT, `shell-v2-${tag}-marketplace.png`) }).catch(() => {});
   await win.keyboard.press("Escape"); await win.waitForTimeout(150);
   await win.screenshot({ path: path.join(OUT, `shell-v2-${tag}-sidebar-bottom.png`), clip: { x: 0, y: 500, width: 300, height: 380 } }).catch(() => {});

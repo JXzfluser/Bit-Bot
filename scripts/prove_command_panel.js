@@ -277,7 +277,7 @@ console.log("prove_command_panel — 团队指挥台(聚合 / 分桶 / 真渲染
        ⇒ CP-8 那条判据必须翻红。
        变异只发生在**临时副本**上（源文件一个字节都不动）。 */
     {
-      const src = fs.readFileSync(HTML, "utf8");
+      const src = fs.readFileSync(HTML, "utf8") + "\n" + fs.readFileSync(path.resolve(__dirname, "..", "hosts", "desktop", "command_center.js"), "utf8");
       const marker = 'CMD_STATE.tasks = scope.kind === "room"';
       const at = src.indexOf(marker);
       if (at < 0) {
@@ -402,7 +402,7 @@ console.log("prove_command_panel — 团队指挥台(聚合 / 分桶 / 真渲染
         };
       });
 
-      const src = fs.readFileSync(HTML, "utf8");
+      const src = fs.readFileSync(HTML, "utf8") + "\n" + fs.readFileSync(path.resolve(__dirname, "..", "hosts", "desktop", "command_center.js"), "utf8");
       const target =
         'var cmdApi = window.__bitbotCommand;\n' +
         '        if (cmdApi && typeof cmdApi.refresh === "function") await cmdApi.refresh();';

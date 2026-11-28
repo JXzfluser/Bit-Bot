@@ -44,20 +44,29 @@ if (/else if \(ev\.key === "k" \|\| ev\.key === "K"\) \{[\s\S]{0,200}toggleSessi
    setSidebarSearchOpen —— 过滤 #bot-list / #room-list，而不是会话。
    会话搜索仍留在 #sessions-popup 自己的输入框，由 setSessionSearchOpen 揭出
    （弹层打开时调用），保证它不是死代码。
-   两个入口各自只有一个函数在改 hidden / body class / focus。 */
+   【布局 v15】搜索行改成**常显**（openbot / v15 的列表列第二行就是常驻搜索框）。
+   于是「显隐只有一个写点」升级成「没有任何写点」：markup 里不许带 hidden，
+   代码里也不许再出现 `sbSearchRow.hidden =`。setSidebarSearchOpen 只剩
+   聚焦 + 清空过滤这两件事，仍然是放大镜 / Ctrl+Cmd+K 的唯一入口。 */
 const sbSearchFn =
   (html.match(/function setSidebarSearchOpen\(open\) \{[\s\S]*?\n    \}/) || [""])[0];
+const searchRowAlwaysOn =
+  /id="sb-search-row"/.test(html) &&
+  !/id="sb-search-row"[^>]*\bhidden\b/.test(html) &&
+  !/sbSearchRow\.hidden\s*=/.test(html);
 const sbSearchOk =
+  searchRowAlwaysOn &&
   /sb-search-open/.test(sbSearchFn) &&
-  /sbSearchRow\.hidden = !open/.test(sbSearchFn) &&
+  /sbSearchInput\.focus\(\)/.test(sbSearchFn) &&
+  /applySidebarFilter\(""\)/.test(sbSearchFn) &&
   /getElementById\("sb-search-row"\)/.test(html) &&
   /function applySidebarFilter\(raw\)/.test(html) &&
   /function toggleSessionSearchFromShortcut\(\)[\s\S]{0,200}setSidebarSearchOpen\(/.test(html) &&
   /sidebarSearchToggle\.addEventListener\("click"[\s\S]{0,240}setSidebarSearchOpen\(/.test(html);
 if (sbSearchOk) {
-  ok("侧栏搜索单一入口 setSidebarSearchOpen：放大镜与 Cmd/Ctrl+K 同源，过滤 Bot / 群组");
+  ok("侧栏搜索常显（无任何写点可隐藏它），放大镜与 Cmd/Ctrl+K 仍同源到 setSidebarSearchOpen，只做聚焦与清空过滤");
 } else {
-  bad("sidebar search", "search row not reached through the single setSidebarSearchOpen entry");
+  bad("sidebar search", "search row not always-on, or no longer reached through the single setSidebarSearchOpen entry");
 }
 
 const searchFn =

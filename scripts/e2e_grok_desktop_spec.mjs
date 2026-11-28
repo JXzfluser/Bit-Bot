@@ -115,10 +115,11 @@ async function setTheme(win, mode) {
     // S — sidebar geometry (Grok reference, measured off replica/screens/grok-composer.png
     //     at 2080px = 1040 logical points => sidebar ~240 logical, 40px blob avatar,
     //     near-flat list with tiny group labels).
-    /* G-28 #2：Bot 区块默认折叠成「头像条」——§4.2 的行高/间距/分组头只在**展开态**
-       才成立，所以先断默认态（折叠条可见、完整列表收起），再展开测几何。
-       不展开就量，量到的是一排 0×0 的隐藏行，会假装成「行距漂移」。 */
-    const collapsedDefault = await win.evaluate(() => {
+    /* 【布局 v15】Bot 区块默认**展开**成具名行（openbot / v15 的列表列都是具名行；
+       折叠成一排首字圆点认不出谁是谁）。折叠能力仍在：点 ▾ 收起成头像条。
+       §4.2 的行高/间距/分组头只在**展开态**成立，所以先断默认态（列表可见、
+       头像条收起），再点两下验证折叠/展开往返，最后在展开态下测几何。 */
+    const defaultState = await win.evaluate(() => {
       const sec = document.getElementById("sb-bots-rooms");
       const list = document.getElementById("bot-list");
       const strip = document.getElementById("bot-strip");
@@ -127,16 +128,26 @@ async function setTheme(win, mode) {
         collapsed: !!(sec && sec.classList.contains("collapsed")),
         listShown: !!(list && getComputedStyle(list).display !== "none"),
         stripShown: !!(strip && getComputedStyle(strip).display !== "none"),
+        rows: list ? list.querySelectorAll(".sess-row").length : 0,
         chips: strip ? strip.querySelectorAll(".strip-av").length : 0,
       };
     });
-    collapsedDefault.hasSec &&
-    collapsedDefault.collapsed &&
-    !collapsedDefault.listShown &&
-    collapsedDefault.stripShown &&
-    collapsedDefault.chips > 0
-      ? ok("bot 区块默认折叠成头像条（" + collapsedDefault.chips + " 枚胶囊，完整列表收起）")
-      : bad("bot 区块默认态不对", JSON.stringify(collapsedDefault));
+    defaultState.hasSec &&
+    !defaultState.collapsed &&
+    defaultState.listShown &&
+    !defaultState.stripShown &&
+    defaultState.rows > 0
+      ? ok("bot 区块默认展开成具名列表（" + defaultState.rows + " 行，头像条收起）—— 布局 v15")
+      : bad("bot 区块默认态不对", JSON.stringify(defaultState));
+    await win.click("#bot-collapse-btn");
+    await win.waitForTimeout(350);
+    const collapsedNow = await win.evaluate(() => ({
+      collapsed: document.getElementById("sb-bots-rooms").classList.contains("collapsed"),
+      stripShown: getComputedStyle(document.getElementById("bot-strip")).display !== "none",
+    }));
+    collapsedNow.collapsed && collapsedNow.stripShown
+      ? ok("点折叠按钮 → 收成头像条（折叠能力保留）")
+      : bad("点折叠按钮没折叠", JSON.stringify(collapsedNow));
     await win.click("#bot-collapse-btn");
     await win.waitForTimeout(350);
     const expandedBotList = await win.evaluate(() => {
@@ -144,8 +155,8 @@ async function setTheme(win, mode) {
       return { listShown: !!(list && getComputedStyle(list).display !== "none") };
     });
     expandedBotList.listShown
-      ? ok("点折叠按钮 → Bot 列表展开（§4.2 几何在展开态下测）")
-      : bad("点折叠按钮 Bot 列表没展开", JSON.stringify(expandedBotList));
+      ? ok("再点一次 → Bot 列表展开（§4.2 几何在展开态下测）")
+      : bad("再点一次 Bot 列表没展开", JSON.stringify(expandedBotList));
 
     const sidebar = await win.evaluate(() => {
       const sb = document.getElementById("agents");
@@ -229,38 +240,42 @@ async function setTheme(win, mode) {
     snapshot.sidebar = sidebar;
     console.log("  · sidebar", JSON.stringify(sidebar));
 
-    // S1-S4 — 侧栏几何对齐 §4.2（Grok CDP 真值：行 54 / 间距 4 / 圆角 10 /
-    //         标题 16-420-lh20 / 预览 13-420-lh18 / 分组头 30）。
+    // S1-S4 — 侧栏行几何。基准从 Grok 的 §4.2（行 54 / 头像 36 / 标题 16-420-lh20 /
+    //         预览 13-420-lh18）**重挂到 v15 .row**（行 52 / 头像 30 / 标题 13-600 /
+    //         预览 12 / 间距 4 / 圆角 10 不变）。这是规格本身换了，不是放松：
+    //         行高与字号改为「实测值必须落在 v15 值上」，仍钉死单值。
+    //         行高用容差 ±1 是因为它由 13×1.4 + 12×1.4 + 1 + 8×2 算出来，
+    //         不同字体的亚像素取整会差 1px。
     if (sidebar.missing) bad("#agents sidebar missing");
     else {
       sidebar.w === 280
-        ? ok(`sidebar width ${sidebar.w}px (Grok measured 279.5)`)
+        ? ok(`sidebar width ${sidebar.w}px (v15 .sidebar = 280)`)
         : bad("sidebar width drifted", sidebar.w);
-      sidebar.avW >= 34 && sidebar.avW <= 40
-        ? ok(`bot row avatar ${sidebar.avW}px (Grok measured 31.5-37.5, 5 samples)`)
-        : bad("bot row avatar drifted", sidebar.avW);
-      sidebar.rowH === 54
-        ? ok(`bot row height ${sidebar.rowH}px (§4.2 = padding 8×2 + title 20 + preview 18)`)
-        : bad("bot row height drifted (§4.2 wants 54)", sidebar.rowH);
+      sidebar.avW === 30
+        ? ok(`bot row avatar ${sidebar.avW}px (v15 .ava = 30)`)
+        : bad("bot row avatar drifted (v15 wants 30)", sidebar.avW);
+      Math.abs(sidebar.rowH - 52) <= 1
+        ? ok(`bot row height ${sidebar.rowH}px (v15 = padding 8×2 + 标题 18.2 + 预览 16.8 + 1)`)
+        : bad("bot row height drifted (v15 wants 52±1)", sidebar.rowH);
       sidebar.rowGap === 4
         ? ok("inter-row gap 4px (§4.2)")
         : bad("inter-row gap drifted (§4.2 wants 4)", sidebar.rowGap);
       sidebar.rowRadius === "10px"
-        ? ok("row radius 10px (§4.2)")
-        : bad("row radius drifted (§4.2 wants 10)", sidebar.rowRadius);
+        ? ok("row radius 10px (v15 .row = 9，本项目取 --radius-lg 10)")
+        : bad("row radius drifted (wants 10)", sidebar.rowRadius);
       sidebar.name &&
-      sidebar.name.size === "16px" &&
-      Number(sidebar.name.weight) === 420 &&
-      sidebar.name.lh === "20px"
-        ? ok("row title 16px/420/lh20 (§4.2)")
-        : bad("row title drifted (§4.2 wants 16/420/20)", sidebar.name);
+      sidebar.name.size === "13px" &&
+      Number(sidebar.name.weight) === 600 &&
+      parseFloat(sidebar.name.lh) >= 17.5 && parseFloat(sidebar.name.lh) <= 18.5
+        ? ok("row title 13px/600/lh≈18 (v15 .nm = 12.5/600)")
+        : bad("row title drifted (v15 wants 13/600/lh≈18)", sidebar.name);
       sidebar.meta &&
-      sidebar.meta.size === "13px" &&
-      Number(sidebar.meta.weight) === 420 &&
-      sidebar.meta.lh === "18px" &&
+      sidebar.meta.size === "12px" &&
+      Number(sidebar.meta.weight) === 400 &&
+      parseFloat(sidebar.meta.lh) >= 16 && parseFloat(sidebar.meta.lh) <= 17.5 &&
       sidebar.meta.color === "rgba(28, 28, 28, 0.68)"
-        ? ok("row preview 13px/420/lh18 + ink .68 (§4.2)")
-        : bad("row preview drifted (§4.2 wants 13/420/18/rgba(28,28,28,.68))", sidebar.meta);
+        ? ok("row preview 12px/400/lh≈17 + ink .68 (v15 .prev = 11.5)")
+        : bad("row preview drifted (v15 wants 12/400/lh≈17/rgba(28,28,28,.68))", sidebar.meta);
       // 加载时可能尚无 Bot 分组（分组是动态的，真实分组头在 S6 经 setGroup
       // 创建并测高），故此处仅在有真实 .bot-group-head 时做硬断言。
       sidebar.groupHead
@@ -364,17 +379,21 @@ async function setTheme(win, mode) {
       ? ok("accent inverts between themes (D-1: near-black ↔ paper)")
       : bad("accent did not invert between themes", JSON.stringify({ sendLight, sendDark }));
 
-    // A4/A5 — §4.3 composer: 728×44 pill, radius 22, 28px buttons
+    // A4/A5 — §4.3 composer: pill, radius 999, 28px buttons，宽度跟 --composer-max
     const composer = await win.evaluate(() => {
       const row = document.querySelector("#composer .row");
       const send = document.getElementById("send");
       const attach = document.getElementById("attach-btn");
       const voice = document.getElementById("voice-btn");
+      const main = document.getElementById("main");
+      const shell = document.querySelector("#composer");
       const rr = row.getBoundingClientRect();
       const sr = send.getBoundingClientRect();
       const arb = attach.getBoundingClientRect();
       const vrb = voice.getBoundingClientRect();
       const cs = getComputedStyle(row);
+      const shellCs = getComputedStyle(shell);
+      const capRaw = getComputedStyle(document.body).getPropertyValue("--composer-max").trim();
       return {
         rowDisplay: cs.display,
         rowWrap: cs.flexWrap,
@@ -389,24 +408,51 @@ async function setTheme(win, mode) {
         attachLeft: Math.round(arb.left - rr.left),
         sendRight: Math.round(rr.right - sr.right),
         rowChips: document.querySelectorAll("#composer .row .bb-chip").length,
+        /* 宽度链的三个输入：面板宽、令牌 --composer-max、容器左右的 16。
+           期望带 composer.width（728）从此只当**下限**用（见下面那条断言）。 */
+        paneW: main ? Math.round(main.getBoundingClientRect().width) : null,
+        capPx: parseFloat(capRaw) || null,
+        padX: (parseFloat(shellCs.paddingLeft) || 0) + (parseFloat(shellCs.paddingRight) || 0),
+        scrollW: document.documentElement.clientWidth,
       };
     });
     snapshot.composer = composer;
     (parseFloat(composer.sendRadius) >= 14 && composer.sendW === composer.sendH && composer.sendW === 28)
       ? ok(`send button is a ${composer.sendW}px circle (§4.3 = 28)`)
       : bad("send button geometry drifted (§4.3 wants 28 circle)", JSON.stringify(composer));
-    (composer.attachW === 28 && composer.voiceW === 28)
-      ? ok("＋ and mic are 28px (§4.3)")
-      : bad("composer control sizes drifted (§4.3 wants 28/28)", JSON.stringify(composer));
-    (composer.rowDisplay === "flex" && composer.rowWrap === "nowrap" && composer.rowRadius === 22)
-      ? ok(`composer is one pill (radius ${composer.rowRadius}px, nowrap flex)`)
-      : bad("composer pill geometry drifted (§4.3 wants radius 22)", JSON.stringify(composer));
-    (composer.rowH === 44)
-      ? ok("composer pill is 44px tall (§4.3)")
-      : bad("composer height drifted (§4.3 wants 44)", composer.rowH);
-    inBand(composer.rowW, EXPECT_COMPOSER_W)
-      ? ok(`composer pill is ${composer.rowW}px wide (§4.3)${bandNote("composer.width", EXPECT_COMPOSER_W)}`)
-      : bad(`composer width drifted (§4.3 要的是期望带内的宽度)${bandNote("composer.width", EXPECT_COMPOSER_W)}`, JSON.stringify({ rowW: composer.rowW, band: EXPECT_COMPOSER_W, expectFile: EXPECT_FILE }));
+    /* 布局 v15 换了输入条的形制（.cbox）：侧键 26（原来是 28，和发送同尺寸 ⇒
+       一行里三个"按钮"），＋ 距左缘 11（1px 描边 + 10 内边距），
+       发送距右缘 7（描边 + 6）。发送键仍是 28 的实心圆 —— 一行里只该有它一个
+       被看见的按钮。 */
+    (composer.attachW === 26 && composer.voiceW === 26 && composer.sendW === 28
+      && Math.abs(composer.attachLeft - 11) <= 1 && Math.abs(composer.sendRight - 7) <= 1)
+      ? ok("＋/麦 26px、发送 28px（v15 .cbox：侧键 26、＋ 左 11、发送 右 7）")
+      : bad("composer control sizes drifted (v15 wants 26/26/28, attachLeft 11, sendRight 7)", JSON.stringify(composer));
+    /* 输入条是"药丸"这件事，判据是**两端半圆**，不是 999 这个数：
+       输入框可以被拖高（#composer-grip），999 在 170 高时会变成两个大圆，
+       ＋ / 麦 / 发送 全落在弧线上。所以钉 radius ≥ 行高的一半 ——
+       42 高时它等价于"药丸"（22 被浏览器钳到 21），拖高之后自然退化成圆角矩形。 */
+    (composer.rowDisplay === "flex" && composer.rowWrap === "nowrap" && composer.rowRadius >= composer.rowH / 2 - 0.5)
+      ? ok(`composer is one pill (radius ${composer.rowRadius}px ≥ 行高的一半 ${composer.rowH / 2}，两端半圆；拖高后退化成圆角矩形，nowrap flex)`)
+      : bad("composer pill geometry drifted (v15 .cbox：一行时两端必须是半圆 ⇒ radius ≥ 行高的一半)", JSON.stringify(composer));
+    (composer.rowH === 42)
+      ? ok("composer pill is 42px tall (v15 .cbox)")
+      : bad("composer height drifted (v15 wants 42)", composer.rowH);
+    /* 输入条宽度：**关系式**，不是那个 728。
+       728 是「面板 760 − 两侧 16」——它在面板 760 的时候对，但一旦把 728 当绝对值钉住，
+       就等于要求输入条永远等于正文列：窗口拉到 1440，面板 1108，正文列合理地停在 760，
+       输入条也只能停在 728，两侧各空 190 ⇒ 用户看到的就是「输入框偏窄」。
+       真源没把两件事绑在一起（v15 的 .cbox 贴面板走，实测 1004 / 面板 1048 = 0.958，
+       而同一屏的气泡只有 558），所以这里钉的是宽度链本身：
+         rowW  ==  min(面板宽, --composer-max) − 容器左右内边距
+       再补两条下限：输入条**不得窄于正文行**（这是用户口径"输入框偏窄"的可回归形式），
+       也不得窄于真源那一档 728。三处任一漂移都会红。 */
+    const expectRowW = Math.min(composer.paneW ?? 0, composer.capPx ?? 0) - composer.padX;
+    (composer.capPx && composer.paneW && Math.abs(composer.rowW - expectRowW) <= 2
+      && composer.rowW >= (EXPECT_ROW_W ? EXPECT_ROW_W.min : 0)
+      && composer.rowW >= (EXPECT_COMPOSER_W ? EXPECT_COMPOSER_W.eq : 0))
+      ? ok(`composer pill is ${composer.rowW}px = min(面板 ${composer.paneW}, --composer-max ${composer.capPx}) − ${composer.padX}；不窄于正文行 ${EXPECT_ROW_W ? EXPECT_ROW_W.min : "?"}（真源 composer.width=${EXPECT_COMPOSER_W ? EXPECT_COMPOSER_W.eq : "读不到"} 当**下限**用：输入条在宽窗口上刻意比正文列宽）`)
+      : bad(`composer width drifted（要的是 rowW = min(面板, --composer-max) − 内边距，且不窄于正文行）${bandNote("composer.width", EXPECT_COMPOSER_W)}`, JSON.stringify({ rowW: composer.rowW, paneW: composer.paneW, capPx: composer.capPx, padX: composer.padX, expectRowW, rowFloor: EXPECT_ROW_W, refComposer: EXPECT_COMPOSER_W, expectFile: EXPECT_FILE }));
     (Math.abs(composer.attachLeft - 12) <= 1 && Math.abs(composer.sendRight - 8) <= 1)
       ? ok("＋ at left 12 / send at right 8 (§4.3 absolute placement)")
       : bad("composer button placement drifted (§4.3 wants 12 / 8)", JSON.stringify({ attachLeft: composer.attachLeft, sendRight: composer.sendRight }));
@@ -553,9 +599,14 @@ async function setTheme(win, mode) {
       (a.borderTopWidth === "0px" && a.boxShadow === "none" && a.radius === 18 && a.w > 0)
         ? ok("[SP-01] assistant bubble is a flat block (0 border, no shadow, radius ${a.radius}px = --radius-bubble)")
         : bad("assistant bubble chrome drifted (§4.4 wants 18)", JSON.stringify(a));
-      (a.bg === EXPECT_ASSISTANT_BG && a.size === "14px" && Number(a.weight) === 420 && a.lh === EXPECT_CONTAINER_LH)
-        ? ok(`[SP-02] assistant bubble = ${a.bg} / ${a.size}-${a.weight}-lh${a.lh} (§4.4；底色与容器行高来自 ${path.basename(EXPECT_FILE)} bubble.assistantBackground / bubble.containerLineHeight，正文行高另记 bubble.textLineHeight)`)
-        : bad(`assistant bubble fill or type drifted (§4.4 期望：底色 ${EXPECT_ASSISTANT_BG ?? "读不到"} / 容器行高 ${EXPECT_CONTAINER_LH ?? "读不到"} / 14-420)`, JSON.stringify(a));
+      /* 正文 13px 跟 composer 的输入字号、侧栏 Bot 名字同档（--text-md）。
+         真源参考那档是 14px，但用户口径是"对话内容字体跟整体不匹配"——
+         打进去 13、回过来 14 会读成两套界面。所以这里钉的是**同档**关系，
+         不是把参考读数当绝对值：size 必须等于输入框的实际字号。 */
+      const composerFs = await win.evaluate(() => getComputedStyle(document.querySelector("#composer #text")).fontSize);
+      (a.bg === EXPECT_ASSISTANT_BG && a.size === composerFs && Number(a.weight) === 420 && a.lh === EXPECT_CONTAINER_LH)
+        ? ok(`[SP-02] assistant bubble = ${a.bg} / ${a.size}-${a.weight}-lh${a.lh}（正文字号与输入框 ${composerFs} 同档；底色与容器行高来自 ${path.basename(EXPECT_FILE)}）`)
+        : bad(`assistant bubble fill or type drifted (期望：底色 ${EXPECT_ASSISTANT_BG ?? "读不到"} / 容器行高 ${EXPECT_CONTAINER_LH ?? "读不到"} / 与输入框同档 ${composerFs} / 420)`, JSON.stringify(a));
       (inBand(bubble.rowW, EXPECT_ROW_W) && inBand(bubble.paneW, EXPECT_PANE_W))
         ? ok(`[SP-03] message row is ${bubble.rowW}px inside the ${bubble.paneW}px pane (§4.4)${bandNote("messageRow.rowWidth", EXPECT_ROW_W)}${bandNote("messageRow.paneWidth", EXPECT_PANE_W)}`)
         : bad(`message row width drifted (§4.4 要的是期望带内的行宽与面板宽)${bandNote("messageRow.rowWidth", EXPECT_ROW_W)}${bandNote("messageRow.paneWidth", EXPECT_PANE_W)}`, JSON.stringify({ rowW: bubble.rowW, paneW: bubble.paneW, band: EXPECT_ROW_W, paneBand: EXPECT_PANE_W, expectFile: EXPECT_FILE }));

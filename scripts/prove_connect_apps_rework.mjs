@@ -90,13 +90,12 @@ try {
   await win.waitForSelector("#composer #text", { timeout: 30000 });
 
   /* ---------------- CA-00 走用户手顺打开 ---------------- */
-  await win.click("#account-avatar-btn");
-  await win.waitForSelector("#ap-connect", { state: "visible", timeout: 8000 });
-  await win.click("#ap-connect");
+  /* 布局 v15：连接应用是右功能栏的常驻按钮，一步到位（不再先开账户弹层） */
+  await win.click("#rail-more-btn"); await win.evaluate((s)=>document.querySelector(s)?.click(), "#connect-apps-btn");
   await win.waitForSelector("#connect-apps-modal", { state: "visible", timeout: 10000 });
   await win.waitForSelector("#ca-sections .ca-app", { timeout: 40000 });
   await win.waitForTimeout(600);
-  ok("CA-00 账户菜单 → 连接应用 打开成功，目录已出卡片");
+  ok("CA-00 右功能栏 → 连接应用 打开成功，目录已出卡片");
 
   /* ---------------- 目录条数（对照组：旧版会翻倍） ---------------- */
   const payload = await win.evaluate(async () => {
@@ -271,12 +270,14 @@ try {
     bad("CA-04 凭证字段还留在连接应用里", cn);
   }
 
-  /* 正向对照：删掉的只是位置，不是能力。去 设置 → 凭证 看一眼它还在不在。 */
+  /* 正向对照：删掉的只是位置，不是能力。去 设置 → 凭证 看一眼它还在不在。
+     布局 v15：设置入口在最左域导航栏（域切换 ⇒ 先回 chat 域才是可重复手顺）。 */
   await win.click("#ca-close");
   await win.waitForTimeout(300);
-  await win.click("#account-avatar-btn");
-  await win.waitForSelector("#ap-settings", { state: "visible", timeout: 8000 });
-  await win.click("#ap-settings");
+  await win.click('#app-rail .app-rail-item[data-app-domain="chat"]').catch(() => {});
+  await win.waitForTimeout(120);
+  if (await win.locator('#rail-more-popup').isHidden()) await win.click('#rail-more-btn');
+      await win.evaluate(()=>document.querySelector('#app-rail .app-rail-item[data-app-domain="settings"]')?.click());
   await win.waitForSelector("#settings-panel", { state: "visible", timeout: 10000 });
   await win.evaluate(() => { if (typeof showSettingsTab === "function") showSettingsTab("credentials"); });
   await win.waitForSelector("#ca-cn-box", { state: "attached", timeout: 8000 });

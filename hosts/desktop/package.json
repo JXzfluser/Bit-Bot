@@ -30,6 +30,8 @@
           "preload.js",
           "index.html",
           "ui_chrome.css",
+          "ui_components.css",
+          "command_center.js",
           "vendor/**/*",
           "sessions.js",
           "paths.js",

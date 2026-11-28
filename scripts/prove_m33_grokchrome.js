@@ -33,7 +33,7 @@ const bad = (m, d) => { fail++; console.log("  ✗ " + m + (d ? " — " + String
 
 console.log("M33 Grok-desktop chrome proof");
 
-const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8");
+const html = fs.readFileSync(path.join(REPO, "hosts/desktop/index.html"), "utf8") + "\n" + fs.readFileSync(path.join(REPO, "hosts/desktop/ui_components.css"), "utf8");
 
 /* ---------- 1) 侧栏顶部图标工具栏 ---------- */
 if (/<div id="sidebar-toolbar">/.test(html)
@@ -58,7 +58,7 @@ if (/<div id="account-bar">/.test(html)
   && /id="ap-support"/.test(html)
   /* 去处类入口已从账户弹层移除，避免和最左域栏/侧栏重复：
      设置 → 域栏 data-app-domain="settings"；远程控制 → 设置页 #gp-remote-open；
-     连接应用 / 模板市场 → 侧栏 #connect-apps-btn / #marketplace-btn。
+     连接应用 / 模板市场 → 右侧功能栏底部资源组 #connect-apps-btn / #marketplace-btn。
      账户弹层只留账号相关（用量 / 支持 / 加账户 / 登出）。 */
   && !/id="ap-remote"/.test(html)
   && !/id="ap-settings"/.test(html)

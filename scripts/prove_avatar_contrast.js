@@ -102,8 +102,8 @@ const shown = Array.from(used.keys());
 const raw = (paletteSrc.match(/#[0-9a-fA-F]{6}/g) || []).slice(0, 10);
 
 /* ---------------- 2) 判据 ---------------- */
-const html = fs.readFileSync(HTML, "utf8");
-const css = fs.readFileSync(CSS, "utf8");
+const html = fs.readFileSync(HTML, "utf8") + "\n" + fs.readFileSync(path.join(DESKTOP, "ui_components.css"), "utf8");
+const css = fs.readFileSync(CSS, "utf8") + "\n" + fs.readFileSync(path.join(DESKTOP, "ui_components.css"), "utf8");
 
 {
   const sess = /\.sess-avatar\s*\{[^}]*border-radius:\s*50%\s*;/.test(css);

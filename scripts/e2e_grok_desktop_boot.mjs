@@ -2108,8 +2108,18 @@ async function main() {
           sessionsStandalone: Boolean(sess && !sess.closest("#sessions-popup") && sess.closest("#agents") === agents),
           footerIsLast: Boolean(footer) && footer.lastElementChild !== null &&
             agents.lastElementChild === footer,
-          footerIds: ["hidden-bots-lab", "connect-apps-btn", "marketplace-btn", "sidebar-settings-btn"]
+          /* 布局 v15：Connect apps / Marketplace 已搬到右侧功能栏底部资源组
+             （它们原在 #sb-more，一个默认 display:none 的折叠块 —— 等于不可达）。
+             尾部只剩 Hidden Bots → Settings。 */
+          footerIds: ["hidden-bots-lab", "sidebar-settings-btn"]
             .map((id) => Boolean(q(id))),
+          /* 低频入口已收进底部「更多」弹层：判据从"常驻左栏可见"改成
+             "在弹层里、按钮本体没丢" —— 功能可达性照样被钉住。 */
+          railIds: ["marketplace-btn", "connect-apps-btn"].map((id) => {
+            const el = q(id);
+            return Boolean(el) && el.closest("#rail-more-popup") !== null &&
+              getComputedStyle(el).display !== "none";
+          }),
           hiddenBadge: (q("hidden-bots-count") || {}).textContent || "",
           // GP-118 geometry: with 70+ Bots / 30+ rooms in the store the footer
           // must still be on screen — lists scroll in place, footer never pushed out.
@@ -2133,8 +2143,11 @@ async function main() {
         ? ok("E2E GP-116：会话列表收在账户条 #sessions-popup（侧栏无会话区块）")
         : bad("E2E GP-116 sessions popup", JSON.stringify({ in: shell.sessionsInPopup, standalone: shell.sessionsStandalone }));
       shell.footerIsLast && shell.footerIds.every(Boolean)
-        ? ok("E2E GP-118：#sidebar-footer 是侧栏最后一个块，含 Hidden / Connect apps / Marketplace / Settings")
+        ? ok("E2E GP-118：#sidebar-footer 是侧栏最后一个块，含 Hidden / Settings")
         : bad("E2E GP-118 footer", JSON.stringify(shell).slice(0, 200));
+      shell.railIds.every(Boolean)
+        ? ok("E2E GP-118 v15：Connect apps / Marketplace 常驻左侧导航工具组且真实可见")
+        : bad("E2E GP-118 rail resources", JSON.stringify(shell.railIds));
       shell.footerVisible && shell.listsScroll
         ? ok("E2E GP-118：长列表让侧栏整体滚动，sticky 尾部区块仍在可视区内")
         : bad("E2E GP-118 footer geometry", JSON.stringify({ vis: shell.footerVisible, scroll: shell.listsScroll }));
@@ -2144,11 +2157,8 @@ async function main() {
         fs.readFileSync(dd("bot-templates.json"), "utf8"),
       );
       const tplCount = ((tplFile.templates || tplFile) || []).length;
-      // target-v2: Marketplace lives in the account popup (the footer #sb-more
-      // is display:none under grok-ui). Drive the real user path.
-      await win.click("#account-avatar-btn");
-      await win.waitForSelector("#ap-market", { state: "visible", timeout: 5000 });
-      await win.click("#ap-market");
+      // 布局 v15: Marketplace 现在是右功能栏的常驻按钮，直接点它（真实用户路径）。
+      await win.click("#rail-more-btn"); await win.evaluate((s)=>document.querySelector(s)?.click(), "#marketplace-btn");
       await win.waitForFunction(
         () => {
           const m = document.getElementById("marketplace-modal");
@@ -3172,11 +3182,12 @@ async function main() {
         : bad("E2E GP-130 usage store", JSON.stringify(m28Row));
 
       // GP-131: Settings → Usage & Billing tab shows the same real row.
-      // Under grok-ui the footer Settings row is hidden; the real entry is the
-      // account popup → 设置, so drive that.
-      await win.click("#account-avatar-btn");
-      await win.waitForSelector("#ap-settings", { state: "visible", timeout: 5000 });
-      await win.click("#ap-settings");
+      // 布局 v15：设置入口在最左域导航栏（账户弹层只留账号相关）。域栏是
+      // **域切换**，已经停在 settings 域时再点不会重开面板 ⇒ 先回 chat 域。
+      await win.click('#app-rail .app-rail-item[data-app-domain="chat"]').catch(() => {});
+      await win.waitForTimeout(120);
+      if (await win.locator('#rail-more-popup').isHidden()) await win.click('#rail-more-btn');
+      await win.evaluate(()=>document.querySelector('#app-rail .app-rail-item[data-app-domain="settings"]')?.click());
       await win.waitForSelector("#settings-panel", { timeout: 10000 });
       await win.evaluate(() => {
         const btn = document.querySelector('.settings-tab-btn[data-stab="usage"]');

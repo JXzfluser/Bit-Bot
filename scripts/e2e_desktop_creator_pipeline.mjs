@@ -1012,9 +1012,7 @@ function startStub() {
        这正是「入口零学习成本」要消灭的东西：建团之后就该有一件事在跑。 */
     {
       await win.evaluate(() => { const g = document.getElementById("mk-grid"); if (g) g.innerHTML = ""; });
-      await win.click("#account-avatar-btn").catch(() => {});
-      await win.waitForSelector("#ap-market", { state: "visible", timeout: 5000 }).catch(() => {});
-      await win.click("#ap-market").catch(() => {});
+      await win.click("#rail-more-btn").catch(() => {}); await win.evaluate((s)=>document.querySelector(s)?.click(), "#marketplace-btn").catch(() => {});
       const card = await win
         .waitForSelector('#mk-grid .ca-card[data-template-id="media-content-team"]', { timeout: 15000 })
         .catch(() => null);
