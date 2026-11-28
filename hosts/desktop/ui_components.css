@@ -2907,6 +2907,19 @@ body.grok-ui #app-rail #rail-more-popup[hidden] { display: none; }
 /* 没有 title 的按钮（市场/连接）用 aria-label 补一行可见文字 */
 #rail-more-popup #marketplace-btn::after { content: attr(aria-label); }
 #rail-more-popup #connect-apps-btn::after { content: attr(aria-label); }
+/* 「能力」带 data-lab，正常模式下 display:none —— 它不占格子，于是 2 列网格
+   只剩 5 格，「设置」孤零零挂在最后一行左边，看着像漏了一个。
+   设置是全局项，不在"用哪个功能"这一层，让它整行收尾：横排一行 44 高，
+   弹层总高也跟着矮一截（少了一整行 64 格）。devmode 下能力回来是 6 格，
+   设置照样独占末行 —— 两种状态读起来都成立。 */
+#rail-more-popup .app-rail-item[data-app-domain="settings"] {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+}
 
 /* 账户弹层的分节标题：原来四行长得一模一样，读不出哪两行属于"账户"。 */
 #account-popup .ap-label {
