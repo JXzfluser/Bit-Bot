@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>门户设计 v7 · Bot 模板驱动的任务体验</title>
+<style>
+  :root{--ink:#17181c;--muted:#77777c;--faint:#aba9a5;--line:#e8e8e4;--soft:#f7f7f4;--blue:#1e86fc;--blue-w:#eaf4ff;--green:#1d9e75;--amber:#ba7517}
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--ink);font:13px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#fafaf8}
+  button{font:inherit;color:inherit;cursor:pointer}
+  .top{height:54px;display:flex;align-items:center;gap:11px;padding:0 24px;border-bottom:1px solid var(--line);background:#fff}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+  .mark{width:20px;height:20px;border-radius:6px;background:var(--ink);position:relative}
+  .mark:before{content:"";position:absolute;left:5px;top:5px;width:8px;height:8px;border-radius:2px;background:#fff}
+  .mark:after{content:"";position:absolute;right:3px;bottom:3px;width:4px;height:4px;border-radius:1px;background:var(--blue)}
+  .top .mid{margin-left:24px;display:flex;gap:4px}
+  .top .mid button{padding:6px 12px;border-radius:7px;font-size:12px;color:var(--muted)}
+  .top .mid button.on{background:var(--ink);color:#fff}
+  .top .r{margin-left:auto;display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted)}
+
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 22px 50px}
+  .hero{display:flex;align-items:flex-end;gap:16px;margin-bottom:18px}
+  .hero h1{font-size:21px;font-weight:600;margin:0 0 3px;letter-spacing:-.01em}
+  .hero p{margin:0;color:var(--muted);font-size:12px}
+  .hero .btn{margin-left:auto;background:var(--ink);color:#fff;border-radius:8px;padding:8px 15px;font-size:12px}
+
+  .steps{display:flex;gap:0;background:#fff;border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-bottom:16px}
+  .step{flex:1;padding:10px 14px;border-right:1px solid var(--line);display:flex;gap:9px;align-items:center}
+  .step:last-child{border-right:0}
+  .step i{width:21px;height:21px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:10px;color:var(--muted);font-style:normal;flex:0 0 auto}
+  .step.on i{background:var(--blue);color:#fff}
+  .step.done i{background:var(--green);color:#fff}
+  .step b{font-weight:500;font-size:12px;display:block}
+  .step span{font-size:10px;color:var(--muted)}
+
+  .grid{display:grid;grid-template-columns:1fr 320px;gap:15px;align-items:start}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-bottom:14px}
+  .card h2{font-size:13px;font-weight:600;margin:0 0 11px;display:flex;align-items:center;gap:8px}
+  .card h2 .tag{font-size:10px;font-weight:400;color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:1px 7px}
+  .tpls{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+  .tpl{border:1px solid var(--line);border-radius:10px;padding:11px;cursor:pointer;position:relative}
+  .tpl:hover{border-color:var(--ink)}
+  .tpl.on{border-color:var(--blue);background:#fbfdff}
+  .tpl .h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .tpl .ic{width:26px;height:26px;border-radius:7px;background:var(--soft);display:grid;place-items:center;font-size:12px;flex:0 0 auto}
+  .tpl.on .ic{background:var(--blue-w)}
+  .tpl b{font-weight:500;font-size:12px}
+  .tpl p{margin:0;font-size:10px;color:var(--muted);line-height:1.5}
+  .tpl .guard{display:block;margin-top:6px;font-size:9px;color:var(--amber)}
+  .tpl .use{position:absolute;right:9px;top:9px;font-size:9px;color:var(--faint)}
+
+  .form{display:flex;flex-direction:column;gap:9px}
+  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+  .field input,.field textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit;font-size:12px;outline:0;background:#fff}
+  .field textarea{height:64px;resize:vertical}
+  .field input:focus,.field textarea:focus{border-color:var(--blue)}
+  .hintline{font-size:11px;color:var(--muted);background:var(--soft);border-radius:7px;padding:8px 10px}
+  .go{background:var(--blue);color:#fff;border-radius:8px;padding:9px 14px;font-size:12px;align-self:flex-end}
+
+  .task{border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:9px}
+  .task .t1{display:flex;align-items:center;gap:8px}
+  .task .t1 b{font-weight:500;font-size:12px;flex:1}
+  .task .st{font-size:9px;padding:2px 7px;border-radius:20px;background:var(--blue-w);color:var(--blue)}
+  .task .st.ok{background:#eaf7f0;color:var(--green)}
+  .task .st.wait{background:#fff0e3;color:var(--amber)}
+  .task p{margin:5px 0 0;font-size:11px;color:var(--muted)}
+  .task .who{font-size:10px;color:var(--faint);margin-top:4px}
+  .task .acts{display:flex;gap:6px;margin-top:8px}
+  .task .acts button{font-size:10px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 9px}
+  .task .acts button.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  .note{font-size:11px;color:var(--muted);line-height:1.6;border-left:2px solid var(--ink);padding-left:10px;margin-top:12px}
+  .note b{color:var(--ink);font-weight:500}
+  .cut{font-size:11px;color:var(--faint);margin-top:18px}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="mark"></span>Bit Bot</div>
+  <div class="mid"><button>任务</button><button class="on">Bot 模板</button><button>我的 Bot</button><button>群</button></div>
+  <div class="r"><span>7 个模板 · 21 个 Bot</span><span class="av" style="width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:10px">朱</span></div>
+</div>
+
+<div class="wrap">
+  <div class="hero">
+    <div><h1>从模板起一个 Bot，然后让它干活</h1><p>模板已经写好了“能干什么、绝不能干什么”。你只管派活和点头。</p></div>
+    <button class="btn">+ 存为我的模板</button>
+  </div>
+
+  <div class="steps">
+    <div class="step done"><i>1</i><div><b>选模板</b><span>挑一个现成角色</span></div></div>
+    <div class="step on"><i>2</i><div><b>说任务</b><span>一句话讲清要什么</span></div></div>
+    <div class="step"><i>3</i><div><b>Bot 去做</b><span>有边界，不越线</span></div></div>
+    <div class="step"><i>4</i><div><b>你点头</b><span>草稿不擅自发出</span></div></div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>选一个模板 <span class="tag">7 个 · 都带边界</span></h2>
+        <div class="tpls">
+          <div class="tpl on"><span class="use">用过 3 次</span><div class="h"><div class="ic">✉</div><b>客户外联助理</b></div><p>调研客户、整理联系人、按我的语气起草外联信息</p><span class="guard">绝不发送 · 需你批准</span></div>
+          <div class="tpl"><div class="h"><div class="ic">▤</div><b>收件箱与日程分诊</b></div><p>分诊收件箱与日程、起草回复、每日简报标出待决策</p><span class="guard">不代发 · 不擅自改日程</span></div>
+          <div class="tpl"><div class="h"><div class="ic">✦</div><b>内容流水线（五岗）</b></div><p>情报→选题→主笔→事实→复盘，一条流水线出稿</p><span class="guard">改写要标注来源</span></div>
+          <div class="tpl"><div class="h"><div class="ic">◷</div><b>报销与票据整理</b></div><p>收集票据、按制度对账、整理待审批清单</p><span class="guard">未批准不提交</span></div>
+          <div class="tpl"><div class="h"><div class="ic">◉</div><b>问题复现工程师</b></div><p>在 Bot 电脑的浏览器里复现、记录步骤与截图</p><span class="guard">不改生产配置</span></div>
+          <div class="tpl"><div class="h"><div class="ic">↑</div><b>投放方案助手</b></div><p>起草投放调整、明确预算上限、素材先送审</p><span class="guard">不上线 · 不改预算</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>派一个任务 <span class="tag">客户外联助理</span></h2>
+        <div class="form">
+          <div class="field"><label>要它做什么</label><textarea>把上周 contact 表里那 5 个客户跟一下，按我的语气写三段跟进消息，先给我看，别发。</textarea></div>
+          <div class="field"><label>什么时候要</label><input value="今天下班前"></div>
+          <div class="hintline">边界已自动带上：草稿只会放在这里等你批准，不会被发出去。</div>
+          <button class="go">交给 Bot →</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>正在跑的任务 <span class="tag">3</span></h2>
+        <div class="task"><div class="t1"><b>整理上周的 5 个客户跟进</b><span class="st">做着</span></div><p>已找到 contact 表，正在按你的语气写第一段</p><div class="who">客户外联助理 · 4 分钟前</div></div>
+        <div class="task"><div class="t1"><b>ep02 发布审批</b><span class="st wait">等你</span></div><p>成片 + 2 版封面，四道闸门全过</p><div class="who">内容流水线 · 17:21</div><div class="acts"><button class="pri">批准</button><button>看片</button></div></div>
+        <div class="task"><div class="t1"><b>周四带水彩笔</b><span class="st ok">已设</span></div><p>周三晚上提醒你一次</p><div class="who">提醒 · 每天 8:00</div></div>
+      </div>
+
+      <div class="card">
+        <h2>我的 Bot · 21 个</h2>
+        <div class="note" style="margin:0">其中 7 个是从模板起的，会自动带着模板的边界。点名字直接改人设或看它干过的活。</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+          <span class="pill" style="font-size:10px;border:1px solid var(--line);border-radius:20px;padding:3px 9px">客户外联助理</span>
+          <span class="pill" style="font-size:10px;border:1px solid var(--line);border-radius:20px;padding:3px 9px">内容主笔</span>
+          <span class="pill" style="font-size:10px;border:1px solid var(--line);border-radius:20px;padding:3px 9px">Bit验证</span>
+          <span class="pill" style="font-size:10px;border:1px solid var(--line);border-radius:20px;padding:3px 9px">事实编辑</span>
+          <span class="pill" style="font-size:10px;border:1px solid var(--line);border-radius:20px;padding:3px 9px">+16</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>体验上改了什么</h2>
+        <div class="note" style="margin:0">
+          <b>① 模板不再只是“人设”。</b>每个模板带着边界（不发送/不改预算/不改配置），选它就自带规矩。<br><br>
+          <b>② 派活不说“选哪个 Bot”。</b>你在任务里说要什么，系统配模板，不用记 21 个名字。<br><br>
+          <b>③ 草稿和成品分开。</b>Bot 只能产出草稿；发出去、上线、改配置，一定你点头。<br><br>
+          <b>④ 任务有状态。</b>做着 / 等你 / 已设，一眼看到—不用来回翻会话。
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cut">探索稿 v7 · 7 个模板与边界取自 data/desktop/bot-templates.json · 21 个 Bot 取自你的库 · 未接真数据</div>
+</div>
+</body>
+</html>

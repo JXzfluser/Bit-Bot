@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>门户设计 v6 · 低门槛生活入口</title>
+<style>
+  :root{--ink:#17181c;--muted:#77777c;--faint:#aaa9a5;--line:#e8e8e4;--soft:#f7f7f4;--blue:#1e86fc;--blue-w:#eaf4ff;--green:#1d9e75;--amber:#ba7517;--red:#d85a30}
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--ink);font:13px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#fafaf8}
+  .wrap{max-width:900px;margin:0 auto;padding:26px 22px 44px}
+  .hero{margin-bottom:18px}
+  .hero h1{font-size:22px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+  .hero p{margin:0;color:var(--muted);font-size:12px}
+  .speak{background:var(--ink);color:#fff;border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:13px;margin-bottom:20px}
+  .speak .ic{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.12);display:grid;place-items:center;font-size:17px;flex:0 0 auto}
+  .speak .tx{flex:1;min-width:0}
+  .speak b{font-size:14px;font-weight:500;display:block}
+  .speak span{font-size:11px;color:rgba(255,255,255,.6)}
+  .speak .go{background:var(--blue);color:#fff;border-radius:8px;padding:7px 15px;font-size:12px;white-space:nowrap}
+
+  .cap{font-size:11px;color:var(--faint);letter-spacing:.05em;margin:20px 0 9px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+  .core{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px;min-height:120px;position:relative}
+  .core .em{width:28px;height:28px;border-radius:8px;background:var(--soft);display:grid;place-items:center;font-size:14px;margin-bottom:9px}
+  .core b{display:block;font-weight:600;font-size:14px;margin-bottom:4px}
+  .core p{margin:0;font-size:11px;color:var(--muted);line-height:1.5}
+  .core .num{position:absolute;right:13px;top:11px;font-size:10px;color:var(--faint)}
+  .core.tint{background:var(--blue-w);border-color:#cfe4ff}
+
+  .life{display:flex;flex-direction:column;gap:9px}
+  .sc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center}
+  .sc .av{width:34px;height:34px;border-radius:9px;background:var(--soft);display:grid;place-items:center;font-size:14px;flex:0 0 auto}
+  .sc .info{flex:1;min-width:0}
+  .sc .info b{display:block;font-weight:500;font-size:13px}
+  .sc .info span{font-size:11px;color:var(--muted)}
+  .sc button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 11px;font-size:11px;white-space:nowrap}
+  .sc button.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .badge{font-size:9px;border-radius:20px;padding:1px 7px;background:var(--blue-w);color:var(--blue);margin-left:6px}
+
+  .phone{background:#fff;border:1px solid var(--line);border-radius:16px;padding:17px;display:grid;grid-template-columns:190px 1fr;gap:17px;align-items:center}
+  .handset{height:230px;border:7px solid var(--ink);border-radius:22px;background:#fafaf8;padding:12px 9px;overflow:hidden}
+  .handset .tm{font-size:10px;color:var(--muted);text-align:center;border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:8px}
+  .push{border:1px solid var(--line);border-radius:8px;padding:7px 8px;margin-bottom:7px;background:#fff}
+  .push b{font-size:10px;display:block}
+  .push span{font-size:9px;color:var(--muted);line-height:1.4;display:block;margin-top:2px}
+  .push.a{border-color:#f0d5ae;background:#fffaf2}
+  .push.g{border-color:#bfe4d0;background:#f4fbf7}
+  .phone .tx h3{font-size:14px;font-weight:600;margin:0 0 8px}
+  .phone .tx p{font-size:12px;color:var(--muted);margin:0 0 12px}
+  .phone .tx ul{margin:0;padding-left:17px;font-size:12px;color:var(--muted)}
+  .phone .tx li{margin-bottom:5px}
+
+  .note{margin-top:20px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--ink);border-radius:11px;padding:13px 15px;font-size:12px;color:var(--muted);line-height:1.65}
+  .note b{color:var(--ink);font-weight:600}
+  .cut{margin-top:10px;font-size:11px;color:var(--faint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <h1>不用“进系统”，说一句就行</h1>
+    <p>门户太高，是因为它要求你先理解 Bot、工位、流水线。低门槛的做法只有一个主入口：一句话。</p>
+  </div>
+
+  <div class="speak">
+    <div class="ic">✦</div>
+    <div class="tx"><b>把这句话交给 Bit Bot…</b><span>例：提醒妈晚上八点吃药 · 明早送孩子前查天气 · 这周买什么菜</span></div>
+    <button class="go">发出去</button>
+  </div>
+
+  <div class="cap">五个核心功能 · 不用配置、不用选 Bot</div>
+  <div class="grid">
+    <div class="core tint"><span class="num">01</span><div class="em">◷</div><b>到点提醒</b><p>说一次，到点手机响。吃药、接孩子、交材料、纪念日——不用装提醒软件。</p></div>
+    <div class="core"><span class="num">02</span><div class="em">✓</div><b>一句话派活</b><p>“把这段整理成发给老师的消息”，Bot 自己接，不用挑哪个 Bot。</p></div>
+    <div class="core"><span class="num">03</span><div class="em">↗</div><b>帮你发出去</b><p>写好的消息、邮件、日报，人工点一下确认才发（不会自己乱发）。</p></div>
+    <div class="core"><span class="num">04</span><div class="em">◉</div><b>手机随时问</b><p>在路上问一句“家里今天谁接娃”，答案来自你存过的信息，不是瞎猜。</p></div>
+    <div class="core"><span class="num">05</span><div class="em">≡</div><b>自动汇总</b><p>一周一次：孩子在忙什么、老人有什么事、哪些提醒没完成。</p></div>
+    <div class="core" style="display:grid;place-items:center;text-align:center;background:var(--soft)"><div><div style="font-size:20px;font-weight:500;margin-bottom:3px">+ 你说话</div><p style="font-size:11px;color:var(--muted)">其它场景不用预置，<br>说一次就会一个</p></div></div>
+  </div>
+
+  <div class="cap">生活场景 · 家人也看得懂（例子，不是菜单）</div>
+  <div class="life">
+    <div class="sc"><div class="av">⚑</div><div class="info"><b>老人<span class="badge">按时提醒</span></b><span>“每天 8 点提醒爸量血压，周三提醒复查” —— 到点推到他手机上</span></div><button>设一条</button></div>
+    <div class="sc"><div class="av">◧</div><div class="info"><b>小孩<span class="badge">日程与材料</span></b><span>“周四要带水彩笔” —— 记下来，周三晚上提醒你</span></div><button class="pri">记一句</button></div>
+    <div class="sc"><div class="av">▤</div><div class="info"><b>衣 · 食 · 住 · 行</b><span>“下周降温” → 提醒加衣；“冰箱快空了” → 生成买菜清单发你确认</span></div><button>问一句</button></div>
+    <div class="sc"><div class="av">✉</div><div class="info"><b>一人公司的正事</b><span>“这周客户跟进一下” → 周五汇总名单，你点头才发邮件</span></div><button>看看</button></div>
+  </div>
+
+  <div class="cap">手机端 · 真正的入口在这里</div>
+  <div class="phone">
+    <div class="handset">
+      <div class="tm">Bit Bot · 今天 17:52</div>
+      <div class="push a"><b>爸 · 量血压</b><span>晚上 8:00 · 还没确认</span></div>
+      <div class="push g"><b>孩子 · 周四带水彩笔</b><span>今晚提醒你一次</span></div>
+      <div class="push"><b>客户跟进名单</b><span>5 人 · 等你点头发</span></div>
+      <div class="push"><b>ep02 可以发了</b><span>内容线 · 等你批准</span></div>
+      <div style="border:1px solid var(--line);border-radius:18px;padding:6px 9px;font-size:9px;color:var(--faint);margin-top:9px">跟我说一句话…</div>
+    </div>
+    <div class="tx">
+      <h3>手机是主入口，桌面只是配置台</h3>
+      <p>一个人不可能守在电脑前。提醒、确认、派活都发生在路上；桌面端只负责“设一次、不用再管”。</p>
+      <ul>
+        <li>不用打开门户：微信式对话直接说</li>
+        <li>只推真正要你动的，不刷屏</li>
+        <li>发送前一定人工确认，Bot 不擅自对外</li>
+        <li>家里人不用理解 Bot 分工，发给同一个入口就行</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>这一版的关键取舍：</b>不是把 21 个 Bot 摆到用户面前，而是把它藏起来——用户只面对一句话、五个功能、一个手机入口。
+    Bot 是谁、在哪个工位、跑了几次，都是内部实现；家人不需要知道，你也不需要每次都选。<br>
+    <b>能落地是因为地基已有：</b>项目现成有定时（routine）、审批、手机端收发、邮件、Bot 人设与群——缺的只是这个“说一句就办”的薄壳。
+  </div>
+  <div class="cut">探索稿 v6 · 不接真数据 · 用于确认方向：低门槛 > 全功能</div>
+</div>
+</body>
+</html>

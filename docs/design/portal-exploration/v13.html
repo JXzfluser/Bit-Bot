@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bit Bot · 产品设计探索 v13</title>
+<style>
+/* v13 — 不再画接线图。这是一个真正的产品界面：
+   安静、克制、有呼吸感。功能在需要时出现，不把能力摊在脸上。 */
+:root{
+  --bg-app:#fff; --bg-side:#f7f7f5; --bg-elev:#fff; --bg-hover:rgba(23,24,26,.045);
+  --bg-fill:rgba(23,24,26,.055); --bg-fill-2:rgba(23,24,26,.085);
+  --text-1:#17181a; --text-2:#6c6d72; --text-3:#9b9ca1;
+  --line:rgba(23,24,26,.075); --line-strong:rgba(23,24,26,.13);
+  --brand:#1e86fc; --brand-soft:rgba(30,134,252,.10); --brand-hover:rgba(30,134,252,.16);
+  --success:#0e9f5a; --success-soft:rgba(14,159,90,.10);
+  --warn:#b45309; --warn-soft:rgba(180,83,9,.10);
+  --danger:#dc2626; --danger-soft:rgba(220,38,38,.09);
+  --user-bubble:#1c1c1e; --on-user:#fff;
+  --r-sm:6px; --r:10px; --r-lg:14px; --r-xl:18px; --r-pill:999px;
+  --shadow-pop:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.08);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:13px/1.6 var(--font);color:var(--text-1);background:var(--bg-app);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent}
+svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;display:block}
+.app{height:100vh;display:grid;grid-template-columns:270px minmax(0,1fr);position:relative;overflow:hidden}
+.col-main{display:grid;grid-template-rows:56px minmax(0,1fr) auto;min-width:0;position:relative}
+
+/* ── Sidebar ───────────────────────────────────────────── */
+.side{background:var(--bg-side);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:0 0 12px}
+.side-top{display:flex;align-items:center;gap:7px;padding:18px 16px 14px}
+.icon-btn{width:30px;height:30px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--text-2);transition:background .15s,color .15s}
+.icon-btn:hover{background:var(--bg-hover);color:var(--text-1)}
+.icon-btn.accent{background:var(--user-bubble);color:#fff}
+.icon-btn.accent:hover{background:#000}
+.side-top .sp{flex:1}
+.workspace{display:flex;align-items:center;gap:7px;padding:0 18px 13px;color:var(--text-2);font-size:12px;letter-spacing:.01em}
+.workspace .chev{opacity:.55;margin-left:2px}
+.bot-strip{display:flex;gap:6px;padding:0 16px 16px;overflow:hidden}
+.bot-strip .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:500;flex:0 0 auto;position:relative;cursor:pointer;transition:transform .15s}
+.bot-strip .av:hover{transform:translateY(-2px)}
+.bot-strip .av .on{position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:var(--success);border:2px solid var(--bg-side)}
+.side-search{margin:0 12px 12px;display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.75);border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 10px;color:var(--text-3);transition:border-color .15s}
+.side-search:focus-within{border-color:var(--line-strong);background:#fff}
+.side-search input{border:0;outline:0;background:transparent;font:inherit;font-size:12px;flex:1;min-width:0;color:var(--text-1)}
+.section-label{padding:6px 18px 6px;font-size:11px;color:var(--text-3);letter-spacing:.03em;display:flex;align-items:center;gap:6px}
+.session{display:flex;align-items:center;gap:10px;padding:8px 14px;margin:1px 8px;border-radius:var(--r);cursor:pointer;transition:background .13s;position:relative}
+.session:hover{background:var(--bg-hover)}
+.session.active{background:var(--user-bubble);color:#fff}
+.session .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:500;flex:0 0 auto}
+.session.active .av{box-shadow:0 0 0 2px rgba(255,255,255,.28)}
+.session .info{flex:1;min-width:0}
+.session .line1{display:flex;align-items:center;gap:6px}
+.session .name{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session .time{margin-left:auto;font-size:10.5px;color:var(--text-3);white-space:nowrap}
+.session.active .time{color:rgba(255,255,255,.55)}
+.session .preview{font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.session.active .preview{color:rgba(255,255,255,.68)}
+.unread{position:absolute;right:14px;top:50%;transform:translateY(2px);min-width:16px;height:16px;border-radius:var(--r-pill);background:var(--brand);color:#fff;font-size:10px;display:grid;place-items:center;padding:0 4px}
+.session.active .unread{background:#fff;color:var(--text-1)}
+.side-bottom{margin-top:auto;padding:10px 12px 0}
+.account{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:var(--r);border:1px solid var(--line);background:rgba(255,255,255,.7);cursor:pointer}
+.account:hover{background:#fff}
+.account .av{width:26px;height:26px;border-radius:50%;background:var(--user-bubble);color:#fff;display:grid;place-items:center;font-size:10px}
+.account .nm{font-size:12px;font-weight:500}.account .sub{font-size:10px;color:var(--text-3)}
+.account .chev{margin-left:auto;color:var(--text-3)}
+
+/* ── Header ────────────────────────────────────────────── */
+header{display:grid;place-items:center;position:relative;border-bottom:1px solid var(--line)}
+.title-pill{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--text-2)}
+.title-pill .av{width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:500}
+.header-actions{position:absolute;right:18px;top:50%;transform:translateY(-50%);display:flex;gap:3px}
+
+/* ── Stream ────────────────────────────────────────────── */
+.stream{overflow-y:auto;padding:22px 30px 10px;scroll-behavior:smooth}
+.stream::-webkit-scrollbar{width:7px}.stream::-webkit-scrollbar-thumb{background:rgba(0,0,0,.13);border-radius:4px}
+.day-sep{text-align:center;font-size:10.5px;color:var(--text-3);letter-spacing:.04em;margin:2px 0 22px}
+.msg{display:flex;flex-direction:column;margin-bottom:22px;position:relative;animation:rise .25s ease both}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.msg.user{align-items:flex-end}.msg.bot{align-items:flex-start}
+.msg-head{display:flex;align-items:center;gap:7px;margin-bottom:6px;font-size:11px;color:var(--text-2)}
+.msg-head .av{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:500}
+.bubble{max-width:min(600px,74%);font-size:13px;line-height:1.65;letter-spacing:.005em}
+.msg.bot .bubble{background:var(--bg-fill);border-radius:4px var(--r-lg) var(--r-lg) var(--r-lg);padding:11px 14px;color:var(--text-1)}
+.msg.user .bubble{background:var(--user-bubble);color:var(--on-fill);border-radius:var(--r-lg) 4px var(--r-lg) var(--r-lg);padding:11px 14px}
+.msg-actions{position:absolute;top:-10px;right:0;display:flex;gap:1px;background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--r-sm);padding:2px;box-shadow:var(--shadow-pop);opacity:0;transform:translateY(3px);transition:.15s;pointer-events:none}
+.msg:hover .msg-actions,.msg:focus-within .msg-actions{opacity:1;transform:none;pointer-events:auto}
+.msg-actions button{width:27px;height:25px;border-radius:4px;display:grid;place-items:center;color:var(--text-2)}
+.msg-actions button:hover{background:var(--bg-hover);color:var(--text-1)}
+.msg-actions button.svg svg{width:15px;height:15px}
+
+/* 决策请求卡：安静地嵌在对话里，用对话的语言而不是警报的语言 */
+.decision{max-width:min(560px,74%);margin-top:9px;background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.decision-head{display:flex;align-items:center;gap:8px;padding:11px 14px 9px}
+.decision-head .dot{width:6px;height:6px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.decision-head .ttl{font-size:11px;font-weight:600;color:var(--text-1)}
+.decision-head .sig{font:10px var(--mono);color:var(--text-3);margin-left:auto}
+.decision-body{padding:0 14px 13px}
+.decision-body .prompt{font-size:12.5px;line-height:1.65;color:var(--text-1);margin-bottom:11px}
+.choices{display:flex;gap:7px;flex-wrap:wrap}
+.choice{border:1px solid var(--line-strong);background:var(--bg-elev);border-radius:var(--r-sm);padding:6px 11px;font-size:11.5px;color:var(--text-1);transition:.15s}
+.choice:hover{border-color:var(--brand);background:var(--brand-soft);color:#0b6dd3}
+.choice.selected{background:var(--user-bubble);color:#fff;border-color:var(--user-bubble)}
+.decision-foot{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 14px;background:rgba(0,0,0,.012);font-size:10.5px;color:var(--text-3)}
+.decision-foot .sp{flex:1}
+.decision-foot button{font-size:10.5px;color:var(--text-2)}
+.decision-foot button:hover{color:var(--text-1)}
+.decision.resolved .decision-head .dot{background:var(--success);box-shadow:0 0 0 3px var(--success-soft)}
+.decision.resolved .decision-body{opacity:.62}
+
+.attachment{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--r);padding:8px;margin-top:9px;max-width:380px;background:var(--bg-elev);cursor:pointer;transition:border-color .15s}
+.attachment:hover{border-color:var(--line-strong)}
+.attachment .thumb{width:42px;height:38px;border-radius:var(--r-sm);background:var(--user-bubble);color:#fff;display:grid;place-items:center;font-size:9px;letter-spacing:.03em;flex:0 0 auto}
+.attachment .info b{display:block;font-size:11.5px;font-weight:500}
+.attachment .info span{font:10px var(--mono);color:var(--text-3);word-break:break-all}
+
+/* 等待条：只在真正有事情等你时出现，安静地贴在对话上方 */
+.waiting-bar{display:none;align-items:center;gap:9px;margin:0 30px 4px;padding:8px 12px;border-radius:var(--r);background:var(--brand-soft);color:#0b6dd3;font-size:11.5px}
+.waiting-bar.show{display:flex;animation:rise .2s ease both}
+.waiting-bar .pulse{width:6px;height:6px;border-radius:50%;background:var(--brand);animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.waiting-bar .sp{flex:1}
+.waiting-bar button{font-size:11px;color:#0b6dd3;padding:3px 8px;border-radius:var(--r-sm)}
+.waiting-bar button:hover{background:var(--brand-hover)}
+.waiting-bar button.primary{background:var(--user-bubble);color:#fff}
+
+/* ── Composer ──────────────────────────────────────────── */
+.composer{padding:6px 26px 18px}
+.composer-box{border:1px solid var(--line-strong);border-radius:var(--r-xl);background:var(--bg-elev);padding:10px 13px 9px;transition:border-color .15s,box-shadow .15s}
+.composer-box:focus-within{border-color:var(--text-3);box-shadow:0 0 0 3px rgba(23,24,26,.035)}
+.composer-box textarea{width:100%;min-height:24px;max-height:110px;resize:none;border:0;outline:0;background:transparent;font:inherit;font-size:13px;line-height:1.6;color:var(--text-1);display:block}
+.composer-box textarea::placeholder{color:var(--text-3)}
+.composer-tools{display:flex;align-items:center;gap:2px;margin-top:7px}
+.composer-tools .tool{width:27px;height:27px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--text-2)}
+.composer-tools .tool:hover{background:var(--bg-hover);color:var(--text-1)}
+.composer-tools .sp{flex:1}
+.composer-tools .send{width:30px;height:30px;border-radius:50%;background:var(--user-bubble);color:#fff;display:grid;place-items:center}
+.composer-tools .send:hover{background:#000}
+.composer-tools .send:disabled{opacity:.35;cursor:default}
+.composer-hint{text-align:center;font-size:10px;color:var(--text-3);margin-top:7px;letter-spacing:.01em}
+
+/* ── Rail ──────────────────────────────────────────────── */
+.rail{position:absolute;top:0;right:0;bottom:0;width:318px;background:var(--bg-elev);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .24s cubic-bezier(.2,.8,.2,1);z-index:7;display:flex;flex-direction:column;box-shadow:-8px 0 24px rgba(0,0,0,.03)}
+.rail.open{transform:none}
+.rail-head{height:56px;display:flex;align-items:center;padding:0 16px;gap:5px;border-bottom:1px solid var(--line)}
+.rail-head .tab{font-size:11.5px;color:var(--text-3);padding:5px 9px;border-radius:var(--r-sm);white-space:nowrap}
+.rail-head .tab:hover{color:var(--text-1);background:var(--bg-hover)}
+.rail-head .tab.active{color:var(--text-1);background:var(--bg-fill);font-weight:500}
+.rail-head .close{margin-left:auto}
+.rail-body{flex:1;overflow-y:auto;padding:20px 18px}
+.rail-kicker{font-size:10.5px;color:var(--text-3);letter-spacing:.04em;margin-bottom:10px;display:flex;justify-content:space-between}
+.rail-title{font-size:16px;font-weight:600;letter-spacing:-.01em;margin-bottom:5px}
+.rail-desc{font-size:12px;color:var(--text-2);line-height:1.65;margin-bottom:20px}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:20px}
+.stat{border:1px solid var(--line);border-radius:var(--r);padding:10px 11px}
+.stat .k{font-size:10px;color:var(--text-3);margin-bottom:3px}
+.stat .v{font-size:12.5px;font-weight:500}
+.stat .v.brand{color:#0b6dd3}
+.progress{height:3px;background:var(--bg-fill);border-radius:3px;overflow:hidden;margin:2px 0 20px}
+.progress i{display:block;height:100%;background:var(--brand);width:37%;transition:width .4s cubic-bezier(.2,.8,.2,1)}
+.timeline{position:relative;padding-left:18px}
+.timeline:before{content:"";position:absolute;left:4px;top:6px;bottom:8px;width:1px;background:var(--line)}
+.tl{position:relative;padding:0 0 15px}
+.tl:before{content:"";position:absolute;left:-18px;top:5px;width:9px;height:9px;border-radius:50%;background:var(--bg-elev);border:1.5px solid var(--line-strong)}
+.tl.done:before{background:var(--success);border-color:var(--success)}
+.tl.now:before{background:var(--brand);border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.tl .t{font-size:12px;font-weight:500}
+.tl .d{font-size:10.5px;color:var(--text-3);margin-top:2px}
+.tl.now .t{color:#0b6dd3}
+.rail-foot{border-top:1px solid var(--line);padding:13px 18px;display:flex;gap:8px}
+.rail-foot button{flex:1;border:1px solid var(--line-strong);border-radius:var(--r-sm);padding:7px;font-size:11.5px}
+.rail-foot button:hover{background:var(--bg-hover)}
+.rail-foot button.primary{background:var(--user-bubble);color:#fff;border-color:var(--user-bubble)}
+
+/* ── Command palette ───────────────────────────────────── */
+.palette{position:fixed;inset:0;background:rgba(23,24,26,.28);display:none;align-items:flex-start;justify-content:center;padding-top:15vh;z-index:40;backdrop-filter:blur(3px)}
+.palette.open{display:flex;animation:fade .15s ease both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.palette-box{width:min(560px,90vw);background:var(--bg-elev);border-radius:var(--r-xl);box-shadow:0 24px 64px rgba(0,0,0,.2);overflow:hidden}
+.palette-input{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.palette-input input{flex:1;border:0;outline:0;font:inherit;font-size:15px;background:transparent}
+.palette-input kbd{font:10px var(--mono);color:var(--text-3);border:1px solid var(--line);border-radius:4px;padding:2px 6px}
+.palette-list{padding:8px}
+.palette-item{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:var(--r-sm);cursor:pointer;font-size:12.5px}
+.palette-item:hover,.palette-item.sel{background:var(--bg-fill)}
+.palette-item .ic{width:26px;height:26px;border-radius:var(--r-sm);background:var(--bg-fill);display:grid;place-items:center;color:var(--text-2)}
+.palette-item .meta{margin-left:auto;font-size:10.5px;color:var(--text-3)}
+.palette-foot{border-top:1px solid var(--line);padding:8px 16px;font-size:10.5px;color:var(--text-3);display:flex;gap:14px}
+
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(10px);background:var(--user-bubble);color:#fff;border-radius:var(--r);padding:9px 15px;font-size:12px;opacity:0;pointer-events:none;transition:.2s;z-index:50;box-shadow:var(--shadow-pop)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.ctx{position:fixed;z-index:45;min-width:186px;background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--r);padding:5px;box-shadow:var(--shadow-pop);display:none}
+.ctx.open{display:block;animation:fade .12s ease both}
+.ctx button{display:flex;width:100%;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:var(--r-sm);font-size:12px;text-align:left}
+.ctx button:hover{background:var(--bg-hover)}
+.ctx button.danger{color:var(--danger)}
+.ctx .div{height:1px;background:var(--line);margin:4px 3px}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+  <div class="side-top">
+    <button class="icon-btn" title="收起侧栏"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+    <button class="icon-btn" id="searchBtn" title="搜索 ⌘K"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg></button>
+    <div class="sp"></div>
+    <button class="icon-btn accent" title="新对话 ⌘N"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="icon-btn" id="cmdBtn" title="团队指挥台"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  </div>
+  <div class="workspace">BitBot <svg class="chev" viewBox="0 0 24 24" style="width:12px;height:12px"><path d="M6 9l6 6 6-6"/></svg></div>
+  <div class="bot-strip">
+    <div class="av" style="background:#c9a227" title="口播">播</div>
+    <div class="av" style="background:#2f6f8f" title="头条情报侦察员">侦<span class="on"></span></div>
+    <div class="av" style="background:#9d4b4b" title="头条选题策划师">策</div>
+    <div class="av" style="background:#4a6fb5" title="头条内容主笔">稿<span class="on"></span></div>
+    <div class="av" style="background:#3f7d5a" title="头条事实编辑">核</div>
+    <div class="av" style="background:#b45309" title="头条标题配图">图</div>
+  </div>
+  <div class="side-search"><svg viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><input placeholder="搜索"></div>
+  <div class="section-label">最近</div>
+  <div class="session" data-t="abc"><div class="av" style="background:#8a6d3b">a</div><div class="info"><div class="line1"><span class="name">abc</span><span class="time">11/01</span></div><div class="preview">为什么这个群还没开始聊…</div></div></div>
+  <div class="session" data-t="自媒体内容团队"><div class="av" style="background:#4a6fb5">自</div><div class="info"><div class="line1"><span class="name">自媒体内容团队</span><span class="time">昨天</span></div><div class="preview">封面给了两版，你挑一张</div></div></div>
+  <div class="session active" data-t="今日头条自媒体团队" data-wait="1"><div class="av" style="background:#9a7b52">今</div><div class="info"><div class="line1"><span class="name">今日头条自媒体团队</span><span class="time">17:34</span></div><div class="preview">情报侦察员：三条路都断了…</div></div><span class="unread">3</span></div>
+  <div class="section-label" style="margin-top:8px">Bot</div>
+  <div class="session" data-t="头条内容主笔"><div class="av" style="background:#1e86fc">主</div><div class="info"><div class="line1"><span class="name">头条内容主笔</span><span class="time">17:21</span></div><div class="preview">ep02 合完了，你看下</div></div></div>
+  <div class="session" data-t="Bit验证"><div class="av" style="background:#1e86fc">验</div><div class="info"><div class="line1"><span class="name">Bit验证</span><span class="time">16:52</span></div><div class="preview">回归 17/0，可以合吗</div></div></div>
+  <div class="side-bottom">
+    <div class="account"><div class="av">朱</div><div><div class="nm">朱复龙</div><div class="sub">本地工作区</div></div><svg class="chev" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M6 9l6 6 6-6"/></svg></div>
+  </div>
+</aside>
+
+<div class="col-main">
+  <header>
+    <div class="title-pill"><span class="av">今</span>今日头条自媒体团队</div>
+    <div class="header-actions">
+      <button class="icon-btn" id="railBtn" title="查看详情"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
+      <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+    </div>
+  </header>
+
+  <div class="waiting-bar show" id="waiting">
+    <span class="pulse"></span><span>有一件事在等你</span>
+    <span class="sp"></span>
+    <button id="later">稍后</button><button class="primary" id="nowBtn">现在处理</button>
+  </div>
+
+  <div class="stream" id="stream">
+    <div class="day-sep">今天 17:20</div>
+
+    <div class="msg bot">
+      <div class="msg-actions">
+        <button title="回复"><svg viewBox="0 0 24 24"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v4"/></svg></button>
+        <button title="反应"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></button>
+        <button title="复制"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
+      </div>
+      <div class="msg-head"><span class="av" style="background:#2f6f8f">侦</span>情报侦察员</div>
+      <div class="bubble">三条路都断了。我不想替你选，给我一个输入我立刻继续。</div>
+      <div class="decision" data-sig="3f2a">
+        <div class="decision-head"><span class="dot"></span><span class="ttl">需要你决定</span><span class="sig">3f2a…</span></div>
+        <div class="decision-body">
+          <div class="prompt">用哪个来源继续？任选其一，越具体越快。</div>
+          <div class="choices"><button class="choice" data-choice="A">用官方报告</button><button class="choice" data-choice="B">只看头部三家</button><button class="choice" data-choice="C">我自己给来源</button></div>
+        </div>
+        <div class="decision-foot"><span>它等了 26 分钟，没有自己编</span><span class="sp"></span><button>稍后处理</button></div>
+      </div>
+    </div>
+
+    <div class="msg user">
+      <div class="msg-actions"><button title="回复"><svg viewBox="0 0 24 24"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v4"/></svg></button><button title="复制"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button></div>
+      <div class="bubble">用 2026 Q3 那份报告，在 wiki 里。</div>
+    </div>
+
+    <div class="msg bot">
+      <div class="msg-actions">
+        <button title="回复"><svg viewBox="0 0 24 24"><path d="M9 14l-5-5 5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v4"/></svg></button>
+        <button title="反应"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></button>
+        <button title="复制"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
+      </div>
+      <div class="msg-head"><span class="av" style="background:#4a6fb5">稿</span>头条内容主笔</div>
+      <div class="bubble">ep02 按云扬音色合完了，四道闸门都过。你看下要不要发。</div>
+      <div class="attachment"><div class="thumb">MP4</div><div class="info"><b>ep02.mp4 · 3:12</b><span>studio/out/ep02/ep02.mp4</span></div></div>
+      <div class="decision" data-sig="91bd">
+        <div class="decision-head"><span class="dot"></span><span class="ttl">发布前确认</span><span class="sig">91bd…</span></div>
+        <div class="decision-body"><div class="prompt">草稿已就绪。你点头，它才会发出去。</div><div class="choices"><button class="choice" data-pub="go">批准发布</button><button class="choice" data-pub="hold">先不发</button></div></div>
+        <div class="decision-foot"><span>发送权限始终在你手上</span><span class="sp"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="composer">
+    <div class="composer-box"><textarea id="input" rows="1" placeholder="给 今日头条自媒体团队 发消息…"></textarea>
+      <div class="composer-tools">
+        <button class="tool" title="附件"><svg viewBox="0 0 24 24"><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L16 6"/></svg></button>
+        <button class="tool" title="截图"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 5v5"/></svg></button>
+        <button class="tool" title="语音"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <span class="sp"></span>
+        <button class="send" id="send" title="发送"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+      </div>
+    </div>
+    <div class="composer-hint">Enter 发送 · Shift + Enter 换行</div>
+  </div>
+
+  <aside class="rail" id="rail">
+    <div class="rail-head">
+      <button class="tab">电脑</button><button class="tab">群组</button><button class="tab active">任务</button>
+      <button class="icon-btn close" id="railClose"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="rail-body">
+      <div class="rail-kicker"><span>当前任务</span><span>3f2a…</span></div>
+      <div class="rail-title">选一个来源</div>
+      <div class="rail-desc">情报侦察员停在这里等你。它不会自己猜一个，也不会假装已经做完了。</div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">状态</div><div class="v brand" id="st">等待你</div></div>
+        <div class="stat"><div class="k">已等待</div><div class="v">26 分钟</div></div>
+        <div class="stat"><div class="k">负责人</div><div class="v">情报侦察员</div></div>
+        <div class="stat"><div class="k">来源</div><div class="v">自媒体团队</div></div>
+      </div>
+      <div class="progress"><i id="bar"></i></div>
+      <div class="rail-kicker">这一轮走过的地方</div>
+      <div class="timeline">
+        <div class="tl done"><div class="t">收集线索</div><div class="d">12 个来源 · 已完成</div></div>
+        <div class="tl done"><div class="t">确定角度</div><div class="d">Brief 已定 · 已完成</div></div>
+        <div class="tl now" id="tlNow"><div class="t" id="tlT">等你决定</div><div class="d" id="tlD">任务停在可回答的问题上</div></div>
+        <div class="tl"><div class="t">继续写作</div><div class="d">未开始</div></div>
+      </div>
+    </div>
+    <div class="rail-foot"><button id="railLater">稍后</button><button class="primary" id="railNow">现在处理</button></div>
+  </aside>
+</div>
+
+<div class="palette" id="palette">
+  <div class="palette-box">
+    <div class="palette-input"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><input id="palInput" placeholder="搜索 Bot、群、消息…"><kbd>ESC</kbd></div>
+    <div class="palette-list" id="palList"></div>
+    <div class="palette-foot"><span>↑↓ 选择</span><span>↵ 打开</span><span>esc 关闭</span></div>
+  </div>
+</div>
+<div class="ctx" id="ctx"></div>
+<div class="toast" id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200)}
+
+$$('.session').forEach(s=>s.addEventListener('click',()=>{
+  $$('.session').forEach(x=>x.classList.remove('active'));s.classList.add('active');
+  $('.title-pill').innerHTML='<span class="av" style="background:'+getComputedStyle(s.querySelector('.av')).backgroundColor+'">'+s.querySelector('.av').textContent.charAt(0)+'</span>'+s.dataset.t;
+  $('#waiting').classList.toggle('show',s.dataset.wait==='1');
+}));
+const menu=(x,y,items)=>{const c=$('#ctx');c.innerHTML='';for(const it of items){if(it==='-'){const d=document.createElement('div');d.className='div';c.appendChild(d);continue}const b=document.createElement('button');b.textContent=it;if(it.includes('删除'))b.className='danger';b.onclick=()=>{c.classList.remove('open');toast(it+' · 已执行')};c.appendChild(b)}c.style.left=Math.min(x,innerWidth-200)+'px';c.style.top=Math.min(y,innerHeight-230)+'px';c.classList.add('open')};
+$$('.session').forEach(s=>s.addEventListener('contextmenu',e=>{e.preventDefault();menu(e.clientX,e.clientY,s.querySelector('.av').style.background?['置顶 / 取消置顶','编辑 Bot','Bot 设置','-','移到分组…','-','删除 Bot']:['重命名','对话详情','-','删除对话'])}));
+document.addEventListener('mousedown',e=>{if(!e.target.closest('#ctx'))$('#ctx').classList.remove('open')});
+
+function decide(btn,kind){
+  const box=btn.closest('.decision');
+  $$('.decision').forEach(d=>{d.classList.add('resolved');d.querySelectorAll('button').forEach(x=>x.disabled=true)});
+  box.querySelector('.decision-head .ttl').textContent=kind==='pub'?'你已确认':'已交给 Bot';
+  box.querySelector('.decision-body .prompt').textContent=kind==='pub'?(btn.dataset.pub==='go'?'批准后才会发出去。':'保持草稿，不发送。'):'已按「'+btn.textContent+'」继续，同一个任务。';
+  box.querySelector('.decision-foot span').textContent='动作已写回 · 可在轨迹里看到';
+  $('#st').textContent=kind==='pub'?'已确认':'进行中';$('#st').classList.remove('brand');$('#st').style.color=kind==='pub'?'var(--success)':'#0b6dd3';
+  $('#bar').style.width=kind==='pub'?'100%':'62%';
+  $('#tlNow').classList.remove('now');$('#tlNow').classList.add('done');$('#tlT').textContent='你已决定';$('#tlD').textContent='Bot 接着往下做';
+  $('#waiting').classList.remove('show');
+  toast(kind==='pub'?(btn.dataset.pub==='go'?'已批准发布':'已搁置，不发送'):'已提交 · 复用同一个 task_sig');
+}
+$$('[data-choice]').forEach(b=>b.onclick=()=>{b.classList.add('selected');decide(b,'choice')});
+$$('[data-pub]').forEach(b=>b.onclick=()=>{b.classList.add('selected');decide(b,'pub')});
+
+$('#railBtn').onclick=()=>$('#rail').classList.add('open');$('#railClose').onclick=()=>$('#rail').classList.remove('open');
+$('#later').onclick=$('#railLater').onclick=()=>{$('#waiting').classList.remove('show');toast('稍后 · 任务仍在，不会丢')};
+$('#nowBtn').onclick=$('#railNow').onclick=()=>{$('.decision .choice').scrollIntoView({behavior:'smooth',block:'center'});$('#rail').classList.add('open')};
+$('#cmdBtn').onclick=()=>{$('#palInput').placeholder='团队指挥台 · 插话 / 改向 / 换人…';openPalette()};
+
+function openPalette(){const p=$('#palette');p.classList.add('open');renderPal('');$('#palInput').focus()}
+function closePalette(){$('#palette').classList.remove('open')}
+function renderPal(q){
+  const rows=[['今日头条自媒体团队','6 位成员','今','#9a7b52'],['头条内容主笔','私聊','主','#1e86fc'],['Bit验证','私聊','验','#1e86fc'],['视频工作台','频道','视','#3f7d5a'],['知识库','频道','知','#8a6d3b']].filter(r=>!q||r[0].includes(q));
+  $('#palList').innerHTML=rows.map((r,i)=>'<div class="palette-item'+(i===0?' sel':'')+'"><span class="ic" style="background:'+r[3]+';color:#fff">'+r[2]+'</span><span>'+r[0]+'</span><span class="meta">'+r[1]+'</span></div>').join('')||'<div class="palette-item" style="color:var(--text-3)">没有匹配的会话</div>';
+}
+$('#searchBtn').onclick=()=>{$('#palInput').placeholder='搜索 Bot、群、消息…';openPalette()};
+$('#palInput').oninput=e=>renderPal(e.target.value.trim());
+$('#palette').onclick=e=>{if(e.target===$('#palette'))closePalette()};
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchBtn').click()}
+  if(e.key==='Escape'){closePalette();$('#rail').classList.remove('open');$('#ctx').classList.remove('open')}
+});
+function send(){const t=$('#input').value.trim();if(!t)return;const m=document.createElement('div');m.className='msg user';m.innerHTML='<div class="bubble"></div>';m.querySelector('.bubble').textContent=t;$('#stream').appendChild(m);$('#input').value='';$('#stream').scrollTop=$('#stream').scrollHeight;toast('已发送')}
+$('#send').onclick=send;$('#input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};
+</script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>门户探索 · 三个第一屏假设</title>
+<style>
+  :root{--ink:#17181c;--muted:#6b6b70;--line:#e6e6e3;--soft:#f6f6f3;--blue:#1e86fc;--green:#1d9e75;--amber:#ba7517;--red:#d85a30}
+  *{box-sizing:border-box}
+  body{margin:0;background:#fff;color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+  header{padding:26px 40px 18px;border-bottom:1px solid var(--line)}
+  h1{font-size:18px;font-weight:600;margin:0 0 4px}
+  header p{margin:0;color:var(--muted);font-size:12px}
+  nav{display:flex;gap:6px;padding:14px 40px 0}
+  nav button{font:inherit;font-size:13px;padding:7px 14px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;color:var(--muted)}
+  nav button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  main{padding:22px 40px 50px}
+  section{display:none}section.on{display:block}
+  .lead{font-size:13px;color:var(--muted);margin:0 0 18px;max-width:760px}
+  .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px;background:#fff}
+  .card h2{font-size:13px;font-weight:600;margin:0 0 12px}
+  .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+  .row:first-of-type{border-top:0}
+  .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--muted)}
+  .dot.run{background:var(--blue)}.dot.wait{background:var(--amber)}.dot.stuck{background:var(--red)}.dot.idle{background:#c9c9c4}
+  .nm{font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tag{font-size:11px;color:var(--muted);background:var(--soft);padding:2px 7px;border-radius:20px;white-space:nowrap}
+  .tag.act{color:var(--blue);background:#eaf4ff}
+  .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .act-row{display:flex;gap:8px;margin-top:12px}
+  .act-row button{font:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:pointer}
+  .act-row button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .time{position:relative;padding-left:18px}
+  .time:before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:var(--line)}
+  .ev{position:relative;padding:10px 0 10px 4px}
+  .ev:before{content:"";position:absolute;left:-18px;top:16px;width:7px;height:7px;border-radius:50%;background:#c9c9c4;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+  .ev.hi:before{background:var(--blue)}
+  .ev .when{font-size:11px;color:var(--muted)}
+  .ev .what{font-weight:500;margin-top:1px}
+  .ev .where{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;word-break:break-all}
+  .cmd{border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+  .cmd .fake{display:flex;align-items:center;gap:10px;color:var(--muted)}
+  .cmd .fake b{font-weight:500;color:var(--ink)}
+  .entries{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .entry{border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+  .entry:hover{border-color:var(--ink)}
+  .entry b{display:block;font-weight:500}
+  .entry span{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;word-break:break-all}
+  .note{margin-top:18px;padding:12px 14px;border-left:2px solid var(--ink);background:var(--soft);font-size:12px;color:var(--muted)}
+  .note b{color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<header>
+  <h1>门户探索 · 三个第一屏假设</h1>
+  <p>探索稿，用来选方向，不是产品代码。数据用的是你本机真实的 Bot 名字与路径。</p>
+</header>
+<nav>
+  <button class="on" data-s="duty">A · 值班台</button>
+  <button data-s="day">B · 今日流水</button>
+  <button data-s="cmd">C · 命令台</button>
+</nav>
+<main>
+
+<section class="on" id="duty">
+  <p class="lead">假设：你打开它，是为了知道<strong>我的 Bot 团队现在在干什么、哪件要我拍板</strong>。这是这个项目唯一别人做不了的第一屏——因为别的产品没有“一整个团队”。</p>
+  <div class="grid">
+    <div class="card">
+      <h2>团队状态 · 21 个 Bot</h2>
+      <div class="row"><i class="dot run"></i><span class="nm">头条内容主笔</span><span class="tag act">合成中 37%</span></div>
+      <div class="row"><i class="dot run"></i><span class="nm">头务侦察员</span><span class="tag act">检索 12 源</span></div>
+      <div class="row"><i class="dot stuck"></i><span class="nm">头条事实编辑</span><span class="tag">等一个数据</span></div>
+      <div class="row"><i class="dot wait"></i><span class="nm">Bit验证</span><span class="tag">等你确认</span></div>
+      <div class="row"><i class="dot idle"></i><span class="nm">能力对标</span><span class="tag">待命</span></div>
+      <div class="row"><i class="dot idle"></i><span class="nm">配图设计师</span><span class="tag">待命</span></div>
+    </div>
+    <div class="card">
+      <h2>需要你 · 2 件</h2>
+      <div class="row"><span class="nm">发布 ep02 到公众号</span><span class="tag">发布审批</span></div>
+      <div class="sub">头条内容主笔 · 12 分钟前</div>
+      <div class="row"><span class="nm">覆盖 ep01 的分镜结论</span><span class="tag">改文件审批</span></div>
+      <div class="sub">剪辑 Bot · 昨天 21:40</div>
+      <div class="act-row"><button class="primary">逐条处理</button><button>全部推迟</button></div>
+    </div>
+  </div>
+  <div class="note"><b>代价：</b>空闲时这块面板是空的，会显得“没用”。它只在“有活在跑”时有价值——但这恰恰是你最需要门户的时刻。</div>
+</section>
+
+<section id="day">
+  <p class="lead">假设：你打开它，是为了确认<strong>我今天到底推进了什么</strong>。创作型工作最缺的不是计划，是“做过了”的证据。把产出、对话、任务、提交串成一条流。</p>
+  <div class="grid">
+    <div class="card">
+      <h2>11 月 22 日</h2>
+      <div class="time">
+        <div class="ev hi"><div class="when">17:05</div><div class="what">应用图标重设计完成</div><div class="where">hosts/desktop/build/icon.svg</div></div>
+        <div class="ev"><div class="when">16:36</div><div class="what">studio 产出 ep01-review</div><div class="where">llm-wiki/raw/video/studio/out/ep01-review</div></div>
+        <div class="ev hi"><div class="when">15:50</div><div class="what">任务「批 4 手机端指挥」收尾</div><div class="where">feat/b8-duty-review</div></div>
+        <div class="ev"><div class="when">11:12</div><div class="what">3 条新素材进 raw/work</div><div class="where">llm-wiki/raw/work</div></div>
+        <div class="ev"><div class="when">09:40</div><div class="what">Grok 对话 24 段完成迁移</div><div class="where">data/desktop/sessions.json</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>需要你 · 2 件</h2>
+      <div class="row"><span class="nm">ep02 标题三选一</span><span class="tag">决策</span></div>
+      <div class="row"><span class="nm">Bit验证的回归结论</span><span class="tag">确认</span></div>
+      <div class="act-row"><button class="primary">开始处理</button><button>明天再说</button></div>
+      <div class="note"><b>代价：</b>它是被动的——你得先有“回顾”的需求。单独做会像一个日记页，不能替你发起任何事。</div>
+    </div>
+  </div>
+</section>
+
+<section id="cmd">
+  <p class="lead">假设：你打开它，是为了<strong>一句话到达任何地方</strong>。不展示状态，只负责“把你和你的系统连起来”。类似 Spotlight，但连的是你自己的工作台。</p>
+  <div class="cmd">
+    <div class="fake"><b>⌘ K</b> 输入一句话：做 ep02，用云扬音色，做完发我手机</div>
+  </div>
+  <div class="entries">
+    <div class="entry"><b>视频工作台</b><span>llm-wiki/raw/video/studio</span></div>
+    <div class="entry"><b>知识库</b><span>CopawKnowledgeBase / llm-wiki</span></div>
+    <div class="entry"><b>Bit Bot 代码仓</b><span>Downloads/bitbot</span></div>
+    <div class="entry"><b>21 个 Bot</b><span>按名字 / 职责直达会话</span></div>
+    <div class="entry"><b>群任务</b><span>自媒体内容团队 · 头条组</span></div>
+    <div class="entry"><b>发布流程</b><span>公众号 · 视频号 · 抖音</span></div>
+  </div>
+  <div class="note"><b>代价：</b>没有状态感。你得先知道自己要找什么；它不会告诉你“有件事正卡着等你”。</div>
+</section>
+
+</main>
+<script>
+document.querySelectorAll('nav button').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('nav button').forEach(function(x){x.classList.remove('on')});
+    document.querySelectorAll('main section').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on');document.getElementById(b.dataset.s).classList.add('on');
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>v15 · 按 openbot.run 的版式重排（52 图标栏 + 280 列表 + 对话）</title>
+<style>
+/* v15 —— 照 openbot.run/app-preview 的实际版式翻译过来，不是"借鉴风格"。
+   实测数据：导航栏 52px、按钮 36×36、pitch 42、上组 7 项、下簇 5 项、列表 280px。
+   本项目的对应关系：
+     左 = 域栏（通讯/效率/任务/工作台）  ← openbot 的 window-rail-group
+     中 = 会话列表 280px                ← openbot 的 sidebar
+     右 = 对话区                        ← openbot 的 app-frame-panes
+     最右 = 功能栏 52px（上组/下簇）     ← 用户要的"顶部功能改到右侧、分上下"
+   右侧点开时向左弹 300px 浮层，不改 grid —— 保证对话区宽度永不跳动。 */
+:root{
+  --bg:#fcfcfc;--side:#f5f5f5;--side-2:#f0f0f0;--ink:#1c1c1c;--muted:rgba(28,28,28,.62);
+  --faint:rgba(28,28,28,.42);--line:rgba(28,28,28,.08);--line-2:rgba(28,28,28,.12);
+  --accent:#1c1c1c;--accent-soft:rgba(28,28,28,.055);
+  --bot:#1e86fc;--green:#1e8f5a;--warn:#a06a00;--violet:#7c5cf0;
+  --r:8px;--r-lg:12px;--r-pill:999px;
+  --rail-w:52px;--list-w:280px;--flyout-w:300px;
+}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font:13px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
+svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:block}
+
+/* ---------- 骨架：52 | 280 | 1fr | 52 ---------- */
+.app{height:100vh;display:grid;grid-template-columns:var(--rail-w) var(--list-w) minmax(0,1fr) var(--rail-w);overflow:hidden}
+
+/* ---------- 左域栏（openbot window-rail 的孪生） ---------- */
+.dom{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:8px 0 10px;gap:2px}
+.dom .brand{width:36px;height:36px;border-radius:10px;background:var(--ink);color:#fff;display:grid;place-items:center;margin-bottom:6px}
+.dom .brand svg{width:18px;height:18px;stroke-width:1.8}
+.rbtn{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--faint);position:relative;transition:background .12s,color .12s}
+.rbtn:hover{background:var(--accent-soft);color:var(--ink)}
+.rbtn.on{background:var(--accent-soft);color:var(--ink)}
+.rbtn.on::before{content:"";position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:2px;height:16px;border-radius:2px;background:var(--ink)}
+.dom .sep{width:20px;height:1px;background:var(--line-2);margin:5px 0}
+.dom .grow{flex:1}
+/* tooltip：openbot 里靠 title，这里做成悬停浮现，因为没有文字标签 */
+.rbtn[data-tip]::after{content:attr(data-tip);position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%) scale(.96);
+  background:var(--ink);color:#fff;font-size:11px;line-height:1;padding:5px 7px;border-radius:6px;white-space:nowrap;
+  opacity:0;pointer-events:none;transition:opacity .1s,transform .1s;z-index:60}
+.dom .rbtn[data-tip]:hover::after{opacity:1;transform:translateY(-50%) scale(1)}
+
+/* ---------- 会话列表 280（openbot sidebar 的节奏） ---------- */
+.list{background:var(--bg);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.list-top{height:44px;display:flex;align-items:center;gap:6px;padding:0 10px 0 14px;flex:none}
+.list-title{font-size:12px;font-weight:650;letter-spacing:.01em}
+.list-top .sp{flex:1}
+.icon-btn{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--faint)}
+.icon-btn:hover{background:var(--accent-soft);color:var(--ink)}
+.icon-btn svg{width:15px;height:15px}
+
+.search{margin:0 12px 8px;height:30px;border-radius:8px;background:var(--accent-soft);display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--faint)}
+.search svg{width:14px;height:14px;flex:none}
+.search input{flex:1;border:0;outline:0;background:none;font:inherit;font-size:12px;color:var(--ink);min-width:0}
+.search input::placeholder{color:var(--faint)}
+.search .filt{cursor:pointer;display:grid;place-items:center}
+
+.tabs{display:flex;gap:14px;padding:0 14px 6px;flex:none}
+.tab{font-size:12px;color:var(--muted);padding-bottom:5px;border-bottom:1.5px solid transparent;display:flex;align-items:center;gap:4px}
+.tab .n{font-size:10px;color:var(--faint)}
+.tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+
+.rows{overflow:auto;min-height:0;padding:0 6px 10px}
+.grp{display:flex;align-items:center;gap:6px;padding:10px 8px 4px;color:var(--faint);font-size:11px}
+.grp .sp{flex:1}
+.grp svg{width:13px;height:13px}
+.row{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:9px;align-items:center;
+  padding:7px 8px;border-radius:9px;cursor:pointer;position:relative}
+.row:hover{background:var(--accent-soft)}
+.row.on{background:var(--accent-soft)}
+.ava{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:650;letter-spacing:-.02em}
+.ava.a1{background:linear-gradient(150deg,#4f8ef7,#2b5fd9)}
+.ava.a2{background:linear-gradient(150deg,#37c26a,#1e8f5a)}
+.ava.a3{background:linear-gradient(150deg,#c084fc,#7c3aed)}
+.ava.a4{background:linear-gradient(150deg,#fbbf24,#e07d0b)}
+.ava.room{background:linear-gradient(150deg,#1c1c1c,#3d3d3d)}
+.ava.room.blue{background:linear-gradient(150deg,#5aa9ff,#1e86fc)}
+.row-main{min-width:0}
+.row-1{display:flex;align-items:baseline;gap:5px}
+.nm{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.role{font-size:10px;color:var(--faint);white-space:nowrap;flex:none}
+.row-1 .tm{margin-left:auto;font-size:10px;color:var(--faint);flex:none}
+.prev{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.unread{width:15px;height:15px;border-radius:50%;background:var(--ink);color:#fff;font-size:9.5px;display:grid;place-items:center;font-weight:600}
+
+/* ---------- 对话区 ---------- */
+.talk{display:flex;flex-direction:column;min-width:0;position:relative;background:var(--bg)}
+.talk-top{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px 0 16px;border-bottom:1px solid var(--line)}
+.talk-top .ava{width:22px;height:22px;border-radius:7px;font-size:10px}
+.talk-name{font-size:13px;font-weight:650}
+.talk-role{font-size:11px;color:var(--faint)}
+.talk-top .sp{flex:1}
+.pill{height:24px;padding:0 9px;border-radius:var(--r-pill);border:1px solid var(--line-2);display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+.pill svg{width:12px;height:12px}
+.pill b{font-weight:600;color:var(--ink)}
+
+.stream{flex:1;overflow:auto;padding:16px 26px 4px}
+.day{text-align:center;font-size:11px;color:var(--faint);margin:2px 0 16px}
+.msg{display:flex;flex-direction:column;margin-bottom:14px;position:relative}
+.msg.user{align-items:flex-end}
+.msg.bot{align-items:flex-start}
+.bub{max-width:min(520px,84%);padding:9px 13px;border-radius:var(--r-lg);font-size:13px;line-height:1.62}
+.msg.user .bub{background:var(--accent);color:#fff;border-bottom-right-radius:5px}
+.msg.bot .bub{background:var(--accent-soft);border-bottom-left-radius:5px}
+.plain{max-width:min(560px,88%);font-size:13px;line-height:1.66}
+.plain ol{margin:6px 0 0;padding-left:18px}
+.plain li{margin:2px 0}
+.plain b{font-weight:650}
+.acts{display:flex;gap:2px;opacity:0;transition:opacity .1s;margin-top:4px}
+.msg:hover .acts{opacity:1}
+.acts button{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--faint)}
+.acts button:hover{background:var(--accent-soft);color:var(--ink)}
+.acts svg{width:13px;height:13px}
+
+/* 流内元信息：openbot 把"步骤/子助手/协作"压成极矮的行，不抢内容 */
+.meta-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--faint);padding:0 2px;margin:-4px 0 10px;cursor:pointer}
+.meta-row:hover{color:var(--muted)}
+.meta-row svg{width:12px;height:12px}
+.meta-row .dotsep{opacity:.5}
+
+/* 任务卡：4/5 进度，openbot 是一行 + 展开箭头 */
+.task{max-width:min(560px,88%);border:1px solid var(--line-2);border-radius:10px;background:#fff;padding:8px 10px;display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer}
+.task:hover{border-color:rgba(28,28,28,.2)}
+.task .ring{width:15px;height:15px;border-radius:50%;border:2px solid var(--line-2);border-top-color:var(--ink);flex:none;animation:spin 1.1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.task .t-txt{font-size:12px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task .t-num{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+.task svg{width:12px;height:12px;color:var(--faint);flex:none}
+
+.sub-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--faint);margin:0 0 10px;padding:0 2px;cursor:pointer}
+.sub-row .k{color:var(--muted)}
+.sub-row .sp{flex:1}
+
+.newline{display:flex;align-items:center;gap:8px;margin:6px 0 12px;color:var(--faint);font-size:10.5px}
+.newline::before,.newline::after{content:"";height:1px;background:var(--line-2);flex:1}
+.newline b{color:var(--bot);font-weight:600;background:rgba(30,134,252,.1);padding:1px 6px;border-radius:var(--r-pill)}
+
+/* 审批卡：openbot 的 A/B/D 选一项 */
+.ask{max-width:min(560px,88%);border:1px solid var(--line-2);border-radius:12px;background:#fff;padding:11px 12px 10px;margin-bottom:12px}
+.ask .q{font-size:12.5px;font-weight:600;margin-bottom:8px}
+.opt{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:12px;cursor:pointer;color:var(--muted)}
+.opt:hover{background:var(--accent-soft);color:var(--ink)}
+.opt .key{width:16px;height:16px;border-radius:4px;background:var(--accent-soft);color:var(--muted);font-size:10px;display:grid;place-items:center;font-weight:600;flex:none}
+.opt.on{background:var(--accent-soft);color:var(--ink)}
+.opt.on .key{background:var(--ink);color:#fff}
+.ask-foot{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.ask-foot .sp{flex:1}
+.mini{height:24px;padding:0 10px;border-radius:6px;font-size:11.5px;color:var(--muted);border:1px solid var(--line-2)}
+.mini:hover{background:var(--accent-soft)}
+.mini.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.mini.pri:hover{background:#000}
+
+.state{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);padding:0 2px;margin-bottom:8px}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--bot);box-shadow:0 0 0 0 rgba(30,134,252,.5);animation:pl 1.5s infinite}
+@keyframes pl{70%{box-shadow:0 0 0 6px rgba(30,134,252,0)}100%{box-shadow:0 0 0 0 rgba(30,134,252,0)}}
+
+/* 输入条：openbot 是一个圆角长条，左 + ，右 麦克风/发送 */
+.composer{flex:none;padding:6px 26px 14px}/* 与 .stream 的 26px 同边，输入框和消息列左右齐 */
+.cbox{height:42px;border-radius:var(--r-pill);border:1px solid var(--line-2);display:flex;align-items:center;gap:8px;padding:0 6px 0 10px;background:#fff}
+.cbox:focus-within{border-color:rgba(28,28,28,.24)}
+.cbox input{flex:1;border:0;outline:0;background:none;font:inherit;font-size:13px;min-width:0}
+.cbox input::placeholder{color:var(--faint)}
+.cbox .plus{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--faint);flex:none}
+.cbox .plus:hover{background:var(--accent-soft);color:var(--ink)}
+.cbox .send{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;flex:none}
+.cbox .send svg{width:14px;height:14px;stroke-width:2}
+.cbox .mic{color:var(--faint)}
+.cbox .mic:hover{color:var(--ink)}
+
+/* ---------- 右功能栏：上组 + 下簇（这才是"顶部功能改到右侧"的落点） ---------- */
+.fn{background:var(--side);border-left:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:8px 0 10px;gap:2px;position:relative;z-index:30}
+.fn .grow{flex:1}
+.fn .sep{width:20px;height:1px;background:var(--line-2);margin:4px 0}
+.fn .rbtn.on::before{left:auto;right:-8px}
+.fn .rbtn[data-tip]::after{left:auto;right:calc(100% + 8px)}
+.fn .badge{position:absolute;top:2px;right:2px;min-width:14px;height:14px;border-radius:var(--r-pill);
+  background:var(--violet);color:#fff;font-size:9px;font-weight:600;display:grid;place-items:center;padding:0 3px;line-height:1}
+.fn .me{width:32px;height:32px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;font-weight:650;display:grid;place-items:center;position:relative;margin-top:4px}
+.fn .me::after{content:"";position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;background:var(--green);border:2px solid var(--side)}
+
+/* ---------- 浮层：从右栏向左弹，不改 grid ---------- */
+/* right:0 —— 浮层挂在 .talk 里，.talk 的右边界就是功能栏左边界；
+   写成 right:var(--rail-w) 会在功能栏左侧留出 52px 缺口，对话内容会从缺口漏出来。 */
+.flyout{position:absolute;top:0;right:0;bottom:0;width:var(--flyout-w);background:#fff;
+  border-left:1px solid var(--line);box-shadow:-12px 0 28px rgba(28,28,28,.06);
+  transform:translateX(8px);opacity:0;pointer-events:none;transition:transform .16s ease,opacity .16s ease;
+  display:flex;flex-direction:column;z-index:25}
+body[data-flyout]:not([data-flyout="none"]) .flyout{transform:none;opacity:1;pointer-events:auto}
+.fly-head{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border-bottom:1px solid var(--line)}
+.fly-head .t{font-size:12px;font-weight:650}
+.fly-head .sp{flex:1}
+.fly-body{overflow:auto;padding:10px 12px 16px;min-height:0}
+.fly-body[hidden]{display:none}
+
+.sec{margin-bottom:14px}
+.sec-t{font-size:10.5px;color:var(--faint);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin:0 2px 6px}
+.item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:12px}
+.item:hover{background:var(--accent-soft)}
+.item .ic{width:22px;height:22px;border-radius:6px;background:var(--accent-soft);display:grid;place-items:center;color:var(--muted);flex:none}
+.item .ic svg{width:13px;height:13px}
+.item .tx{flex:1;min-width:0}
+.item .tx b{display:block;font-weight:600;font-size:12px}
+.item .tx span{display:block;font-size:10.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .rt{font-size:10px;color:var(--faint);flex:none}
+
+.gp-label{display:flex;align-items:baseline;gap:6px;margin:0 2px 4px}
+.gp-label span:first-child{font-size:12px;font-weight:600}
+.gp-hint{font-size:10.5px;color:var(--faint)}
+.gp-row{display:flex;gap:6px;margin-bottom:12px}
+
+/* 浮层打开时内容左让：不加这 300px，右对齐的气泡会被浮层压在外，露出一条黑边。
+   让位只发生在内边距上，列宽不动。 */
+.stream,.composer{transition:padding-right .16s ease}
+body[data-flyout]:not([data-flyout="none"]) .stream,
+body[data-flyout]:not([data-flyout="none"]) .composer{padding-right:calc(26px + var(--flyout-w))}
+</style>
+</head>
+<body data-flyout="none">
+<div class="app">
+
+  <!-- ================= 左：域栏（= openbot window-rail-group） ================= -->
+  <nav class="dom">
+    <div class="brand" title="Bit Bot">
+      <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="12" rx="3.6"/><path d="M9 20.2c1.3-1.5 2.4-3.2 3.3-5"/></svg>
+    </div>
+
+    <button class="rbtn on" data-tip="通讯">
+      <svg viewBox="0 0 24 24"><path d="M20 12a7.5 7.5 0 0 1-7.5 7.5H8l-4 3v-4.2A7.5 7.5 0 0 1 4.5 12 7.5 7.5 0 0 1 12 4.5 7.5 7.5 0 0 1 20 12Z"/></svg>
+    </button>
+    <button class="rbtn" data-tip="效率">
+      <svg viewBox="0 0 24 24"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg>
+    </button>
+    <button class="rbtn" data-tip="任务">
+      <svg viewBox="0 0 24 24"><path d="M9 6h10M9 12h10M9 18h10M4.5 6l1.2 1.2L8 5"/><circle cx="5.2" cy="12" r="1.2"/><circle cx="5.2" cy="18" r="1.2"/></svg>
+    </button>
+    <button class="rbtn" data-tip="工作台">
+      <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>
+    </button>
+
+    <div class="sep"></div>
+
+    <button class="rbtn" data-tip="电脑">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2.2"/><path d="M8.5 20.5h7"/></svg>
+    </button>
+    <button class="rbtn" data-tip="资料库">
+      <svg viewBox="0 0 24 24"><path d="M4 5.5A2 2 0 0 1 6 3.5h12a2 2 0 0 1 2 2v15H6a2 2 0 0 1-2-2Z"/><path d="M4 17.5h16"/></svg>
+    </button>
+
+    <div class="grow"></div>
+
+    <button class="rbtn" data-tip="新建">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="rbtn" data-tip="设置">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6h.08A1.7 1.7 0 0 0 10.1 3.04V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.56 1.02H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.03Z"/></svg>
+    </button>
+  </nav>
+
+  <!-- ================= 中左：会话列表 280（= openbot sidebar） ================= -->
+  <aside class="list">
+    <div class="list-top">
+      <span class="list-title">会话</span>
+      <span class="sp"></span>
+      <button class="icon-btn" title="新建">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="icon-btn" title="收起列表">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9 4.5v15"/></svg>
+      </button>
+    </div>
+
+    <div class="search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+      <input placeholder="搜索会话、助手、任务">
+      <span class="filt" title="筛选">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+      </span>
+    </div>
+
+    <div class="tabs">
+      <span class="tab on">全部 <span class="n">18</span></span>
+      <span class="tab">未读 <span class="n">3</span></span>
+      <span class="sp" style="flex:1"></span>
+      <span class="tab" style="border:0;color:var(--faint)">
+        <svg viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      </span>
+    </div>
+
+    <div class="rows">
+      <div class="grp">今天 <span class="sp"></span>
+        <svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/></svg>
+      </div>
+
+      <div class="row on">
+        <div class="ava a3"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke-width:2"><path d="M12 3.5 14.6 9l6 .9-4.3 4.2 1 6-5.3-2.8-5.3 2.8 1-6L3.4 9.9l6-.9Z"/></svg></div>
+        <div class="row-main">
+          <div class="row-1"><span class="nm">台账助手</span><span class="role">数据</span><span class="tm">19:32</span></div>
+          <div class="prev">汇总口径改了，重跑了 C 盘那批…</div>
+        </div>
+        <span class="unread">2</span>
+      </div>
+
+      <div class="row">
+        <div class="ava a2"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke-width:2"><path d="M4 17V9m5 8V5m5 12v-6m5 6v-3"/></svg></div>
+        <div class="row-main">
+          <div class="row-1"><span class="nm">调度助手</span><span class="role">派单</span><span class="tm">19:12</span></div>
+          <div class="prev">assetType 适配完了，等你拍一个板</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="ava a4"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke-width:2"><path d="M12 3.5 19 7v10l-7 3.5L5 17V7Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <div class="row-main">
+          <div class="row-1"><span class="nm">合规助手</span><span class="role">审计</span><span class="tm">18:40</span></div>
+          <div class="prev">扫描发现 3 处硬编码盘符，已列清单</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="ava room">团</div>
+        <div class="row-main">
+          <div class="row-1"><span class="nm">绿化台账 · 周汇总</span><span class="tm">19:31</span></div>
+          <div class="prev">4 个助手在跑，2 个等你确认</div>
+        </div>
+        <span class="unread">1</span>
+      </div>
+
+      <div class="grp">本周 <span class="sp"></span>
+        <svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/></svg>
+      </div>
+
+      <div class="row">
+        <div class="ava room blue">调</div>
+        <div class="row-main">
+          <div class="row-1"><span class="nm">调度中心 · 回归</span><span class="tm">昨天</span></div>
+          <div class="prev">回归 46 条，2 条红了</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="ava a1"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke-width:2"><path d="M20 12a7.5 7.5 0 0 1-7.5 7.5H8l-4 3v-4.2A7.5 7.5 0 0 1 4.5 12 7.5 7.5 0 0 1 12 4.5 7.5 7.5 0 0 1 20 12Z"/></svg></div>
+        <div class="row-main">
+          <div class="row-1"><span class="nm">文档助手</span><span class="role">写作</span><span class="tm">昨天</span></div>
+          <div class="prev">周报初稿好了，等你改口径</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= 中右：对话区（= openbot app-frame-panes） ================= -->
+  <main class="talk">
+    <div class="talk-top">
+      <div class="ava a3"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke-width:2"><path d="M12 3.5 14.6 9l6 .9-4.3 4.2 1 6-5.3-2.8-5.3 2.8 1-6L3.4 9.9l6-.9Z"/></svg></div>
+      <span class="talk-name">台账助手</span>
+      <span class="talk-role">数据 · 1 个任务在跑</span>
+      <span class="sp"></span>
+      <span class="pill" data-rail="model">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18"/></svg>
+        <b>Claude Opus 5.5</b>
+      </span>
+      <button class="icon-btn" title="通知">
+        <svg viewBox="0 0 24 24"><path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5"/><path d="M10.3 19a2 2 0 0 0 3.4 0"/></svg>
+      </button>
+    </div>
+
+    <div class="stream">
+      <div class="day">今天 19:26</div>
+
+      <div class="msg bot">
+        <div class="plain">
+          早上好，今天要处理三件事：
+          <ol>
+            <li><b>绿化台账汇总</b>重跑 —— 口径按上周会议改成按 region 汇总。</li>
+            <li><b>调度 assetType 适配</b>，回归要过。</li>
+            <li><b>GREEN_GROUP 项目名回填</b>，等一个确认。</li>
+          </ol>
+        </div>
+        <div class="acts">
+          <button title="复制"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 6.5V5.5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2h1"/></svg></button>
+          <button title="引用"><svg viewBox="0 0 24 24"><path d="M10 8H7a3 3 0 0 0 0 6h3V8Zm7 0h-3a3 3 0 0 0 0 6h3V8Z"/></svg></button>
+          <button title="更多"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/></svg></button>
+        </div>
+      </div>
+
+      <div class="msg user">
+        <div class="bub">按 region 重跑一遍，跑完把差异列出来给我看。</div>
+      </div>
+
+      <div class="meta-row">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        <span>3 个步骤</span><span class="dotsep">·</span><span>记忆：已存 1 条</span>
+        <svg viewBox="0 0 24 24" style="margin-left:2px"><path d="m9 6 6 6-6 6"/></svg>
+      </div>
+
+      <div class="task">
+        <span class="ring"></span>
+        <span class="t-txt">绿化台账 · 按 region 重跑，已拆给 3 个助手</span>
+        <span class="t-num">4/5</span>
+        <svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+      </div>
+
+      <div class="sub-row">
+        <span class="k">已运行 2 个子助手</span><span>2 个已完成</span><span>46 秒</span>
+        <span class="sp"></span>
+        <svg viewBox="0 0 24 24" style="width:12px;height:12px"><path d="m9 6 6 6-6 6"/></svg>
+      </div>
+
+      <div class="newline"><b>新</b></div>
+
+      <div class="ask">
+        <div class="q">这批数据要按哪个口径补采？</div>
+        <div class="opt on"><span class="key">A</span>按 region_codes 清洗后补采（推荐）</div>
+        <div class="opt"><span class="key">B</span>保留原始 region，事后对齐</div>
+        <div class="opt"><span class="key">C</span>先只补 7 天，看差异再说</div>
+        <div class="ask-foot">
+          <span class="sp"></span>
+          <button class="mini">跳过</button>
+          <button class="mini pri">确认并继续</button>
+        </div>
+      </div>
+
+      <div class="state"><span class="pulse"></span>正在写差异清单</div>
+    </div>
+
+    <div class="composer">
+      <div class="cbox">
+        <button class="plus" title="附件">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <input placeholder="发消息给 台账助手">
+        <button class="mic" title="语音">
+          <svg viewBox="0 0 24 24"><rect x="9.5" y="3.5" width="5" height="10" rx="2.5"/><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5V20.5"/></svg>
+        </button>
+        <button class="send" title="发送">
+          <svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 浮层：右栏任一图标点开后向左弹出 -->
+    <div class="flyout" id="flyout">
+      <div class="fly-head">
+        <span class="t" id="fly-title">任务</span>
+        <span class="sp"></span>
+        <button class="icon-btn" id="fly-close" title="关闭">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="fly-body" id="fly-tasks">
+        <div class="sec">
+          <div class="sec-t">等你拍板 2</div>
+          <div class="item"><span class="ic" style="background:rgba(160,106,0,.12);color:var(--warn)"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><path d="M10.6 4.2 3.3 17a1.6 1.6 0 0 0 1.4 2.4h14.6a1.6 1.6 0 0 0 1.4-2.4L13.4 4.2a1.6 1.6 0 0 0-2.8 0Z"/></svg></span><div class="tx"><b>补采用哪个口径</b><span>台账助手 · 等了 12 分钟</span></div><span class="rt">A/B/C</span></div>
+          <div class="item"><span class="ic" style="background:rgba(160,106,0,.12);color:var(--warn)"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><path d="M10.6 4.2 3.3 17a1.6 1.6 0 0 0 1.4 2.4h14.6a1.6 1.6 0 0 0 1.4-2.4L13.4 4.2a1.6 1.6 0 0 0-2.8 0Z"/></svg></span><div class="tx"><b>GREEN_GROUP 项目名回填</b><span>调度助手 · 等了 4 分钟</span></div><span class="rt">确认</span></div>
+        </div>
+        <div class="sec">
+          <div class="sec-t">在跑 3</div>
+          <div class="item"><span class="ic" style="color:var(--bot)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span><div class="tx"><b>绿化台账 · 按 region 重跑</b><span>4/5 · 差异清单生成中</span></div><span class="rt">46s</span></div>
+          <div class="item"><span class="ic" style="color:var(--bot)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span><div class="tx"><b>调度 assetType 回归</b><span>2/6 · 46 条里 2 条红</span></div><span class="rt">2m</span></div>
+          <div class="item"><span class="ic" style="color:var(--bot)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span><div class="tx"><b>盘符硬编码扫描</b><span>3/3 步 · 已找到 3 处</span></div><span class="rt">1m</span></div>
+        </div>
+        <div class="sec">
+          <div class="sec-t">今天完成 5</div>
+          <div class="item"><span class="ic" style="color:var(--green)"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><div class="tx"><b>byRegion region_codes 清理</b><span>19:04 · 台账助手</span></div><span class="rt">✓</span></div>
+          <div class="item"><span class="ic" style="color:var(--green)"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><div class="tx"><b>周报口径对齐</b><span>18:22 · 文档助手</span></div><span class="rt">✓</span></div>
+        </div>
+      </div>
+
+      <div class="fly-body" id="fly-model" hidden>
+        <div class="sec">
+          <div class="sec-t">当前</div>
+          <div class="item on" style="background:var(--accent-soft)"><span class="ic" style="color:var(--violet)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2"/></svg></span><div class="tx"><b>Claude Opus 5.5</b><span>推理档位 高 · 本月还剩 68%</span></div><span class="rt">✓</span></div>
+        </div>
+        <div class="sec">
+          <div class="sec-t">可切</div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/></svg></span><div class="tx"><b>DeepSeek V4</b><span>便宜、快，适合批量</span></div></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/></svg></span><div class="tx"><b>GLM 5.2</b><span>长上下文</span></div></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/></svg></span><div class="tx"><b>本地 · Ollama</b><span>不出网</span></div></div>
+        </div>
+        <div class="gp-label"><span>推理档位</span><span class="gp-hint">影响速度与花费</span></div>
+        <div class="gp-row">
+          <button class="mini">低</button><button class="mini">中</button>
+          <button class="mini pri">高</button>
+        </div>
+      </div>
+
+      <div class="fly-body" id="fly-bots" hidden>
+        <div class="sec">
+          <div class="sec-t">在岗 4</div>
+          <div class="item"><span class="ic" style="background:rgba(124,92,240,.12);color:var(--violet)"><svg viewBox="0 0 24 24"><path d="M12 3.5 14.6 9l6 .9-4.3 4.2 1 6-5.3-2.8-5.3 2.8 1-6L3.4 9.9l6-.9Z"/></svg></span><div class="tx"><b>台账助手</b><span>数据 · 在做 1 个任务</span></div><span class="rt">忙</span></div>
+          <div class="item"><span class="ic" style="background:rgba(30,143,90,.12);color:var(--green)"><svg viewBox="0 0 24 24"><path d="M4 17V9m5 8V5m5 12v-6m5 6v-3"/></svg></span><div class="tx"><b>调度助手</b><span>派单 · 等你拍板</span></div><span class="rt">等</span></div>
+          <div class="item"><span class="ic" style="background:rgba(160,106,0,.12);color:var(--warn)"><svg viewBox="0 0 24 24"><path d="M12 3.5 19 7v10l-7 3.5L5 17V7Z"/><path d="m9 12 2 2 4-4"/></svg></span><div class="tx"><b>合规助手</b><span>审计 · 空闲</span></div><span class="rt">闲</span></div>
+          <div class="item"><span class="ic" style="background:rgba(30,134,252,.12);color:var(--bot)"><svg viewBox="0 0 24 24"><path d="M20 12a7.5 7.5 0 0 1-7.5 7.5H8l-4 3v-4.2A7.5 7.5 0 0 1 4.5 12 7.5 7.5 0 0 1 12 4.5 7.5 7.5 0 0 1 20 12Z"/></svg></span><div class="tx"><b>文档助手</b><span>写作 · 空闲</span></div><span class="rt">闲</span></div>
+        </div>
+        <div class="sec">
+          <div class="sec-t">按模版新建</div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><div class="tx"><b>数据汇总助手</b><span>读表、跑汇总、出差异</span></div></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><div class="tx"><b>回归验证助手</b><span>起服务、跑用例、归因</span></div></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><div class="tx"><b>代码审查助手</b><span>看 diff、提风险</span></div></div>
+        </div>
+      </div>
+
+      <div class="fly-body" id="fly-auto" hidden>
+        <div class="sec">
+          <div class="sec-t">已装技能 6</div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span><div class="tx"><b>表格读写</b><span>可读 xlsx / csv，跑汇总</span></div><span class="rt">开</span></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 10h8M8 14h5"/></svg></span><div class="tx"><b>文档生成</b><span>周报、方案、纪要</span></div><span class="rt">开</span></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg></span><div class="tx"><b>代码改动</b><span>看 diff、跑回归</span></div><span class="rt">开</span></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M4 12h16M12 3.5c2.5 2.6 2.5 14.4 0 17M12 3.5c-2.5 2.6-2.5 14.4 0 17"/></svg></span><div class="tx"><b>网页抓取</b><span>内置浏览器</span></div><span class="rt">开</span></div>
+        </div>
+        <div class="sec">
+          <div class="sec-t">外部连接</div>
+          <div class="item"><span class="ic" style="color:var(--green)"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><div class="tx"><b>内部代码托管</b><span>MCP · 已连接</span></div></div>
+          <div class="item"><span class="ic" style="color:var(--green)"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><div class="tx"><b>本地文件系统</b><span>MCP · 已连接</span></div></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><div class="tx"><b>接入新的 MCP</b></div></div>
+        </div>
+      </div>
+
+      <div class="fly-body" id="fly-tools" hidden>
+        <div class="sec">
+          <div class="sec-t">数据目录授权</div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/></svg></span><div class="tx"><b>D:\台账</b><span>只读 · 4 个助手</span></div><span class="rt">✓</span></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/></svg></span><div class="tx"><b>E:\导出</b><span>读写 · 2 个助手</span></div><span class="rt">✓</span></div>
+        </div>
+        <div class="sec">
+          <div class="sec-t">系统能力</div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 4.5h6v3a2 2 0 1 0 0 4v8H9v-8a2 2 0 1 0 0-4Z"/></svg></span><div class="tx"><b>终端命令</b><span>需要逐次确认</span></div><span class="rt">开</span></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M4 12h16M12 3.5c2.5 2.6 2.5 14.4 0 17M12 3.5c-2.5 2.6-2.5 14.4 0 17"/></svg></span><div class="tx"><b>内置浏览器</b><span>可抓页面</span></div><span class="rt">开</span></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.6"/><path d="M11 5.5h2"/></svg></span><div class="tx"><b>移动端远程控制</b><span>配对手机后在手机上看任务</span></div><span class="rt">去配对</span></div>
+        </div>
+      </div>
+
+      <div class="fly-body" id="fly-me" hidden>
+        <div class="sec">
+          <div class="item"><span class="ic" style="color:var(--violet)"><svg viewBox="0 0 24 24"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg></span><div class="tx"><b>每周用量</b><span>对话 42 · 任务 128</span></div></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.3"/><path d="M12 16.8v.2"/></svg></span><div class="tx"><b>帮助与反馈</b></div></div>
+          <div class="item"><span class="ic"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.6"/><path d="M11 5.5h2"/></svg></span><div class="tx"><b>移动端配对</b><span>扫码后在手机上看任务</span></div></div>
+        </div>
+        <div class="sec">
+          <div class="gp-label"><span>账户</span><span class="gp-hint">zhufl02</span></div>
+          <div class="gp-row"><button class="mini">切换账户</button><button class="mini">退出登录</button></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ================= 最右：功能栏（上组 + 下簇） ================= -->
+  <nav class="fn">
+    <!-- 上组：原来散在顶栏/侧栏顶部的功能，全收到这里，一一对应一个浮层 -->
+    <button class="rbtn" data-tip="指挥台" data-flyout="tasks">
+      <svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 19V9m5 10V5m5 14v-6"/><circle cx="7" cy="6.5" r="1.2"/></svg>
+    </button>
+    <button class="rbtn" data-tip="助手" data-flyout="bots">
+      <svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="11" rx="3.2"/><path d="M9.5 18v3M14.5 18v3M2.5 11v3M21.5 11v3"/><circle cx="9.5" cy="12" r="1"/><circle cx="14.5" cy="12" r="1"/></svg>
+    </button>
+    <button class="rbtn" data-tip="模型" data-flyout="model">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18"/></svg>
+    </button>
+    <button class="rbtn" data-tip="能力 / 插件" data-flyout="auto">
+      <svg viewBox="0 0 24 24"><path d="M9 4.5h6v3a2 2 0 1 0 0 4v8H9v-8a2 2 0 1 0 0-4Z"/></svg>
+    </button>
+    <button class="rbtn" data-tip="电脑与权限" data-flyout="tools">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2.2"/><path d="M8.5 20.5h7"/></svg>
+    </button>
+
+    <div class="grow"></div>
+
+    <!-- 下簇：openbot 的 .window-rail-end，用量/帮助/设置/账号常驻底部 -->
+    <button class="rbtn" data-tip="用量 1,799">
+      <svg viewBox="0 0 24 24"><path d="M12 3.5 14 9l5.8.4-4.5 3.6 1.5 5.5-4.8-3.1-4.8 3.1 1.5-5.5L4.2 9.4 10 9Z"/></svg>
+      <span class="badge">1.8k</span>
+    </button>
+    <button class="rbtn" data-tip="帮助">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.3"/><path d="M12 16.8v.2"/></svg>
+    </button>
+    <button class="rbtn" data-tip="设置" data-flyout="me">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6h.08A1.7 1.7 0 0 0 10.1 3.04V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.56 1.02H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.03Z"/></svg>
+    </button>
+    <div class="me" title="zhufl02 · 在线" data-flyout="me">朱</div>
+  </nav>
+</div>
+
+<script>
+(() => {
+  const body = document.body;
+  const fly = document.getElementById("flyout");
+  const title = document.getElementById("fly-title");
+  const TITLES = {
+    tasks: "任务与指挥台",
+    bots: "助手",
+    model: "模型",
+    auto: "能力与插件",
+    tools: "电脑与权限",
+    me: "账户与设置",
+  };
+
+  const close = () => {
+    body.dataset.flyout = "none";
+    document.querySelectorAll("[data-flyout].on").forEach((b) => b.classList.remove("on"));
+  };
+
+  const open = (which, btn) => {
+    if (body.dataset.flyout === which) return close();
+    body.dataset.flyout = which;
+    title.textContent = TITLES[which] || "";
+    document.querySelectorAll(".fly-body").forEach((el) => {
+      el.hidden = el.id !== "fly-" + which;
+    });
+    document.querySelectorAll("[data-flyout].on").forEach((b) => b.classList.remove("on"));
+    if (btn) btn.classList.add("on");
+  };
+
+  document.querySelectorAll("[data-flyout]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      open(btn.dataset.flyout, btn);
+    });
+  });
+
+  // 顶栏那个模型 chip 只是同一动作的第二个调用点
+  const chip = document.querySelector(".pill[data-rail=model]");
+  if (chip) chip.addEventListener("click", () => open("model", null));
+
+  document.getElementById("fly-close").addEventListener("click", close);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  // 审批卡里选一项
+  document.querySelectorAll(".ask").forEach((card) => {
+    card.querySelectorAll(".opt").forEach((opt) => {
+      opt.addEventListener("click", () => {
+        card.querySelectorAll(".opt").forEach((o) => o.classList.remove("on"));
+        opt.classList.add("on");
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

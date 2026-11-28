@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>门户设计 v4 · 微信式三栏 + Agent 工作台</title>
+<style>
+  :root{
+    --ink:#19191c;--muted:#7b7b80;--faint:#aaa9a5;--line:#e9e9e5;--soft:#f6f6f3;
+    --blue:#1e86fc;--blue-d:#0a6fe0;--blue-wash:#eaf4ff;--green:#07c160;
+    --me:#e8f5ee;--bubble:#f4f4f2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--ink);font:13px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#fff}
+  button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent}
+  .app{display:flex;height:100vh;min-width:960px}
+
+  /* 1 · 功能栏（微信左侧窄条） */
+  .rail{width:58px;flex:0 0 58px;background:#ededeb;border-right:1px solid #dededa;display:flex;flex-direction:column;align-items:center;padding:20px 0 14px;gap:18px}
+  .rail .me{width:30px;height:30px;border-radius:7px;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:12px;margin-bottom:6px}
+  .rail button{width:30px;height:30px;display:grid;place-items:center;color:#6f6f73;border-radius:8px;position:relative}
+  .rail button.on{background:var(--blue);color:#fff}
+  .rail button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .rail button i{position:absolute;right:-3px;top:-3px;min-width:14px;height:14px;padding:0 3px;border-radius:8px;background:#f54a45;color:#fff;font-size:9px;font-style:normal;display:grid;place-items:center}
+  .rail .sp{flex:1}
+
+  /* 2 · 会话列表 */
+  .listpane{width:252px;flex:0 0 252px;border-right:1px solid var(--line);display:flex;flex-direction:column;background:#f9f9f7}
+  .srch{padding:11px 10px 8px;display:flex;gap:6px}
+  .srch input{flex:1;min-width:0;border:0;background:#ededeb;border-radius:6px;padding:6px 9px;font:inherit;font-size:12px;outline:0}
+  .srch .ask{width:28px;border-radius:6px;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:15px}
+  .tabs{display:flex;gap:3px;padding:2px 10px 8px}
+  .tabs button{font-size:11px;color:var(--muted);padding:3px 8px;border-radius:5px}
+  .tabs button.on{color:var(--blue-d);background:var(--blue-wash)}
+  .threads{overflow:auto;flex:1}
+  .cap{font-size:10px;color:var(--faint);padding:9px 14px 4px;letter-spacing:.04em}
+  .th{display:flex;gap:9px;padding:9px 12px;align-items:center;position:relative}
+  .th.on{background:var(--blue);color:#fff}
+  .th .ph{width:36px;height:36px;border-radius:6px;background:#e5e5e1;display:grid;place-items:center;font-size:12px;flex:0 0 auto;position:relative}
+  .th.on .ph{background:#fff;color:var(--blue-d)}
+  .th .ph.grp{background:var(--ink);color:#fff}
+  .th.on .ph.grp{background:#fff;color:var(--ink)}
+  .th .ph .u{position:absolute;right:-5px;top:-5px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#f54a45;color:#fff;font-size:9px;display:grid;place-items:center}
+  .th .tx{flex:1;min-width:0}
+  .th .l1{display:flex;align-items:center;gap:5px}
+  .th .l1 b{font-weight:500;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .th .l1 time{margin-left:auto;font-size:10px;opacity:.55;white-space:nowrap}
+  .th .l2{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+  .th.on .l2{color:#eaf4ff}
+  .th .chan{font-size:9px;padding:0 4px;border:1px solid currentColor;border-radius:3px;opacity:.6;white-space:nowrap}
+
+  /* 3 · 聊天区 */
+  .chat{flex:1;min-width:0;display:flex;flex-direction:column;background:#fff}
+  .ch-head{height:52px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;gap:9px}
+  .ch-head b{font-weight:600;font-size:14px}
+  .ch-head .sub{font-size:11px;color:var(--muted)}
+  .ch-head .r{margin-left:auto;display:flex;gap:6px}
+  .ch-head .r button{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);display:grid;place-items:center;font-size:13px}
+  .ch-head .r button.hi{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .stream{flex:1;overflow:auto;padding:14px 26px 6px}
+  .sys{text-align:center;font-size:11px;color:var(--faint);margin:6px 0 14px}
+  .m{display:flex;gap:10px;margin-bottom:16px;align-items:flex-start}
+  .m .p{width:32px;height:32px;border-radius:6px;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:11px;flex:0 0 auto}
+  .m.bot .p{background:var(--blue)}
+  .m .c{max-width:min(600px,72%)}
+  .m .nm{font-size:11px;color:var(--muted);margin-bottom:4px}
+  .m .nm b{font-weight:500;color:var(--ink)}
+  .m .bub{background:var(--bubble);border-radius:8px;padding:9px 12px;font-size:13px;display:inline-block}
+  .m.me{flex-direction:row-reverse}
+  .m.me .c{display:flex;flex-direction:column;align-items:flex-end}
+  .m.me .p{background:var(--green)}
+  .m.me .bub{background:var(--green);color:#fff}
+  .m.me .nm{color:var(--muted)}
+  .m .bub a{color:var(--blue-d)}
+  .att{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:7px;min-width:270px;cursor:pointer}
+  .att:hover{border-color:var(--blue)}
+  .att .ic{width:44px;height:38px;border-radius:5px;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:9px;flex:0 0 auto}
+  .att b{display:block;font-weight:500;font-size:12px}
+  .att span{font-size:10px;color:var(--faint);font-family:ui-monospace,monospace;word-break:break-all}
+  .inline{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .inline button{font-size:11px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 10px}
+  .inline button.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .inline button.warn{border-color:#f0d5ae;color:#a86414;background:#fffaf2}
+
+  .composer{border-top:1px solid var(--line);padding:9px 18px 10px}
+  .composer .tools{display:flex;gap:13px;color:var(--muted);margin-bottom:6px}
+  .composer .tools button{display:flex;align-items:center;gap:4px;font-size:11px}
+  .composer textarea{width:100%;height:36px;resize:none;border:0;outline:0;font:inherit;font-size:13px;background:transparent}
+  .composer .foot{display:flex;align-items:center;gap:8px;margin-top:5px}
+  .composer .foot .hint{font-size:11px;color:var(--faint)}
+  .composer .foot button.send{margin-left:auto;background:var(--blue);color:#fff;border-radius:6px;padding:6px 16px;font-size:12px}
+
+  /* 4 · 右侧浏览栏（微信三折叠那一条，装 AI 的工作结果） */
+  .preview{width:316px;flex:0 0 316px;border-left:1px solid var(--line);display:flex;flex-direction:column;background:#fcfcfb}
+  .pv-head{height:52px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:8px}
+  .pv-head b{font-weight:600;font-size:12px}
+  .pv-head .x{margin-left:auto;color:var(--muted);font-size:15px}
+  .pv-body{overflow:auto;padding:14px}
+  .thumb{height:132px;border-radius:8px;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:12px;position:relative}
+  .thumb .play{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.17);display:grid;place-items:center;font-size:13px;margin-bottom:6px}
+  .pv-title{font-weight:600;font-size:14px;margin:12px 0 4px}
+  .pv-meta{font-size:11px;color:var(--muted)}
+  .path{font-family:ui-monospace,monospace;font-size:10px;color:var(--faint);word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:6px;padding:7px 8px;margin-top:10px}
+  .kv{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11px}
+  .kv span:first-child{color:var(--muted)}
+  .pv-sec{font-size:11px;color:var(--faint);margin:16px 0 5px;letter-spacing:.04em}
+  .act{width:100%;border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px;font-size:12px;margin-top:6px}
+  .act.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .note{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.6;border-left:2px solid var(--ink);padding-left:9px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <nav class="rail">
+    <div class="me">朱</div>
+    <button class="on" title="聊天"><svg viewBox="0 0 24 24"><path d="M20 15a3 3 0 0 1-3 3H8l-4 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z"/></svg><i>7</i></button>
+    <button title="通讯录 · Bot 与群"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></button>
+    <button title="收藏 · 知识库"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
+    <button title="工作台频道"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+    <div class="sp"></div>
+    <button title="设置"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  </nav>
+
+  <aside class="listpane">
+    <div class="srch"><input placeholder="搜索"><button class="ask" title="问 Bit Bot">✦</button></div>
+    <div class="tabs"><button class="on">全部</button><button>未读 5</button><button>@我 2</button><button>Bot 21</button></div>
+    <div class="threads">
+      <div class="cap">置顶</div>
+      <div class="th on">
+        <div class="ph grp">头<u class="u">3</u></div>
+        <div class="tx"><div class="l1"><b>今日头条自媒体团队</b><time>17:34</time></div><div class="l2">头条事实编辑：这条数据我核不了…</div></div>
+      </div>
+      <div class="cap">Bot</div>
+      <div class="th">
+        <div class="ph">主</div>
+        <div class="tx"><div class="l1"><b>头条内容主笔</b><time>17:20</time></div><div class="l2">ep02 合完了，你看下要不要发</div></div>
+      </div>
+      <div class="th">
+        <div class="ph">验<u class="u">1</u></div>
+        <div class="tx"><div class="l1"><b>Bit验证</b><time>16:52</time></div><div class="l2">回归 17/0，可以合吗</div></div>
+      </div>
+      <div class="th">
+        <div class="ph">能</div>
+        <div class="tx"><div class="l1"><b>能力对标</b><time>昨天</time></div><div class="l2">这周对标了 3 个新能力</div></div>
+      </div>
+      <div class="cap">群聊</div>
+      <div class="th">
+        <div class="ph grp">自</div>
+        <div class="tx"><div class="l1"><b>自媒体内容团队</b><time>昨天</time></div><div class="l2">配图设计师：封面给了两版</div></div>
+      </div>
+      <div class="cap">工作台 · 频道</div>
+      <div class="th">
+        <div class="ph">视</div>
+        <div class="tx"><div class="l1"><b>视频工作台</b><span class="chan">频道</span><time>16:36</time></div><div class="l2">ep01-review 产出已落盘</div></div>
+      </div>
+      <div class="th">
+        <div class="ph">知</div>
+        <div class="tx"><div class="l1"><b>知识库</b><span class="chan">频道</span><time>11:12</time></div><div class="l2">raw/work 新增 3 条素材</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <section class="chat">
+    <div class="ch-head">
+      <b>今日头条自媒体团队</b><span class="sub">6 人 · 4 个 Bot 在线</span>
+      <div class="r"><button title="置顶">☆</button><button class="hi" title="问 AI">✦</button><button>···</button></div>
+    </div>
+    <div class="stream">
+      <div class="sys">今天 17:20</div>
+
+      <div class="m bot">
+        <div class="p">主</div>
+        <div class="c"><div class="nm"><b>头条内容主笔</b></div>
+          <div class="bub">ep02 按云扬音色合完了，封面也出了。你看下，没问题我就发。</div>
+          <div class="att" onclick="return false">
+            <div class="ic">MP4</div>
+            <div><b>ep02.mp4 · 3:12</b><span>studio/out/ep02/ep02.mp4</span></div>
+          </div>
+          <div class="inline"><button class="pri">批准发布</button><button>退回改</button><button>换音色重做</button></div>
+        </div>
+      </div>
+
+      <div class="m bot">
+        <div class="p">侦</div>
+        <div class="c"><div class="nm"><b>头条情报侦察员</b></div>
+          <div class="bub">今天两条竞品动态，其中一条我不确定是不是这个领域，你扫一眼？</div>
+          <div class="inline"><button>看 2 条</button><button>忽略</button></div>
+        </div>
+      </div>
+
+      <div class="m bot">
+        <div class="p" style="background:#a86414">实</div>
+        <div class="c"><div class="nm"><b>头条事实编辑</b></div>
+          <div class="bub">稿子里「国内市场份额第一」找不到可验证来源，我先停在这里了。</div>
+          <div class="inline"><button class="warn">给个来源</button><button>删掉这句</button><button>交给别人</button></div>
+        </div>
+      </div>
+
+      <div class="m me">
+        <div class="p">朱</div>
+        <div class="c"><div class="bub">用 2026 Q3 那份报告，在 wiki 里。</div></div>
+      </div>
+
+      <div class="m bot">
+        <div class="p" style="background:#a86414">实</div>
+        <div class="c"><div class="nm"><b>头条事实编辑</b></div>
+          <div class="bub">找到了，已按报告口径改好。要我接着往下核吗？</div>
+          <div class="inline"><button class="pri">继续</button><button>先停</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="tools"><button>☺ 表情</button><button>⊕ 文件</button><button>✂ 截图</button><button>◉ 语音</button><button>@ 派活</button></div>
+      <textarea placeholder="发消息给 6 位成员…"></textarea>
+      <div class="foot"><span class="hint">Enter 发送 · Shift+Enter 换行</span><button class="send">发送</button></div>
+    </div>
+  </section>
+
+  <aside class="preview">
+    <div class="pv-head"><b>预览</b><span class="x">×</span></div>
+    <div class="pv-body">
+      <div class="thumb"><div style="text-align:center"><div class="play">▶</div>ep02 · 成片预览</div></div>
+      <div class="pv-title">ep02 · 云扬音色</div>
+      <div class="pv-meta">3 分 12 秒 · 17:21 生成</div>
+      <div class="path">llm-wiki/raw/video/studio/out/ep02/ep02.mp4</div>
+
+      <div class="pv-sec">这条消息</div>
+      <div class="kv"><span>来自</span><span>头条内容主笔</span></div>
+      <div class="kv"><span>任务</span><span>ep02 合成</span></div>
+      <div class="kv"><span>当前状态</span><span style="color:#a86414">等你批准发布</span></div>
+      <div class="kv"><span>手机</span><span style="color:var(--green)">已读 17:32</span></div>
+
+      <div class="pv-sec">同源文件</div>
+      <div class="kv"><span>分镜</span><span>ep02.json</span></div>
+      <div class="kv"><span>封面</span><span>ep02-cover.png</span></div>
+      <div class="kv"><span>核验报告</span><span>q3-report.md</span></div>
+
+      <button class="act pri">批准发布</button>
+      <button class="act">在文件中打开</button>
+
+      <div class="note">三栏的分工：左边找到人，中间把事说完，右边同时看清它做了什么——不用在聊天、任务面板、文件夹之间来回切。这就是“通讯 + 效率”。</div>
+    </div>
+  </aside>
+
+</div>
+</body>
+</html>

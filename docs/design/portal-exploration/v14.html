@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>v14 · 所有入口收进右侧常驻双栏面板</title>
+<style>
+/* 按用户选择：侧栏三圆钮 + 顶栏 pill + 模型 chip + 域栏四项，全部收进右侧；
+   右侧常驻、分上下两层；聊天区变窄。只用项目 token，不造新配色。 */
+:root{
+  --bg:#fcfcfc;--side:#f5f5f5;--ink:#1c1c1c;--muted:rgba(28,28,28,.68);
+  --line:rgba(28,28,28,.08);--accent:#1c1c1c;--accent-soft:rgba(28,28,28,.06);
+  --bot:#1e86fc;--user:#1c1c1c;--green:#1e8f5a;--warn:#a06a00;
+  --r:10px;--r-lg:14px;--r-pill:999px;
+}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font:13px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:var(--ink);background:var(--bg)}
+button{font:inherit;color:inherit;cursor:pointer}
+svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:block}
+.app{height:100vh;display:grid;grid-template-columns:minmax(360px,1fr) 360px;overflow:hidden}
+
+/* 左：只剩会话列表和对话 */
+.left{display:grid;grid-template-rows:56px minmax(0,1fr) auto;min-width:0;position:relative;border-right:1px solid var(--line)}
+header{display:grid;place-items:center;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:600}
+.stream{overflow:auto;padding:22px 26px 10px}
+.day{text-align:center;font-size:11px;color:var(--muted);opacity:.6;margin:2px 0 18px}
+.msg{display:flex;flex-direction:column;margin-bottom:18px}
+.msg.user{align-items:flex-end}.msg.bot{align-items:flex-start}
+.bub{max-width:min(500px,80%);background:var(--accent-soft);border-radius:4px var(--r-lg) var(--r-lg) var(--r-lg);padding:10px 13px;font-size:13px}
+.msg.user .bub{background:var(--user);color:#fff;border-radius:var(--r-lg) 4px var(--r-lg) var(--r-lg)}
+.who{font-size:11px;color:var(--muted);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.who .ic{width:18px;height:18px;border-radius:5px;background:var(--bot);color:#fff;display:grid;place-items:center;font-size:9px}
+.composer{padding:8px 18px 16px}
+.cbox{border:1px solid var(--line);border-radius:18px;padding:9px 13px;display:flex;align-items:center;gap:9px}
+.cbox input{flex:1;border:0;outline:0;background:transparent;font:inherit;font-size:13px}
+.cbox button{border:0;background:transparent;color:var(--muted)}
+.cbox button.send{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center}
+
+/* 右：常驻双栏面板 */
+.right{display:grid;grid-template-rows:auto minmax(0,1fr);background:var(--side);min-height:0}
+.rd-top{border-bottom:1px solid var(--line);padding:18px 18px 14px;background:var(--bg)}
+.rd-title{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.rd-title .av{width:28px;height:28px;border-radius:8px;background:var(--bot);color:#fff;display:grid;place-items:center;font-size:11px}
+.rd-title b{font-size:13px;font-weight:600}
+.rd-title .sub{font-size:11px;color:var(--muted)}
+/* 上半：四组入口，2×2 宫格，一眼看全 */
+.entries{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.entry{border:1px solid var(--line);border-radius:var(--r);background:var(--bg);padding:10px 11px;cursor:pointer;transition:.15s}
+.entry:hover{border-color:var(--accent)}
+.entry.on{border-color:var(--accent);background:var(--accent-soft)}
+.entry .h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:500;margin-bottom:4px}
+.entry .d{font-size:10.5px;color:var(--muted);line-height:1.45}
+.entry .ic{width:24px;height:24px;border-radius:7px;background:var(--accent-soft);display:grid;place-items:center}
+.entry .ic svg{width:14px;height:14px}
+/* 模型 chip：单独一行，显示当前模型 */
+.model-row{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);font-size:11.5px;cursor:pointer}
+.model-row .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.model-row .chev{margin-left:auto;color:var(--muted)}
+/* 下半：当前面板内容 */
+.rd-body{padding:16px 18px;overflow:auto}
+.rd-sec{font-size:10.5px;color:var(--muted);letter-spacing:.04em;margin-bottom:9px;display:flex;justify-content:space-between}
+.task{border:1px solid var(--line);border-radius:var(--r);background:var(--bg);padding:11px 12px;margin-bottom:9px}
+.task .t{display:flex;align-items:center;gap:8px;font-size:12px}
+.task .t b{font-weight:500}
+.task .tag{margin-left:auto;font-size:9.5px;color:var(--warn);background:rgba(180,83,9,.08);border-radius:var(--r-pill);padding:1px 7px}
+.task p{font-size:11px;color:var(--muted);margin:5px 0 0}
+.chat-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px;cursor:pointer}
+.chat-row .av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:10px}
+.chat-row .u{margin-left:auto;min-width:15px;height:15px;border-radius:var(--r-pill);background:var(--bot);color:#fff;font-size:9px;display:grid;place-items:center}
+.account{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:var(--r-pill);padding:7px 11px;background:var(--bg);font-size:12px;cursor:pointer}
+.account .av{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:10px}
+.account .chev{margin-left:auto;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);background:var(--accent);color:#fff;border-radius:var(--r);padding:8px 14px;font-size:12px;opacity:0;pointer-events:none;transition:.2s}
+.toast.on{opacity:1;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="left">
+  <header>今日头条自媒体团队</header>
+  <div class="stream">
+    <div class="day">今天 17:20</div>
+    <div class="msg bot"><div class="who"><span class="ic">侦</span>情报侦察员</div><div class="bub">三条路都断了，给我一个输入我立刻继续。</div></div>
+    <div class="msg user"><div class="bub">用 2026 Q3 那份报告，在 wiki 里。</div></div>
+    <div class="msg bot"><div class="who"><span class="ic">稿</span>头条内容主笔</div><div class="bub">ep02 合完了，四道闸门都过。你看下要不要发。</div></div>
+  </div>
+  <div class="composer"><div class="cbox"><input placeholder="发消息…"><button title="附件">◎</button><button title="语音">◉</button><button class="send">↑</button></div></div>
+</div>
+
+<aside class="right">
+  <div class="rd-top">
+    <div class="rd-title"><span class="av">今</span><div><b>今日头条自媒体团队</b><div class="sub">6 位成员 · 当前会话</div></div></div>
+    <div class="entries">
+      <div class="entry on" data-e="对话"><div class="h"><span class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/></svg></span>对话</div><div class="d">搜索 · 新建 · 收起</div></div>
+      <div class="entry" data-e="指挥"><div class="h"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>指挥</div><div class="d">谁在干什么、等你拍板</div></div>
+      <div class="entry" data-e="自动化"><div class="h"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>自动化</div><div class="d">本群定时任务</div></div>
+      <div class="entry" data-e="设置"><div class="h"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>设置</div><div class="d">电脑 · 凭证 · 模型</div></div>
+    </div>
+    <div class="model-row" id="model"><span class="dot"></span>DeepSeek · deepseek-chat <svg class="chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+  </div>
+
+  <div class="rd-body">
+    <div class="rd-sec"><span>等你</span><span>2</span></div>
+    <div class="task"><div class="t"><b>情报侦察员</b><span class="tag">等你</span></div><p>三条路都断了，请你给个输入</p></div>
+    <div class="task"><div class="t"><b>ep02 发布</b><span class="tag">等你</span></div><p>成片 + 封面 2 版，四道闸门全过</p></div>
+    <div class="rd-sec" style="margin-top:16px"><span>最近会话</span><span>4</span></div>
+    <div class="chat-row"><span class="av" style="background:#9a7b52">今</span>今日头条自媒体团队<span class="u">3</span></div>
+    <div class="chat-row"><span class="av" style="background:#1e86fc">主</span>头条内容主笔</div>
+    <div class="chat-row"><span class="av" style="background:#4a6fb5">自</span>自媒体内容团队</div>
+    <div class="chat-row"><span class="av" style="background:#8a6d3b">a</span>abc</div>
+    <div class="rd-sec" style="margin-top:16px"><span>账户</span></div>
+    <div class="account"><span class="av">朱</span>朱复龙 · 本地工作区<svg class="chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+  </div>
+</aside>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2000)}
+$$('.entry').forEach(e=>e.onclick=()=>{$$('.entry').forEach(x=>x.classList.remove('on'));e.classList.add('on');toast('已切到「'+e.dataset.e+'」· 下半内容随之更新')});
+$('#model').onclick=()=>toast('模型选择（原顶栏 chip 搬到这里）');
+$$('.chat-row').forEach(r=>r.onclick=()=>toast('打开会话：'+r.textContent.trim()));
+$('.account').onclick=()=>toast('账户菜单（用量 / 支持 / 加账户 / 登出）');
+$('#model').onclick=()=>toast('模型选择（原顶栏 chip 搬到这里）');
+$('#model').onclick=()=>toast('模型选择（原顶栏 chip 搬到这里）');
+$('.cbox button.send').onclick=()=>toast('已发送');
+</script>
+</body>
+</html>

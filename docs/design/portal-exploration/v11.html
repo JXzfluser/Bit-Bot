@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>v11 · 完整交互面（右键 / hover / 快捷键 / 指挥台）</title>
+<style>
+/* 真实骨架 + v8 全部深度 + 本项目已有交互面：
+   右键菜单（会话 3 项 / Bot 5 项）· 消息 hover 操作条 · Cmd+K/N/F/D · 托盘。
+   不发明新交互，只把已有的组织进设计，并让任务钩子复用同一套菜单语言。 */
+:root{--surface:#fff;--side:#f5f5f5;--ink:#1c1c1c;--muted:rgba(28,28,28,.68);
+--line:rgba(28,28,28,.08);--accent:#1c1c1c;--accent-soft:rgba(28,28,28,.06);
+--bot:#1e86fc;--user:#1c1c1c;--on-fill:#fff;--warn:#a06a00;--warn-bg:#fbf4e0;
+--warn-line:#e3d2a0;--green:#1e8f5a;--danger:#b3403a}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font:13px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:var(--ink);background:var(--surface);user-select:none}
+button{font:inherit;color:inherit;cursor:pointer}
+.app{height:100vh;display:grid;grid-template-columns:274px minmax(0,1fr);position:relative}
+.col-main{display:grid;grid-template-rows:52px auto minmax(0,1fr) auto;min-width:0;position:relative}
+
+/* 侧栏 */
+.side{border-right:1px solid var(--line);background:var(--side);display:flex;flex-direction:column;min-height:0}
+.tools{display:flex;gap:6px;padding:16px 14px 12px}
+.tools button{width:32px;height:32px;border-radius:50%;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:13px}
+.tools button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ws{padding:0 16px 8px;font-size:12px;color:var(--muted);display:flex}
+.ws .caret{margin-left:auto;font-size:10px}
+.avatars{display:flex;gap:7px;padding:2px 14px 12px}
+.avatars .a{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:12px;color:#fff;flex:0 0 auto;position:relative}
+.hintline{font-size:10px;color:var(--muted);opacity:.65;padding:0 16px 8px}
+.sec{padding:5px 16px 3px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
+.session{display:flex;align-items:center;gap:9px;padding:7px 14px;cursor:pointer;position:relative}
+.session:hover{background:var(--accent-soft)}
+.session.on{background:var(--accent);color:#fff}
+.session .ph{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#fff;flex:0 0 auto}
+.session .tx{flex:1;min-width:0}
+.session .t1{display:flex;align-items:center;gap:5px}
+.session .t1 b{font-weight:500;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session .t1 time{margin-left:auto;font-size:10px;opacity:.6}
+.session .t2{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session.on .t2{color:rgba(255,255,255,.72)}
+.flag{font-size:9px;padding:0 5px;border-radius:9px;background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line)}
+.session.on .flag{background:#fff;color:var(--ink);border:0}
+.kbd{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--muted);background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:4px;padding:0 4px;opacity:0;pointer-events:none}
+.session:hover .kbd{opacity:1}
+.side-foot{margin-top:auto;padding:12px 14px;display:flex;gap:8px}
+.foot-chip{flex:1;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:7px 10px;font-size:12px}
+.foot-chip .b{width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:10px}
+
+header{display:grid;place-items:center;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:600}
+header .pill{display:flex;align-items:center;gap:7px}
+header .pill .b{width:20px;height:20px;border-radius:50%;background:var(--bot);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:400}
+
+/* 快捷键提示条（真实 Cmd+F 浮条的家族语言） */
+.kbdbar{display:flex;gap:14px;align-items:center;padding:5px 22px;border-bottom:1px solid var(--line);font-size:10px;color:var(--muted);background:var(--surface)}
+.kbdbar b{font-weight:500;color:var(--ink);font-size:10px}
+.kbdbar kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--surface)}
+
+.taskbar{display:none;align-items:center;gap:9px;padding:7px 22px;background:var(--warn-bg);border-bottom:1px solid var(--warn-line);font-size:12px;color:var(--warn)}
+.taskbar.show{display:flex}.taskbar b{color:var(--ink)}
+.taskbar .sp{flex:1}
+.taskbar button{border:1px solid var(--warn-line);background:#fff;border-radius:6px;padding:3px 10px;font-size:11px}
+.taskbar button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+.stream{overflow:auto;padding:12px 26px 8px}
+.day{text-align:center;font-size:11px;color:var(--muted);opacity:.6;margin:2px 0 12px}
+.msg{display:flex;flex-direction:column;margin-bottom:15px;position:relative}
+.msg.user{align-items:flex-end}.msg.bot{align-items:flex-start}
+.bub{max-width:min(560px,72%);background:var(--accent-soft);border-radius:12px;padding:9px 12px;font-size:13px;user-select:text}
+.msg.user .bub{background:var(--user);color:var(--on-fill);border-radius:14px}
+.meta{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted);margin-bottom:4px}
+.meta .ic{width:16px;height:16px;border-radius:50%;background:#c9a227;color:#fff;display:grid;place-items:center;font-size:9px}
+/* 消息 hover 操作条：与真实 .msg-actions 同位置同形态 */
+.msg-actions{display:flex;gap:2px;opacity:0;transition:opacity .15s;position:absolute;top:-8px;right:0;background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:2px;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+.msg:hover .msg-actions,.msg:focus-within .msg-actions{opacity:1}
+.msg-actions button{border:0;background:transparent;border-radius:5px;padding:3px 7px;font-size:11px;color:var(--muted)}
+.msg-actions button:hover{background:var(--accent-soft);color:var(--ink)}
+.msg-actions button.task-act{color:var(--warn)}
+
+/* 任务钩子：复用真实"引用卡"语言 */
+.hook{max-width:min(560px,72%);margin-top:6px;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.hook .hh{display:flex;gap:7px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted)}
+.hook .hh .st{font-size:10px;color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:9px;padding:1px 7px}
+.hook .hh .st.ok{color:var(--green);background:#eaf6ef;border-color:#cfe9d9}
+.hook .hh .sig{font-family:ui-monospace,monospace;font-size:10px;opacity:.7}
+.hook .hh time{margin-left:auto}
+.hook .hb{padding:10px}
+.hook .q{font-size:12px;margin-bottom:8px}
+.hook .opts{display:flex;gap:6px;flex-wrap:wrap}
+.hook .opts button{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:4px 10px;font-size:11px}
+.hook .opts button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.hook .proof{font-size:10px;color:var(--muted);margin-top:7px;border-top:1px solid var(--line);padding-top:6px}
+
+.composer{padding:8px 18px 14px}
+.cbox{border:1px solid var(--line);border-radius:20px;padding:9px 14px;display:flex;align-items:center;gap:9px}
+.cbox input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:13px;user-select:text}
+.cbox button{border:0;background:transparent;color:var(--muted);font-size:13px;position:relative}
+.cbox button.send{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:12px}
+/* composer 右键菜单（真实 .composer-menu：停在输入区上方的小白卡） */
+.cmenu{display:none;position:absolute;bottom:calc(100% + 6px);right:18px;min-width:180px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px;z-index:10}
+.cmenu.on{display:block}
+.cmenu button{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:6px;padding:6px 10px;font-size:12px}
+.cmenu button:hover{background:var(--accent-soft)}
+.cmenu button.danger{color:var(--danger)}
+.cmenu .div{height:1px;background:var(--line);margin:4px 2px}
+
+/* 右键菜单（浮层，复用 composer-menu 视觉） */
+.ctxmenu{display:none;position:fixed;z-index:20;min-width:190px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.13);padding:4px}
+.ctxmenu.on{display:block}
+.ctxmenu button{display:flex;width:100%;align-items:center;gap:8px;border:0;background:transparent;border-radius:6px;padding:6px 10px;font-size:12px;text-align:left}
+.ctxmenu button:hover{background:var(--accent-soft)}
+.ctxmenu button.danger{color:var(--danger)}
+.ctxmenu .div{height:1px;background:var(--line);margin:4px 2px}
+.ctxmenu .lab{font-size:10px;color:var(--muted);padding:5px 10px 2px}
+
+/* 指挥台抽屉 */
+.cmd{position:absolute;left:0;right:0;top:52px;bottom:0;background:var(--surface);z-index:8;overflow:auto;padding:16px 22px;display:none;border-top:1px solid var(--line)}
+.cmd.on{display:block}
+.cmd-head{display:flex;gap:8px;align-items:center}
+.cmd-head b{font-size:14px;font-weight:700}
+.cmd-head button{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:3px 9px;font-size:11px}
+.cmd-head button.pri{background:var(--accent);color:#fff}
+.cmd-hint{font-size:12px;opacity:.7;margin:5px 0 12px}
+.cmd-sec{font-weight:600;margin:14px 0 7px}
+.card{border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:9px}
+.card .t{display:flex;gap:8px;font-size:12px;align-items:center}
+.card .t b{font-weight:600}
+.card .t .st{font-size:10px;color:var(--warn);background:var(--warn-bg);border-radius:9px;padding:1px 7px}
+.card .q{font-size:12px;margin:6px 0}.card .sub{font-size:11px;color:var(--muted)}
+.card .acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.card .acts button{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:3px 9px;font-size:11px}
+.card .acts button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.card input{border:1px solid var(--line);border-radius:7px;padding:5px 8px;font:inherit;font-size:11px;width:200px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(10px);background:var(--accent);color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;opacity:0;pointer-events:none;transition:.2s;z-index:30}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.legend{position:fixed;right:14px;top:62px;width:230px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:11px;color:var(--muted);line-height:1.7;z-index:6;box-shadow:0 4px 14px rgba(0,0,0,.05)}
+.legend b{color:var(--ink);font-weight:600;display:block;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+  <div class="tools"><button>▣</button><button id="searchBtn">⌕</button><button class="pri" title="Cmd+N">＋</button><button id="cmdBtn" title="团队指挥台">☰</button></div>
+  <div class="ws">BitBot <span class="caret">▾</span></div>
+  <div class="avatars"><div class="a" style="background:#c9a227">✦</div><div class="a" style="background:#2f6f8f">头</div><div class="a" style="background:#9d4b4b">头</div><div class="a" style="background:#4a6fb5">头</div><div class="a" style="background:#3f7d5a">头</div></div>
+  <div class="hintline">右键头像 → 置顶 / 编辑 / 设置 / 分组 / 删除</div>
+  <div class="sec"><span>对话</span><span>Cmd+K</span></div>
+  <div class="session" data-t="abc" data-menu="sess"><div class="ph" style="background:#8a6d3b">a</div><div class="tx"><div class="t1"><b>abc</b><time>2 位成员</time></div></div><span class="kbd">右键</span></div>
+  <div class="session" data-t="自媒体内容团队" data-menu="sess"><div class="ph" style="background:#4a6fb5">自</div><div class="tx"><div class="t1"><b>自媒体内容团队</b><time>5 位成员</time></div></div><span class="kbd">右键</span></div>
+  <div class="session on" data-t="今日头条自媒体团队" data-menu="sess" data-wait="1"><div class="ph" style="background:#9a7b52">今</div><div class="tx"><div class="t1"><b>今日头条自媒体团队</b><span class="flag">等你</span></div><div class="t2">情报侦察员：三条路都断了…</div></div><span class="kbd">右键</span></div>
+  <div class="sec"><span>Bot · 21</span><span>右键可编辑</span></div>
+  <div class="session" data-t="头条内容主笔" data-menu="bot"><div class="ph" style="background:#1e86fc">主</div><div class="tx"><div class="t1"><b>★ 头条内容主笔</b></div><div class="t2">ep02 合完了，你看下</div></div><span class="kbd">右键</span></div>
+  <div class="session" data-t="Bit验证" data-menu="bot"><div class="ph" style="background:#1e86fc">验</div><div class="tx"><div class="t1"><b>Bit验证</b><span class="flag">拍板</span></div><div class="t2">回归 17/0，可以合吗</div></div><span class="kbd">右键</span></div>
+  <div class="side-foot"><div class="foot-chip"><span class="b">B</span>Bit Bot</div></div>
+</aside>
+
+<div class="col-main">
+  <header><div class="pill"><span class="b">今</span><span>今日头条自媒体团队</span></div></header>
+  <div class="kbdbar"><b>交互面</b><span><kbd>⌘K</kbd> 搜索</span><span><kbd>⌘N</kbd> 新对话</span><span><kbd>⌘F</kbd> 找消息</span><span><kbd>⌘D</kbd> 语音</span><span>消息 hover → 回复 / 反应 / 复制 / 重生成</span><span>输入区右键 → 菜单</span></div>
+  <div class="taskbar show" id="taskbar"><b>这件事在等你</b><span>情报侦察员 · 三条路都断了</span><div class="sp"></div><button id="tbLater">稍后</button><button class="pri" id="tbAnswer">现在回答</button></div>
+  <div class="stream" id="stream">
+    <div class="day">今天 17:20 之后</div>
+    <div class="msg bot">
+      <div class="msg-actions"><button>↩ 回复</button><button>😊 反应</button><button>⧉ 复制</button><button class="task-act" title="把这条变成任务">◷ 挂任务</button></div>
+      <div class="meta"><span class="ic">✦</span>情报侦察员</div>
+      <div class="bub">三条路都断了，请你给我一个输入，我立刻继续（任选其一，越具体越快）：</div>
+      <div class="hook" data-hook="q1"><div class="hh"><span class="st">需要你拍板</span><span class="sig">3f2a…</span><time>17:17</time></div>
+        <div class="hb"><div class="q">它停在这里等了 26 分钟，没有自己编一个答案。</div><div class="opts"><button data-opt="A">A · 用官方报告</button><button data-opt="B">B · 只看头部三家</button><button data-opt="C">C · 我自己给来源</button></div><div class="proof">点选项就写回这个 task_sig · 也可 hover 用「挂任务」</div></div></div>
+    </div>
+    <div class="msg user"><div class="msg-actions"><button>↩ 回复</button><button>⧉ 复制</button></div><div class="bub">用 2026 Q3 那份报告，在 wiki 里。</div></div>
+    <div class="msg bot">
+      <div class="msg-actions"><button>↩ 回复</button><button>😊 反应</button><button>⧉ 复制</button><button class="task-act">↺ 重生成</button></div>
+      <div class="meta"><span class="ic">✦</span>内容主笔</div>
+      <div class="bub">ep02 按云扬音色合完了，四道闸门都过。你看下要不要发。</div>
+      <div class="hook" data-hook="pub"><div class="hh"><span class="st">需要你拍板</span><span class="sig">91bd…</span><time>17:21</time></div>
+        <div class="hb"><div class="q">发布前请你点头，Bot 不会自己发出去。</div><div class="opts"><button class="pri" data-pub="go">批准发布</button><button data-pub="no">先不发</button></div><div class="proof">草稿与发送分离 · 和右键菜单一样点完即走</div></div></div>
+    </div>
+  </div>
+  <div style="position:relative">
+    <form class="composer" onsubmit="return false"><div class="cbox"><input id="msg" placeholder="给 今日头条自媒体团队 发消息…  （右键看菜单）"><button type="button">◎</button><button type="button">◉</button><button class="send" id="send">↑</button></div></form>
+    <div class="cmenu" id="cmenu"><button data-cm="paste">粘贴</button><button data-cm="clear">清空</button><div class="div"></div><button data-cm="attach">添加附件…</button><button data-cm="template">插入模板</button></div>
+  </div>
+  <div class="cmd" id="cmd"><div class="cmd-head"><b>团队指挥台</b><button id="refresh">刷新</button><button class="pri" id="closeCmd">关闭</button></div><div class="cmd-hint">任务来自各群的真实执行记录。</div><div class="cmd-sec">要你拍板</div>
+    <div class="card"><div class="t"><b>情报侦察员</b><span class="st">需要你拍板</span></div><div class="q">三条路都断了，请你给我一个输入…</div><div class="sub">自媒体内容团队</div><div class="acts"><input placeholder="插话或改向…"><button>插话</button><button>改向</button><button>换人</button><button>打开群</button></div></div>
+    <div class="card"><div class="t"><b>内容主笔</b><span class="st">需要你拍板</span></div><div class="q">ep02 合完了，要不要发？</div><div class="sub">今日头条自媒体团队</div><div class="acts"><button class="pri">批准</button><button>退回</button><button>打开群</button></div></div></div>
+</div>
+
+<div class="legend"><b>这一版的设计原则</b>不发明新交互：右键菜单、hover 条、Cmd+K/N/F/D、指挥台抽屉，全部是项目里已有的。任务钩子只是复用同一套家族语言，让“拍板”在消息里就能发生。</div>
+<div class="ctxmenu" id="ctxmenu"></div>
+<div class="toast" id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2100)}
+function menu(x,y,items){
+  const m=$('#ctxmenu');m.innerHTML='';
+  for(const it of items){
+    if(it==='-'){const d=document.createElement('div');d.className='div';m.appendChild(d);continue}
+    const b=document.createElement('button');b.textContent=it[0];if(it[2])b.className='danger';
+    b.onclick=()=>{m.classList.remove('on');toast(it[0]+' · 走现有 IPC')};m.appendChild(b);
+  }
+  m.style.left=Math.min(x,innerWidth-210)+'px';m.style.top=Math.min(y,innerHeight-220)+'px';m.classList.add('on');
+}
+$$('.session').forEach(s=>{
+  s.onclick=()=>{$$('.session').forEach(x=>x.classList.remove('on'));s.classList.add('on');$('#taskbar').classList.toggle('show',s.dataset.wait==='1');toast('已切到 '+s.dataset.t)};
+  s.oncontextmenu=e=>{e.preventDefault();
+    if(s.dataset.menu==='bot') menu(e.clientX,e.clientY,[['置顶 / 取消置顶'],['编辑 Bot'],['Bot 设置'],'-',['移到分组…'],'-',['删除 Bot',0,1]]);
+    else menu(e.clientX,e.clientY,[['重命名'],['删除对话',0,1],['对话详情',0]]);
+  };
+});
+document.addEventListener('mousedown',e=>{if(!e.target.closest('#ctxmenu'))$('#ctxmenu').classList.remove('on');if(!e.target.closest('.cmenu')&&!e.target.closest('.cbox'))$('#cmenu').classList.remove('on')});
+$('.cbox').oncontextmenu=e=>{e.preventDefault();const c=$('#cmenu');c.classList.toggle('on');c.style.bottom='calc(100% + 6px)';toast('输入区右键：与现有 .composer-menu 同款')};
+$$('#cmenu button').forEach(b=>b.onclick=()=>{$('#cmenu').classList.remove('on');toast(b.textContent+' · 已执行')});
+$('#cmdBtn').onclick=()=>$('#cmd').classList.add('on');$('#closeCmd').onclick=()=>$('#cmd').classList.remove('on');$('#refresh').onclick=()=>toast('刷新：与 tasks.json 同步');
+$$('[data-opt]').forEach(b=>b.onclick=()=>{$$('[data-opt]').forEach(x=>x.classList.remove('on'));b.classList.add('on');const h=b.closest('.hook');const st=h.querySelector('.st');st.textContent='已提交';st.classList.add('ok');h.querySelector('.proof').textContent='你选了 '+b.dataset.opt+' · 已写回 task_sig';$('#taskbar').classList.remove('show');toast('已提交 '+b.dataset.opt)});
+$$('[data-pub]').forEach(b=>b.onclick=()=>{const h=b.closest('.hook'),st=h.querySelector('.st');st.textContent=b.dataset.pub==='go'?'已批准':'已搁置';st.classList.add('ok');h.querySelector('.q').textContent=b.dataset.pub==='go'?'你批准了，才会发出去。':'Bot 不会自己发，保持草稿。';h.querySelectorAll('button').forEach(x=>x.disabled=true);toast(b.dataset.pub==='go'?'已批准发布':'已搁置')});
+$$('.msg-actions .task-act').forEach(b=>b.onclick=()=>{const h=b.closest('.msg').querySelector('.hook');if(h){h.scrollIntoView({behavior:'smooth',block:'center'});toast('这条消息已挂任务：同一个 task_sig');}else toast('已挂任务：会新建 task_sig（不是重复）')});
+$('#tbLater').onclick=()=>{$('#taskbar').classList.remove('show');toast('已稍后，任务仍在 tasks.json')};
+$('#tbAnswer').onclick=()=>{$('[data-opt]').scrollIntoView({behavior:'smooth',block:'center'});toast('就地回答')};
+$('#searchBtn').onclick=()=>toast('Cmd+K · 搜索 Bot / 群');
+$('#send').onclick=()=>{const v=$('#msg').value.trim();if(!v)return;const m=document.createElement('div');m.className='msg user';const b=document.createElement('div');b.className='bub';b.textContent=v;m.appendChild(b);$('#stream').appendChild(m);$('#msg').value='';$('#stream').scrollTop=$('#stream').scrollHeight;toast('已发出（带当前 task_sig）')};
+$('#msg').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('#send').click()}};
+</script>
+</body>
+</html>

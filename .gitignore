@@ -100,6 +100,9 @@ docs/design/desktop-target/reference/modal-computed.json
 
 # 聊天附件落盘目录（按会话 id 生成，属运行时数据，不入仓）
 /data/workspace/uploads/
+# 00-profile/ 是团队种子配置（人设、协作规则），要进仓；00-materials/ 是运行时
+# 投进来的一手料，和 uploads 同性质 —— 那是内容不是源码。
+/data/workspace/*/00-materials/
 
 # 本机自证用的临时下载（Kotlin 编译器/JUnit jar，见 report §8.70）
 /.tmpdl/

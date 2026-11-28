@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>门户设计 v2 · 单一工作台</title>
+<style>
+  :root{
+    --ink:#17181c;--muted:#75757a;--faint:#a6a6a2;--line:#e8e8e4;
+    --soft:#f7f7f4;--blue:#1e86fc;--amber:#ba7517;--red:#d85a30;--green:#1d9e75;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--soft);color:var(--ink);font:13px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+  button{font:inherit;color:inherit}
+  .top{height:56px;display:flex;align-items:center;gap:18px;padding:0 24px;background:#fff;border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px}
+  .mark{width:22px;height:22px;border-radius:6px;background:var(--ink);position:relative;flex:0 0 auto}
+  .mark:before{content:"";position:absolute;left:5px;top:5px;width:9px;height:9px;border-radius:2px;background:#fff}
+  .mark:after{content:"";position:absolute;right:3px;bottom:3px;width:4px;height:4px;border-radius:1px;background:var(--blue)}
+  .cmd{flex:1;max-width:420px;margin-left:20px;display:flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--line);border-radius:8px;color:var(--faint);font-size:12px}
+  .cmd kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 5px;color:var(--muted)}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px}
+  .avatar{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:11px}
+
+  .shell{display:grid;grid-template-columns:198px minmax(0,1fr) 268px;gap:16px;padding:18px 24px 40px;max-width:1440px;margin:0 auto;align-items:start}
+  .side{position:sticky;top:18px}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+  .cap{font-size:11px;color:var(--faint);letter-spacing:.04em;margin:2px 0 9px}
+  .nav{display:flex;align-items:center;gap:9px;padding:7px 6px;border-radius:7px;cursor:pointer}
+  .nav:hover{background:var(--soft)}
+  .nav.on{background:var(--ink);color:#fff}
+  .nav .ic{width:14px;height:14px;border:1px solid currentColor;border-radius:3px;flex:0 0 auto;opacity:.65}
+  .nav .ic.round{border-radius:50%}
+  .nav span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nav small{margin-left:auto;font-size:10px;opacity:.55}
+  .botline{display:flex;align-items:center;gap:8px;padding:5px 6px;font-size:12px}
+  .botline i{width:6px;height:6px;border-radius:50%;background:#cfcfc9;flex:0 0 auto}
+  .botline i.run{background:var(--blue)}.botline i.wait{background:var(--amber)}.botline i.stuck{background:var(--red)}
+  .botline span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .hero{margin:2px 0 16px}
+  .hero h1{font-size:21px;font-weight:600;margin:0 0 3px;letter-spacing:-.01em}
+  .hero p{margin:0;color:var(--muted);font-size:13px}
+  .hero p b{color:var(--ink);font-weight:500}
+  .lane{margin-bottom:16px}
+  .lane-h{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:12px;color:var(--muted)}
+  .lane-h .bar{width:3px;height:12px;border-radius:2px;background:var(--ink)}
+  .lane-h .bar.amber{background:var(--amber)}.lane-h .bar.blue{background:var(--blue)}.lane-h .bar.red{background:var(--red)}
+  .lane-h em{font-style:normal;color:var(--faint)}
+  .task{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;gap:14px;align-items:flex-start}
+  .task-main{flex:1;min-width:0}
+  .task-title{font-weight:500;font-size:14px;margin-bottom:3px}
+  .task-sub{color:var(--muted);font-size:12px}
+  .task-path{font-family:ui-monospace,monospace;font-size:11px;color:var(--faint);margin-top:5px;word-break:break-all}
+  .task-actions{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn:hover{border-color:var(--ink)}
+  .prog{height:3px;background:var(--line);border-radius:2px;margin-top:9px;overflow:hidden}
+  .prog i{display:block;height:100%;background:var(--blue);border-radius:2px}
+  .stuck-note{margin-top:7px;font-size:12px;color:var(--red)}
+  .empty{border:1px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--faint);font-size:12px}
+
+  .right{position:sticky;top:18px}
+  .right .panel{padding:14px}
+  .right h2{font-size:13px;font-weight:600;margin:0 0 10px}
+  .tl{position:relative;padding-left:16px}
+  .tl:before{content:"";position:absolute;left:3px;top:5px;bottom:5px;width:1px;background:var(--line)}
+  .ev{position:relative;padding:6px 0}
+  .ev:before{content:"";position:absolute;left:-16px;top:12px;width:5px;height:5px;border-radius:50%;background:#cfcfc9;box-shadow:0 0 0 3px #fff}
+  .ev.hi:before{background:var(--blue)}
+  .ev .t{font-size:10px;color:var(--faint)}
+  .ev .d{font-size:12px;margin-top:1px}
+  .ev .p{font-family:ui-monospace,monospace;font-size:10px;color:var(--faint);word-break:break-all}
+  .divider{height:1px;background:var(--line);margin:12px 0}
+  .hint{font-size:11px;color:var(--faint);line-height:1.5;margin-top:10px}
+  .design-note{background:#fff;border:1px solid var(--line);border-left:3px solid var(--ink);border-radius:10px;padding:13px 15px;margin-top:14px;font-size:12px;color:var(--muted)}
+  .design-note b{color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand"><span class="mark"></span>Bit Bot</div>
+  <div class="cmd"><span>⌘ K</span> 一句话到达 Bot、工作台、知识库…</div>
+  <div class="top-right"><span>11 月 22 日 · 周日</span><span class="avatar">朱</span></div>
+</div>
+
+<div class="shell">
+
+  <aside class="side">
+    <div class="panel">
+      <div class="cap">工作台</div>
+      <div class="nav on"><i class="ic"></i><span>全部</span><small>4</small></div>
+      <div class="nav"><i class="ic"></i><span>视频工作台</span></div>
+      <div class="nav"><i class="ic round"></i><span>知识库 wiki</span></div>
+      <div class="nav"><i class="ic"></i><span>Bit Bot 代码仓</span></div>
+      <div class="nav"><i class="ic"></i><span>发布流程</span></div>
+    </div>
+    <div class="panel">
+      <div class="cap">你的 Bot · 21</div>
+      <div class="botline"><i class="run"></i><span>头条内容主笔</span></div>
+      <div class="botline"><i class="run"></i><span>头条情报侦察员</span></div>
+      <div class="botline"><i class="stuck"></i><span>头条事实编辑</span></div>
+      <div class="botline"><i class="wait"></i><span>Bit验证</span></div>
+      <div class="botline"><i></i><span>能力对标</span></div>
+      <div class="botline"><i></i><span>配图设计师</span></div>
+      <div class="hint">其余 15 个待命 · 点名字直接进会话</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="hero">
+      <h1>早上好。</h1>
+      <p><b>2 件等你拍板</b>，1 件正在跑，1 件卡住了。</p>
+    </div>
+
+    <div class="lane">
+      <div class="lane-h"><span class="bar amber"></span>等你拍板 <em>2</em></div>
+      <div class="task">
+        <div class="task-main">
+          <div class="task-title">发布 ep02 到公众号</div>
+          <div class="task-sub">头条内容主笔 · 12 分钟前提交 · 含 3 张配图</div>
+          <div class="task-path">llm-wiki/raw/video/studio/out/ep02</div>
+        </div>
+        <div class="task-actions"><button class="btn pri">批准发布</button><button class="btn">退回改</button></div>
+      </div>
+      <div class="task">
+        <div class="task-main">
+          <div class="task-title">覆盖 ep01 的分镜结论</div>
+          <div class="task-sub">剪辑 Bot 请求写回 ep01.json · 有 4 处改动</div>
+          <div class="task-path">llm-wiki/raw/video/studio/ep01.json</div>
+        </div>
+        <div class="task-actions"><button class="btn pri">看 diff</button><button class="btn">否决</button></div>
+      </div>
+    </div>
+
+    <div class="lane">
+      <div class="lane-h"><span class="bar blue"></span>正在跑 <em>2</em></div>
+      <div class="task">
+        <div class="task-main">
+          <div class="task-title">ep02 合成 · 用云扬音色</div>
+          <div class="task-sub">头条内容主笔 · 已跑 4 分 12 秒</div>
+          <div class="prog"><i style="width:37%"></i></div>
+        </div>
+        <div class="task-actions"><button class="btn">看进度</button><button class="btn">刹停</button></div>
+      </div>
+      <div class="task">
+        <div class="task-main">
+          <div class="task-title">竞品动态 · 12 个源</div>
+          <div class="task-sub">头条情报侦察员 · 已回 8 条</div>
+          <div class="prog"><i style="width:66%"></i></div>
+        </div>
+        <div class="task-actions"><button class="btn">看结果</button><button class="btn">换人</button></div>
+      </div>
+    </div>
+
+    <div class="lane">
+      <div class="lane-h"><span class="bar red"></span>卡住了 <em>1</em></div>
+      <div class="task">
+        <div class="task-main">
+          <div class="task-title">ep02 的数据引用核不了</div>
+          <div class="task-sub">头条事实编辑 · 等一个可验证来源</div>
+          <div class="stuck-note">它停在这里等了 26 分钟，没有继续编。</div>
+        </div>
+        <div class="task-actions"><button class="btn pri">给个来源</button><button class="btn">改向</button></div>
+      </div>
+    </div>
+
+    <div class="design-note">
+      <b>设计取舍：</b>第一屏只回答「我现在该管什么」。工作台入口收进左栏，今天的流水收进右栏，
+      ⌘K 做全局到达——它们都不是主角。空闲时主区会显示「没有需要你的事」，而不是摆一排假卡片。
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="panel">
+      <h2>今天</h2>
+      <div class="tl">
+        <div class="ev hi"><div class="t">17:05</div><div class="d">应用图标重设计完成</div><div class="p">build/icon.svg</div></div>
+        <div class="ev"><div class="t">16:36</div><div class="d">ep01-review 产出</div><div class="p">studio/out/ep01-review</div></div>
+        <div class="ev hi"><div class="t">15:50</div><div class="d">批 4 手机端指挥收尾</div><div class="p">feat/b8-duty-review</div></div>
+        <div class="ev"><div class="t">11:12</div><div class="d">3 条素材进 raw/work</div><div class="p">llm-wiki/raw/work</div></div>
+        <div class="ev"><div class="t">09:40</div><div class="d">Grok 对话 24 段迁移完成</div><div class="p">data/desktop/sessions.json</div></div>
+      </div>
+      <div class="divider"></div>
+      <h2>昨天</h2>
+      <div class="tl">
+        <div class="ev"><div class="t">21:40</div><div class="d">剪辑 Bot 提交分镜 diff</div></div>
+        <div class="ev"><div class="t">18:22</div><div class="d">视频工作台 ep01 合成</div></div>
+      </div>
+      <div class="hint">点任意一条，跳到对应会话或文件。</div>
+    </div>
+  </aside>
+
+</div>
+</body>
+</html>
